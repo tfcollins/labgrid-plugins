@@ -1,7 +1,7 @@
 import attr
 
-from ..factory import target_factory
-from .common import Resource
+from labgrid.factory import target_factory
+from labgrid.resource.common import Resource
 
 
 @target_factory.reg_resource

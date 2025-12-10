@@ -22,7 +22,7 @@ class Status(enum.Enum):
 class BootFPGASoC(Strategy):
     bindings = {
         "power": "PowerProtocol",
-        "shell": "ShellDriver",
+        "shell": "ADIShellDriver",
         "sdmux": "USBSDMuxDriver",
         'mass_storage': 'MassStorageDriver',
     }
