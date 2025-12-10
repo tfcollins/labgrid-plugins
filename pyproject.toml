@@ -26,9 +26,11 @@ Repository = "https://github.com/analogdevicesinc/adi-labgrid-plugins"
 # Labgrid automatically discovers and registers these components
 [project.entry-points."labgrid.drivers"]
 vesyncpowerdriver = "adi_lg_plugins.drivers.vesyncdriver:VesyncPowerDriver"
+massstoragedriver = "adi_lg_plugins.drivers.massstoragedriver:MassStorageDriver"
 
 [project.entry-points."labgrid.resources"]
 vesyncresource = "adi_lg_plugins.resources.vesync:VesyncOutlet"
+massstorageresource = "adi_lg_plugins.resources.massstorage:MassStorageResource"
 
 [project.entry-points."labgrid.strategies"]
-examplebootstrategy = "adi_lg_plugins.strategies:ExampleBootStrategy"
+bootsocstrategy = "adi_lg_plugins.strategies:BootSocketStrategy"
