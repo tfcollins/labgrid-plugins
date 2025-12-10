@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=47.2.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "adi-labgrid-plugins"
+version = "0.1.0"
+description = "labgrid plugin package for Analog Devices, Inc. (ADI) specific plugins."
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "LGPL-2.1-or-later"}
+authors = [
+    {name = "Analog Devices, Inc."},
+]
+dependencies = [
+    "labgrid @ git+https://github.com/tfcollins/labgrid.git@tfcollins/plugin-support",
+    "pyvesync>=1.1.5,<3.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/analogdevicesinc/adi-labgrid-plugins"
+Documentation = "https://adi-labgrid-plugins.readthedocs.io/"
+Repository = "https://github.com/analogdevicesinc/adi-labgrid-plugins"
+
+# Entry points for plugin discovery
+# Labgrid automatically discovers and registers these components
+[project.entry-points."labgrid.drivers"]
+vesyncpowerdriver = "adi_lg_plugins.drivers.vesyncdriver:VesyncPowerDriver"
+
+[project.entry-points."labgrid.resources"]
+vesyncresource = "adi_lg_plugins.resources.vesync:VesyncOutlet"
+
+[project.entry-points."labgrid.strategies"]
+examplebootstrategy = "adi_lg_plugins.strategies:ExampleBootStrategy"
