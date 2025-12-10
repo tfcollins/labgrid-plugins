@@ -5,13 +5,13 @@ import shutil
 import subprocess
 
 # from labgrid.driver import Driver
-from .common import Driver
+from labgrid.driver.common import Driver
 
 # from labgrid.driver.mixin.powerresetmixin import PowerResetMixin
 # from labgrid.driver.protocol.powerprotocol import PowerProtocol
 # from .powerdriver import PowerResetMixin
 # from ..protocol import PowerProtocol
-from ..factory import target_factory
+from labgrid.factory import target_factory
 
 from labgrid.step import step
 # import logging
