@@ -1,5 +1,6 @@
 import enum
 import time
+import pathlib
 
 import attr
 
@@ -19,15 +20,30 @@ class Status(enum.Enum):
     soft_off = 8
 
 @target_factory.reg_driver
+@attr.s(eq=False)
 class BootFPGASoC(Strategy):
     bindings = {
         "power": "PowerProtocol",
         "shell": "ADIShellDriver",
         "sdmux": "USBSDMuxDriver",
         'mass_storage': 'MassStorageDriver',
+        'image_writer': 'USBStorageDriver',
+        "kuiper": {"KuiperDLDriver", None},
     }
 
     status = attr.ib(default=Status.unknown)
+    reached_linux_marker = attr.ib(default="analog")
+    update_image = attr.ib(default=False)
+
+    def __attrs_post_init__(self):
+        super().__attrs_post_init__()
+        self.logger.info("BootFPGASoC strategy initialized")
+        if self.kuiper:
+            self.target.activate(self.kuiper)
+            self.logger.info("KuiperDLDriver activated")
+            # self.kuiper.download_release()
+            self.kuiper.get_boot_files_from_release()
+            self.target.deactivate(self.kuiper)
 
     @never_retry
     @step()
@@ -55,11 +71,24 @@ class BootFPGASoC(Strategy):
             self.logger.debug("DEBUG SD Mounted")
         elif status == Status.update_boot_files:
             self.transition(Status.sd_mux_to_host)
+            if self.image_writer and self.update_image:
+                self.logger.info("Writing image to mass storage device")
+                self.target.activate(self.image_writer)
+                from labgrid.driver.usbstoragedriver import Mode
+                self.image_writer.write_image(mode=Mode.BMAPTOOL)
+                self.target.deactivate(self.image_writer)
+                self.logger.info("Image written successfully")
+
             self.target.activate(self.mass_storage)
             self.mass_storage.mount_partition()
-            self.mass_storage.update_files()
+            # self.mass_storage.update_files()
+            for boot_file in self.kuiper._boot_files:
+                self.mass_storage.copy_file(boot_file, '/')
             self.mass_storage.unmount_partition()
+            self.target.deactivate(self.mass_storage)
+
             self.logger.debug("DEBUG Boot files updated")
+
         elif status == Status.sd_mux_to_dut:
             self.transition(Status.update_boot_files)
             self.sdmux.set_mode("dut")
@@ -78,19 +107,20 @@ class BootFPGASoC(Strategy):
             # Check kernel start
             self.shell.console.expect("Linux", timeout=30)
             # Check device prompt
-            self.shell.console.expect("ad9081zcu102")  # Adjust prompt as needed
+            self.shell.console.expect(self.reached_linux_marker, timeout=60)  # Adjust prompt as needed
             self.shell.bypass_login = False
             self.target.deactivate(self.shell)
             self.logger.debug("DEBUG Booted")
         elif status == Status.shell:
             self.transition(Status.booted)
+            # self.shell.bypass_login = True
             self.target.activate(self.shell)
             # Post boot stuff...
         elif status == Status.soft_off:
             self.transition(Status.shell)
             try:
-                self.shell.run("poweroff")
-                self.shell.console.expect("Power down", timeout=30)
+                self.shell.sendline("poweroff")
+                self.shell.console.expect(".*Power down.*", timeout=30)
                 self.target.deactivate(self.shell)
                 time.sleep(10)
             except Exception as e:
