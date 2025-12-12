@@ -98,7 +98,7 @@ class ADIShellDriver(CommandMixin, Driver, CommandProtocol, FileTransferProtocol
         cmp_command = f'''MARKER='{marker[:4]}''{marker[4:]}' run {shlex.quote(cmd)}'''
         self.console.sendline(cmp_command)
         _, _, match, _ = self.console.expect(
-            rf'{marker}(.*){marker}\s+(\d+)\s+{self.prompt}',
+            rf'{marker}(.*){marker}\s+(\d+).*?{self.prompt}',
             timeout=timeout
         )
         # Remove VT100 Codes, split by newline and remove surrounding newline
@@ -204,7 +204,8 @@ class ADIShellDriver(CommandMixin, Driver, CommandProtocol, FileTransferProtocol
         self.console.sendline(f"echo '{marker[:4]}''{marker[4:]}'")
         try:
             self.console.expect(
-                rf"{marker}\s+{self.prompt}",
+                # rf"{marker}\s+{self.prompt}",
+                rf"{marker}.*?{self.prompt}",
                 timeout=30
             )
             self._status = 1
