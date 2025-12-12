@@ -28,10 +28,13 @@ Repository = "https://github.com/analogdevicesinc/adi-labgrid-plugins"
 vesyncpowerdriver = "adi_lg_plugins.drivers.vesyncdriver:VesyncPowerDriver"
 massstoragedriver = "adi_lg_plugins.drivers.massstoragedriver:MassStorageDriver"
 adishelldriver = "adi_lg_plugins.drivers.shelldriver:ADIShellDriver"
+kuiperdldriver = "adi_lg_plugins.drivers.kuiperdldriver:KuiperDLDriver"
 
 [project.entry-points."labgrid.resources"]
 vesyncresource = "adi_lg_plugins.resources.vesync:VesyncOutlet"
 massstorageresource = "adi_lg_plugins.resources.massstorage:MassStorageDevice"
+kuiperresource = "adi_lg_plugins.resources.kuiperrelease:KuiperRelease"
 
 [project.entry-points."labgrid.strategies"]
 bootsocstrategy = "adi_lg_plugins.strategies.bootfpgasoc:BootFPGASoC"
+bootsocsshstrategy = "adi_lg_plugins.strategies.bootfpgasocssh:BootFPGASoCSSH"
