@@ -10,7 +10,7 @@ import iio
 def in_shell(strategy):
     # with capsys.disabled():
     strategy.transition("shell")
-    addresses = strategy.target["ADIShellDriver"].get_ip_addresses("eth0")
+    addresses = strategy.target["ADIShellDriver"].get_ip_addresses()
 
     yield
     # with capsys.disabled():
@@ -19,7 +19,7 @@ def in_shell(strategy):
 @pytest.fixture(scope="module")
 def iio_context(target, in_shell):
     shell = target.get_driver("ADIShellDriver")
-    addresses = shell.get_ip_addresses("eth0")
+    addresses = shell.get_ip_addresses()
     ip_address = addresses[0]
     # ip_address is of type IPv4Interface
     ip_address = str(ip_address.ip)
@@ -49,14 +49,14 @@ def test_shell(target, in_shell):
     assert not stdout
     assert not stderr
 
-    addresses = command.get_ip_addresses("eth0")
+    addresses = command.get_ip_addresses()
     print(f"IP addresses on eth0: {addresses}")
     assert addresses, "No IP addresses found on eth0"
 
 
 def test_check_drivers(target, iio_context):
 
-    drivers = ["axi-ad9081-rx-hpc"]
+    drivers = ["axi-ad9084-rx-hpc"]
     for device in iio_context.devices:
         print(f"Found IIO device: {device.name}")
         if device.name in drivers:

@@ -15,7 +15,6 @@ from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 
 from tqdm import tqdm
-import guestfs
 
 from labgrid.driver.common import Driver
 from labgrid.factory import target_factory
