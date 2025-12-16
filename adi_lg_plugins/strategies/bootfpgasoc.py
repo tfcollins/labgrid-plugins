@@ -1,12 +1,11 @@
 import enum
 import time
-import pathlib
 
 import attr
-
+from labgrid.factory import target_factory
 from labgrid.step import step
 from labgrid.strategy import Strategy, StrategyError, never_retry
-from labgrid.factory import target_factory
+
 
 class Status(enum.Enum):
     unknown = 0
@@ -19,6 +18,7 @@ class Status(enum.Enum):
     shell = 7
     soft_off = 8
 
+
 @target_factory.reg_driver
 @attr.s(eq=False)
 class BootFPGASoC(Strategy):
@@ -26,8 +26,8 @@ class BootFPGASoC(Strategy):
         "power": "PowerProtocol",
         "shell": "ADIShellDriver",
         "sdmux": "USBSDMuxDriver",
-        'mass_storage': 'MassStorageDriver',
-        'image_writer': 'USBStorageDriver',
+        "mass_storage": "MassStorageDriver",
+        "image_writer": "USBStorageDriver",
         "kuiper": {"KuiperDLDriver", None},
     }
 
@@ -51,7 +51,9 @@ class BootFPGASoC(Strategy):
         if not isinstance(status, Status):
             status = Status[status]
 
-        self.logger.debug(f"Transitioning to {status} (Existing status: {self.status}) {status == Status.shell}")
+        self.logger.debug(
+            f"Transitioning to {status} (Existing status: {self.status}) {status == Status.shell}"
+        )
 
         if status == Status.unknown:
             raise StrategyError(f"can not transition to {status}")
@@ -75,6 +77,7 @@ class BootFPGASoC(Strategy):
                 self.logger.info("Writing image to mass storage device")
                 self.target.activate(self.image_writer)
                 from labgrid.driver.usbstoragedriver import Mode
+
                 self.image_writer.write_image(mode=Mode.BMAPTOOL)
                 self.target.deactivate(self.image_writer)
                 self.logger.info("Image written successfully")
@@ -83,7 +86,7 @@ class BootFPGASoC(Strategy):
             self.mass_storage.mount_partition()
             # self.mass_storage.update_files()
             for boot_file in self.kuiper._boot_files:
-                self.mass_storage.copy_file(boot_file, '/')
+                self.mass_storage.copy_file(boot_file, "/")
             self.mass_storage.unmount_partition()
             self.target.deactivate(self.mass_storage)
 
@@ -107,7 +110,9 @@ class BootFPGASoC(Strategy):
             # Check kernel start
             self.shell.console.expect("Linux", timeout=30)
             # Check device prompt
-            self.shell.console.expect(self.reached_linux_marker, timeout=60)  # Adjust prompt as needed
+            self.shell.console.expect(
+                self.reached_linux_marker, timeout=60
+            )  # Adjust prompt as needed
             self.shell.bypass_login = False
             self.target.deactivate(self.shell)
             self.logger.debug("DEBUG Booted")
@@ -131,7 +136,5 @@ class BootFPGASoC(Strategy):
             self.power.off()
             self.logger.debug("DEBUG Soft powered off")
         else:
-            raise StrategyError(
-                f"no transition found from {self.status} to {status}"
-            )
+            raise StrategyError(f"no transition found from {self.status} to {status}")
         self.status = status

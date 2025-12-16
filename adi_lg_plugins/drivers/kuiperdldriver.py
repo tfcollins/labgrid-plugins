@@ -1,32 +1,29 @@
 """Kuiper Downloader Driver for Labgrid."""
 
-import attr
-import time
-import os
-import shutil
-import subprocess
-import json
-import requests
 import hashlib
-import pathlib
+import json
 import lzma
+import os
+import pathlib
+import shutil
+import time
 import zipfile
-from requests.adapters import HTTPAdapter
-from requests.packages.urllib3.util.retry import Retry
 
-from tqdm import tqdm
-
+import attr
+import requests
 from labgrid.driver.common import Driver
 from labgrid.factory import target_factory
-
-from labgrid.step import step
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
+from tqdm import tqdm
 
 from .imageextractor import IMGFileExtractor
 
-class Downloader(object):
 
+class Downloader:
     def releases(self, release="2019_R1"):
         rel = {}
+        valid_releases = ["2018_R2", "2019_R1", "2023_R2_P1"]
         if release == "2018_R2":
             rel["imgname"] = "2018_R2-2019_05_23.img"
             rel["xzmd5"] = "c377ca95209f0f3d6901fd38ef2b4dfd"
@@ -42,7 +39,7 @@ class Downloader(object):
             rel["zipmd5"] = "6c92259dd61520d08244012f6c92d7c6"
             rel["imgmd5"] = "873b4977617e40725025aa4958f3ca7e"
         else:
-            raise Exception("Unknown release")
+            raise Exception(f"Unknown release version {release}. Valid releases: {valid_releases}")
         if "xzmd5" in rel:
             rel["link"] = "http://swdownloads.analog.com/cse/" + rel["imgname"] + ".xz"
             rel["xzname"] = rel["imgname"] + ".xz"
@@ -77,13 +74,16 @@ class Downloader(object):
             raise Exception(os.path.basename(fname) + " - File not found!")
         total = int(resp.headers.get("content-length", 0))
         sha256_hash = hashlib.sha256()
-        with open(fname, "wb") as file, tqdm(
-            desc=fname,
-            total=total,
-            unit="iB",
-            unit_scale=True,
-            unit_divisor=1024,
-        ) as bar:
+        with (
+            open(fname, "wb") as file,
+            tqdm(
+                desc=fname,
+                total=total,
+                unit="iB",
+                unit_scale=True,
+                unit_divisor=1024,
+            ) as bar,
+        ):
             for data in resp.iter_content(chunk_size=1024):
                 size = file.write(data)
                 sha256_hash.update(data)
@@ -95,7 +95,6 @@ class Downloader(object):
     def check(self, fname, ref, find_img=False):
         print("Checking " + fname + " against reference MD5: " + ref)
         hash_md5 = hashlib.md5()
-        org_fname = fname
         if find_img and not os.path.isfile(fname):
             # Search for img file in same directory
             dirpath = os.path.abspath(fname)
@@ -111,13 +110,16 @@ class Downloader(object):
             print("Using file " + fname + " for MD5 check")
         tlfile = pathlib.Path(fname)
         total = os.path.getsize(tlfile)
-        with open(fname, "rb") as f, tqdm(
-            desc="Hashing: " + fname,
-            total=total,
-            unit="iB",
-            unit_scale=True,
-            unit_divisor=1024,
-        ) as bar:
+        with (
+            open(fname, "rb") as f,
+            tqdm(
+                desc="Hashing: " + fname,
+                total=total,
+                unit="iB",
+                unit_scale=True,
+                unit_divisor=1024,
+            ) as bar,
+        ):
             for chunk in iter(lambda: f.read(4096), b""):
                 hash_md5.update(chunk)
                 size = len(chunk)
@@ -146,13 +148,16 @@ class Downloader(object):
         decompressor = lzma.LZMADecompressor()
         with open(tlfile, "rb") as ifile:
             total = 0
-            with open(outname, "wb") as file, tqdm(
-                desc="Decompressing: " + outname,
-                total=total,
-                unit="iB",
-                unit_scale=True,
-                unit_divisor=1024,
-            ) as bar:
+            with (
+                open(outname, "wb") as file,
+                tqdm(
+                    desc="Decompressing: " + outname,
+                    total=total,
+                    unit="iB",
+                    unit_scale=True,
+                    unit_divisor=1024,
+                ) as bar,
+            ):
                 data = ifile.read(1024)
                 while data:
                     result = decompressor.decompress(data)
@@ -163,7 +168,7 @@ class Downloader(object):
 
     def extract_zip(self, inname, outdir):
         tlfile = pathlib.Path(inname)
-        with zipfile.ZipFile(tlfile, 'r') as zip_ref:
+        with zipfile.ZipFile(tlfile, "r") as zip_ref:
             zip_ref.extractall(outdir)
 
 
@@ -181,7 +186,7 @@ class KuiperDLDriver(Driver):
     cache_datafile = "cache_info.json"
 
     def __attrs_post_init__(self):
-        super().__attrs_post_init__()    
+        super().__attrs_post_init__()
         self._boot_files = []
 
     def check_cached(self, release_version=None):
@@ -204,9 +209,9 @@ class KuiperDLDriver(Driver):
             release_version = self.kuiper_resource.release_version
 
         # Read cache file and check version
-        with open(cache_file_path, 'r') as f:
+        with open(cache_file_path) as f:
             cache_data = json.load(f)
-        
+
         for release in cache_data:
             if release == release_version:
                 # Verify that the tarball path exists
@@ -214,7 +219,6 @@ class KuiperDLDriver(Driver):
                 if os.path.exists(image_path):
                     return True
         return False
-
 
     def download_release(self, release_version=None, get_boot_files=False):
         """Download the specified Kuiper release version if not already cached.
@@ -282,21 +286,20 @@ class KuiperDLDriver(Driver):
         cache_file_path = os.path.join(cache_path, self.cache_datafile)
         cache_data = {}
         if os.path.exists(cache_file_path):
-            with open(cache_file_path, 'r') as f:
+            with open(cache_file_path) as f:
                 cache_data = json.load(f)
-        
+
         cache_data[release_version] = {
             # "tarball_path": tarball_path,
             "image_path": target_path,
             "download_time": time.ctime(),
-            "download_date": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime())
+            "download_date": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
         }
 
-        with open(cache_file_path, 'w') as f:
+        with open(cache_file_path, "w") as f:
             json.dump(cache_data, f, indent=4)
 
         self.logger.info(f"Kuiper release {release_version} cached successfully.")
-
 
     def __del__(self):
         ...
@@ -305,57 +308,94 @@ class KuiperDLDriver(Driver):
         # except Exception:
         #     pass
 
-    def get_boot_files_from_release(self):
+    def get_boot_files_from_release(self, get_all_files=False):
         if not self.check_cached():
-            self.download_release(get_boot_files=True)
+            self.download_release(get_boot_files=False)
 
-        with open(os.path.join(self.kuiper_resource.cache_path, self.cache_datafile), 'r') as f:
+        with open(os.path.join(self.kuiper_resource.cache_path, self.cache_datafile)) as f:
             cache_data = json.load(f)
         release_info = cache_data[self.kuiper_resource.release_version]
 
-        img = IMGFileExtractor(release_info["image_path"])
+        img = IMGFileExtractor(release_info["image_path"], logger=self.logger)
         for i, part in enumerate(img.get_partitions()):
-            self.logger.info(f"  {i}: {part['description']} - Offset: {part['start']} bytes")
-
+            self.logger.debug(f"  {i}: {part['description']} - Offset: {part['start']} bytes")
 
         # List files in FAT partition
         partitions_info = img.get_partitions()
         fat_partition = None
         for part in partitions_info:
-            if 'FAT' in part['description']:
+            if "FAT" in part["description"]:
                 fat_partition = part
                 break
         if fat_partition is None:
             raise Exception("No FAT partition found in Kuiper image")
 
-        fs = img.open_filesystem(fat_partition['start'])
+        fs = img.open_filesystem(fat_partition["start"])
         files = img.list_files(fs, "/")
         files_str = ""
         for f in files:
             files_str += f"{f['type']}: {f['path']} ({f['size']} bytes)\n"
+
+        if get_all_files:
+            return files
 
         # Extract boot files
         output_dir = os.path.join(self.kuiper_resource.cache_path, "boot_files")
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
-        self.logger.info(f"\nExtracting boot files to {output_dir}")
+        def process_path(path, name):
+            """Process a path that may be a release reference or file path."""
+            from_img = False
+            if path and "release:" in path:
+                path = path.replace("release:", "")
+                from_img = True
+                if path[0] != "/":
+                    path = f"/{path}"
+            elif path and "release:" not in path:
+                if not os.path.isfile(path):
+                    raise ValueError(f"Specified {name} path {path} does not exist")
+            return path, from_img
+
+        kernel, kernel_from_img = process_path(self.kuiper_resource.kernel_path, "kernel")
+        bootbin, bootbin_from_img = process_path(self.kuiper_resource.BOOTBIN_path, "BOOTBIN")
+        device_tree, device_tree_from_img = process_path(
+            self.kuiper_resource.device_tree_path, "device tree"
+        )
+
+        self.logger.debug(f"\nExtracting boot files to {output_dir}")
         files_to_extract = [
-            "/README.txt",
-            "/zynqmp-common/Image",
-            "/zynqmp-zcu102-rev10-ad9081/m8_l4/m8_l4_vcxo122p88/system.dtb",
-            "/zynqmp-zcu102-rev10-ad9081/m8_l4/BOOT.BIN",
+            # "/README.txt",
+            kernel if kernel_from_img else None,
+            bootbin if bootbin_from_img else None,
+            device_tree if device_tree_from_img else None,
         ]
         copy_files = []
         for file_path in files_to_extract:
-            if not img.extract_file(fs, file_path, os.path.join(output_dir, os.path.basename(file_path))):
+            if file_path is None:
+                continue
+            if not img.extract_file(
+                fs, file_path, os.path.join(output_dir, os.path.basename(file_path))
+            ):
                 img.close()
                 raise Exception(f"Available files {files_str}\n\nFailed to extract {file_path}")
             copy_files.append(os.path.join(output_dir, os.path.basename(file_path)))
 
-        self.logger.info("Boot files extracted successfully:")
-        self._boot_files  = copy_files
-
         img.close()
 
-    
+        files_to_copy = [
+            None if kernel_from_img else kernel,
+            None if bootbin_from_img else bootbin,
+            None if device_tree_from_img else device_tree,
+        ]
+        for file_path in files_to_copy:
+            if file_path:
+                target_path = os.path.join(output_dir, os.path.basename(file_path))
+                assert os.path.isfile(file_path), f"File {file_path} does not exist"
+                shutil.copyfile(file_path, target_path)
+                copy_files.append(target_path)
+
+        self.logger.info("Boot files extracted successfully:")
+        self._boot_files = copy_files
+
+        return self._boot_files
