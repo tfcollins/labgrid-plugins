@@ -22,16 +22,43 @@ class Status(enum.Enum):
 @target_factory.reg_driver
 @attr.s(eq=False)
 class BootFPGASoC(Strategy):
+    """BootFPGASoC strategy for FPGA SoC devices using Kuiper releases.
+
+    This strategy works by using an SD card mux to flash a Kuiper release image
+    onto the device's SD card, and move the necessary boot files into the
+    appropriate locations before booting the device. Flashing a full image
+    is set through the `update_image` attribute. The following bindings must be
+    present on the target:
+    - PowerProtocol (any power control protocol)
+    - SDMuxDriver (to switch SD card between host and DUT)
+    - MassStorageDriver (to copy boot files to the SD card)
+    - ADIShellDriver (to interact with the device shell after boot)
+    - KuiperDLDriver (to download and manage Kuiper release files)
+
+    Optionally, an ImageWriter driver can be used to flash the full image.
+    This is controlled by the `update_image` attribute.
+
+    Therefore, physical connections must be set up to allow:
+    - Power control of the device
+    - SD card access from the host (via SD mux)
+    - Shell access to the device (e.g., via serial console)
+
+    Args:
+        reached_linux_marker (str): String to expect in the shell to confirm Linux has booted.
+        update_image (bool): Whether to flash the full Kuiper image to the SD card.
+    """
+
     bindings = {
         "power": "PowerProtocol",
         "shell": "ADIShellDriver",
         "sdmux": "USBSDMuxDriver",
         "mass_storage": "MassStorageDriver",
-        "image_writer": "USBStorageDriver",
-        "kuiper": {"KuiperDLDriver", None},
+        "image_writer": {"USBStorageDriver", None},
+        "kuiper": "KuiperDLDriver",
     }
 
     status = attr.ib(default=Status.unknown)
+
     reached_linux_marker = attr.ib(default="analog")
     update_image = attr.ib(default=False)
 
@@ -39,9 +66,8 @@ class BootFPGASoC(Strategy):
         super().__attrs_post_init__()
         self.logger.info("BootFPGASoC strategy initialized")
         if self.kuiper:
+            self.logger.info("Preloading Kuiper boot files")
             self.target.activate(self.kuiper)
-            self.logger.info("KuiperDLDriver activated")
-            # self.kuiper.download_release()
             self.kuiper.get_boot_files_from_release()
             self.target.deactivate(self.kuiper)
 
@@ -84,12 +110,10 @@ class BootFPGASoC(Strategy):
 
             self.target.activate(self.mass_storage)
             self.mass_storage.mount_partition()
-            # self.mass_storage.update_files()
             for boot_file in self.kuiper._boot_files:
                 self.mass_storage.copy_file(boot_file, "/")
             self.mass_storage.unmount_partition()
             self.target.deactivate(self.mass_storage)
-
             self.logger.debug("DEBUG Boot files updated")
 
         elif status == Status.sd_mux_to_dut:
@@ -97,12 +121,14 @@ class BootFPGASoC(Strategy):
             self.sdmux.set_mode("dut")
             time.sleep(5)
             self.logger.debug("DEBUG SD Muxed to DUT")
+
         elif status == Status.booting:
             self.transition(Status.sd_mux_to_dut)
             self.target.activate(self.power)
             time.sleep(5)
             self.power.on()
             self.logger.debug("DEBUG Booting...")
+
         elif status == Status.booted:
             self.transition(Status.booting)
             self.shell.bypass_login = True
@@ -116,11 +142,13 @@ class BootFPGASoC(Strategy):
             self.shell.bypass_login = False
             self.target.deactivate(self.shell)
             self.logger.debug("DEBUG Booted")
+
         elif status == Status.shell:
             self.transition(Status.booted)
             # self.shell.bypass_login = True
             self.target.activate(self.shell)
             # Post boot stuff...
+
         elif status == Status.soft_off:
             self.transition(Status.shell)
             try:
@@ -135,6 +163,8 @@ class BootFPGASoC(Strategy):
             self.target.activate(self.power)
             self.power.off()
             self.logger.debug("DEBUG Soft powered off")
+
         else:
             raise StrategyError(f"no transition found from {self.status} to {status}")
+
         self.status = status
