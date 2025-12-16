@@ -20,10 +20,23 @@ dependencies = [
     "pysnmp",
 ]
 
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.8.0",
+    "pytest>=7.0.0",
+    "pylibiio",
+]
+
 [project.urls]
 Homepage = "https://github.com/analogdevicesinc/adi-labgrid-plugins"
 Documentation = "https://adi-labgrid-plugins.readthedocs.io/"
 Repository = "https://github.com/analogdevicesinc/adi-labgrid-plugins"
+
+
+# Add entry point scripts for tools
+# kuiperdl
+[project.scripts]
+kuiperdl = "adi_lg_plugins.tools.kuiperdl:main"
 
 # Entry points for plugin discovery
 # Labgrid automatically discovers and registers these components
@@ -45,3 +58,24 @@ cyberpowerresource = "adi_lg_plugins.resources.cyberpowerpdu:CyberPowerOutlet"
 bootsocstrategy = "adi_lg_plugins.strategies.bootfpgasoc:BootFPGASoC"
 bootsocsshstrategy = "adi_lg_plugins.strategies.bootfpgasocssh:BootFPGASoCSSH"
 bootselmap = "adi_lg_plugins.strategies.bootselmap:BootSelMap"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
