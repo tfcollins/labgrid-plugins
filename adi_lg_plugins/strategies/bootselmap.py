@@ -1,6 +1,7 @@
 """Strategy to boot SelMap based dual FPGA design."""
 import enum
 import time
+import os
 
 import attr
 
@@ -13,14 +14,16 @@ class Status(enum.Enum):
     powered_off = 1
     booting_zynq = 2
     booted_zynq = 3
-    update_virtex_boot_files = 4
-    trigger_selmap_boot = 5
-    wait_for_virtex_boot = 6
-    booted_virtex = 7
-    shell = 8
-    soft_off = 9
+    update_zynq_boot_files = 4
+    update_virtex_boot_files = 5
+    trigger_selmap_boot = 6
+    wait_for_virtex_boot = 7
+    booted_virtex = 8
+    shell = 9
+    soft_off = 10
 
 @target_factory.reg_driver
+@attr.s(eq=False)
 class BootSelMap(Strategy):
     """BootSelMap - Strategy to boot SelMap based dual FPGA design.
     
@@ -38,6 +41,16 @@ class BootSelMap(Strategy):
     }
 
     status = attr.ib(default=Status.unknown)
+    reached_linux_marker = attr.ib(default="analog")
+    ethernet_interface = attr.ib(default=None)
+    iio_jesd_driver_name = attr.ib(default="axi-ad9081-rx-hpc")
+    pre_boot_boot_files = attr.ib(default=None)
+    post_boot_boot_files = attr.ib(default=None)
+
+    def __attrs_post_init__(self):
+        super().__attrs_post_init__()    
+        self._copied_pre_boot_files = False
+        self._copied_post_boot_files = False
 
     @never_retry
     @step()
@@ -70,33 +83,140 @@ class BootSelMap(Strategy):
             # Check kernel start
             self.shell.console.expect("Linux", timeout=30)
             # Check device prompt
-            self.shell.console.expect(self.hostname)  # Adjust prompt as needed
+            self.shell.console.expect(self.reached_linux_marker, timeout=30)
             self.shell.bypass_login = False
             self.target.deactivate(self.shell)
+            time.sleep(5)
             self.logger.debug("DEBUG Zynq Booted")
-        elif status == Status.update_virtex_boot_files:
+
+
+        elif status == Status.update_zynq_boot_files:
             self.transition(Status.booted_zynq)
             self.target.activate(self.shell)
-            address = self.shell.get_ip_addresses("eth0")
-            assert address, "No IP address found on eth0"
+            address = self.shell.get_ip_addresses(self.ethernet_interface)
+            assert address, f"No IP address found on {self.ethernet_interface}"
             ip = str(address[0].ip)
             self.target.deactivate(self.shell)
 
             # Check the same as SSHDriver
-            assert self.ssh.networkservice.address == ip, "IP address mismatch between ShellDriver and SSHDriver"
+            if self.ssh.networkservice.address == ip:
+                self.logger.debug("DEBUG IP address matches between ShellDriver and SSHDriver")
+                self.logger.debug(f"Changing SSHDriver IP from {self.ssh.networkservice.address} to {ip}")
+                self.ssh.networkservice.address = ip
 
-            self.target.activate(self.ssh)
-            self.ssh.wait_for_connection()
+            if not self._copied_pre_boot_files:
+                if self.pre_boot_boot_files:
+                    self.target.activate(self.ssh)
+                    print(self.pre_boot_boot_files)
+                    for local_path, remote_path in self.pre_boot_boot_files.items():
+                        if os.path.isfile(local_path) is False:
+                            raise StrategyError(f"Local boot file {local_path} does not exist")
+                        folder_in_boot_path = '/'.join(remote_path.split('/')[:-1])
+                        if folder_in_boot_path and folder_in_boot_path != '/boot':
+                            self.ssh.run(f"mkdir -p {folder_in_boot_path}")
+                        self.logger.debug(f"DEBUG Uploading Zynq boot file {local_path} to {remote_path}")
+                        self.ssh.put(local_path, remote_path)
+                    self.target.deactivate(self.ssh)
+                    self._copied_pre_boot_files = True
+                    # Restart to apply new boot files
+                    self.logger.info("DEBUG Restarting to apply new Zynq boot files")
+                    self.transition(Status.powered_off)
+                    self.transition(Status.booting_zynq)
+                    self.transition(Status.booted_zynq)
+                    self.status = Status.powered_off
+                    return # Exit here to restart the boot process
 
-            # self.ssh.put()
+                # raise StrategyError("DEBUG Stopping here after Zynq boot files update")
 
+            self.logger.debug("DEBUG Zynq Boot files updated")
+
+
+        elif status == Status.update_virtex_boot_files:
+            self.transition(Status.update_zynq_boot_files)
+            self.target.activate(self.shell)
+            address = self.shell.get_ip_addresses(self.ethernet_interface)
+            assert address, f"No IP address found on {self.ethernet_interface}"
+            ip = str(address[0].ip)
+            self.target.deactivate(self.shell)
+
+            # Check the same as SSHDriver
+            if self.ssh.networkservice.address == ip:
+                self.logger.debug("DEBUG IP address matches between ShellDriver and SSHDriver")
+                self.logger.debug(f"Changing SSHDriver IP from {self.ssh.networkservice.address} to {ip}")
+                self.ssh.networkservice.address = ip
+
+            if not self._copied_post_boot_files:
+                if self.post_boot_boot_files:
+                    self.target.activate(self.ssh)
+                    print(self.post_boot_boot_files)
+                    for local_path, remote_path in self.post_boot_boot_files.items():
+                        if os.path.isfile(local_path) is False:
+                            raise StrategyError(f"Local boot file {local_path} does not exist")
+                        folder_in_boot_path = '/'.join(remote_path.split('/')[:-1])
+                        if folder_in_boot_path and folder_in_boot_path != '/boot':
+                            self.ssh.run(f"mkdir -p {folder_in_boot_path}")
+                        self.logger.debug(f"DEBUG Uploading Virtex boot file {local_path} to {remote_path}")
+                        self.ssh.put(local_path, remote_path)
+                    self.target.deactivate(self.ssh)
+                    self._copied_post_boot_files = True
+
+                # raise StrategyError("DEBUG Stopping here after Virtex boot files update")
 
 
             self.logger.debug("DEBUG Virtex Boot files updated")
 
+        elif status == Status.trigger_selmap_boot:
+            self.transition(Status.update_virtex_boot_files)
+
+            self.target.activate(self.ssh)
+            self.ssh.run("cd /boot/ci && ./selmap_dtbo.sh -d vu11p.dtbo -b vu11p.bin")
+            self.target.deactivate(self.ssh)
+
+        elif status == Status.wait_for_virtex_boot:
+            self.transition(Status.trigger_selmap_boot)
+            self.shell.bypass_login = True
+            self.target.activate(self.shell)
+            # Check for device to register
+            found_device = False
+            for t in range(30):
+                self.logger.info(f"DEBUG Checking for IIO JESD device... {t+1}/30")
+                stdout, stderr, returncode = self.shell.run(f"iio_attr -d {self.iio_jesd_driver_name} jesd204_fsm_state", timeout=4)
+                if "could not find device" in stdout:
+                    self.logger.info(f"DEBUG IIO JESD device not found yet")
+                else:
+                    self.logger.info(f"DEBUG IIO JESD device found {stdout}, {stderr}, {returncode}")
+                    found_device = True
+                    break
+                time.sleep(1)
+
+            if not found_device:
+                raise StrategyError("Virtex did not boot successfully within timeout")
+
+            jesd_finished = False
+            for t in range(120):
+                self.logger.info(f"DEBUG Checking for JESD to finish... {t+1}/30")
+                stdout, stderr, returncode = self.shell.run(f"iio_attr -d {self.iio_jesd_driver_name} jesd204_fsm_state", timeout=4)
+                if "opt_post_running_stage" in stdout:
+                   jesd_finished = True
+                   self.logger.info(f"DEBUG JESD Booted fully")
+                   break
+                else:
+                    self.logger.info(f"DEBUG JESD not finished yet: {stdout}, {stderr}, {returncode}")
+                time.sleep(1)
+
+            if not jesd_finished:
+                raise StrategyError("Virtex JESD did not finish successfully within timeout")
+
+            # Restart IIOD
+            self.shell.run("systemctl restart iiod.service")
+
+            self.shell.bypass_login = False
+            self.target.deactivate(self.shell)
+            self.logger.debug("DEBUG Virtex Booted")
+
 
         elif status == Status.shell:
-            self.transition(Status.booted)
+            self.transition(Status.wait_for_virtex_boot)
             self.target.activate(self.shell)
             # Post boot stuff...
         elif status == Status.soft_off:
