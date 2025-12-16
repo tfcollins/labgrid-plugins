@@ -1,5 +1,4 @@
 import attr
-
 from labgrid.factory import target_factory
 from labgrid.resource.common import Resource
 
@@ -15,6 +14,7 @@ class VesyncOutlet(Resource):
         password (str): VeSync account password
         delay (float, default=5.0): delay between power off and power on during reset operation
     """
+
     outlet_names = attr.ib(validator=attr.validators.instance_of(str))
     username = attr.ib(validator=attr.validators.instance_of(str))
     password = attr.ib(validator=attr.validators.instance_of(str))

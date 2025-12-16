@@ -2,10 +2,10 @@ import enum
 import time
 
 import attr
-
+from labgrid.factory import target_factory
 from labgrid.step import step
 from labgrid.strategy import Strategy, StrategyError, never_retry
-from labgrid.factory import target_factory
+
 
 class Status(enum.Enum):
     unknown = 0
@@ -17,6 +17,7 @@ class Status(enum.Enum):
     booting_new = 6
     shell = 7
     soft_off = 8
+
 
 @target_factory.reg_driver
 @attr.s(eq=False)
@@ -30,6 +31,7 @@ class BootFPGASoCSSH(Strategy):
 
     Power control is optional and can be managed via a power driver if provided.
     """
+
     bindings = {
         "power": {"PowerProtocol", None},
         "shell": "ADIShellDriver",
@@ -58,7 +60,9 @@ class BootFPGASoCSSH(Strategy):
         if not isinstance(status, Status):
             status = Status[status]
 
-        self.logger.debug(f"Transitioning to {status} (Existing status: {self.status}) {status == Status.shell}")
+        self.logger.debug(
+            f"Transitioning to {status} (Existing status: {self.status}) {status == Status.shell}"
+        )
 
         if status == Status.unknown:
             raise StrategyError(f"can not transition to {status}")
@@ -102,9 +106,11 @@ class BootFPGASoCSSH(Strategy):
             self.target.deactivate(self.shell)
 
             if self.ssh.networkservice.address != ip:
-                self.logger.warning(f"IP address mismatch between ShellDriver ({ip}) and SSHDriver ({self.ssh.networkservice.address})")
+                self.logger.warning(
+                    f"IP address mismatch between ShellDriver ({ip}) and SSHDriver ({self.ssh.networkservice.address})"
+                )
                 self.logger.warning("Updating SSHDriver IP address to match ShellDriver")
-                self.ssh.networkservice.address = ip # Update
+                self.ssh.networkservice.address = ip  # Update
 
             self.target.activate(self.ssh)
 
@@ -125,7 +131,6 @@ class BootFPGASoCSSH(Strategy):
 
             # Use SSH to update boot files here
             self.logger.debug("DEBUG Boot files updated via SSH")
-
 
         elif status == Status.reboot:
             self.transition(Status.update_boot_files)
@@ -170,7 +175,5 @@ class BootFPGASoCSSH(Strategy):
             self.power.off()
             self.logger.debug("DEBUG Soft powered off")
         else:
-            raise StrategyError(
-                f"no transition found from {self.status} to {status}"
-            )
+            raise StrategyError(f"no transition found from {self.status} to {status}")
         self.status = status

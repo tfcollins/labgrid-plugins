@@ -11,10 +11,9 @@ This demonstrates how to create a driver in a labgrid plugin.
 # from labgrid.protocol import PowerProtocol
 # from labgrid.step import step
 
-
+import time
 
 import attr
-import time
 
 # from labgrid.driver import Driver
 from labgrid.driver.common import Driver
@@ -22,13 +21,13 @@ from labgrid.driver.common import Driver
 # from labgrid.driver.mixin.powerresetmixin import PowerResetMixin
 # from labgrid.driver.protocol.powerprotocol import PowerProtocol
 from labgrid.driver.powerdriver import PowerResetMixin
-from labgrid.protocol import PowerProtocol
 from labgrid.factory import target_factory
-
+from labgrid.protocol import PowerProtocol
 from labgrid.step import step
-# import logging
 
+# import logging
 from pyvesync import VeSync
+
 
 @target_factory.reg_driver
 @attr.s(eq=False)
@@ -64,9 +63,7 @@ class VesyncPowerDriver(Driver, PowerResetMixin, PowerProtocol):
             for o in self.pdu_dev.outlets:
                 if o.device_name == name:
                     return o
-            raise Exception(
-                f"Outlet {name} not found" + f" (known outlets: {self._known_outlets})"
-            )
+            raise Exception(f"Outlet {name} not found" + f" (known outlets: {self._known_outlets})")
         elif isinstance(name, int):
             if name < 0 or name >= len(self.pdu_dev.outlets):
                 raise Exception(f"Outlet index {name} out of range")
@@ -92,9 +89,7 @@ class VesyncPowerDriver(Driver, PowerResetMixin, PowerProtocol):
     @step()
     def reset(self):
         self.off()
-        self.logger.debug(
-            "Waiting %.1f seconds before powering ON", self.vesync_outlet.delay
-        )
+        self.logger.debug("Waiting %.1f seconds before powering ON", self.vesync_outlet.delay)
         time.sleep(self.vesync_outlet.delay)
         self.on()
 

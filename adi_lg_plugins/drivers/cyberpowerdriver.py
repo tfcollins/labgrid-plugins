@@ -2,19 +2,15 @@
 Driver to control power via a CyberPower PDU using SNMP.
 """
 
-import attr
+import asyncio
 import time
-import asyncio
 
+import attr
 from labgrid.driver.common import Driver
-
 from labgrid.driver.powerdriver import PowerResetMixin
-from labgrid.protocol import PowerProtocol
 from labgrid.factory import target_factory
-
+from labgrid.protocol import PowerProtocol
 from labgrid.step import step
-
-import asyncio
 from packaging.version import Version
 from pysnmp import __version__ as __pysnmp_version__
 
@@ -30,7 +26,12 @@ if Version(__pysnmp_version__) < Version("7.0.0"):
         setCmd,
     )
 else:
-    from pysnmp.hlapi.v1arch.asyncio import SnmpDispatcher, CommunityData, UdpTransportTarget, set_cmd
+    from pysnmp.hlapi.v1arch.asyncio import (
+        CommunityData,
+        SnmpDispatcher,
+        UdpTransportTarget,
+        set_cmd,
+    )
     from pysnmp.proto.api.v2c import Integer32
     from pysnmp.smi.rfc1902 import ObjectIdentity, ObjectType
 
@@ -39,7 +40,7 @@ class CyberPowerPduException(Exception):
     pass
 
 
-class CyberPowerPdu(object):
+class CyberPowerPdu:
     """
     Class to query & control a CyberPower PDU via SNMP.
 
@@ -76,15 +77,15 @@ class CyberPowerPdu(object):
         :param on: INVALID ATM True means turn it on, False means turn it off
         """
 
-        oid = ObjectIdentity("1.3.6.1.4.1.3808.1.1.3.3.3.1.1.4.{}".format(outlet))
+        oid = ObjectIdentity(f"1.3.6.1.4.1.3808.1.1.3.3.3.1.1.4.{outlet}")
         if isinstance(on, bool):
             target_state = "immediateOn" if on else "immediateOff"
         else:
             target_state = on
-        
+
         # Create transport target asynchronously
         ut = await UdpTransportTarget.create((self.host, 161))
-        
+
         # Use set_cmd and await it (v1arch API for pysnmp >= 7.0.0)
         errorIndication, errorStatus, errorIndex, varBinds = await set_cmd(
             SnmpDispatcher(),
@@ -97,8 +98,7 @@ class CyberPowerPdu(object):
             raise CyberPowerPduException(errorIndication)
         elif errorStatus:
             raise CyberPowerPduException(
-                "%s at %s"
-                % (
+                "{} at {}".format(
                     errorStatus.prettyPrint(),
                     errorIndex and varBinds[int(errorIndex) - 1][0] or "?",
                 )
@@ -117,12 +117,12 @@ class CyberPowerPdu(object):
             return asyncio.run(self.async_set_outlet_on(outlet, on))
         else:
             # For pysnmp < 7.0.0, use synchronous version
-            oid = ObjectIdentity("1.3.6.1.4.1.3808.1.1.3.3.3.1.1.4.{}".format(outlet))
+            oid = ObjectIdentity(f"1.3.6.1.4.1.3808.1.1.3.3.3.1.1.4.{outlet}")
             if isinstance(on, bool):
                 target_state = "immediateOn" if on else "immediateOff"
             else:
                 target_state = on
-            
+
             errorIndication, errorStatus, errorIndex, varBinds = next(
                 setCmd(
                     SnmpEngine(),
@@ -137,14 +137,11 @@ class CyberPowerPdu(object):
                 raise CyberPowerPduException(errorIndication)
             elif errorStatus:
                 raise CyberPowerPduException(
-                    "%s at %s"
-                    % (
+                    "{} at {}".format(
                         errorStatus.prettyPrint(),
                         errorIndex and varBinds[int(errorIndex) - 1][0] or "?",
                     )
                 )
-        
-
 
 
 @target_factory.reg_driver
@@ -160,7 +157,6 @@ class CyberPowerDriver(Driver, PowerResetMixin, PowerProtocol):
         super().__attrs_post_init__()
         self.pdu_dev = CyberPowerPdu(self.cyberpower_outlet.address)
         self.outlet = self.cyberpower_outlet.outlet
-
 
     @Driver.check_active
     @step()
@@ -178,9 +174,7 @@ class CyberPowerDriver(Driver, PowerResetMixin, PowerProtocol):
     @step()
     def reset(self):
         self.off()
-        self.logger.debug(
-            "Waiting %.1f seconds before powering ON", self.cyberpower_outlet.delay
-        )
+        self.logger.debug("Waiting %.1f seconds before powering ON", self.cyberpower_outlet.delay)
         time.sleep(self.cyberpower_outlet.delay)
         self.on()
 
