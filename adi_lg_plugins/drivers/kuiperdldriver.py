@@ -21,6 +21,23 @@ from .imageextractor import IMGFileExtractor
 
 
 class Downloader:
+    """Utility class for downloading and verifying Kuiper Linux releases.
+
+    This class handles downloading release archives from ADI's servers,
+    verifying MD5 checksums, and extracting compressed archives. It supports
+    both .xz and .zip compressed formats and displays progress bars using tqdm.
+
+    The Downloader is used internally by KuiperDLDriver but can also be used
+    standalone via the kuiperdl CLI tool.
+
+    Example:
+        >>> dl = Downloader()
+        >>> rel = dl.releases("2023_R2_P1")
+        >>> dl.download(rel["link"], rel["zipname"])
+        >>> dl.check(rel["zipname"], rel["zipmd5"])
+        >>> dl.extract(rel["zipname"], rel["imgname"])
+    """
+
     def releases(self, release="2019_R1"):
         rel = {}
         valid_releases = ["2018_R2", "2019_R1", "2023_R2_P1"]

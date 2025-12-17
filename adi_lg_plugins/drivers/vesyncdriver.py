@@ -74,6 +74,15 @@ class VesyncPowerDriver(Driver, PowerResetMixin, PowerProtocol):
     @Driver.check_active
     @step()
     def on(self):
+        """Turn on all configured VeSync outlets.
+
+        This method powers on all outlets specified in the VesyncOutlet resource
+        configuration. If multiple outlets are configured, they will all be turned
+        on sequentially.
+
+        Raises:
+            Exception: If outlet control fails or outlets are not found.
+        """
         for outlet in self.outlets:
             outlet.turn_on()
         self.logger.debug("Powered ON via Vesync outlet")
@@ -81,6 +90,15 @@ class VesyncPowerDriver(Driver, PowerResetMixin, PowerProtocol):
     @Driver.check_active
     @step()
     def off(self):
+        """Turn off all configured VeSync outlets.
+
+        This method powers off all outlets specified in the VesyncOutlet resource
+        configuration. If multiple outlets are configured, they will all be turned
+        off sequentially.
+
+        Raises:
+            Exception: If outlet control fails or outlets are not found.
+        """
         for outlet in self.outlets:
             outlet.turn_off()
         self.logger.debug("Powered OFF via Vesync outlet")
@@ -88,6 +106,16 @@ class VesyncPowerDriver(Driver, PowerResetMixin, PowerProtocol):
     @Driver.check_active
     @step()
     def reset(self):
+        """Perform a power reset cycle on all outlets.
+
+        This method turns off the outlets, waits for the configured delay period,
+        then turns them back on. This is useful for hard-resetting hardware.
+
+        The delay duration is configured in the VesyncOutlet resource.
+
+        Raises:
+            Exception: If outlet control fails.
+        """
         self.off()
         self.logger.debug("Waiting %.1f seconds before powering ON", self.vesync_outlet.delay)
         time.sleep(self.vesync_outlet.delay)
@@ -96,6 +124,14 @@ class VesyncPowerDriver(Driver, PowerResetMixin, PowerProtocol):
     @Driver.check_active
     @step()
     def cycle(self):
+        """Power cycle all outlets (same as reset).
+
+        Alias for reset(). Turns off the outlets, waits for the configured delay,
+        then turns them back on.
+
+        Raises:
+            Exception: If outlet control fails.
+        """
         self.off()
         time.sleep(self.vesync_outlet.delay)
         self.on()
@@ -103,4 +139,9 @@ class VesyncPowerDriver(Driver, PowerResetMixin, PowerProtocol):
     @Driver.check_active
     @step()
     def get(self):
+        """Get the current power state of all outlets.
+
+        Returns:
+            bool: True if all configured outlets are on, False otherwise.
+        """
         return all(outlet.is_on for outlet in self.outlets)

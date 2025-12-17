@@ -4,6 +4,26 @@ import pytsk3
 
 
 class IMGFileExtractor:
+    """Extract files from disk image (.img) files using pytsk3.
+
+    This utility class provides methods to inspect partitions, list files,
+    and extract individual files or directories from disk image files without
+    mounting them. It's primarily used by KuiperDLDriver to extract boot files
+    from Kuiper Linux release images.
+
+    Args:
+        img_path (str): Path to the disk image file.
+        logger (Logger, optional): Logger instance for debug output. If None,
+            prints to stdout.
+
+    Example:
+        >>> extractor = IMGFileExtractor("kuiper.img")
+        >>> partitions = extractor.get_partitions()
+        >>> fs = extractor.open_filesystem(partitions[0]["start"])
+        >>> extractor.extract_file(fs, "/Image", "./output/Image")
+        >>> extractor.close()
+    """
+
     def __init__(self, img_path, logger=None):
         self.img_path = img_path
         self.img_handle = pytsk3.Img_Info(img_path)

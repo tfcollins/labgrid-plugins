@@ -161,18 +161,44 @@ class CyberPowerDriver(Driver, PowerResetMixin, PowerProtocol):
     @Driver.check_active
     @step()
     def on(self):
+        """Turn on the configured CyberPower PDU outlet.
+
+        Uses SNMP to send an 'immediateOn' command to the outlet specified in
+        the CyberPowerOutlet resource configuration.
+
+        Raises:
+            CyberPowerPduException: If SNMP communication fails.
+        """
         self.pdu_dev.set_outlet_on(self.outlet, True)
         self.logger.debug(f"Powered ON via CyberPower outlet {self.outlet}")
 
     @Driver.check_active
     @step()
     def off(self):
+        """Turn off the configured CyberPower PDU outlet.
+
+        Uses SNMP to send an 'immediateOff' command to the outlet specified in
+        the CyberPowerOutlet resource configuration.
+
+        Raises:
+            CyberPowerPduException: If SNMP communication fails.
+        """
         self.pdu_dev.set_outlet_on(self.outlet, False)
         self.logger.debug(f"Powered OFF via CyberPower outlet {self.outlet}")
 
     @Driver.check_active
     @step()
     def reset(self):
+        """Perform a power reset cycle on the outlet.
+
+        This method turns off the outlet, waits for the configured delay period,
+        then turns it back on. Useful for hard-resetting hardware.
+
+        The delay duration is configured in the CyberPowerOutlet resource.
+
+        Raises:
+            CyberPowerPduException: If SNMP communication fails.
+        """
         self.off()
         self.logger.debug("Waiting %.1f seconds before powering ON", self.cyberpower_outlet.delay)
         time.sleep(self.cyberpower_outlet.delay)
@@ -181,6 +207,14 @@ class CyberPowerDriver(Driver, PowerResetMixin, PowerProtocol):
     @Driver.check_active
     @step()
     def cycle(self):
+        """Power cycle the outlet (same as reset).
+
+        Alias for reset(). Turns off the outlet, waits for the configured delay,
+        then turns it back on.
+
+        Raises:
+            CyberPowerPduException: If SNMP communication fails.
+        """
         self.off()
         time.sleep(self.cyberpower_outlet.delay)
         self.on()
