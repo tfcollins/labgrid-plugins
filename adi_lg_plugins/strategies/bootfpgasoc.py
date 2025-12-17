@@ -8,6 +8,20 @@ from labgrid.strategy import Strategy, StrategyError, never_retry
 
 
 class Status(enum.Enum):
+    """Boot strategy state machine states.
+
+    Attributes:
+        unknown: Initial state before any operations.
+        powered_off: Device is powered off.
+        sd_mux_to_host: SD card muxed to host for file operations.
+        update_boot_files: Copying boot files to SD card.
+        sd_mux_to_dut: SD card muxed to device for booting.
+        booting: Device powered on, boot in progress.
+        booted: Linux kernel has booted, waiting for user space.
+        shell: Interactive shell session available.
+        soft_off: Device being shut down gracefully.
+    """
+
     unknown = 0
     powered_off = 1
     sd_mux_to_host = 2
@@ -74,6 +88,28 @@ class BootFPGASoC(Strategy):
     @never_retry
     @step()
     def transition(self, status, *, step):
+        """Transition the strategy to a new state.
+
+        This method manages state transitions for the boot process. It handles
+        power control, SD mux switching, boot file updates, and device activation
+        in the correct sequence.
+
+        Args:
+            status (Status or str): Target state to transition to. Can be a Status enum
+                value or its string representation (e.g., "shell", "booted").
+            step: Labgrid step decorator context (injected automatically).
+
+        Raises:
+            StrategyError: If the transition is invalid or fails.
+
+        Example:
+            >>> strategy.transition("shell")  # Transition to shell state
+            >>> strategy.transition(Status.soft_off)  # Power off the device
+
+        Note:
+            State transitions are sequential. Requesting a state that requires
+            intermediate states will automatically transition through them.
+        """
         if not isinstance(status, Status):
             status = Status[status]
 

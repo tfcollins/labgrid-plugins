@@ -8,6 +8,20 @@ from labgrid.strategy import Strategy, StrategyError, never_retry
 
 
 class Status(enum.Enum):
+    """Boot strategy state machine states for SSH-based boot.
+
+    Attributes:
+        unknown: Initial state before any operations.
+        powered_off: Device is powered off.
+        booting: Device powered on, initial boot in progress.
+        booted: Linux kernel has booted, waiting for shell access.
+        update_boot_files: Copying boot files to device via SSH.
+        reboot: Device is rebooting with new boot files.
+        booting_new: Device booting after file update.
+        shell: Interactive shell session available.
+        soft_off: Device being shut down gracefully.
+    """
+
     unknown = 0
     powered_off = 1
     booting = 2
@@ -57,6 +71,28 @@ class BootFPGASoCSSH(Strategy):
     @never_retry
     @step()
     def transition(self, status, *, step):
+        """Transition the strategy to a new state.
+
+        This method manages state transitions for SSH-based boot. It handles
+        power control, shell driver activation, SSH file transfer, and device
+        reboot sequences.
+
+        Args:
+            status (Status or str): Target state to transition to. Can be a Status enum
+                value or its string representation (e.g., "shell", "booted").
+            step: Labgrid step decorator context (injected automatically).
+
+        Raises:
+            StrategyError: If the transition is invalid or fails.
+
+        Example:
+            >>> strategy.transition("shell")  # Transition to shell state
+            >>> strategy.transition("update_boot_files")  # Update boot files via SSH
+
+        Note:
+            This strategy uses SSH for file transfers, unlike BootFPGASoC which
+            uses SD card mux. Power control is optional in this strategy.
+        """
         if not isinstance(status, Status):
             status = Status[status]
 

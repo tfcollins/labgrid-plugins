@@ -11,6 +11,22 @@ from labgrid.strategy import Strategy, StrategyError, never_retry
 
 
 class Status(enum.Enum):
+    """Boot strategy state machine states for dual FPGA SelMap boot.
+
+    Attributes:
+        unknown: Initial state before any operations.
+        powered_off: Both FPGAs are powered off.
+        booting_zynq: Primary Zynq FPGA is booting.
+        booted_zynq: Zynq FPGA has booted Linux successfully.
+        update_zynq_boot_files: Updating Zynq boot files before booting.
+        update_virtex_boot_files: Updating Virtex bitstream files.
+        trigger_selmap_boot: Triggering SelMap boot of secondary Virtex FPGA.
+        wait_for_virtex_boot: Waiting for Virtex FPGA boot to complete.
+        booted_virtex: Secondary Virtex FPGA has booted successfully.
+        shell: Interactive shell session available on Zynq.
+        soft_off: Device being shut down gracefully.
+    """
+
     unknown = 0
     powered_off = 1
     booting_zynq = 2
@@ -57,6 +73,30 @@ class BootSelMap(Strategy):
     @never_retry
     @step()
     def transition(self, status, *, step):
+        """Transition the strategy to a new state.
+
+        This method manages state transitions for dual FPGA SelMap boot. It handles
+        booting the primary Zynq FPGA, updating boot files for both FPGAs, and
+        triggering the SelMap boot of the secondary Virtex FPGA.
+
+        Args:
+            status (Status or str): Target state to transition to. Can be a Status enum
+                value or its string representation (e.g., "shell", "booted_virtex").
+            step: Labgrid step decorator context (injected automatically).
+
+        Raises:
+            StrategyError: If the transition is invalid or fails.
+
+        Example:
+            >>> strategy.transition("booted_zynq")  # Boot primary Zynq FPGA
+            >>> strategy.transition("trigger_selmap_boot")  # Boot secondary Virtex FPGA
+            >>> strategy.transition("shell")  # Get shell access
+
+        Note:
+            This strategy manages a complex dual-FPGA system where the primary
+            Zynq FPGA boots Linux and then triggers the secondary Virtex FPGA
+            boot via the SelMap interface.
+        """
         if not isinstance(status, Status):
             status = Status[status]
 
