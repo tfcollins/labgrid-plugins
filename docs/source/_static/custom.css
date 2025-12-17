@@ -1,0 +1,22 @@
+/* Custom styling for adi-labgrid-plugins documentation */
+
+/* ADI brand colors (optional) */
+:root {
+    --adi-blue: #0071ba;
+    --adi-dark-blue: #003d71;
+}
+
+/* Slightly larger code font for readability */
+code, pre {
+    font-size: 0.95em;
+}
+
+/* Better spacing for parameter lists */
+.field-list dt {
+    font-weight: 600;
+}
+
+/* Highlight important admonitions */
+.admonition.important {
+    border-left: 4px solid var(--adi-blue);
+}
