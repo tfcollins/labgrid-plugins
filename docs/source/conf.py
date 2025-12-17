@@ -63,14 +63,13 @@ autodoc_default_options = {
 }
 autodoc_typehints = "description"
 autodoc_mock_imports = [
-    "labgrid",
     "pyvesync",
     "pytsk3",
     "pysnmp",
     "xmodem",
-    "tqdm",
     "pylibiio",
     "iio",
+    "pexpect",
 ]
 
 # -- Autosummary settings ----------------------------------------------------
