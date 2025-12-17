@@ -12,7 +12,16 @@ from labgrid.factory import target_factory
 from labgrid.protocol import PowerProtocol
 from labgrid.step import step
 from packaging.version import Version
-from pysnmp import __version__ as __pysnmp_version__
+
+try:
+    from pysnmp import __version__ as __pysnmp_version__
+    # Ensure we have a string version (not a mock object)
+    if not isinstance(__pysnmp_version__, str):
+        __pysnmp_version__ = "7.0.0"
+except (ImportError, AttributeError):
+    # During Sphinx doc building or when pysnmp is not available,
+    # default to the newer API
+    __pysnmp_version__ = "7.0.0"
 
 if Version(__pysnmp_version__) < Version("7.0.0"):
     from pysnmp.hlapi import (

@@ -4,28 +4,17 @@ Example driver for controlling a network power switch.
 This demonstrates how to create a driver in a labgrid plugin.
 """
 
-# import attr
-
-# from labgrid.factory import target_factory
-# from labgrid.driver import Driver
-# from labgrid.protocol import PowerProtocol
-# from labgrid.step import step
-
 import time
 
 import attr
 
-# from labgrid.driver import Driver
 from labgrid.driver.common import Driver
 
-# from labgrid.driver.mixin.powerresetmixin import PowerResetMixin
-# from labgrid.driver.protocol.powerprotocol import PowerProtocol
 from labgrid.driver.powerdriver import PowerResetMixin
 from labgrid.factory import target_factory
 from labgrid.protocol import PowerProtocol
 from labgrid.step import step
 
-# import logging
 from pyvesync import VeSync
 
 
@@ -40,8 +29,6 @@ class VesyncPowerDriver(Driver, PowerResetMixin, PowerProtocol):
 
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
-        # self.logger = logging.getLogger(f"{self}")
-        # self.logger.debug("Logging into VeSync account")
         self.pdu_dev = VeSync(self.vesync_outlet.username, self.vesync_outlet.password)
         self.pdu_dev.login()
         self.pdu_dev.update()
