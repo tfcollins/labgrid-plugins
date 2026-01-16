@@ -31,6 +31,8 @@ class VesyncPowerDriver(Driver, PowerResetMixin, PowerProtocol):
         super().__attrs_post_init__()
         self.pdu_dev = VeSync(self.vesync_outlet.username, self.vesync_outlet.password)
         self.pdu_dev.login()
+        assert self.pdu_dev.enabled, "Failed to login to VeSync account"
+        self.pdu_dev.get_devices()
         self.pdu_dev.update()
         self.outlets = []
         if not self.pdu_dev.outlets:

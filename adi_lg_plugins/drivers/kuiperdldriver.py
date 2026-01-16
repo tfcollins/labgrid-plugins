@@ -416,3 +416,14 @@ class KuiperDLDriver(Driver):
         self._boot_files = copy_files
 
         return self._boot_files
+
+    def add_files_to_target(self, filename):
+        """Add a file to the target device.
+
+        Args:
+            filename (str): Path to the file to add to the target.
+        """
+        if not os.path.isfile(filename):
+            raise ValueError(f"File {filename} does not exist")
+
+        self._boot_files.append(filename)
