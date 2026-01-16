@@ -18,6 +18,7 @@ dependencies = [
     "tqdm",
     "pytsk3",
     "pysnmp",
+    "pylibiio",
 ]
 
 [project.optional-dependencies]

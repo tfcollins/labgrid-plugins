@@ -56,7 +56,7 @@ def test_shell(target, in_shell):
 
 def test_check_drivers(target, iio_context):
 
-    drivers = ["axi-ad9084-rx-hpc"]
+    drivers = ["axi-ad9081-rx-hpc"]
     for device in iio_context.devices:
         print(f"Found IIO device: {device.name}")
         if device.name in drivers:

@@ -141,6 +141,7 @@ class BootFPGASoC(Strategy):
                 from labgrid.driver.usbstoragedriver import Mode
 
                 self.image_writer.write_image(mode=Mode.BMAPTOOL)
+                # self.image_writer.write_image()
                 self.target.deactivate(self.image_writer)
                 self.logger.info("Image written successfully")
 
