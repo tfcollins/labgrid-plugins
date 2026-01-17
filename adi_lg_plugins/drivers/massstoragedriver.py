@@ -50,8 +50,8 @@ class MassStorageDriver(Driver):
         if self.mounted:
             self.logger.debug("Mass storage device is already mounted, skipping mount.")
             return
-        if os.path.exists(os.path.join("/", "media", "lg_mass_storage")):
-            self.logger.debug("Mount point already exists, skipping mount.")
+        if os.path.ismount(os.path.join("/", "media", "lg_mass_storage")):
+            self.logger.debug("Mount point already mounted, skipping mount.")
             self.mounted = True
             return
         device_path = self.mass_storage.path
