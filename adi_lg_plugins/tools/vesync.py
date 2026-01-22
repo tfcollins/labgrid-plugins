@@ -24,7 +24,7 @@ def check_for_outlets(username, password):
     # OR Iterate through devices and update individually
     # for device in manager.outlets:
     #     device.update()
-    
+
     # Return the list of outlets
     return manager.outlets
 
@@ -35,12 +35,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Check for VeSync outlets associated with the given account."
     )
-    parser.add_argument(
-        "--username", required=True, help="VeSync account username (email)"
-    )
-    parser.add_argument(
-        "--password", required=True, help="VeSync account password"
-    )
+    parser.add_argument("--username", required=True, help="VeSync account username (email)")
+    parser.add_argument("--password", required=True, help="VeSync account password")
 
     args = parser.parse_args()
     try:

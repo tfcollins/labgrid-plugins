@@ -15,6 +15,7 @@ from packaging.version import Version
 
 try:
     from pysnmp import __version__ as __pysnmp_version__
+
     # Ensure we have a string version (not a mock object)
     if not isinstance(__pysnmp_version__, str):
         __pysnmp_version__ = "7.0.0"

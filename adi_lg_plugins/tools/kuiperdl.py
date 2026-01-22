@@ -1,15 +1,14 @@
 import argparse
 
 from labgrid import Target
-from adi_lg_plugins.resources.kuiperrelease import KuiperRelease
+
 from adi_lg_plugins.drivers.kuiperdldriver import KuiperDLDriver
+from adi_lg_plugins.resources.kuiperrelease import KuiperRelease
 
 
 def list_kuiper_boot_files(release_version, cache_path):
     target = Target("KuiperDownloader")
-    kuiper = KuiperRelease(
-        target, name=None, release_version=release_version, cache_path=cache_path
-    )
+    KuiperRelease(target, name=None, release_version=release_version, cache_path=cache_path)
 
     dl = KuiperDLDriver(target, name=None)
 
