@@ -15,6 +15,24 @@ authors = [
 dependencies = [
     "labgrid @ git+https://github.com/tfcollins/labgrid.git@tfcollins/plugin-support",
     "pyvesync>=1.1.5,<3.0.0",
+    "tqdm",
+    "pytsk3",
+    "pysnmp",
+    "pylibiio",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.8.0",
+    "pytest>=7.0.0",
+    "pylibiio",
+]
+docs = [
+    "sphinx>=7.0.0",
+    "furo>=2024.0.0",
+    "sphinx-copybutton>=0.5.0",
+    "sphinx-design>=0.5.0",
+    "sphinxcontrib-mermaid",
 ]
 
 [project.urls]
@@ -22,16 +40,50 @@ Homepage = "https://github.com/analogdevicesinc/adi-labgrid-plugins"
 Documentation = "https://adi-labgrid-plugins.readthedocs.io/"
 Repository = "https://github.com/analogdevicesinc/adi-labgrid-plugins"
 
+
+# Add entry point scripts for tools
+# kuiperdl
+[project.scripts]
+kuiperdl = "adi_lg_plugins.tools.kuiperdl:main"
+
 # Entry points for plugin discovery
 # Labgrid automatically discovers and registers these components
 [project.entry-points."labgrid.drivers"]
 vesyncpowerdriver = "adi_lg_plugins.drivers.vesyncdriver:VesyncPowerDriver"
 massstoragedriver = "adi_lg_plugins.drivers.massstoragedriver:MassStorageDriver"
 adishelldriver = "adi_lg_plugins.drivers.shelldriver:ADIShellDriver"
+kuiperdldriver = "adi_lg_plugins.drivers.kuiperdldriver:KuiperDLDriver"
+cyberpowerdriver = "adi_lg_plugins.drivers.cyberpowerdriver:CyberPowerDriver"
 
 [project.entry-points."labgrid.resources"]
 vesyncresource = "adi_lg_plugins.resources.vesync:VesyncOutlet"
 massstorageresource = "adi_lg_plugins.resources.massstorage:MassStorageDevice"
+kuiperresource = "adi_lg_plugins.resources.kuiperrelease:KuiperRelease"
+cyberpowerresource = "adi_lg_plugins.resources.cyberpowerpdu:CyberPowerOutlet"
+
 
 [project.entry-points."labgrid.strategies"]
 bootsocstrategy = "adi_lg_plugins.strategies.bootfpgasoc:BootFPGASoC"
+bootsocsshstrategy = "adi_lg_plugins.strategies.bootfpgasocssh:BootFPGASoCSSH"
+bootselmap = "adi_lg_plugins.strategies.bootselmap:BootSelMap"
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "UP",  # pyupgrade
+    "B",   # flake8-bugbear
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
