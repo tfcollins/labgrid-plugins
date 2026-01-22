@@ -60,6 +60,7 @@ class BootFPGASoC(Strategy):
     Args:
         reached_linux_marker (str): String to expect in the shell to confirm Linux has booted.
         update_image (bool): Whether to flash the full Kuiper image to the SD card.
+        wait_for_linux_prompt_timeout (int): Timeout in seconds to wait for Linux prompt after boot.
     """
 
     bindings = {
@@ -75,6 +76,7 @@ class BootFPGASoC(Strategy):
 
     reached_linux_marker = attr.ib(default="analog")
     update_image = attr.ib(default=False)
+    wait_for_linux_prompt_timeout = attr.ib(default=60)
 
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
@@ -174,7 +176,7 @@ class BootFPGASoC(Strategy):
             self.shell.console.expect("Linux", timeout=30)
             # Check device prompt
             self.shell.console.expect(
-                self.reached_linux_marker, timeout=60
+                self.reached_linux_marker, timeout=self.wait_for_linux_prompt_timeout
             )  # Adjust prompt as needed
             self.shell.bypass_login = False
             self.target.deactivate(self.shell)
@@ -187,8 +189,9 @@ class BootFPGASoC(Strategy):
             # Post boot stuff...
 
         elif status == Status.soft_off:
-            self.transition(Status.shell)
+            # Stage is relatively standalone
             try:
+                self.activate(self.shell)
                 self.shell.sendline("poweroff")
                 self.shell.console.expect(".*Power down.*", timeout=30)
                 self.target.deactivate(self.shell)
