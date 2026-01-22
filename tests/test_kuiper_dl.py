@@ -1,5 +1,5 @@
-import os
 import json
+import os
 
 
 def test_kuiper_dl(target):
@@ -12,7 +12,7 @@ def test_kuiper_dl(target):
     assert os.path.isfile(cache_file)
 
     # Load json cache_file
-    with open(cache_file, "r") as f:
+    with open(cache_file) as f:
         data = json.load(f)
 
     release_path = data[kuiper.kuiper_resource.release_version]["image_path"]

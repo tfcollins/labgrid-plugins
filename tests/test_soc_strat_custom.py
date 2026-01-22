@@ -1,12 +1,12 @@
-import pytest
 import iio
+import pytest
 
 # @pytest.fixture(scope="function")
 # def in_bootloader(strategy, capsys):
 #     with capsys.disabled():
 #         strategy.transition("barebox")
 
-    
+
 # @pytest.fixture(scope="module")
 # def iio_context(target, in_shell):
 #     shell = target.get_driver("ADIShellDriver")
@@ -22,23 +22,22 @@ import iio
 #     assert ctx is not None, "Failed to create IIO context"
 #     return ctx
 
+
 @pytest.fixture(scope="module")
 def post_power_off(strategy):
-
     yield strategy
     strategy.transition("soft_off")
 
 
 # def test_shell(command, in_shell):
 def test_shell(post_power_off):
-
     strategy = post_power_off
 
     strategy.transition("powered_off")
 
     kuiper = strategy.target.get_driver("KuiperDLDriver")
 
-    dt_filename = '/home/tcollins/dev/labgrid-plugins/system.dtb'
+    dt_filename = "/home/tcollins/dev/labgrid-plugins/system.dtb"
 
     kuiper.add_files_to_target(dt_filename)
 
@@ -50,8 +49,8 @@ def test_shell(post_power_off):
     ip_address = addresses[0]
     ip_address = str(ip_address.ip)
     print(f"Using IP address for IIO context: {ip_address}")
-    if '/' in ip_address:
-        ip_address = ip_address.split('/')[0]
+    if "/" in ip_address:
+        ip_address = ip_address.split("/")[0]
     ctx = iio.Context(f"ip:{ip_address}")
     assert ctx is not None, "Failed to create IIO context"
 
@@ -62,4 +61,3 @@ def test_shell(post_power_off):
             devices_to_find.remove(device.name)
 
     assert not devices_to_find, f"Expected IIO drivers not found: {devices_to_find}"
-    
