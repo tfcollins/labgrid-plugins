@@ -14,6 +14,7 @@ BootFPGASoC
 .. autoclass:: adi_lg_plugins.strategies.bootfpgasoc.Status
    :members:
    :undoc-members:
+   :no-index:
 
 BootFPGASoCSSH
 --------------
@@ -26,6 +27,7 @@ BootFPGASoCSSH
 .. autoclass:: adi_lg_plugins.strategies.bootfpgasocssh.Status
    :members:
    :undoc-members:
+   :no-index:
 
 BootSelMap
 ----------
@@ -38,3 +40,4 @@ BootSelMap
 .. autoclass:: adi_lg_plugins.strategies.bootselmap.Status
    :members:
    :undoc-members:
+   :no-index:
