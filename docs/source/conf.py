@@ -32,6 +32,7 @@ extensions = [
     "sphinx.ext.todo",  # Support for todo items
     "sphinx_copybutton",  # Add copy button to code blocks
     "sphinx_design",  # Better UI components (cards, tabs, etc.)
+    "sphinxcontrib.mermaid",  # Mermaid diagram support for state machines
 ]
 
 # -- Napoleon settings -------------------------------------------------------
@@ -114,3 +115,14 @@ html_theme_options = {
 # -- Todo extension settings -------------------------------------------------
 
 todo_include_todos = True
+
+# -- Mermaid extension settings -----------------------------------------------
+
+mermaid_init_js = """
+mermaid.initialize({
+    theme: 'default',
+    securityLevel: 'loose',
+    fontFamily: 'Verdana',
+    fontSize: 12
+});
+"""

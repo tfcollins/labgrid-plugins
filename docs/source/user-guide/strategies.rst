@@ -26,25 +26,39 @@ BootFPGASoC Strategy
 
 The strategy manages 9 states:
 
-.. code-block:: text
+.. mermaid::
 
-    unknown
-      ↓
-    powered_off
-      ↓
-    sd_mux_to_host ← SD card accessible to host
-      ↓
-    update_boot_files ← Copy boot files and optionally flash full image
-      ↓
-    sd_mux_to_dut ← SD card accessible to device
-      ↓
-    booting ← Power on device
-      ↓
-    booted ← Wait for kernel and marker
-      ↓
-    shell ← Shell interaction available
-      ↓
-    soft_off ← Graceful shutdown via poweroff command
+   stateDiagram-v2
+       [*] --> unknown
+
+       unknown --> powered_off: Initialize
+       powered_off --> sd_mux_to_host: Power off device
+       sd_mux_to_host --> update_boot_files: Mux SD to host
+
+       update_boot_files --> decide_image: Check update_image flag
+       decide_image --> write_image: update_image=True
+       decide_image --> copy_files: update_image=False
+       write_image --> copy_files: Write full image
+       copy_files --> sd_mux_to_dut: Copy boot files
+
+       sd_mux_to_dut --> booting: Mux SD to device
+       booting --> booted: Power on device
+       booted --> shell: Wait for kernel + marker
+
+       shell --> soft_off: Graceful shutdown
+       soft_off --> [*]
+
+       note right of sd_mux_to_host
+           SD card accessible to host
+       end note
+
+       note right of write_image
+           Optional: full image flash
+       end note
+
+       note right of booted
+           Wait for Linux kernel + marker
+       end note
 
 **Hardware Requirements**:
 
@@ -169,33 +183,49 @@ Always check the current state before transitioning:
         strategy.transition(Status.shell)
 
 BootFPGASoCSSH Strategy
-----------------------
+-----------------------
 
 **Purpose**: Boot an FPGA SoC device using SSH for file transfers instead of SD card mux. Useful when SSH access is available but SD card mux is not present.
 
 **State Machine**:
 
-The strategy manages 9 states:
+The strategy manages 9 states with a two-stage boot process:
 
-.. code-block:: text
+.. mermaid::
 
-    unknown
-      ↓
-    powered_off
-      ↓
-    booting ← Power on and wait for initial boot
-      ↓
-    booted ← Linux kernel available, waiting for shell access
-      ↓
-    update_boot_files ← Transfer boot files via SSH
-      ↓
-    reboot ← Reboot device with new boot files
-      ↓
-    booting_new ← Boot with updated files
-      ↓
-    shell ← Full shell session available
-      ↓
-    soft_off ← Graceful shutdown
+   stateDiagram-v2
+       [*] --> unknown
+
+       unknown --> powered_off: Initialize
+
+       powered_off --> booting: Power on (if power driver)
+
+       note right of powered_off
+           Power control is optional
+       end note
+
+       booting --> booted: Wait for kernel + marker
+       booted --> update_boot_files: SSH ready
+
+       update_boot_files --> reboot: Transfer boot files via SSH
+
+       note right of update_boot_files
+           Validates and updates SSH IP address
+       end note
+
+       reboot --> booting_new: Issue reboot command
+       booting_new --> shell: Wait for kernel + marker
+
+       shell --> soft_off: Graceful shutdown
+       soft_off --> [*]
+
+       note right of booting
+           First boot: initial system
+       end note
+
+       note right of booting_new
+           Second boot: with updated files
+       end note
 
 **Key Differences from BootFPGASoC**:
 
@@ -278,31 +308,60 @@ BootSelMap Strategy
 
 **State Machine**:
 
-The strategy manages 11 states:
+The strategy manages 11 states with dual-FPGA boot orchestration:
 
-.. code-block:: text
+.. mermaid::
 
-    unknown
-      ↓
-    powered_off ← Both FPGAs powered off
-      ↓
-    booting_zynq ← Primary Zynq FPGA booting
-      ↓
-    booted_zynq ← Zynq FPGA has booted Linux
-      ↓
-    update_zynq_boot_files ← Copy Zynq boot files if needed
-      ↓
-    update_virtex_boot_files ← Copy Virtex bitstream files
-      ↓
-    trigger_selmap_boot ← Initiate secondary FPGA boot via SelMap
-      ↓
-    wait_for_virtex_boot ← Monitor secondary FPGA boot progress
-      ↓
-    booted_virtex ← Secondary Virtex FPGA ready
-      ↓
-    shell ← Interactive shell on Zynq
-      ↓
-    soft_off ← Shutdown both FPGAs
+   stateDiagram-v2
+       [*] --> unknown
+
+       unknown --> powered_off: Initialize
+       powered_off --> booting_zynq: Power on Zynq FPGA
+
+       booting_zynq --> booted_zynq: Wait for kernel + marker
+
+       booted_zynq --> update_zynq_boot_files: Zynq Linux ready
+
+       update_zynq_boot_files --> check_pre_boot: Pre-boot files?
+       check_pre_boot --> upload_pre: Yes - Upload files
+       check_pre_boot --> update_virtex: No - Continue
+
+       note right of upload_pre
+           If files uploaded: restart cycle
+           Returns to powered_off for reboot
+       end note
+
+       upload_pre --> powered_off: Restart cycle
+
+       update_virtex_boot_files --> trigger_selmap: Files copied
+       update_zynq_boot_files --> update_virtex: No pre-boot files
+
+       update_virtex --> trigger_selmap: Copy Virtex files (if configured)
+
+       trigger_selmap --> wait_for_virtex: Run SelMap boot script
+
+       wait_for_virtex --> poll_device: Poll device registration
+       poll_device --> poll_jesd: Device found
+       poll_jesd --> shell: JESD ready (120s timeout)
+
+       note right of poll_device
+           Poll 30s for IIO device registration
+       end note
+
+       note right of poll_jesd
+           Poll 120s for JESD FSM completion
+       end note
+
+       shell --> soft_off: Shutdown Zynq
+       soft_off --> [*]
+
+       note right of booting_zynq
+           Primary FPGA: Zynq
+       end note
+
+       note right of trigger_selmap
+           Secondary FPGA: Virtex via SelMap
+       end note
 
 **Hardware Requirements**:
 
