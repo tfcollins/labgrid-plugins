@@ -7,14 +7,11 @@ This demonstrates how to create a driver in a labgrid plugin.
 import time
 
 import attr
-
 from labgrid.driver.common import Driver
-
 from labgrid.driver.powerdriver import PowerResetMixin
 from labgrid.factory import target_factory
 from labgrid.protocol import PowerProtocol
 from labgrid.step import step
-
 from pyvesync import VeSync
 
 
