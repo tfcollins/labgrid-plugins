@@ -1,21 +1,23 @@
-import pytest
 import iio
+import pytest
 
 # @pytest.fixture(scope="function")
 # def in_bootloader(strategy, capsys):
 #     with capsys.disabled():
 #         strategy.transition("barebox")
 
+
 @pytest.fixture(scope="module")
 def in_shell(strategy):
     # with capsys.disabled():
     strategy.transition("shell")
-    addresses = strategy.target["ADIShellDriver"].get_ip_addresses()
+    strategy.target["ADIShellDriver"].get_ip_addresses()
 
     yield
     # with capsys.disabled():
     strategy.transition("soft_off")
-    
+
+
 @pytest.fixture(scope="module")
 def iio_context(target, in_shell):
     shell = target.get_driver("ADIShellDriver")
@@ -25,13 +27,11 @@ def iio_context(target, in_shell):
     ip_address = str(ip_address.ip)
     print(f"Using IP address for IIO context: {ip_address}")
     # Remove /24 suffix if present
-    if '/' in ip_address:
-        ip_address = ip_address.split('/')[0]
+    if "/" in ip_address:
+        ip_address = ip_address.split("/")[0]
     ctx = iio.Context(f"ip:{ip_address}")
     assert ctx is not None, "Failed to create IIO context"
     return ctx
-
-
 
 
 # def test_shell(command, in_shell):
@@ -55,7 +55,6 @@ def test_shell(target, in_shell):
 
 
 def test_check_drivers(target, iio_context):
-
     drivers = ["axi-ad9081-rx-hpc"]
     for device in iio_context.devices:
         print(f"Found IIO device: {device.name}")
