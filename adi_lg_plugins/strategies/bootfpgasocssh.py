@@ -54,12 +54,13 @@ class BootFPGASoCSSH(Strategy):
     }
 
     status = attr.ib(default=Status.unknown)
-    hostname = attr.ib(default="analog")
+
+    reached_linux_marker = attr.ib(default="analog")
+    wait_for_linux_prompt_timeout = attr.ib(default=60)
+
 
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
-        # self.hostname =
-        print(f"Hostname set to: {self.hostname}")
         self.logger.info("BootFPGASoCSSH strategy initialized")
         if self.kuiper:
             self.target.activate(self.kuiper)
@@ -125,8 +126,7 @@ class BootFPGASoCSSH(Strategy):
                 self.target.activate(self.shell)
                 # Check kernel start
                 self.shell.console.expect("Linux", timeout=30)
-                # Check device prompt
-                self.shell.console.expect(self.hostname)  # Adjust prompt as needed
+                self.reached_linux_marker, timeout=self.wait_for_linux_prompt_timeout
                 self.shell.bypass_login = False
                 self.target.deactivate(self.shell)
             self.logger.debug("DEBUG Booted")
@@ -186,8 +186,9 @@ class BootFPGASoCSSH(Strategy):
             # Check kernel start
             self.shell.console.expect("Linux", timeout=30)
             # Check device prompt
-            self.logger.info(f"DEBUG Expecting hostname prompt: {self.hostname}")
-            self.shell.console.expect(self.hostname)  # Adjust prompt as needed
+            self.shell.console.expect(
+                self.reached_linux_marker, timeout=self.wait_for_linux_prompt_timeout
+            )
             self.target.deactivate(self.shell)
             self.shell.bypass_login = False
             self.logger.debug("DEBUG Booting new...")
