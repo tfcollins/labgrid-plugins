@@ -104,12 +104,18 @@ html_css_files = ["custom.css"]
 # https://pradyunsg.me/furo/
 
 html_theme_options = {
-    "sidebar_hide_name": False,
+    "sidebar_hide_name": True,
     "navigation_with_keys": True,
     "top_of_page_button": "edit",
     "source_repository": "https://github.com/analogdevicesinc/adi-labgrid-plugins",
     "source_branch": "main",
     "source_directory": "docs/source/",
+}
+
+
+html_theme_options = {
+    "light_logo": "lg_adi_light.svg",
+    "dark_logo": "lg_adi_dark.svg",
 }
 
 # -- Todo extension settings -------------------------------------------------
