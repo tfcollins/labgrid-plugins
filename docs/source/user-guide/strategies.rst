@@ -635,6 +635,117 @@ Creating custom strategies follows the labgrid plugin pattern. A strategy must:
                 for hook in self._hooks[status]:
                     hook()
 
+BootFabric Strategy
+-------------------
+
+**Purpose**: Boot logic-only Xilinx FPGAs (Virtex/Artix/Kintex) with Microblaze soft processors via JTAG.
+
+**Use Case**: Useful for FPGA-based systems without SoC (no ARM cores), where the processor is implemented in FPGA fabric. Common with ADI high-speed data converter evaluation boards (AD9081, AD9371, etc.) on Xilinx FPGA development boards like VCU118.
+
+**State Machine**:
+
+.. mermaid::
+
+   stateDiagram-v2
+       [*] --> unknown
+       unknown --> powered_off: Initialize
+       powered_off --> powered_on: Power on FPGA
+       powered_on --> bitstream_flashed: Flash bitstream via JTAG
+       bitstream_flashed --> kernel_downloaded: Download kernel via JTAG
+       kernel_downloaded --> booting: Start kernel execution
+       booting --> booted: Wait for boot completion
+       booted --> shell: Activate shell
+       shell --> soft_off: Graceful shutdown
+       soft_off --> [*]
+
+**Configuration Example**:
+
+.. code-block:: yaml
+
+   targets:
+     vcu118:
+       resources:
+         RawSerialPort:
+           port: "/dev/ttyUSB0"
+           speed: 115200
+
+         XilinxDeviceJTAG:
+           root_target: 1
+           microblaze_target: 3
+           bitstream_path: "/builds/system_top.bit"
+           kernel_path: "/builds/simpleImage.vcu118.strip"
+
+         XilinxVivadoTool:
+           vivado_path: "/tools/Xilinx/Vivado"
+           version: "2023.2"
+
+         NetworkPowerPort:
+           model: "gude"
+           host: "192.168.1.100"
+           index: 1
+
+       drivers:
+         SerialDriver: {}
+         ADIShellDriver: {}
+         XilinxJTAGDriver: {}
+         NetworkPowerDriver: {}
+
+         BootFabric:
+           reached_boot_marker: "login:"
+           wait_for_boot_timeout: 120
+           verify_iio_device: "axi-ad9081-rx-hpc"
+
+**Usage Example**:
+
+.. code-block:: python
+
+   from labgrid import Environment
+
+   # Load environment
+   env = Environment("vcu118.yaml")
+   target = env.get_target("vcu118")
+
+   # Get strategy and boot
+   strategy = target.get_driver("BootFabric")
+   strategy.transition("shell")
+
+   # Run commands
+   shell = target.get_driver("ADIShellDriver")
+   stdout, _, _ = shell.run("cat /proc/cpuinfo")
+   print(stdout)
+
+   # Shutdown
+   strategy.transition("soft_off")
+
+**Attributes**:
+
+- ``reached_boot_marker`` (str): String to expect in console when boot complete (default: "login:")
+- ``wait_for_boot_timeout`` (int): Seconds to wait for boot marker (default: 120)
+- ``verify_iio_device`` (str, optional): IIO device name to verify after boot
+
+**Troubleshooting**:
+
+*Bitstream flash fails*:
+   - Verify JTAG cable is connected
+   - Check bitstream file exists and path is correct
+   - Run ``xsdb -interactive`` to verify xsdb works
+   - Ensure FPGA is powered on
+
+*Kernel download fails*:
+   - Verify kernel file exists and path is correct
+   - Ensure bitstream was flashed first
+   - Check Microblaze target ID matches your hardware (run ``xsdb``, then ``targets``)
+
+*Boot timeout*:
+   - Increase ``wait_for_boot_timeout``
+   - Check serial console is properly connected
+   - Verify kernel is compatible with bitstream design
+
+*IIO device not found*:
+   - Check kernel has appropriate IIO drivers compiled
+   - Verify device tree matches your hardware
+   - Run ``dmesg`` to see kernel boot messages
+
 See Also
 ~~~~~~~~
 

@@ -54,18 +54,22 @@ massstoragedriver = "adi_lg_plugins.drivers.massstoragedriver:MassStorageDriver"
 adishelldriver = "adi_lg_plugins.drivers.shelldriver:ADIShellDriver"
 kuiperdldriver = "adi_lg_plugins.drivers.kuiperdldriver:KuiperDLDriver"
 cyberpowerdriver = "adi_lg_plugins.drivers.cyberpowerdriver:CyberPowerDriver"
+xilinxjtagdriver = "adi_lg_plugins.drivers.xilinxjtagdriver:XilinxJTAGDriver"
 
 [project.entry-points."labgrid.resources"]
 vesyncresource = "adi_lg_plugins.resources.vesync:VesyncOutlet"
 massstorageresource = "adi_lg_plugins.resources.massstorage:MassStorageDevice"
 kuiperresource = "adi_lg_plugins.resources.kuiperrelease:KuiperRelease"
 cyberpowerresource = "adi_lg_plugins.resources.cyberpowerpdu:CyberPowerOutlet"
+xilinxdevicejtag = "adi_lg_plugins.resources.xilinxdevice:XilinxDeviceJTAG"
+xilinxvivadotool = "adi_lg_plugins.resources.xilinxtool:XilinxVivadoTool"
 
 
 [project.entry-points."labgrid.strategies"]
 bootsocstrategy = "adi_lg_plugins.strategies.bootfpgasoc:BootFPGASoC"
 bootsocsshstrategy = "adi_lg_plugins.strategies.bootfpgasocssh:BootFPGASoCSSH"
 bootselmap = "adi_lg_plugins.strategies.bootselmap:BootSelMap"
+bootfabric = "adi_lg_plugins.strategies.bootfabric:BootFabric"
 
 [tool.ruff]
 line-length = 100

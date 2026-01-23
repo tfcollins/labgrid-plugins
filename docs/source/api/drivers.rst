@@ -64,6 +64,17 @@ KuiperDLDriver
    :undoc-members:
    :show-inheritance:
 
+FPGA/JTAG Drivers
+-----------------
+
+XilinxJTAGDriver
+~~~~~~~~~~~~~~~~
+
+.. autoclass:: adi_lg_plugins.drivers.xilinxjtagdriver.XilinxJTAGDriver
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Utility Classes
 ~~~~~~~~~~~~~~~
 

@@ -34,3 +34,19 @@ KuiperRelease
    :members:
    :undoc-members:
    :show-inheritance:
+
+XilinxDeviceJTAG
+----------------
+
+.. autoclass:: adi_lg_plugins.resources.xilinxdevice.XilinxDeviceJTAG
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+XilinxVivadoTool
+----------------
+
+.. autoclass:: adi_lg_plugins.resources.xilinxtool.XilinxVivadoTool
+   :members:
+   :undoc-members:
+   :show-inheritance:
