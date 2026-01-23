@@ -1,0 +1,31 @@
+targets:
+  main:
+    features:
+      - ad9081
+      - vcu118
+    resources:
+      NetworkService:
+        address: 10.0.0.23
+        username: root
+        password: analog
+      RawSerialPort:
+        port: /dev/ttyUSB1
+        speed: 115200
+      XilinxVivadoTool:
+        vivado_path: /tools/Xilinx/2025.1/Vivado
+      XilinxDeviceJTAG:
+        root_target: 1
+        microblaze_target: 3
+        bitstream_path: ref/vcu118_ad9081_m8_l4/system_top.bit
+        kernel_path: ref/vcu118_ad9081_m8_l4/simpleImage.vcu118_ad9081_m8_l4.strip
+    drivers:
+      SerialDriver: {}
+      ADIShellDriver:
+        prompt: '#.*'
+        login_prompt: 'buildroot login: '
+        username: 'root'
+        password: 'analog'
+      SSHDriver: {}
+      XilinxJTAGDriver: {}
+      BootFabric:
+        reached_boot_marker: 'buildroot login'
