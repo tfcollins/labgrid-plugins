@@ -4,25 +4,25 @@ import pytest
 from labgrid import Environment
 
 
-@pytest.fixture(scope="module")
-def env():
-    """Load test environment for VCU118."""
-    env_path = "tests/test_fabric_vcu118.yaml"
-    env = Environment(env_path)
-    env.get_target("main")
-    return env
+# @pytest.fixture(scope="module")
+# def env():
+#     """Load test environment for VCU118."""
+#     env_path = "tests/test_fabric_vcu118.yaml"
+#     env = Environment(env_path)
+#     env.get_target("main")
+#     return env
 
 
-@pytest.fixture(scope="module")
-def target(env):
-    """Get target from environment."""
-    return env.get_target("main")
+# @pytest.fixture(scope="module")
+# def target(env):
+#     """Get target from environment."""
+#     return env.get_target("main")
 
 
-@pytest.fixture(scope="module")
-def strategy(target):
-    """Get BootFabric strategy."""
-    return target.get_driver("BootFabric")
+# @pytest.fixture(scope="module")
+# def strategy(target):
+#     """Get BootFabric strategy."""
+#     return target.get_driver("BootFabric")
 
 
 @pytest.fixture(scope="module")
@@ -38,6 +38,8 @@ def test_boot_to_shell(target, in_shell):
     shell = target.get_driver("ADIShellDriver")
     stdout, stderr, returncode = shell.run("uname -a")
     assert returncode == 0, f"Command failed with stderr: {stderr}"
+    if isinstance(stdout, list):
+        stdout = "\n".join(stdout)
     assert "Linux" in stdout, f"Linux not found in output: {stdout}"
     assert "microblaze" in stdout, f"microblaze not found in output: {stdout}"
 
