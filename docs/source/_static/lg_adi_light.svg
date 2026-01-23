@@ -1,0 +1,53 @@
+<!--?xml version="1.0" encoding="UTF-8"?-->
+<svg width="520" height="180" viewBox="0 0 520 180" xmlns="http://www.w3.org/2000/svg" shape-rendering="geometricPrecision" role="img" aria-label="labgrid ADI plugins">
+
+  <defs>
+    <style>
+      .fg { stroke: #2f3e46; fill: none; stroke-width: 4; stroke-linecap: square; }
+      .accent { stroke: #1e9bd7; fill: none; stroke-width: 4; stroke-linecap: round; }
+      .text { fill: #2f3e46; font-family: Inter, system-ui, sans-serif; font-size: 34px; font-weight: 500; }
+    </style>
+  </defs>
+
+  <!-- Main IC -->
+  <rect x="40" y="30" width="90" height="90" class="fg"></rect>
+
+  <!-- Pins -->
+  <!-- Top -->
+  <line x1="60" y1="30" x2="60" y2="10" class="fg"></line>
+  <rect x="54" y="2" width="12" height="12" class="fg"></rect>
+  <line x1="110" y1="30" x2="110" y2="10" class="fg"></line>
+  <rect x="104" y="2" width="12" height="12" class="fg"></rect>
+
+  <!-- Bottom -->
+  <line x1="60" y1="120" x2="60" y2="140" class="fg"></line>
+  <rect x="54" y="140" width="12" height="12" class="fg"></rect>
+  <line x1="110" y1="120" x2="110" y2="140" class="fg"></line>
+  <rect x="104" y="140" width="12" height="12" class="fg"></rect>
+
+  <!-- Left -->
+  <line x1="40" y1="55" x2="20" y2="55" class="fg"></line>
+  <rect x="8" y="49" width="12" height="12" class="fg"></rect>
+  <line x1="40" y1="95" x2="20" y2="95" class="fg"></line>
+  <rect x="8" y="89" width="12" height="12" class="fg"></rect>
+
+  <!-- Right -->
+  <line x1="130" y1="55" x2="150" y2="55" class="fg"></line>
+  <rect x="150" y="49" width="12" height="12" class="fg"></rect>
+  <line x1="130" y1="95" x2="150" y2="95" class="fg"></line>
+  <rect x="150" y="89" width="12" height="12" class="fg"></rect>
+
+  <!-- Waveform -->
+  <polyline points="50,75 70,75 80,60 95,95 110,75 120,75" class="accent"></polyline>
+
+  <!-- Small chip -->
+  <rect x="165" y="85" width="28" height="28" class="accent"></rect>
+  <line x1="173" y1="85" x2="173" y2="77" class="accent"></line>
+  <line x1="185" y1="85" x2="185" y2="77" class="accent"></line>
+  <line x1="173" y1="113" x2="173" y2="121" class="accent"></line>
+  <line x1="185" y1="113" x2="185" y2="121" class="accent"></line>
+
+  <!-- Text -->
+  <text x="230" y="95" class="text">labgrid ADI plugins</text>
+
+</svg>
