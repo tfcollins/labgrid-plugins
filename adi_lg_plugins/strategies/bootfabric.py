@@ -73,7 +73,7 @@ class BootFabric(Strategy):
     """
 
     bindings = {
-        "power": "PowerProtocol",
+        "power": {"PowerProtocol", None},
         "jtag": "XilinxJTAGDriver",
         "shell": {"ADIShellDriver", None},  # Optional serial console
     }
@@ -139,17 +139,19 @@ class BootFabric(Strategy):
             if self.shell:
                 self.target.deactivate(self.shell)
             # Power off FPGA
-            self.target.activate(self.power)
-            self.power.off()
-            self.logger.info("FPGA powered off")
+            if self.power:
+                self.target.activate(self.power)
+                self.power.off()
+                self.logger.info("FPGA powered off")
 
         elif status == Status.powered_on:
             self.transition(Status.powered_off)
-            self.target.activate(self.power)
-            time.sleep(2)
-            self.power.on()
-            time.sleep(5)  # Wait for power stabilization
-            self.logger.info("FPGA powered on")
+            if self.power:
+                self.target.activate(self.power)
+                time.sleep(2)
+                self.power.on()
+                time.sleep(5)  # Wait for power stabilization
+                self.logger.info("FPGA powered on")
 
         elif status == Status.bitstream_flashed:
             self.transition(Status.powered_on)
@@ -211,7 +213,8 @@ class BootFabric(Strategy):
                     self.target.deactivate(self.shell)
             # Hard power off
             self.transition(Status.powered_off)
-            self.logger.info("FPGA shut down")
+            if self.power:
+                self.logger.info("FPGA shut down")
 
         else:
             raise StrategyError(f"No transition found from {self.status} to {status}")
