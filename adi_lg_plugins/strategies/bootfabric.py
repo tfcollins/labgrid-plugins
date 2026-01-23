@@ -27,10 +27,6 @@ class Status(enum.Enum):
     unknown = 0
     powered_off = 1
     powered_on = 2
-    # bitstream_flashed = 3
-    # kernel_downloaded = 4
-    # booting = 5
-    # booted = 6
     flash_fpga = 3
     booted = 4
     shell = 5
