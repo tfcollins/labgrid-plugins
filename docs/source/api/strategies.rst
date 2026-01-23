@@ -41,3 +41,16 @@ BootSelMap
    :members:
    :undoc-members:
    :no-index:
+
+BootFabric
+----------
+
+.. autoclass:: adi_lg_plugins.strategies.bootfabric.BootFabric
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. autoclass:: adi_lg_plugins.strategies.bootfabric.Status
+   :members:
+   :undoc-members:
+   :no-index:
