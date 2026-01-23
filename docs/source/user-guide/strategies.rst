@@ -301,6 +301,29 @@ Always transition to ``soft_off`` to gracefully shutdown:
 
     strategy.transition("soft_off")
 
+**Troubleshooting**:
+
+*Boot files don't transfer via SSH*:
+   - Verify SSH access works: ``ssh root@<device-ip>``
+   - Check SSH key is properly configured in resources
+   - Ensure network connectivity between host and device
+   - Verify pre_boot_boot_files and post_boot_boot_files paths are correct
+
+*First boot succeeds but restart fails*:
+   - This is expected behavior with SSH-based file transfer
+   - Strategy only uploads files on first boot
+   - To re-upload files, transition to powered_off and back to shell
+
+*SSH connection hangs during boot*:
+   - Increase wait_for_linux_prompt_timeout (default: 60s)
+   - Check device is booting correctly via serial console
+   - Verify network interface is configured in device tree
+
+*Permission denied errors*:
+   - Ensure SSH key has correct permissions (chmod 600)
+   - Verify device allows root login via SSH
+   - Check /boot partition is writable on device
+
 BootSelMap Strategy
 -------------------
 
@@ -314,53 +337,31 @@ The strategy manages 11 states with dual-FPGA boot orchestration:
 
    stateDiagram-v2
        [*] --> unknown
-
        unknown --> powered_off: Initialize
-       powered_off --> booting_zynq: Power on Zynq FPGA
+       powered_off --> booting_zynq: Power on
+       booting_zynq --> booted_zynq: Wait for boot
 
-       booting_zynq --> booted_zynq: Wait for kernel + marker
+       booted_zynq --> update_zynq_boot_files: Check files needed
+       update_zynq_boot_files --> update_zynq_boot_files: Restart if files uploaded
+       update_zynq_boot_files --> update_virtex_boot_files: Zynq ready
 
-       booted_zynq --> update_zynq_boot_files: Zynq Linux ready
+       update_virtex_boot_files --> trigger_selmap_boot: Files uploaded
+       trigger_selmap_boot --> wait_for_virtex_boot: Run SelMap script
 
-       update_zynq_boot_files --> check_pre_boot: Pre-boot files?
-       check_pre_boot --> upload_pre: Yes - Upload files
-       check_pre_boot --> update_virtex: No - Continue
+       wait_for_virtex_boot --> wait_for_virtex_boot: Poll IIO device (30s)
+       wait_for_virtex_boot --> wait_for_virtex_boot: Poll JESD status (120s)
+       wait_for_virtex_boot --> booted_virtex: JESD complete
 
-       note right of upload_pre
-           If files uploaded: restart cycle
-           Returns to powered_off for reboot
-       end note
-
-       upload_pre --> powered_off: Restart cycle
-
-       update_virtex_boot_files --> trigger_selmap: Files copied
-       update_zynq_boot_files --> update_virtex: No pre-boot files
-
-       update_virtex --> trigger_selmap: Copy Virtex files (if configured)
-
-       trigger_selmap --> wait_for_virtex: Run SelMap boot script
-
-       wait_for_virtex --> poll_device: Poll device registration
-       poll_device --> poll_jesd: Device found
-       poll_jesd --> shell: JESD ready (120s timeout)
-
-       note right of poll_device
-           Poll 30s for IIO device registration
-       end note
-
-       note right of poll_jesd
-           Poll 120s for JESD FSM completion
-       end note
-
-       shell --> soft_off: Shutdown Zynq
+       booted_virtex --> shell: Activate shell
+       shell --> soft_off: Graceful shutdown
        soft_off --> [*]
 
-       note right of booting_zynq
-           Primary FPGA: Zynq
+       note right of update_zynq_boot_files
+           Self-transition for boot file restart
        end note
 
-       note right of trigger_selmap
-           Secondary FPGA: Virtex via SelMap
+       note right of wait_for_virtex_boot
+           Polls IIO and JESD completion
        end note
 
 **Hardware Requirements**:
@@ -423,20 +424,22 @@ The strategy manages 11 states with dual-FPGA boot orchestration:
     target = env.get_target("dual_fpga")
     strategy = target.get_strategy("BootSelMap")
 
-    # Boot primary Zynq FPGA
-    strategy.transition("booted_zynq")
-
-    # Update and boot secondary Virtex FPGA via SelMap
-    strategy.transition("update_virtex_boot_files")
-    strategy.transition("trigger_selmap_boot")
-    strategy.transition("booted_virtex")
-
-    # Get shell access
+    # Boot and wait for shell access
+    # The strategy automatically transitions through all intermediate states
     strategy.transition("shell")
 
     # Verify both FPGAs are booted
     shell = target.get_driver("ADIShellDriver")
     shell.run_command("cat /proc/device-tree/chosen/fpga/axi-ad9081-rx-hpc/status")
+
+    # Graceful shutdown
+    strategy.transition("soft_off")
+
+Note:
+   The strategy automatically transitions through all intermediate states
+   (powered_off → booting_zynq → booted_zynq → update_zynq_boot_files →
+   update_virtex_boot_files → trigger_selmap_boot → wait_for_virtex_boot →
+   booted_virtex → shell). You only need to request the final state.
 
 **Advanced: Pre/Post Boot Files**:
 
@@ -446,11 +449,80 @@ The strategy supports optional pre-boot and post-boot file copying:
 
     # In target configuration:
     # BootSelMap:
-    #   pre_boot_boot_files: ['fpga_primary.dtb', 'boot.bin']
-    #   post_boot_boot_files: ['devicetree.dtb', 'ad9081.bin']
+    #   pre_boot_boot_files: {'local_path': '/boot/remote_path'}
+    #   post_boot_boot_files: {'local_path': '/boot/remote_path'}
 
     # Pre-boot files are copied before Zynq boot
     # Post-boot files are copied after Zynq boots but before Virtex boot
+
+**Configuration Details**:
+
+The BootSelMap strategy requires careful configuration of boot files for both
+the Zynq (primary) and Virtex (secondary) FPGAs:
+
+- **pre_boot_boot_files**: Files uploaded to Zynq before Virtex configuration.
+  Dictionary format: ``{local_path: remote_path}``
+
+  Example files:
+  - Zynq device tree blob (system.dtb)
+  - Zynq boot files (BOOT.BIN, image.ub)
+
+  These files are uploaded via SSH, then the Zynq is rebooted to apply them.
+
+- **post_boot_boot_files**: Files uploaded after Zynq boots with new device tree.
+  Dictionary format: ``{local_path: remote_path}``
+
+  Example files:
+  - Virtex bitstream (.bin)
+  - Virtex device tree overlay (.dtbo)
+  - SelMap boot script (selmap_dtbo.sh)
+
+  These files are used to configure the Virtex FPGA via SelMap interface.
+
+- **ethernet_interface**: Network interface name on target (e.g., "eth0").
+  Used to discover target IP address for SSH connections.
+
+- **iio_jesd_driver_name**: IIO device name to poll after Virtex boot.
+  Example: "axi-ad9081-rx-hpc" for AD9081 transceiver.
+  Strategy polls this device to verify Virtex has booted successfully.
+
+**Troubleshooting**:
+
+*Zynq boots but Virtex doesn't configure*:
+   - Check pre_boot_boot_files and post_boot_boot_files are correctly specified
+   - Verify .dtbo and .bin files exist at specified paths
+   - Check SelMap script exists: ``/boot/ci/selmap_dtbo.sh``
+   - Run script manually: ``cd /boot/ci && ./selmap_dtbo.sh -d vu11p.dtbo -b vu11p.bin``
+
+*IIO JESD device not found (wait_for_virtex_boot timeout)*:
+   - Increase timeout if device takes longer than 30s to appear
+   - Check device tree is correct for your hardware
+   - Verify Virtex bitstream matches Zynq device tree configuration
+   - Run ``dmesg | grep iio`` to see IIO driver messages
+
+*JESD state machine doesn't reach opt_post_running_stage*:
+   - Check JESD clock configuration in device tree
+   - Verify AD9081 (or similar) transceiver is properly configured
+   - Check for JESD sync errors: ``iio_attr -d <device> jesd204_fsm_error``
+   - Typical JESD states: link_setup → clocks → link → opt_post_running_stage
+
+*Files uploaded but boot still fails*:
+   - Strategy restarts after uploading pre_boot_boot_files
+   - Check serial console for Zynq boot errors after restart
+   - Verify uploaded files are valid (not corrupted)
+   - Ensure sufficient space on /boot partition
+
+*"Permission denied" when uploading files via SSH*:
+   - Verify SSH key is configured correctly
+   - Check target filesystem is mounted read-write
+   - Ensure sufficient disk space on target
+   - Try manual SSH: ``scp localfile root@<device>:/boot/``
+
+*Restart loop with pre_boot_boot_files*:
+   - Strategy uploads files, restarts, and checks again
+   - If files are different, it restarts again (infinite loop possible)
+   - Ensure local files don't change between boots
+   - Check _copied_pre_boot_files flag is being set correctly
 
 Best Practices
 --------------
@@ -650,13 +722,19 @@ BootFabric Strategy
        [*] --> unknown
        unknown --> powered_off: Initialize
        powered_off --> powered_on: Power on FPGA
-       powered_on --> bitstream_flashed: Flash bitstream via JTAG
-       bitstream_flashed --> kernel_downloaded: Download kernel via JTAG
-       kernel_downloaded --> booting: Start kernel execution
-       booting --> booted: Wait for boot completion
-       booted --> shell: Activate shell
+       powered_on --> flash_fpga: Flash bitstream and kernel via JTAG
+       flash_fpga --> booted: Start kernel execution and wait for boot
+       booted --> shell: Activate shell access
        shell --> soft_off: Graceful shutdown
        soft_off --> [*]
+
+       note right of flash_fpga
+           Flash bitstream, download kernel, start execution
+       end note
+
+       note right of booted
+           Wait for kernel boot marker (e.g., "login:")
+       end note
 
 **Configuration Example**:
 
@@ -745,6 +823,88 @@ BootFabric Strategy
    - Check kernel has appropriate IIO drivers compiled
    - Verify device tree matches your hardware
    - Run ``dmesg`` to see kernel boot messages
+
+State Transition Reference
+---------------------------
+
+This section provides quick reference tables for valid state transitions in each strategy.
+
+**BootSelMap State Transitions**:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 30 40
+
+   * - From State
+     - To State
+     - Actions Performed
+   * - unknown
+     - powered_off
+     - Initialize, power off
+   * - powered_off
+     - booting_zynq
+     - Power on Zynq
+   * - booting_zynq
+     - booted_zynq
+     - Wait for Zynq boot
+   * - booted_zynq
+     - update_zynq_boot_files
+     - Upload Zynq files via SSH (if configured)
+   * - update_zynq_boot_files
+     - update_zynq_boot_files
+     - Restart if boot files uploaded
+   * - update_zynq_boot_files
+     - update_virtex_boot_files
+     - Zynq ready for next stage
+   * - update_virtex_boot_files
+     - trigger_selmap_boot
+     - Virtex files uploaded
+   * - trigger_selmap_boot
+     - wait_for_virtex_boot
+     - Run SelMap script
+   * - wait_for_virtex_boot
+     - booted_virtex
+     - Verify IIO device and JESD completion
+   * - booted_virtex
+     - shell
+     - Activate shell driver
+   * - shell
+     - soft_off
+     - Graceful shutdown
+   * - soft_off
+     - (end)
+     - Both FPGAs powered down
+
+**BootFabric State Transitions**:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 30 40
+
+   * - From State
+     - To State
+     - Actions Performed
+   * - unknown
+     - powered_off
+     - Initialize
+   * - powered_off
+     - powered_on
+     - Power on FPGA
+   * - powered_on
+     - flash_fpga
+     - Flash bitstream via JTAG
+   * - flash_fpga
+     - booted
+     - Download kernel and start execution
+   * - booted
+     - shell
+     - Wait for boot marker and activate shell
+   * - shell
+     - soft_off
+     - Graceful shutdown
+   * - soft_off
+     - (end)
+     - FPGA powered down
 
 See Also
 ~~~~~~~~
