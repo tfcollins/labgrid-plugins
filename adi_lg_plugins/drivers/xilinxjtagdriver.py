@@ -79,7 +79,9 @@ class XilinxJTAGDriver(Driver):
             raise ExecutionError("Bitstream path not configured in XilinxDeviceJTAG resource")
 
         if not os.path.exists(self.xilinxdevicejtag.bitstream_path):
-            raise ExecutionError(f"Bitstream file not found: {self.xilinxdevicejtag.bitstream_path}")
+            raise ExecutionError(
+                f"Bitstream file not found: {self.xilinxdevicejtag.bitstream_path}"
+            )
 
         self.logger.info(f"Flashing bitstream: {self.xilinxdevicejtag.bitstream_path}")
 
@@ -165,6 +167,41 @@ class XilinxJTAGDriver(Driver):
 
         self.logger.info("Kernel execution started")
         self.logger.debug(f"Execution output: {stdout}")
+
+    @Driver.check_active
+    @step()
+    def load_bitstream_and_kernel_and_start(self):
+        """Load bitstream and kernel in sequence and start execution.
+
+        This is a convenience method that performs the full sequence:
+        1. Flash bitstream
+        2. Download kernel
+        3. Start execution
+
+        Raises:
+            ExecutionError: If any step in the sequence fails.
+        """
+        tcl_script = f"""
+        connect
+        after 1000
+        targets {self.xilinxdevicejtag.root_target}
+        after 1000
+        fpga -f {self.xilinxdevicejtag.bitstream_path}
+        after 2000
+        targets {self.xilinxdevicejtag.microblaze_target}
+        after 1000
+        dow {self.xilinxdevicejtag.kernel_path}
+        after 1000
+        con
+        after 500
+        puts "System started"
+        """
+        self.logger.debug(f"System start TCL script:\n{tcl_script}")
+
+        stdout, stderr, returncode = self.xilinxvivado.run_xsdb_script(tcl_script)
+        if returncode != 0:
+            raise ExecutionError(f"System start failed: {stderr}")
+        self.logger.debug(f"System start output: {stdout}")
 
     @Driver.check_active
     @step()

@@ -58,7 +58,6 @@ class BootFPGASoCSSH(Strategy):
     reached_linux_marker = attr.ib(default="analog")
     wait_for_linux_prompt_timeout = attr.ib(default=60)
 
-
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
         self.logger.info("BootFPGASoCSSH strategy initialized")
@@ -126,7 +125,7 @@ class BootFPGASoCSSH(Strategy):
                 self.target.activate(self.shell)
                 # Check kernel start
                 self.shell.console.expect("Linux", timeout=30)
-                self.reached_linux_marker, timeout=self.wait_for_linux_prompt_timeout
+                self.reached_linux_marker, timeout = self.wait_for_linux_prompt_timeout
                 self.shell.bypass_login = False
                 self.target.deactivate(self.shell)
             self.logger.debug("DEBUG Booted")

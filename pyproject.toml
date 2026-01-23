@@ -8,7 +8,6 @@ version = "0.1.0"
 description = "labgrid plugin package for Analog Devices, Inc. (ADI) specific plugins."
 readme = "README.md"
 requires-python = ">=3.10"
-license = {text = "LGPL-2.1-or-later"}
 authors = [
     {name = "Analog Devices, Inc."},
 ]
@@ -34,6 +33,12 @@ docs = [
     "sphinx-design>=0.5.0",
     "sphinxcontrib-mermaid",
 ]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["adi_lg_plugins"]
+exclude = ["test*"]
+namespaces = true
 
 [project.urls]
 Homepage = "https://github.com/analogdevicesinc/adi-labgrid-plugins"

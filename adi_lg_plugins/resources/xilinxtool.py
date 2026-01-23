@@ -3,6 +3,7 @@
 import os
 import subprocess
 import tempfile
+import glob
 
 import attr
 from labgrid.resource import Resource
@@ -19,17 +20,18 @@ class XilinxVivadoTool(Resource):
     TCL scripts via xsdb.
 
     Attributes:
-        vivado_path (str): Root path to Xilinx Vivado installation (default: "/tools/Xilinx/Vivado").
-            Example: "/opt/Xilinx/Vivado" or "/tools/Xilinx/Vivado"
-        version (str, optional): Vivado version string (e.g., "2023.2", "2022.1").
-            If not specified, automatically selects latest version found in vivado_path.
+        vivado_path (str, optional): Root path to Xilinx Vivado installation
+            (default: "/tools/Xilinx/Vivado").
+            Example: "/opt/Xilinx/Vivado/2023.2" or "/tools/Xilinx/2025.1/Vivado"
+        version (str, optional): Vivado version string (e.g., "2023.2").
+            Used to locate vivado_path if not explicitly set.
     """
 
     name = attr.ib(default="xilinxvivadotool")
 
     # Vivado installation path
     vivado_path = attr.ib(
-        default="/tools/Xilinx/Vivado",
+        default="/tools/Xilinx/2025.1/Vivado",
         validator=attr.validators.instance_of(str),
     )
 
@@ -41,32 +43,44 @@ class XilinxVivadoTool(Resource):
 
     # Derived paths (computed in __attrs_post_init__)
     xsdb_path = attr.ib(init=False, default=None)
+    settings_path = attr.ib(init=False, default=None)
 
     def __attrs_post_init__(self):
         """Initialize xsdb_path based on vivado_path and version."""
         super().__attrs_post_init__()
 
-        if self.version:
-            # Use explicit version
-            xsdb = os.path.join(self.vivado_path, self.version, "bin", "xsdb")
-        else:
-            # Search for latest version
+        if self.vivado_path:
             if not os.path.exists(self.vivado_path):
                 raise ValueError(f"Vivado path does not exist: {self.vivado_path}")
 
-            versions = sorted(
-                [d for d in os.listdir(self.vivado_path) if os.path.isdir(os.path.join(self.vivado_path, d))],
-                reverse=True,
-            )
+        else:
+            if not self.version:
+                raise ValueError("Either vivado_path or version must be specified")
+            path1 = f"/tools/Xilinx/{self.version}/Vivado"
+            path2 = f"/opt/Xilinx/Vivado/{self.version}"
+            path3 = f"/opt/Xilinx/{self.version}/Vivado"
+            for p in (path1, path2, path3):
+                if os.path.exists(p):
+                    self.vivado_path = p
+                    break
+            if not self.vivado_path:
+                raise ValueError(f"Vivado path not found for version {self.version}")
+        # Use glob to find settings.sh
+        files = glob.glob(os.path.join(self.vivado_path, "**", "settings64.sh"), recursive=True)
+        if not files:
+            raise ValueError(f"settings64.sh not found in {self.vivado_path}")
+        self.settings_path = files[0]
+        self.logger.info(f"Found Vivado settings script at: {self.settings_path}")
 
-            if not versions:
-                raise ValueError(f"No Vivado versions found in {self.vivado_path}")
-
-            self.version = versions[0]
-            xsdb = os.path.join(self.vivado_path, self.version, "bin", "xsdb")
-
+        # Source script and find xsdb
+        cmd = f"bash -c 'source {self.settings_path} && which xsdb'"
+        result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+        if result.returncode != 0:
+            raise ValueError(f"Failed to locate xsdb: {result.stderr.strip()}")
+        xsdb = result.stdout.strip()
         if not os.path.exists(xsdb):
             raise ValueError(f"xsdb not found at {xsdb}")
+        self.logger.info(f"xsdb located at: {xsdb}")
 
         self.xsdb_path = xsdb
 

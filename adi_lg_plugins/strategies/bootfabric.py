@@ -27,12 +27,14 @@ class Status(enum.Enum):
     unknown = 0
     powered_off = 1
     powered_on = 2
-    bitstream_flashed = 3
-    kernel_downloaded = 4
-    booting = 5
-    booted = 6
-    shell = 7
-    soft_off = 8
+    # bitstream_flashed = 3
+    # kernel_downloaded = 4
+    # booting = 5
+    # booted = 6
+    flash_fpga = 3
+    booted = 4
+    shell = 5
+    soft_off = 6
 
 
 @target_factory.reg_driver
@@ -53,12 +55,12 @@ class BootFabric(Strategy):
         5. Wait for boot completion and verify shell access
         6. Provide interactive shell access
 
-    Required Bindings:
-        power: PowerProtocol - Power control (on/off)
+    Bindings:
+        power: PowerProtocol (optional) - Power control (on/off)
         jtag: XilinxJTAGDriver - JTAG programming driver
         shell: ADIShellDriver (optional) - Serial console access
 
-    Required Resources:
+    Resources:
         XilinxDeviceJTAG: JTAG target IDs and file paths
         XilinxVivadoTool: Vivado installation path for xsdb
 
@@ -143,6 +145,8 @@ class BootFabric(Strategy):
                 self.target.activate(self.power)
                 self.power.off()
                 self.logger.info("FPGA powered off")
+            else:
+                self.logger.info("Skipping power off (no power resource configured)")
 
         elif status == Status.powered_on:
             self.transition(Status.powered_off)
@@ -152,34 +156,45 @@ class BootFabric(Strategy):
                 self.power.on()
                 time.sleep(5)  # Wait for power stabilization
                 self.logger.info("FPGA powered on")
+            else:
+                self.logger.info("Skipping power on (no power resource configured)")
 
-        elif status == Status.bitstream_flashed:
+        elif status == Status.flash_fpga:
             self.transition(Status.powered_on)
             self.target.activate(self.jtag)
-            self.jtag.flash_bitstream()
-            self.logger.info("Bitstream flashed via JTAG")
+            self.jtag.load_bitstream_and_kernel_and_start()
+            self.logger.info("Bitstream flashed and kernel started via JTAG")
 
-        elif status == Status.kernel_downloaded:
-            self.transition(Status.bitstream_flashed)
-            self.jtag.download_kernel()
-            self.logger.info("Kernel downloaded to Microblaze")
+        # elif status == Status.bitstream_flashed:
+        #     self.transition(Status.powered_on)
+        #     self.target.activate(self.jtag)
+        #     self.jtag.flash_bitstream()
+        #     self.logger.info("Bitstream flashed via JTAG")
 
-        elif status == Status.booting:
-            self.transition(Status.kernel_downloaded)
-            self.jtag.start_execution()
-            self.jtag.disconnect_jtag()
-            self.target.deactivate(self.jtag)
-            self.logger.info("Kernel execution started")
+        # elif status == Status.kernel_downloaded:
+        #     self.transition(Status.bitstream_flashed)
+        #     self.jtag.download_kernel()
+        #     self.logger.info("Kernel downloaded to Microblaze")
+
+        # elif status == Status.booting:
+        #     self.transition(Status.kernel_downloaded)
+        #     self.jtag.start_execution()
+        #     self.jtag.disconnect_jtag()
+        #     self.target.deactivate(self.jtag)
+        #     self.logger.info("Kernel execution started")
 
         elif status == Status.booted:
-            self.transition(Status.booting)
+            # self.transition(Status.booting)
+            self.transition(Status.flash_fpga)
             if self.shell:
                 self.shell.bypass_login = True
                 self.target.activate(self.shell)
                 # Wait for Linux kernel boot
                 self.shell.console.expect("Linux", timeout=30)
                 # Wait for login prompt or marker
-                self.shell.console.expect(self.reached_boot_marker, timeout=self.wait_for_boot_timeout)
+                self.shell.console.expect(
+                    self.reached_boot_marker, timeout=self.wait_for_boot_timeout
+                )
                 self.shell.bypass_login = False
                 self.target.deactivate(self.shell)
                 self.logger.info("Microblaze kernel booted")
