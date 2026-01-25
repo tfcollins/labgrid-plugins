@@ -242,7 +242,7 @@ class BootFabric(Strategy):
             StrategyError: If device is not found within timeout.
         """
         self.logger.info(f"Verifying IIO device: {self.verify_iio_device}")
-        for attempt in range(30):
+        for _attempt in range(30):
             stdout, stderr, returncode = self.shell.run(
                 f"iio_attr -d {self.verify_iio_device} name",
                 timeout=5,

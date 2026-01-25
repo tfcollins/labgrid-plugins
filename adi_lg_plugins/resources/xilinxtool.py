@@ -1,13 +1,13 @@
 """Xilinx Vivado/Vitis tool installation configuration resource."""
 
+import glob
 import os
 import subprocess
 import tempfile
-import glob
 
 import attr
-from labgrid.resource import Resource
 from labgrid.factory import target_factory
+from labgrid.resource import Resource
 
 
 @target_factory.reg_resource

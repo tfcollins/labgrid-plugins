@@ -1,8 +1,8 @@
 """Xilinx FPGA device JTAG configuration resource."""
 
 import attr
-from labgrid.resource import Resource
 from labgrid.factory import target_factory
+from labgrid.resource import Resource
 
 
 @target_factory.reg_resource

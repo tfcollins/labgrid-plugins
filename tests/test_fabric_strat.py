@@ -1,8 +1,6 @@
 """Tests for BootFabric strategy on VCU118+AD9081 platform."""
 
 import pytest
-from labgrid import Environment
-
 
 # @pytest.fixture(scope="module")
 # def env():
