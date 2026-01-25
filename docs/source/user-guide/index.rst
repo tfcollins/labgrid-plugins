@@ -9,4 +9,5 @@ Comprehensive guides for using adi-labgrid-plugins.
    drivers
    resources
    strategies
+   cli
    examples
