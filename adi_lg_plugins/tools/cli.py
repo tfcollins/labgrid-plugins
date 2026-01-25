@@ -1,11 +1,13 @@
 import logging
 import os
+
 import click
+from labgrid import Environment
 from rich.console import Console
 from rich.logging import RichHandler
-from labgrid import Environment
 
 console = Console()
+
 
 @click.group()
 @click.option("--debug", is_flag=True, help="Enable debug logging")
@@ -16,15 +18,20 @@ def cli(debug):
         level=level,
         format="%(message)s",
         datefmt="[%X]",
-        handlers=[RichHandler(rich_tracebacks=True, console=console)]
+        handlers=[RichHandler(rich_tracebacks=True, console=console)],
     )
     # Silence some verbose loggers
     logging.getLogger("requests").setLevel(logging.WARNING)
     logging.getLogger("urllib3").setLevel(logging.WARNING)
 
+
 @cli.command()
-@click.option("--config", "-c", required=True, type=click.Path(exists=True), help="Labgrid configuration file")
-@click.option("--bitstream", type=click.Path(exists=True), help="Path to FPGA bitstream file (.bit)")
+@click.option(
+    "--config", "-c", required=True, type=click.Path(exists=True), help="Labgrid configuration file"
+)
+@click.option(
+    "--bitstream", type=click.Path(exists=True), help="Path to FPGA bitstream file (.bit)"
+)
 @click.option("--kernel", type=click.Path(exists=True), help="Path to Linux kernel image (.strip)")
 @click.option("--target", "-t", default="main", help="Target name in config (default: main)")
 @click.option("--state", default="shell", help="Target state to transition to (default: shell)")
@@ -50,16 +57,19 @@ def boot_fabric(config, bitstream, kernel, target, state):
         logging.warning(f"Could not find XilinxDeviceJTAG resource: {e}")
 
     strategy = tg.get_driver("BootFabric")
-    with console.status(f"[bold green]Transitioning {target} to {state} using BootFabric...") as status:
+    with console.status(f"[bold green]Transitioning {target} to {state} using BootFabric..."):
         try:
             strategy.transition(state)
             console.print(f"[bold green]Successfully reached {state}![/bold green]")
         except Exception as e:
             console.print(f"[bold red]Transition failed: {e}[/bold red]")
-            raise click.ClickException(str(e))
+            raise click.ClickException(str(e)) from e
+
 
 @cli.command()
-@click.option("--config", "-c", required=True, type=click.Path(exists=True), help="Labgrid configuration file")
+@click.option(
+    "--config", "-c", required=True, type=click.Path(exists=True), help="Labgrid configuration file"
+)
 @click.option("--release", help="Kuiper release version (e.g., 2023_R2_P1)")
 @click.option("--kernel", type=click.Path(exists=True), help="Path to kernel file")
 @click.option("--bootbin", type=click.Path(exists=True), help="Path to BOOT.BIN file")
@@ -98,16 +108,19 @@ def boot_soc(config, release, kernel, bootbin, devicetree, target, state, update
     if update_image:
         strategy.update_image = True
 
-    with console.status(f"[bold green]Transitioning {target} to {state} using BootFPGASoC...") as status:
+    with console.status(f"[bold green]Transitioning {target} to {state} using BootFPGASoC..."):
         try:
             strategy.transition(state)
             console.print(f"[bold green]Successfully reached {state}![/bold green]")
         except Exception as e:
             console.print(f"[bold red]Transition failed: {e}[/bold red]")
-            raise click.ClickException(str(e))
+            raise click.ClickException(str(e)) from e
+
 
 @cli.command()
-@click.option("--config", "-c", required=True, type=click.Path(exists=True), help="Labgrid configuration file")
+@click.option(
+    "--config", "-c", required=True, type=click.Path(exists=True), help="Labgrid configuration file"
+)
 @click.option("--release", help="Kuiper release version (e.g., 2023_R2_P1)")
 @click.option("--kernel", type=click.Path(exists=True), help="Path to kernel file")
 @click.option("--bootbin", type=click.Path(exists=True), help="Path to BOOT.BIN file")
@@ -142,16 +155,19 @@ def boot_soc_ssh(config, release, kernel, bootbin, devicetree, target, state):
         logging.warning(f"Could not find KuiperRelease resource: {e}")
 
     strategy = tg.get_driver("BootFPGASoCSSH")
-    with console.status(f"[bold green]Transitioning {target} to {state} using BootFPGASoCSSH...") as status:
+    with console.status(f"[bold green]Transitioning {target} to {state} using BootFPGASoCSSH..."):
         try:
             strategy.transition(state)
             console.print(f"[bold green]Successfully reached {state}![/bold green]")
         except Exception as e:
             console.print(f"[bold red]Transition failed: {e}[/bold red]")
-            raise click.ClickException(str(e))
+            raise click.ClickException(str(e)) from e
+
 
 @cli.command()
-@click.option("--config", "-c", required=True, type=click.Path(exists=True), help="Labgrid configuration file")
+@click.option(
+    "--config", "-c", required=True, type=click.Path(exists=True), help="Labgrid configuration file"
+)
 @click.option("--pre-boot-file", multiple=True, help="Format: local_path:remote_path")
 @click.option("--post-boot-file", multiple=True, help="Format: local_path:remote_path")
 @click.option("--target", "-t", default="main", help="Target name in config (default: main)")
@@ -187,13 +203,14 @@ def boot_selmap(config, pre_boot_file, post_boot_file, target, state):
         strategy.post_boot_boot_files = post_dict
         logging.info(f"Set post-boot files: {post_dict}")
 
-    with console.status(f"[bold green]Transitioning {target} to {state} using BootSelMap...") as status:
+    with console.status(f"[bold green]Transitioning {target} to {state} using BootSelMap..."):
         try:
             strategy.transition(state)
             console.print(f"[bold green]Successfully reached {state}![/bold green]")
         except Exception as e:
             console.print(f"[bold red]Transition failed: {e}[/bold red]")
-            raise click.ClickException(str(e))
+            raise click.ClickException(str(e)) from e
+
 
 if __name__ == "__main__":
     cli()
