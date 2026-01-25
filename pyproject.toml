@@ -20,6 +20,7 @@ dependencies = [
     "pylibiio",
     "click",
     "rich",
+    "fastmcp",
 ]
 
 [project.optional-dependencies]
@@ -53,6 +54,7 @@ Repository = "https://github.com/analogdevicesinc/adi-labgrid-plugins"
 [project.scripts]
 kuiperdl = "adi_lg_plugins.tools.kuiperdl:main"
 adi-lg = "adi_lg_plugins.tools.cli:cli"
+adi-lg-mcp = "adi_lg_plugins.tools.mcp:main"
 
 # Entry points for plugin discovery
 # Labgrid automatically discovers and registers these components

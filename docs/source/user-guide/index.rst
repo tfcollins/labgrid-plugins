@@ -10,4 +10,5 @@ Comprehensive guides for using adi-labgrid-plugins.
    resources
    strategies
    cli
+   mcp
    examples
