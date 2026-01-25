@@ -18,6 +18,8 @@ dependencies = [
     "pytsk3",
     "pysnmp",
     "pylibiio",
+    "click",
+    "rich",
 ]
 
 [project.optional-dependencies]
@@ -36,7 +38,7 @@ docs = [
 
 [tool.setuptools.packages.find]
 where = ["."]
-include = ["adi_lg_plugins"]
+include = ["adi_lg_plugins", "adi_lg_plugins.*"]
 exclude = ["test*"]
 namespaces = true
 
@@ -50,6 +52,7 @@ Repository = "https://github.com/analogdevicesinc/adi-labgrid-plugins"
 # kuiperdl
 [project.scripts]
 kuiperdl = "adi_lg_plugins.tools.kuiperdl:main"
+adi-lg = "adi_lg_plugins.tools.cli:cli"
 
 # Entry points for plugin discovery
 # Labgrid automatically discovers and registers these components
