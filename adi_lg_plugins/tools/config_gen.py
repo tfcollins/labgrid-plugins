@@ -6,13 +6,31 @@ import yaml
 from rich.console import Console
 from rich.prompt import Confirm, IntPrompt, Prompt
 
+try:
+    import serial.tools.list_ports
+
+    HAS_PYSERIAL = True
+except ImportError:
+    HAS_PYSERIAL = False
+
 console = Console()
 
 
 def scan_serial_ports():
-    """Scan for available serial ports."""
-    # simple glob for linux
-    return glob.glob("/dev/ttyUSB*") + glob.glob("/dev/ttyACM*")
+    """Scan for available serial ports with descriptions.
+
+    Returns:
+        List[Tuple[str, str]]: List of (device, description) tuples.
+    """
+    if HAS_PYSERIAL:
+        ports = []
+        for p in serial.tools.list_ports.comports():
+            ports.append((p.device, p.description))
+        return sorted(ports)
+    else:
+        # Fallback
+        devs = glob.glob("/dev/ttyUSB*") + glob.glob("/dev/ttyACM*")
+        return sorted([(d, "Unknown") for d in devs])
 
 
 def get_local_ip():
@@ -77,14 +95,24 @@ class ConfigGenerator:
         console.print("[bold cyan]Configuring Shell / Console[/bold cyan]")
 
         # Configure underlying console (Serial)
-        ports = scan_serial_ports()
-        port_choices = ports + ["Manual Entry"]
+        ports_info = scan_serial_ports()
 
-        console.print(f"Detected Serial Ports: {', '.join(ports)}")
+        if ports_info:
+            console.print("Detected Serial Ports:")
+            for dev, desc in ports_info:
+                console.print(f"  - [bold]{dev}[/bold]: {desc}")
+
+            port_choices = [p[0] for p in ports_info] + ["Manual Entry"]
+            default_port = ports_info[0][0]
+        else:
+            console.print("No serial ports detected.")
+            port_choices = ["Manual Entry"]
+            default_port = "Manual Entry"
+
         selected_port = Prompt.ask(
             "Select Serial Port",
             choices=port_choices,
-            default=ports[0] if ports else "Manual Entry",
+            default=default_port,
         )
 
         if selected_port == "Manual Entry":
@@ -115,11 +143,6 @@ class ConfigGenerator:
     def configure_sdmux(self):
         console.print("[bold cyan]Configuring SD Mux[/bold cyan]")
         # Assuming USBSDMuxDriver
-        # It needs a USBSDMux resource or SigrokUSBTool?
-        # Labgrid USBSDMuxDriver typically uses USBSDMux resource which uses control_path (path to device file for mux)
-        # or it uses a generic USB resource.
-        # Let's assume standard Labgrid USBSDMux resource which needs a path like /dev/sd-mux or similar.
-
         mux_path = Prompt.ask(
             "SD Mux Device Path", default="/dev/disk/by-id/usb-Linux_Autobuild_SD_Mux_..."
         )
@@ -164,11 +187,7 @@ class ConfigGenerator:
             # External TFTP server
             address = Prompt.ask("Server IP Address", default=local_ip)
             self.add_resource("TFTPServerResource", {"address": address})
-            # No driver needed if unmanaged, but strategy might expect one?
-            # BootFPGASoCTFTP strategy binds "tftp_driver": "TFTPServerDriver".
-            # So if we use that strategy, we MUST use the driver.
-            # If the user wants external TFTP, they might need a different strategy or custom config.
-            # We'll assume managed for now if using that strategy.
+
             console.print(
                 "[yellow]Note: BootFPGASoCTFTP strategy expects a managed driver. Adding it anyway.[/yellow]"
             )
@@ -208,9 +227,6 @@ class ConfigGenerator:
             # Optional SSH
             if Confirm.ask("Configure SSH Driver?", default=False):
                 # SSHDriver needs Hostname/IP resource or similar.
-                # BootFPGASoCTFTP bindings: "ssh": {"SSHDriver", None}
-                # SSHDriver binds to 'NetworkService'? or just uses 'hostname' resource?
-                # Usually 'NetworkService' resource.
                 address = Prompt.ask(
                     "Target IP Address (or auto-discovered)", default="192.168.1.10"
                 )
