@@ -2,6 +2,7 @@ import nox
 
 # Define default sessions
 nox.options.sessions = ["lint", "tests", "docs"]
+nox.options.default_venv_backend = "uv"
 
 
 @nox.session

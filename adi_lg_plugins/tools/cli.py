@@ -26,6 +26,7 @@ def cli(debug):
     logging.getLogger("requests").setLevel(logging.WARNING)
     logging.getLogger("urllib3").setLevel(logging.WARNING)
 
+
 cli.add_command(generate_config)
 
 
