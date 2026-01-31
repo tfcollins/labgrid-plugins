@@ -6,6 +6,14 @@ Target Configuration Basics
 
 adi-labgrid-plugins uses YAML files to configure targets, resources, and drivers.
 
+.. tip::
+
+    You can use the interactive configuration wizard to generate a valid configuration file automatically:
+
+    .. code-block:: bash
+
+        adi-lg generate-config
+
 Basic Structure
 ~~~~~~~~~~~~~~~
 

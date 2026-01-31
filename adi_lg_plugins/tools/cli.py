@@ -6,6 +6,8 @@ from labgrid import Environment
 from rich.console import Console
 from rich.logging import RichHandler
 
+from adi_lg_plugins.tools.config_gen import generate_config
+
 console = Console()
 
 
@@ -23,6 +25,8 @@ def cli(debug):
     # Silence some verbose loggers
     logging.getLogger("requests").setLevel(logging.WARNING)
     logging.getLogger("urllib3").setLevel(logging.WARNING)
+
+cli.add_command(generate_config)
 
 
 @cli.command()
