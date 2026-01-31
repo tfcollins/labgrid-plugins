@@ -18,6 +18,7 @@ OP_DATA = 3
 OP_ACK = 4
 OP_ERROR = 5
 
+
 class SimpleTFTPServer:
     def __init__(self, address, port, root, logger=None):
         self.address = address
@@ -36,7 +37,9 @@ class SimpleTFTPServer:
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         try:
             self.sock.bind((self.address, self.port))
-            self.logger.info(f"TFTP Server started on {self.address}:{self.port}, root: {self.root}")
+            self.logger.info(
+                f"TFTP Server started on {self.address}:{self.port}, root: {self.root}"
+            )
             self.running = True
             self.thread = threading.Thread(target=self._run_server, daemon=True)
             self.thread.start()
@@ -59,17 +62,19 @@ class SimpleTFTPServer:
                 if not r:
                     continue
                 data, addr = self.sock.recvfrom(1024)
-                threading.Thread(target=self._handle_request, args=(data, addr), daemon=True).start()
+                threading.Thread(
+                    target=self._handle_request, args=(data, addr), daemon=True
+                ).start()
             except OSError:
                 if self.running:
-                   self.logger.error("Socket error in main loop")
+                    self.logger.error("Socket error in main loop")
                 break
             except Exception as e:
                 self.logger.exception(f"Error in TFTP server loop: {e}")
 
     def _send_error(self, sock, addr, code, message):
         # Opcode 5, ErrorCode, ErrMsg, 0
-        pkt = struct.pack("!HH", OP_ERROR, code) + message.encode('ascii') + b'\x00'
+        pkt = struct.pack("!HH", OP_ERROR, code) + message.encode("ascii") + b"\x00"
         try:
             sock.sendto(pkt, addr)
         except Exception:
@@ -92,34 +97,34 @@ class SimpleTFTPServer:
 
     def _handle_rrq(self, data, addr):
         try:
-            parts = data[2:].split(b'\x00')
-            filename = parts[0].decode('ascii')
+            parts = data[2:].split(b"\x00")
+            filename = parts[0].decode("ascii")
             # mode = parts[1].decode('ascii').lower() # mode is usually 'octet' or 'netascii'
         except Exception:
             self.logger.error(f"Malformed RRQ from {addr}")
             return
 
         # Security check: Prevent directory traversal
-        if '..' in filename or filename.startswith('/'):
-             # We treat filenames as relative to root.
-             # Some clients send absolute paths (e.g. /boot/image).
-             # We strip leading / to map to our root.
-             clean_filename = filename.lstrip('/')
-             if '..' in clean_filename:
-                 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                 self._send_error(s, addr, 2, "Access violation")
-                 s.close()
-                 return
-             full_path = os.path.join(self.root, clean_filename)
+        if ".." in filename or filename.startswith("/"):
+            # We treat filenames as relative to root.
+            # Some clients send absolute paths (e.g. /boot/image).
+            # We strip leading / to map to our root.
+            clean_filename = filename.lstrip("/")
+            if ".." in clean_filename:
+                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                self._send_error(s, addr, 2, "Access violation")
+                s.close()
+                return
+            full_path = os.path.join(self.root, clean_filename)
         else:
-             full_path = os.path.join(self.root, filename)
+            full_path = os.path.join(self.root, filename)
 
         full_path = os.path.abspath(full_path)
         if not full_path.startswith(os.path.abspath(self.root)):
-             s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-             self._send_error(s, addr, 2, "Access violation")
-             s.close()
-             return
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self._send_error(s, addr, 2, "Access violation")
+            s.close()
+            return
 
         if not os.path.exists(full_path):
             self.logger.warning(f"File not found: {full_path}")
@@ -132,7 +137,7 @@ class SimpleTFTPServer:
 
         client_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         try:
-            with open(full_path, 'rb') as f:
+            with open(full_path, "rb") as f:
                 block_num = 1
                 while True:
                     chunk = f.read(512)
@@ -171,7 +176,7 @@ class SimpleTFTPServer:
                         return
 
                     if len(chunk) < 512:
-                        break # EOF
+                        break  # EOF
 
                     block_num = (block_num + 1) % 65536
                     if block_num == 0:
@@ -191,6 +196,7 @@ class TFTPServerDriver(Driver):
     """
     TFTPServerDriver provides a pure Python TFTP server.
     """
+
     bindings = {
         "resource": TFTPServerResource,
     }
@@ -201,7 +207,7 @@ class TFTPServerDriver(Driver):
 
     def on_activate(self):
         ip = self.resource.get_ip()
-        
+
         # Ensure root directory exists
         if not os.path.exists(self.resource.root):
             try:
@@ -210,8 +216,11 @@ class TFTPServerDriver(Driver):
                 self.logger.warning(f"Could not create TFTP root {self.resource.root}: {e}")
 
         # Bind to all interfaces to avoid issues with multi-homed setups
-        self.server = SimpleTFTPServer(ip, self.resource.port, self.resource.root, logger=self.logger)
+        self.server = SimpleTFTPServer(
+            ip, self.resource.port, self.resource.root, logger=self.logger
+        )
         self.server.start()
+
     def on_deactivate(self):
         if self.server:
             self.server.stop()

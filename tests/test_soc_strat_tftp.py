@@ -24,4 +24,6 @@ def test_shell(target, in_shell):
 
     # output is (stdout_lines, stderr_lines, exitcode)
     stdout_lines = output[0]
-    assert any("Linux" in line for line in stdout_lines), f"Did not see 'Linux' in uname output: {stdout_lines}"
+    assert any("Linux" in line for line in stdout_lines), (
+        f"Did not see 'Linux' in uname output: {stdout_lines}"
+    )

@@ -52,16 +52,18 @@ class BootFPGASoCTFTP(Strategy):
     kernel_addr = attr.ib(default="0x30000000")
     dtb_addr = attr.ib(default="0x2A000000")
     # bitstream_addr = attr.ib(default="0x80000000") # Unused currently but good to have
-    bootargs = attr.ib(default="console=ttyPS0,115200 root=/dev/mmcblk0p2 rw earlycon earlyprintk rootfstype=ext4 rootwait")
+    bootargs = attr.ib(
+        default="console=ttyPS0,115200 root=/dev/mmcblk0p2 rw earlycon earlyprintk rootfstype=ext4 rootwait"
+    )
 
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
         self.logger.info("BootFPGASoCTFTP strategy initialized")
-        
+
         if self.tftp_driver:
             self.tftp_root_folder = self.tftp_driver.resource.root
             self.logger.info(f"Using managed TFTP server with root: {self.tftp_root_folder}")
-        
+
         if self.kuiper:
             self.target.activate(self.kuiper)
             self.logger.info("KuiperDLDriver activated")
@@ -74,9 +76,7 @@ class BootFPGASoCTFTP(Strategy):
         if not isinstance(status, Status):
             status = Status[status]
 
-        self.logger.debug(
-            f"Transitioning to {status} (Existing status: {self.status})"
-        )
+        self.logger.debug(f"Transitioning to {status} (Existing status: {self.status})")
 
         if status == Status.unknown:
             raise StrategyError(f"can not transition to {status}")
@@ -98,7 +98,7 @@ class BootFPGASoCTFTP(Strategy):
             self.transition(Status.powered_off)
             if self.tftp_driver:
                 self.target.activate(self.tftp_driver)
-                
+
             if not self.kuiper:
                 self.logger.warning("No KuiperDLDriver attached, skipping boot file update check")
             else:
@@ -143,14 +143,14 @@ class BootFPGASoCTFTP(Strategy):
                 f"setenv tftpport {self.tftp_driver.resource.port}",
                 "printenv tftpdstport",
                 f"ping {self.tftp_server.get_ip()}",
-                 # Default bootargs if not set
-                 f"setenv bootargs {self.bootargs}",
-                 f"tftpboot {self.kernel_addr} Image",
-                 f"tftpboot {self.dtb_addr} system.dtb",
+                # Default bootargs if not set
+                f"setenv bootargs {self.bootargs}",
+                f"tftpboot {self.kernel_addr} Image",
+                f"tftpboot {self.dtb_addr} system.dtb",
             ]
 
             for cmd in commands:
-                self.shell.run_uboot(f"{cmd}\n", timeout=60) # Increased timeout for TFTP
+                self.shell.run_uboot(f"{cmd}\n", timeout=60)  # Increased timeout for TFTP
                 self.shell._check_prompt_uboot()
 
             # Boot the kernel
@@ -159,13 +159,19 @@ class BootFPGASoCTFTP(Strategy):
 
             # Check if we reached Linux prompt
             self.shell.prompt = org_prompt
-            self.shell.console.expect(self.reached_linux_marker, timeout=self.wait_for_linux_prompt_timeout)
+            self.shell.console.expect(
+                self.reached_linux_marker, timeout=self.wait_for_linux_prompt_timeout
+            )
             self.shell.bypass_login = False
             self.target.deactivate(self.shell)
             self.logger.debug("Booted")
 
         elif status == Status.shell:
-            self.transition(Status.booting_new if hasattr(Status, 'booting_new') and self.status == Status.booting_new else Status.booted) # fallback to booted if direct path
+            self.transition(
+                Status.booting_new
+                if hasattr(Status, "booting_new") and self.status == Status.booting_new
+                else Status.booted
+            )  # fallback to booted if direct path
             self.target.activate(self.shell)
 
         elif status == Status.soft_off:
