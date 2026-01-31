@@ -618,3 +618,74 @@ class ADIShellDriver(CommandMixin, Driver, CommandProtocol, FileTransferProtocol
         matches = re.findall(regex, "\n".join(ip_show), re.X)
 
         return list(map(ipaddress.ip_interface, matches))
+
+
+#### UBOOT STUFF
+    def _run_uboot(self, cmd: str, *, timeout: int = 30, codec: str = "utf-8", decodeerrors: str = "strict"):  # pylint: disable=unused-argument,line-too-long
+        # TODO: use codec, decodeerrors
+        # TODO: Shell Escaping for the U-Boot Shell
+        marker = gen_marker()
+        cmp_command = f"""echo '{marker[:4]}''{marker[4:]}'; {cmd}; echo "$?"; echo '{marker[:4]}''{marker[4:]}';"""  # pylint: disable=line-too-long
+        print(f"{self._status=}")
+        if True: #self._status == 1:
+            self.console.sendline(cmp_command)
+            _, before, _, _ = self.console.expect(self.prompt, timeout=timeout)
+            # Remove VT100 Codes and split by newline
+            data = re_vt100.sub(
+                '', before.decode('utf-8'), count=1000000
+            ).replace("\r", "").split("\n")
+            self.logger.debug("Received Data: %s", data)
+            # Remove first element, the invoked cmd
+            print(f"{data=}")
+            if marker in data:
+                print('FOUND MARKER')
+            data = ''.join(data)
+            data = data.split(marker)[1]
+            return (data, [], 0)
+            data = data[data.index(marker) + 1:]
+            data = data[:data.index(marker)]
+            exitcode = int(data[-1])
+            del data[-1]
+            return (data, [], exitcode)
+
+        return None
+
+    @Driver.check_active
+    @step(args=['cmd'], result=True)
+    def run_uboot(self, cmd, timeout=30):
+        """
+        Runs the specified command on the shell and returns the output.
+
+        Args:
+            cmd (str): command to run on the shell
+            timeout (int): optional, how long to wait for completion
+
+        Returns:
+            Tuple[List[str],List[str], int]: if successful, None otherwise
+        """
+        return self._run_uboot(cmd, timeout=timeout)
+
+    def get_status_uboot(self):
+        """Retrieve status of the UBootDriver.
+        0 means inactive, 1 means active.
+
+        Returns:
+            int: status of the driver
+        """
+        return self._status
+
+    def _check_prompt_uboot(self):
+        """
+        Internal function to check if we have a valid prompt.
+        It sets the internal _status to 1 or 0 based on the prompt detection.
+        """
+        marker = gen_marker()
+        # hide marker from expect
+        self.console.sendline(f"echo '{marker[:4]}''{marker[4:]}'")
+        try:
+            self.console.expect(f"{marker}", timeout=2)
+            self.console.expect(self.prompt, timeout=1)
+            self._status = 1
+        except TIMEOUT:
+            self._status = 0
+            raise
