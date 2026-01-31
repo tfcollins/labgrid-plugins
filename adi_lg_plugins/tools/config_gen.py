@@ -188,7 +188,9 @@ class ConfigGenerator:
         selected_strategy = Prompt.ask("Select Strategy", choices=strategies, default="BootFPGASoC")
 
         self.target_name = Prompt.ask("Target Name", default="main")
-
+        if self.target_name != "main":
+            self.config["targets"][self.target_name] = self.config["targets"].pop("main")
+        
         # Common configurations
         self.configure_power()
         self.configure_shell()
