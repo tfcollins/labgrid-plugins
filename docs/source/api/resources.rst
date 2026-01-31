@@ -35,6 +35,14 @@ KuiperRelease
    :undoc-members:
    :show-inheritance:
 
+TFTPServerResource
+------------------
+
+.. autoclass:: adi_lg_plugins.resources.tftpserver.TFTPServerResource
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 XilinxDeviceJTAG
 ----------------
 
