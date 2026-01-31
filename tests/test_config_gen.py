@@ -22,7 +22,7 @@ def test_generate_config_soc(mock_confirm, mock_int, mock_prompt, mock_scan):
     runner = CliRunner()
 
     # Mock System Discovery
-    mock_scan.return_value = ["/dev/ttyUSB0"]
+    mock_scan.return_value = [("/dev/ttyUSB0", "Test Device")]
 
     # Define inputs
     # Strategy -> Target -> Power -> Shell -> SDMux -> MassStorage -> Kuiper -> ImageWriter -> Output
@@ -120,7 +120,7 @@ def test_generate_config_soc(mock_confirm, mock_int, mock_prompt, mock_scan):
 def test_generate_config_tftp(mock_confirm, mock_int, mock_prompt, mock_ip, mock_scan):
     runner = CliRunner()
 
-    mock_scan.return_value = ["/dev/ttyUSB0"]
+    mock_scan.return_value = [("/dev/ttyUSB0", "Test Device")]
     mock_ip.return_value = "10.0.0.5"
 
     # Strategy -> Target -> Power -> Shell -> TFTP -> Kuiper -> SSH (Optional) -> Output
