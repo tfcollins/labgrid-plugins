@@ -1,7 +1,7 @@
 import enum
-import time
 import os
 import shutil
+import time
 
 import attr
 from labgrid.factory import target_factory
@@ -39,6 +39,7 @@ class BootFPGASoCTFTP(Strategy):
         "ssh": {"SSHDriver", None},
         "kuiper": {"KuiperDLDriver", None},
         "tftp_server": "TFTPServerResource",
+        "tftp_driver": "TFTPServerDriver",
     }
 
     status = attr.ib(default=Status.unknown)
@@ -46,7 +47,7 @@ class BootFPGASoCTFTP(Strategy):
     reached_linux_marker = attr.ib(default="analog")
     wait_for_linux_prompt_timeout = attr.ib(default=60)
     tftp_root_folder = attr.ib(default="/var/lib/tftpboot")
-    
+
     # Memory addresses for boot components
     kernel_addr = attr.ib(default="0x30000000")
     dtb_addr = attr.ib(default="0x2A000000")
@@ -56,6 +57,11 @@ class BootFPGASoCTFTP(Strategy):
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
         self.logger.info("BootFPGASoCTFTP strategy initialized")
+        
+        if self.tftp_driver:
+            self.tftp_root_folder = self.tftp_driver.resource.root
+            self.logger.info(f"Using managed TFTP server with root: {self.tftp_root_folder}")
+        
         if self.kuiper:
             self.target.activate(self.kuiper)
             self.logger.info("KuiperDLDriver activated")
@@ -74,22 +80,27 @@ class BootFPGASoCTFTP(Strategy):
 
         if status == Status.unknown:
             raise StrategyError(f"can not transition to {status}")
-        
+
         if status == self.status:
             step.skip("nothing to do")
             return
 
         if status == Status.powered_off:
             self.target.deactivate(self.shell)
+            if self.tftp_driver:
+                self.target.deactivate(self.tftp_driver)
             if self.power:
                 self.target.activate(self.power)
                 self.power.off()
             self.logger.debug("Powered off")
-            
+
         elif status == Status.update_boot_files:
             self.transition(Status.powered_off)
+            if self.tftp_driver:
+                self.target.activate(self.tftp_driver)
+                
             if not self.kuiper:
-                 self.logger.warning("No KuiperDLDriver attached, skipping boot file update check")
+                self.logger.warning("No KuiperDLDriver attached, skipping boot file update check")
             else:
                 for boot_file in self.kuiper._boot_files:
                     self.logger.debug(f"Copying {boot_file} to {self.tftp_root_folder}")
@@ -97,7 +108,7 @@ class BootFPGASoCTFTP(Strategy):
                         raise StrategyError(f"Boot file {boot_file} does not exist")
                     target = os.path.join(self.tftp_root_folder, os.path.basename(boot_file))
                     shutil.copyfile(boot_file, target)
-                    
+
         elif status == Status.booting:
             self.transition(Status.update_boot_files)
             if self.power:
@@ -105,18 +116,18 @@ class BootFPGASoCTFTP(Strategy):
                 time.sleep(5)
                 self.power.on()
             self.logger.debug("Booting...")
-            
+
         elif status == Status.booted:
             self.transition(Status.booting)
             self.shell.bypass_login = True
             self.target.activate(self.shell)
-            
+
             # Stop autoboot
             self.shell.console.expect("Hit any key to stop autoboot", timeout=30)
             self.logger.info("Found autoboot prompt, stopping autoboot")
             self.shell.console.sendline(" ")
             time.sleep(2)
-            
+
             org_prompt = self.shell.prompt
             # Temporarily set prompt to U-Boot prompt match
             self.shell.prompt = "ZynqMP>.*"
@@ -128,6 +139,10 @@ class BootFPGASoCTFTP(Strategy):
                 "setenv autoload no",
                 "dhcp",
                 f"setenv serverip {self.tftp_server.get_ip()}",
+                f"setenv tftpdstport {self.tftp_driver.resource.port}",
+                f"setenv tftpport {self.tftp_driver.resource.port}",
+                "printenv tftpdstport",
+                f"ping {self.tftp_server.get_ip()}",
                  # Default bootargs if not set
                  f"setenv bootargs {self.bootargs}",
                  f"tftpboot {self.kernel_addr} Image",
@@ -164,13 +179,13 @@ class BootFPGASoCTFTP(Strategy):
                 self.logger.debug(f"Soft off failed: {e}")
                 time.sleep(5)
                 self.target.deactivate(self.shell)
-            
+
             if self.power:
                 self.target.activate(self.power)
                 self.power.off()
             self.logger.debug("Soft powered off")
-            
+
         else:
             raise StrategyError(f"no transition found from {self.status} to {status}")
-            
+
         self.status = status
