@@ -15,6 +15,7 @@ class DummyTarget:
     def bind(self, item):
         item.target = self
 
+
 def test_tftp_driver_basic_transfer(tmp_path):
     # Setup
     port = 10069
@@ -53,7 +54,7 @@ def test_tftp_driver_basic_transfer(tmp_path):
                 pytest.fail("Timeout waiting for data")
 
             opcode = data[:2]
-            if opcode == b"\x00\x03": # DATA
+            if opcode == b"\x00\x03":  # DATA
                 block_num = int.from_bytes(data[2:4], "big")
                 if block_num == block:
                     received += data[4:]
@@ -71,7 +72,7 @@ def test_tftp_driver_basic_transfer(tmp_path):
                 else:
                     # Ignore duplicates
                     pass
-            elif opcode == b"\x00\x05": # ERROR
+            elif opcode == b"\x00\x05":  # ERROR
                 pytest.fail(f"TFTP Error: {data[4:].decode(errors='replace')}")
             else:
                 pytest.fail(f"Unexpected opcode: {opcode}")

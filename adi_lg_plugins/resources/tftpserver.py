@@ -9,6 +9,7 @@ from labgrid.resource.common import Resource
 @attr.s(eq=False)
 class TFTPServerResource(Resource):
     """Resource to configure or discover the TFTP server address."""
+
     address = attr.ib(default="auto", validator=attr.validators.instance_of(str))
     port = attr.ib(default=3069, validator=attr.validators.instance_of(int))
     root = attr.ib(default="/var/lib/tftpboot", validator=attr.validators.instance_of(str))

@@ -27,6 +27,24 @@ pip install -e ".[dev]"
 pip install -e ".[docs]"
 ```
 
+### Automation (Nox)
+
+Nox is used to automate testing, linting, and documentation tasks in isolated environments.
+
+```bash
+# Run all default sessions (lint, tests, docs)
+nox
+
+# Run a specific session
+nox -s lint
+nox -s format
+nox -s tests
+nox -s docs
+
+# Pass arguments to the test session (e.g., run specific test)
+nox -s tests -- -k test_name
+```
+
 ### Linting and Code Quality
 
 ```bash

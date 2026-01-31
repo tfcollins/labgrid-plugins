@@ -619,31 +619,34 @@ class ADIShellDriver(CommandMixin, Driver, CommandProtocol, FileTransferProtocol
 
         return list(map(ipaddress.ip_interface, matches))
 
-
-#### UBOOT STUFF
-    def _run_uboot(self, cmd: str, *, timeout: int = 30, codec: str = "utf-8", decodeerrors: str = "strict"):  # pylint: disable=unused-argument,line-too-long
+    #### UBOOT STUFF
+    def _run_uboot(
+        self, cmd: str, *, timeout: int = 30, codec: str = "utf-8", decodeerrors: str = "strict"
+    ):  # pylint: disable=unused-argument,line-too-long
         # TODO: use codec, decodeerrors
         # TODO: Shell Escaping for the U-Boot Shell
         marker = gen_marker()
         cmp_command = f"""echo '{marker[:4]}''{marker[4:]}'; {cmd}; echo "$?"; echo '{marker[:4]}''{marker[4:]}';"""  # pylint: disable=line-too-long
         print(f"{self._status=}")
-        if True: #self._status == 1:
+        if True:  # self._status == 1:
             self.console.sendline(cmp_command)
             _, before, _, _ = self.console.expect(self.prompt, timeout=timeout)
             # Remove VT100 Codes and split by newline
-            data = re_vt100.sub(
-                '', before.decode('utf-8'), count=1000000
-            ).replace("\r", "").split("\n")
+            data = (
+                re_vt100.sub("", before.decode("utf-8"), count=1000000)
+                .replace("\r", "")
+                .split("\n")
+            )
             self.logger.debug("Received Data: %s", data)
             # Remove first element, the invoked cmd
             print(f"{data=}")
             if marker in data:
-                print('FOUND MARKER')
-            data = ''.join(data)
+                print("FOUND MARKER")
+            data = "".join(data)
             data = data.split(marker)[1]
             return (data, [], 0)
-            data = data[data.index(marker) + 1:]
-            data = data[:data.index(marker)]
+            data = data[data.index(marker) + 1 :]
+            data = data[: data.index(marker)]
             exitcode = int(data[-1])
             del data[-1]
             return (data, [], exitcode)
@@ -651,7 +654,7 @@ class ADIShellDriver(CommandMixin, Driver, CommandProtocol, FileTransferProtocol
         return None
 
     @Driver.check_active
-    @step(args=['cmd'], result=True)
+    @step(args=["cmd"], result=True)
     def run_uboot(self, cmd, timeout=30):
         """
         Runs the specified command on the shell and returns the output.
