@@ -80,6 +80,7 @@ bootsocstrategy = "adi_lg_plugins.strategies.bootfpgasoc:BootFPGASoC"
 bootsocsshstrategy = "adi_lg_plugins.strategies.bootfpgasocssh:BootFPGASoCSSH"
 bootselmap = "adi_lg_plugins.strategies.bootselmap:BootSelMap"
 bootfabric = "adi_lg_plugins.strategies.bootfabric:BootFabric"
+bootsoctftp = "adi_lg_plugins.strategies.bootfpgasoctftp:BootFPGASoCTFTP"
 
 [tool.ruff]
 line-length = 100
