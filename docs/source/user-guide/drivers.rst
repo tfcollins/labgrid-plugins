@@ -48,6 +48,91 @@ Or within a strategy context (automatic activation):
     strategy = target.get_driver("BootFPGASoC")
     strategy.transition("shell")
 
+Network Drivers
+---------------
+
+TFTPServerDriver
+~~~~~~~~~~~~~~~~
+
+**Purpose**: Hosting a TFTP server to serve boot files (kernel images, device trees) to targets (e.g. U-Boot).
+
+**Required Resource**: TFTPServerResource
+
+**Bindings**: None
+
+**Configuration**
+
+.. code-block:: yaml
+
+    resources:
+      TFTPServerResource:
+        address: '10.0.0.1'           # IP address of the host interface
+        port: 3069                    # Port to bind (default: 3069)
+        root: '/var/lib/tftpboot'     # Root directory for serving files
+
+    drivers:
+      TFTPServerDriver: {}
+
+**Key Parameters**
+
+- **address** (required): IP address of the interface on the host machine where the TFTP server will bind.
+- **port** (optional): UDP port to listen on. Defaults to **3069**.
+- **root** (optional): Local directory to serve files from. Defaults to ``/var/lib/tftpboot``.
+
+**Port Forwarding (Non-Root Usage)**
+
+Standard TFTP uses port **69**. However, binding to ports below 1024 requires root privileges.
+The driver defaults to port **3069** to allow running as a standard user.
+
+Since U-Boot often defaults to port 69, you must configure a port redirection rule on the host machine using ``iptables`` to forward traffic from port 69 to 3069.
+
+**Setup (Run once on Host):**
+
+.. code-block:: bash
+
+    # Redirect UDP port 69 to 3069
+    sudo iptables -t nat -A PREROUTING -p udp --dport 69 -j REDIRECT --to-port 3069
+
+**Cleanup (To remove the rule):**
+
+.. code-block:: bash
+
+    sudo iptables -t nat -D PREROUTING -p udp --dport 69 -j REDIRECT --to-port 3069
+
+**Methods**
+
+.. code-block:: python
+
+    tftp = target.get_driver("TFTPServerDriver")
+    target.activate(tftp) # Starts the server thread
+
+    # The server runs in the background serving files from the configured 'root' directory.
+    # It handles RRQ (Read Request) operations compliant with RFC 1350.
+
+    target.deactivate(tftp) # Stops the server thread
+
+**Usage Example**
+
+Used within the ``BootFPGASoCTFTP`` strategy to serve boot files:
+
+.. code-block:: python
+
+    strategy = target.get_driver("BootFPGASoCTFTP")
+    
+    # The strategy automatically:
+    # 1. Activates the TFTPServerDriver
+    # 2. Configures U-Boot environment (serverip, tftpport)
+    # 3. Copies necessary files (Image, system.dtb) to the TFTP root
+    # 4. Triggers the TFTP boot command on the target
+
+    strategy.transition("booted")
+
+**Troubleshooting**
+
+- **Permission Denied (Bind)**: Ensure you are not trying to bind to port 69 directly without root. Use port 3069 and iptables.
+- **Timeout**: Check firewall settings (``ufw``). Ensure the target can ping the host IP.
+- **File Not Found**: Verify the file exists in the ``root`` directory specified in configuration.
+
 Power Control Drivers
 ---------------------
 

@@ -75,6 +75,17 @@ XilinxJTAGDriver
    :undoc-members:
    :show-inheritance:
 
+Network Drivers
+---------------
+
+TFTPServerDriver
+~~~~~~~~~~~~~~~~
+
+.. autoclass:: adi_lg_plugins.drivers.tftpserverdriver.TFTPServerDriver
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Utility Classes
 ~~~~~~~~~~~~~~~
 

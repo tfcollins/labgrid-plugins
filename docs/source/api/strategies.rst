@@ -29,6 +29,19 @@ BootFPGASoCSSH
    :undoc-members:
    :no-index:
 
+BootFPGASoCTFTP
+---------------
+
+.. autoclass:: adi_lg_plugins.strategies.bootfpgasoctftp.BootFPGASoCTFTP
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. autoclass:: adi_lg_plugins.strategies.bootfpgasoctftp.Status
+   :members:
+   :undoc-members:
+   :no-index:
+
 BootSelMap
 ----------
 
