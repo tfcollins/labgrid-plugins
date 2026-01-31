@@ -30,6 +30,7 @@ pip install -e ".[docs]"
 ### Automation (Nox)
 
 Nox is used to automate testing, linting, and documentation tasks in isolated environments.
+It is configured to use `uv` as the backend for faster environment creation and package installation.
 
 ```bash
 # Run all default sessions (lint, tests, docs)
