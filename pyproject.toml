@@ -73,6 +73,7 @@ kuiperresource = "adi_lg_plugins.resources.kuiperrelease:KuiperRelease"
 cyberpowerresource = "adi_lg_plugins.resources.cyberpowerpdu:CyberPowerOutlet"
 xilinxdevicejtag = "adi_lg_plugins.resources.xilinxdevice:XilinxDeviceJTAG"
 xilinxvivadotool = "adi_lg_plugins.resources.xilinxtool:XilinxVivadoTool"
+tftpserverresource = "adi_lg_plugins.resources.tftpserver:TFTPServerResource"
 
 
 [project.entry-points."labgrid.strategies"]
