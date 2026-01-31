@@ -2,25 +2,11 @@ import enum
 import time
 import os
 import shutil
-import socket
 
 import attr
 from labgrid.factory import target_factory
 from labgrid.step import step
 from labgrid.strategy import Strategy, StrategyError, never_retry
-
-
-def get_local_ip():
-    """Attempts to determine the local IP address by connecting to a public DNS."""
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        # using Google's DNS server to determine local IP, no data sent
-        s.connect(("8.8.8.8", 80))
-        ip = s.getsockname()[0]
-        s.close()
-        return ip
-    except Exception:
-        return "127.0.0.1"
 
 
 class Status(enum.Enum):
@@ -42,6 +28,7 @@ class BootFPGASoCTFTP(Strategy):
 
     This strategy manages the boot process of an FPGA SoC device by utilizing
     both the ShellDriver for initial boot interactions and TFTP for kernel loading.
+    It depends on a `TFTPServerResource` to provide the server IP address.
     It handles transitions through various states including powering off, booting,
     updating boot files, and entering a shell.
     """
@@ -51,6 +38,7 @@ class BootFPGASoCTFTP(Strategy):
         "shell": "ADIShellDriver",
         "ssh": {"SSHDriver", None},
         "kuiper": {"KuiperDLDriver", None},
+        "tftp_server": "TFTPServerResource",
     }
 
     status = attr.ib(default=Status.unknown)
@@ -139,7 +127,7 @@ class BootFPGASoCTFTP(Strategy):
             commands = [
                 "setenv autoload no",
                 "dhcp",
-                f"setenv serverip {get_local_ip()}",
+                f"setenv serverip {self.tftp_server.get_ip()}",
                  # Default bootargs if not set
                  f"setenv bootargs {self.bootargs}",
                  f"tftpboot {self.kernel_addr} Image",
