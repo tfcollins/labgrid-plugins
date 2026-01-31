@@ -99,6 +99,39 @@ Boot a dual-FPGA system using the ``BootSelMap`` strategy.
 * ``-t, --target <name>``: Target name in the configuration (default: ``main``).
 * ``--state <name>``: Target state to transition to (default: ``shell``).
 
+generate-config
+~~~~~~~~~~~~~~~
+
+Interactively generate a Labgrid YAML configuration file. This wizard scans for available hardware (serial ports) and guides you through setting up strategies, power drivers, and other resources.
+
+.. code-block:: bash
+
+    adi-lg generate-config
+
+**Features:**
+
+* **Interactive:** Prompts for necessary configuration values.
+* **Hardware Scanning:** Automatically detects serial ports and local IP addresses.
+* **Strategy Support:** Configures ``BootFPGASoC``, ``BootFPGASoCTFTP``, and ``BootFPGASoCSSH``.
+* **Resource Configuration:** Sets up Power Drivers (VeSync, CyberPower), Serial/Console, SD Mux, TFTP, and more.
+
+**Example Session:**
+
+.. code-block:: text
+
+    Select Strategy [BootFPGASoC]: BootFPGASoC
+    Target Name [main]: zcu102
+    Configuring Power Protocol
+    Select Power Driver [VesyncPowerDriver]: VesyncPowerDriver
+    Outlet Names (comma separated): ZCU102
+    VeSync Username: user@example.com
+    VeSync Password: [hidden]
+    Configuring Shell / Console
+    Detected Serial Ports: /dev/ttyUSB0, /dev/ttyUSB1
+    Select Serial Port [/dev/ttyUSB0]: /dev/ttyUSB0
+    ...
+    Configuration generated: config_zcu102.yaml
+
 Examples
 --------
 
