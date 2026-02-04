@@ -29,8 +29,9 @@ class Status(enum.Enum):
     powered_on = 2
     flash_fpga = 3
     booted = 4
-    shell = 5
-    soft_off = 6
+    fixup_networking = 5
+    shell = 6
+    soft_off = 7
 
 
 @target_factory.reg_driver
@@ -49,7 +50,8 @@ class BootFabric(Strategy):
         3. Download Linux kernel image via JTAG
         4. Start kernel execution
         5. Wait for boot completion and verify shell access
-        6. Provide interactive shell access
+        6. Fixup networking
+        7. Provide interactive shell access
 
     Bindings:
         power: PowerProtocol (optional) - Power control (on/off)
@@ -89,6 +91,10 @@ class BootFabric(Strategy):
     verify_iio_device = attr.ib(
         default=None,
         validator=attr.validators.optional(attr.validators.instance_of(str)),
+    )
+    trigger_dhcp_reset = attr.ib(
+        default=False,
+        validator=attr.validators.instance_of(bool),
     )
 
     def __attrs_post_init__(self):
@@ -199,8 +205,22 @@ class BootFabric(Strategy):
                 time.sleep(self.wait_for_boot_timeout)
                 self.logger.info("Assumed booted (no shell verification)")
 
-        elif status == Status.shell:
+        elif status == Status.fixup_networking:
             self.transition(Status.booted)
+            if self.shell:
+                if self.trigger_dhcp_reset:
+                    self.target.activate(self.shell)
+                    self.shell.run("ifconfig eth0 down")
+                    self.shell.run("ifconfig eth0 up")
+                    self.shell.run("udhcpc -i eth0")
+                    time.sleep(2)
+                    self.target.deactivate(self.shell)
+                    self.logger.info("Networking fixed up")
+            else:
+                raise StrategyError("Networking fixup requested but no shell driver configured")
+
+        elif status == Status.shell:
+            self.transition(Status.fixup_networking)
             if self.shell:
                 self.target.activate(self.shell)
                 # Optional: Verify IIO device if configured
