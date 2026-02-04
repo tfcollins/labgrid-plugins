@@ -264,10 +264,10 @@ class BootFabric(Strategy):
         self.logger.info(f"Verifying IIO device: {self.verify_iio_device}")
         for _attempt in range(30):
             stdout, stderr, returncode = self.shell.run(
-                f"iio_attr -d {self.verify_iio_device} name",
+                f"iio_attr -d {self.verify_iio_device}",
                 timeout=5,
             )
-            if returncode == 0 and "could not find device" not in stdout:
+            if returncode == 0 and "could not find" not in stdout:
                 self.logger.info(f"IIO device {self.verify_iio_device} found and ready")
                 return
             time.sleep(1)
