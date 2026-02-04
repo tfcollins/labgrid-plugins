@@ -21,6 +21,7 @@ dependencies = [
     "click",
     "rich",
     "fastmcp",
+    "usbsdmux",
 ]
 
 [project.optional-dependencies]
