@@ -1,6 +1,8 @@
 import asyncio
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from adi_lg_plugins.tools.mcp import _boot_fabric, _boot_selmap, _boot_soc, mcp
 
 
@@ -69,3 +71,20 @@ def test_mcp_error_handling(mock_get, tmp_path):
 
     result = _boot_fabric(str(config))
     assert "Error during BootFabric transition: Environment error" in result
+
+
+def test_boot_fabric_real(lg_config):
+    """
+    Test BootFabric with a real configuration file if provided.
+    This test runs creating a real Labgrid environment (no mocking).
+    """
+    if not lg_config:
+        pytest.skip("No real configuration file provided (--lg-config)")
+
+    print(f"Running E2E BootFabric test with config: {lg_config}")
+
+    # We pass 'shell' as state to fully exercise the boot process
+    result = _boot_fabric(config_path=lg_config, target="main", state="shell")
+
+    print("Result:", result)
+    assert "Successfully reached state 'shell'" in result
