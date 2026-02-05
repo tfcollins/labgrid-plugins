@@ -1,0 +1,14 @@
+{
+  "mcpServers": {
+    "adi-labgrid": {
+      "command": "uv",
+      "args": [
+        "run",
+        "adi-lg-mcp"
+      ],
+      "env": {
+        "PYTHONPATH": "${workspaceFolder}"
+      }
+    }
+  }
+}
