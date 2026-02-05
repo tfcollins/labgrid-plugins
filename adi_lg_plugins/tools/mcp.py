@@ -1,11 +1,28 @@
+import json
 import os
 import uuid
+from dataclasses import asdict, dataclass
 
 from fastmcp import FastMCP
 from labgrid import Environment
 
 # Initialize FastMCP server
 mcp = FastMCP("ADI Labgrid Plugins")
+
+
+@dataclass
+class BootResult:
+    """Structured result for boot operations."""
+
+    status: str  # "success" or "fail"
+    session_id: str
+    message: str
+    boot_log: str = ""
+    error: str = ""
+
+    def to_json(self) -> str:
+        """Convert to JSON string."""
+        return json.dumps(asdict(self), indent=2)
 
 
 class SessionManager:
@@ -87,6 +104,8 @@ def _boot_fabric(
     state: str = "shell",
     session_id: str | None = None,
 ) -> str:
+    boot_log = ""
+    active_session_id = ""
     try:
         tg, strategy, active_session_id = _get_target_and_strategy(
             config_path, target, "BootFabric", session_id
@@ -102,9 +121,30 @@ def _boot_fabric(
             pass
 
         strategy.transition(state)
-        return f"Successfully reached state '{state}' for target '{target}' using BootFabric. Session ID: {active_session_id}"
+        boot_log = getattr(strategy, "boot_log", "")
+
+        return BootResult(
+            status="success",
+            session_id=active_session_id,
+            message=f"Successfully reached state '{state}' for target '{target}' using BootFabric.",
+            boot_log=boot_log,
+        ).to_json()
     except Exception as e:
-        return f"Error during BootFabric transition: {str(e)}"
+        # Try to capture partial boot log on failure
+        if active_session_id:
+            try:
+                _, _, strat = session_manager.get_session(active_session_id)
+                boot_log = getattr(strat, "boot_log", "")
+            except Exception:
+                pass
+
+        return BootResult(
+            status="fail",
+            session_id=active_session_id,
+            message="Boot failed",
+            boot_log=boot_log,
+            error=str(e),
+        ).to_json()
 
 
 @mcp.tool()
@@ -141,6 +181,8 @@ def _boot_soc(
     update_image: bool = False,
     session_id: str | None = None,
 ) -> str:
+    boot_log = ""
+    active_session_id = ""
     try:
         tg, strategy, active_session_id = _get_target_and_strategy(
             config_path, target, "BootFPGASoC", session_id
@@ -163,9 +205,30 @@ def _boot_soc(
             strategy.update_image = True
 
         strategy.transition(state)
-        return f"Successfully reached state '{state}' for target '{target}' using BootFPGASoC. Session ID: {active_session_id}"
+        boot_log = getattr(strategy, "boot_log", "")
+
+        return BootResult(
+            status="success",
+            session_id=active_session_id,
+            message=f"Successfully reached state '{state}' for target '{target}' using BootFPGASoC.",
+            boot_log=boot_log,
+        ).to_json()
     except Exception as e:
-        return f"Error during BootFPGASoC transition: {str(e)}"
+        # Try to capture partial boot log on failure
+        if active_session_id:
+            try:
+                _, _, strat = session_manager.get_session(active_session_id)
+                boot_log = getattr(strat, "boot_log", "")
+            except Exception:
+                pass
+
+        return BootResult(
+            status="fail",
+            session_id=active_session_id,
+            message="Boot failed",
+            boot_log=boot_log,
+            error=str(e),
+        ).to_json()
 
 
 @mcp.tool()
@@ -217,6 +280,8 @@ def _boot_soc_ssh(
     state: str = "shell",
     session_id: str | None = None,
 ) -> str:
+    boot_log = ""
+    active_session_id = ""
     try:
         tg, strategy, active_session_id = _get_target_and_strategy(
             config_path, target, "BootFPGASoCSSH", session_id
@@ -236,9 +301,30 @@ def _boot_soc_ssh(
             pass
 
         strategy.transition(state)
-        return f"Successfully reached state '{state}' for target '{target}' using BootFPGASoCSSH. Session ID: {active_session_id}"
+        boot_log = getattr(strategy, "boot_log", "")
+
+        return BootResult(
+            status="success",
+            session_id=active_session_id,
+            message=f"Successfully reached state '{state}' for target '{target}' using BootFPGASoCSSH.",
+            boot_log=boot_log,
+        ).to_json()
     except Exception as e:
-        return f"Error during BootFPGASoCSSH transition: {str(e)}"
+        # Try to capture partial boot log on failure
+        if active_session_id:
+            try:
+                _, _, strat = session_manager.get_session(active_session_id)
+                boot_log = getattr(strat, "boot_log", "")
+            except Exception:
+                pass
+
+        return BootResult(
+            status="fail",
+            session_id=active_session_id,
+            message="Boot failed",
+            boot_log=boot_log,
+            error=str(e),
+        ).to_json()
 
 
 @mcp.tool()
@@ -285,6 +371,8 @@ def _boot_selmap(
     state: str = "shell",
     session_id: str | None = None,
 ) -> str:
+    boot_log = ""
+    active_session_id = ""
     try:
         tg, strategy, active_session_id = _get_target_and_strategy(
             config_path, target, "BootSelMap", session_id
@@ -300,9 +388,30 @@ def _boot_selmap(
             }
 
         strategy.transition(state)
-        return f"Successfully reached state '{state}' for target '{target}' using BootSelMap. Session ID: {active_session_id}"
+        boot_log = getattr(strategy, "boot_log", "")
+
+        return BootResult(
+            status="success",
+            session_id=active_session_id,
+            message=f"Successfully reached state '{state}' for target '{target}' using BootSelMap.",
+            boot_log=boot_log,
+        ).to_json()
     except Exception as e:
-        return f"Error during BootSelMap transition: {str(e)}"
+        # Try to capture partial boot log on failure
+        if active_session_id:
+            try:
+                _, _, strat = session_manager.get_session(active_session_id)
+                boot_log = getattr(strat, "boot_log", "")
+            except Exception:
+                pass
+
+        return BootResult(
+            status="fail",
+            session_id=active_session_id,
+            message="Boot failed",
+            boot_log=boot_log,
+            error=str(e),
+        ).to_json()
 
 
 @mcp.tool()
@@ -371,8 +480,6 @@ def list_sessions() -> str:
     """
     List all active sessions and their metadata.
     """
-    import json
-
     return json.dumps(_list_sessions(), indent=2)
 
 
@@ -388,8 +495,6 @@ def get_session_info(session_id: str) -> str:
     Args:
         session_id: The ID of the session to inspect.
     """
-    import json
-
     try:
         return json.dumps(_get_session_info(session_id), indent=2)
     except ValueError as e:

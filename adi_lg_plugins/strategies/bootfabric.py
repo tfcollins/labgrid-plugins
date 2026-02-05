@@ -98,6 +98,7 @@ class BootFabric(Strategy):
         default=False,
         validator=attr.validators.instance_of(bool),
     )
+    boot_log = attr.ib(default="", init=False)
 
     def __attrs_post_init__(self):
         """Initialize strategy."""
@@ -190,15 +191,20 @@ class BootFabric(Strategy):
         elif status == Status.booted:
             # self.transition(Status.booting)
             self.transition(Status.flash_fpga)
+            self.boot_log = ""  # Reset boot log for this boot
             if self.shell:
                 self.shell.bypass_login = True
                 self.target.activate(self.shell)
                 # Wait for Linux kernel boot
-                self.shell.console.expect("Linux", timeout=30)
+                _, before, _, _ = self.shell.console.expect("Linux", timeout=30)
+                if before:
+                    self.boot_log += before.decode("utf-8", errors="replace")
                 # Wait for login prompt or marker
-                self.shell.console.expect(
+                _, before, _, _ = self.shell.console.expect(
                     self.reached_boot_marker, timeout=self.wait_for_boot_timeout
                 )
+                if before:
+                    self.boot_log += before.decode("utf-8", errors="replace")
                 self.shell.bypass_login = False
                 self.target.deactivate(self.shell)
                 self.logger.info("Microblaze kernel booted")

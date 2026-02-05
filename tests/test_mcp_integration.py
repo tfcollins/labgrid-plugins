@@ -50,8 +50,18 @@ def mcp_test_env(tmp_path):
 def test_boot_fabric_mcp_via_agent(mcp_test_env):
     """
     Tests the BootFabric strategy via the MCP server using the Gemini agent.
+    Verifies that boot tools return structured JSON with status, session_id,
+    boot_log, message, and error fields.
     """
-    prompt = "Use the MCP server to boot the board defined in vcu118_daq3.yaml using the BootFabric strategy. Wait for the boot to complete and then retrieve the 'dmesg' log. Print the IP address of the board. Over SSH run 'iio_attr -d' and print the output."
+    prompt = """Use the MCP server to boot the board defined in vcu118_daq3.yaml
+    using the BootFabric strategy. The boot_fabric tool returns JSON with fields:
+    'status', 'session_id', 'boot_log', 'message', and optionally 'error'.
+
+    After boot completes:
+    1. Check that 'status' is 'success'
+    2. Print a summary of the 'boot_log' field (first 500 characters)
+    3. Using the session_id, run 'iio_attr -d' via run_shell_command
+    4. Print the IIO output"""
 
     # Construct the command
     cmd = ["gemini", "--approval-mode", "yolo", "--prompt", prompt]

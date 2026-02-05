@@ -57,6 +57,7 @@ class BootFPGASoCSSH(Strategy):
 
     reached_linux_marker = attr.ib(default="analog")
     wait_for_linux_prompt_timeout = attr.ib(default=60)
+    boot_log = attr.ib(default="", init=False)
 
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
@@ -120,12 +121,14 @@ class BootFPGASoCSSH(Strategy):
             self.logger.debug("DEBUG Booting...")
         elif status == Status.booted:
             self.transition(Status.booting)
+            self.boot_log = ""  # Reset boot log for this boot
             if self.power:
                 self.shell.bypass_login = True
                 self.target.activate(self.shell)
                 # Check kernel start
-                self.shell.console.expect("Linux", timeout=30)
-                self.reached_linux_marker, timeout = self.wait_for_linux_prompt_timeout
+                _, before, _, _ = self.shell.console.expect("Linux", timeout=30)
+                if before:
+                    self.boot_log += before.decode("utf-8", errors="replace")
                 self.shell.bypass_login = False
                 self.target.deactivate(self.shell)
             self.logger.debug("DEBUG Booted")
@@ -179,15 +182,20 @@ class BootFPGASoCSSH(Strategy):
 
         elif status == Status.booting_new:
             self.transition(Status.reboot)
+            self.boot_log = ""  # Reset boot log for this boot (new kernel)
 
             self.shell.bypass_login = True
             self.target.activate(self.shell)
             # Check kernel start
-            self.shell.console.expect("Linux", timeout=30)
+            _, before, _, _ = self.shell.console.expect("Linux", timeout=30)
+            if before:
+                self.boot_log += before.decode("utf-8", errors="replace")
             # Check device prompt
-            self.shell.console.expect(
+            _, before, _, _ = self.shell.console.expect(
                 self.reached_linux_marker, timeout=self.wait_for_linux_prompt_timeout
             )
+            if before:
+                self.boot_log += before.decode("utf-8", errors="replace")
             self.target.deactivate(self.shell)
             self.shell.bypass_login = False
             self.logger.debug("DEBUG Booting new...")
