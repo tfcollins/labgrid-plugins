@@ -1,5 +1,7 @@
+import asyncio
 import json
 import os
+import threading
 import uuid
 from dataclasses import asdict, dataclass
 
@@ -30,41 +32,46 @@ class SessionManager:
 
     def __init__(self):
         self.sessions = {}
+        self._lock = threading.RLock()
 
     def create_session(self, config_path: str, target_name: str, strategy_driver: str) -> str:
         """Create a new session and return its ID."""
-        session_id = str(uuid.uuid4())
-        env = Environment(config_path)
-        tg = env.get_target(target_name)
-        strategy = tg.get_driver(strategy_driver)
-        self.sessions[session_id] = {
-            "env": env,
-            "target": tg,
-            "strategy": strategy,
-            "meta": {
-                "config_path": config_path,
-                "target_name": target_name,
-                "strategy_driver": strategy_driver,
-            },
-        }
-        return session_id
+        with self._lock:
+            session_id = str(uuid.uuid4())
+            env = Environment(config_path)
+            tg = env.get_target(target_name)
+            strategy = tg.get_driver(strategy_driver)
+            self.sessions[session_id] = {
+                "env": env,
+                "target": tg,
+                "strategy": strategy,
+                "meta": {
+                    "config_path": config_path,
+                    "target_name": target_name,
+                    "strategy_driver": strategy_driver,
+                },
+            }
+            return session_id
 
     def get_session(self, session_id: str):
         """Retrieve session components by ID."""
-        if session_id not in self.sessions:
-            raise ValueError(f"Session {session_id} not found")
-        data = self.sessions[session_id]
-        return data["env"], data["target"], data["strategy"]
+        with self._lock:
+            if session_id not in self.sessions:
+                raise ValueError(f"Session {session_id} not found")
+            data = self.sessions[session_id]
+            return data["env"], data["target"], data["strategy"]
 
     def get_session_details(self, session_id: str):
         """Retrieve session metadata."""
-        if session_id not in self.sessions:
-            raise ValueError(f"Session {session_id} not found")
-        return self.sessions[session_id]["meta"]
+        with self._lock:
+            if session_id not in self.sessions:
+                raise ValueError(f"Session {session_id} not found")
+            return self.sessions[session_id]["meta"].copy()
 
     def list_sessions(self):
         """List all active sessions."""
-        return {sid: data["meta"] for sid, data in self.sessions.items()}
+        with self._lock:
+            return {sid: data["meta"].copy() for sid, data in self.sessions.items()}
 
 
 session_manager = SessionManager()
@@ -148,7 +155,7 @@ def _boot_fabric(
 
 
 @mcp.tool()
-def boot_fabric(
+async def boot_fabric(
     config_path: str,
     bitstream_path: str | None = None,
     kernel_path: str | None = None,
@@ -167,7 +174,9 @@ def boot_fabric(
         state: Target state to transition to (default: 'shell').
         session_id: Optional session ID to reuse an existing session.
     """
-    return _boot_fabric(config_path, bitstream_path, kernel_path, target, state, session_id)
+    return await asyncio.to_thread(
+        _boot_fabric, config_path, bitstream_path, kernel_path, target, state, session_id
+    )
 
 
 def _boot_soc(
@@ -232,7 +241,7 @@ def _boot_soc(
 
 
 @mcp.tool()
-def boot_soc(
+async def boot_soc(
     config_path: str,
     release_version: str | None = None,
     kernel_path: str | None = None,
@@ -257,7 +266,8 @@ def boot_soc(
         update_image: Whether to update the full SD card image.
         session_id: Optional session ID to reuse an existing session.
     """
-    return _boot_soc(
+    return await asyncio.to_thread(
+        _boot_soc,
         config_path,
         release_version,
         kernel_path,
@@ -328,7 +338,7 @@ def _boot_soc_ssh(
 
 
 @mcp.tool()
-def boot_soc_ssh(
+async def boot_soc_ssh(
     config_path: str,
     release_version: str | None = None,
     kernel_path: str | None = None,
@@ -351,7 +361,8 @@ def boot_soc_ssh(
         state: Target state to transition to (default: 'shell').
         session_id: Optional session ID to reuse an existing session.
     """
-    return _boot_soc_ssh(
+    return await asyncio.to_thread(
+        _boot_soc_ssh,
         config_path,
         release_version,
         kernel_path,
@@ -415,7 +426,7 @@ def _boot_selmap(
 
 
 @mcp.tool()
-def boot_selmap(
+async def boot_selmap(
     config_path: str,
     pre_boot_files: dict[str, str] | None = None,
     post_boot_files: dict[str, str] | None = None,
@@ -434,7 +445,9 @@ def boot_selmap(
         state: Target state to transition to (default: 'shell').
         session_id: Optional session ID to reuse an existing session.
     """
-    return _boot_selmap(config_path, pre_boot_files, post_boot_files, target, state, session_id)
+    return await asyncio.to_thread(
+        _boot_selmap, config_path, pre_boot_files, post_boot_files, target, state, session_id
+    )
 
 
 def _run_shell_command(session_id: str, command: str) -> str:
@@ -460,7 +473,7 @@ def _run_shell_command(session_id: str, command: str) -> str:
 
 
 @mcp.tool()
-def run_shell_command(session_id: str, command: str) -> str:
+async def run_shell_command(session_id: str, command: str) -> str:
     """
     Run a shell command on the target board using an active session.
 
@@ -468,7 +481,7 @@ def run_shell_command(session_id: str, command: str) -> str:
         session_id: The ID of the session to use (returned by boot tools).
         command: The shell command to execute.
     """
-    return _run_shell_command(session_id, command)
+    return await asyncio.to_thread(_run_shell_command, session_id, command)
 
 
 def _list_sessions() -> dict:
@@ -476,11 +489,11 @@ def _list_sessions() -> dict:
 
 
 @mcp.tool()
-def list_sessions() -> str:
+async def list_sessions() -> str:
     """
     List all active sessions and their metadata.
     """
-    return json.dumps(_list_sessions(), indent=2)
+    return json.dumps(await asyncio.to_thread(_list_sessions), indent=2)
 
 
 def _get_session_info(session_id: str) -> dict:
@@ -488,7 +501,7 @@ def _get_session_info(session_id: str) -> dict:
 
 
 @mcp.tool()
-def get_session_info(session_id: str) -> str:
+async def get_session_info(session_id: str) -> str:
     """
     Get detailed information about a specific session.
 
@@ -496,7 +509,7 @@ def get_session_info(session_id: str) -> str:
         session_id: The ID of the session to inspect.
     """
     try:
-        return json.dumps(_get_session_info(session_id), indent=2)
+        return json.dumps(await asyncio.to_thread(_get_session_info, session_id), indent=2)
     except ValueError as e:
         return f"Error: {str(e)}"
 
@@ -533,7 +546,7 @@ def _run_ssh_command(session_id: str, command: str) -> str:
 
 
 @mcp.tool()
-def run_ssh_command(session_id: str, command: str) -> str:
+async def run_ssh_command(session_id: str, command: str) -> str:
     """
     Run an SSH command on the target board using an active session.
     This specifically looks for an SSHDriver in the session.
@@ -542,7 +555,7 @@ def run_ssh_command(session_id: str, command: str) -> str:
         session_id: The ID of the session to use.
         command: The command to execute via SSH.
     """
-    return _run_ssh_command(session_id, command)
+    return await asyncio.to_thread(_run_ssh_command, session_id, command)
 
 
 def main():

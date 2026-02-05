@@ -12,7 +12,14 @@ from adi_lg_plugins.tools.mcp import (
     _list_sessions,
     _run_shell_command,
     _run_ssh_command,
+    boot_fabric,
+    boot_selmap,
+    boot_soc,
+    get_session_info,
+    list_sessions,
     mcp,
+    run_shell_command,
+    run_ssh_command,
 )
 
 
@@ -205,3 +212,115 @@ def test_run_ssh_command_mcp(mock_session_manager):
     mock_ssh.run.assert_called_with("uname")
     assert "ssh_out" in result
     assert "Return Code: 0" in result
+
+
+# Async handler tests
+# These tests use the FunctionTool.run() method which accepts a dict of arguments
+# and returns a ToolResult with content[0].text holding the response
+
+
+def get_result_text(result):
+    """Extract text content from a ToolResult object."""
+    return result.content[0].text
+
+
+@pytest.mark.asyncio
+@patch("adi_lg_plugins.tools.mcp._boot_fabric")
+async def test_boot_fabric_async_handler(mock_boot_fabric):
+    """Test that the async boot_fabric handler correctly wraps the sync function."""
+    mock_boot_fabric.return_value = '{"status": "success", "session_id": "test-123"}'
+
+    result = await boot_fabric.run(
+        {"config_path": "/path/config.yaml", "target": "main", "state": "shell"}
+    )
+
+    assert "success" in get_result_text(result)
+    mock_boot_fabric.assert_called_once_with("/path/config.yaml", None, None, "main", "shell", None)
+
+
+@pytest.mark.asyncio
+@patch("adi_lg_plugins.tools.mcp._boot_soc")
+async def test_boot_soc_async_handler(mock_boot_soc):
+    """Test that the async boot_soc handler correctly wraps the sync function."""
+    mock_boot_soc.return_value = '{"status": "success", "session_id": "test-456"}'
+
+    result = await boot_soc.run(
+        {
+            "config_path": "/path/config.yaml",
+            "release_version": "2023_R2",
+            "target": "main",
+            "state": "booted",
+        }
+    )
+
+    assert "success" in get_result_text(result)
+    mock_boot_soc.assert_called_once_with(
+        "/path/config.yaml", "2023_R2", None, None, None, "main", "booted", False, None
+    )
+
+
+@pytest.mark.asyncio
+@patch("adi_lg_plugins.tools.mcp._boot_selmap")
+async def test_boot_selmap_async_handler(mock_boot_selmap):
+    """Test that the async boot_selmap handler correctly wraps the sync function."""
+    mock_boot_selmap.return_value = '{"status": "success", "session_id": "test-789"}'
+
+    result = await boot_selmap.run(
+        {
+            "config_path": "/path/config.yaml",
+            "pre_boot_files": {"local.bin": "/boot/remote.bin"},
+        }
+    )
+
+    assert "success" in get_result_text(result)
+    mock_boot_selmap.assert_called_once_with(
+        "/path/config.yaml", {"local.bin": "/boot/remote.bin"}, None, "main", "shell", None
+    )
+
+
+@pytest.mark.asyncio
+@patch("adi_lg_plugins.tools.mcp._run_shell_command")
+async def test_run_shell_command_async_handler(mock_run_shell):
+    """Test that the async run_shell_command handler correctly wraps the sync function."""
+    mock_run_shell.return_value = "Return Code: 0\nStdout:\ntest output"
+
+    result = await run_shell_command.run({"session_id": "session-123", "command": "ls -la"})
+
+    assert "Return Code: 0" in get_result_text(result)
+    mock_run_shell.assert_called_once_with("session-123", "ls -la")
+
+
+@pytest.mark.asyncio
+@patch("adi_lg_plugins.tools.mcp._list_sessions")
+async def test_list_sessions_async_handler(mock_list):
+    """Test that the async list_sessions handler correctly wraps the sync function."""
+    mock_list.return_value = {"s1": {"target": "main"}}
+
+    result = await list_sessions.run({})
+
+    assert "s1" in get_result_text(result)
+    mock_list.assert_called_once()
+
+
+@pytest.mark.asyncio
+@patch("adi_lg_plugins.tools.mcp._get_session_info")
+async def test_get_session_info_async_handler(mock_get_info):
+    """Test that the async get_session_info handler correctly wraps the sync function."""
+    mock_get_info.return_value = {"config_path": "test.yaml"}
+
+    result = await get_session_info.run({"session_id": "s1"})
+
+    assert "test.yaml" in get_result_text(result)
+    mock_get_info.assert_called_once_with("s1")
+
+
+@pytest.mark.asyncio
+@patch("adi_lg_plugins.tools.mcp._run_ssh_command")
+async def test_run_ssh_command_async_handler(mock_run_ssh):
+    """Test that the async run_ssh_command handler correctly wraps the sync function."""
+    mock_run_ssh.return_value = "Return Code: 0\nStdout:\nssh output"
+
+    result = await run_ssh_command.run({"session_id": "s1", "command": "uname -a"})
+
+    assert "Return Code: 0" in get_result_text(result)
+    mock_run_ssh.assert_called_once_with("s1", "uname -a")
