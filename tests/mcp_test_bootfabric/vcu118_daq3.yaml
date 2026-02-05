@@ -1,0 +1,67 @@
+# Test environment configuration for VCU118+AD9081 platform
+# Update paths and network addresses to match your lab setup
+
+targets:
+  main:
+    # Serial console connection for boot messages and shell access
+    resources:
+      RawSerialPort:
+        port: "/dev/serial/by-path/pci-0000:00:14.0-usb-0:14.3:1.1-port0"
+        speed: 115200
+
+      # Xilinx FPGA JTAG configuration
+      XilinxDeviceJTAG:
+        # JTAG target IDs (from xsdb 'targets' command)
+        root_target: 1
+        microblaze_target: 3
+        # Path to compiled bitstream (update to your build location)
+        bitstream_path: "/home/tcollins/dev/labgrid-plugins-cleanup/daq3/vcu118_fmcdaq3/system_top.bit"
+        # Path to compiled MicroBlaze kernel (update to your build location)
+        kernel_path: "/home/tcollins/dev/labgrid-plugins-cleanup/daq3/vcu118_fmcdaq3/simpleImage.vcu118_fmcdaq3.strip"
+
+      # Xilinx Vivado tool installation
+      XilinxVivadoTool:
+        # Root path to Vivado installation (update to your installation)
+        # vivado_path: "/tools/Xilinx/Vivado"
+        # Vivado version (e.g., "2023.2", "2022.1")
+        # Leave blank to auto-detect latest version
+        version: "2025.1"
+
+      # Power control for the board
+      # Replace with your actual power control resource (PDU, relay, etc.)
+      # NetworkPowerPort:
+      #   model: "gude"
+      #   host: "192.168.1.100"  # Update to your PDU IP address
+      #   index: 1
+
+    # Drivers for interfacing with the board
+    drivers:
+      # Serial console driver
+      SerialDriver: {}
+        # txdelay: 0.05  # Delay between serial transmissions (seconds)
+
+      # ADI shell driver for command execution
+      ADIShellDriver:
+        prompt: '#.*'
+        login_prompt: 'buildroot login: '
+        username: 'root'
+        password: 'analog'
+
+      # XilinxJTAGDriver for FPGA programming
+      XilinxJTAGDriver: {}
+
+      # Network power driver for power control
+      # NetworkPowerDriver: {}
+
+      # BootFabric strategy configuration
+      BootFabric:
+        # String to expect in console when boot is complete
+        # Default: "login:" (standard Linux login prompt)
+        reached_boot_marker: "login:"
+        # Timeout in seconds waiting for boot marker
+        # wait_for_boot_timeout: 120
+        # IIO device to verify after boot (optional)
+        # If specified, strategy will check if device is available
+        # Example: "axi-ad9081-rx-hpc" for AD9081 transceiver
+        # verify_iio_device: "axi-ad9680-rx-hpc"
+        trigger_dhcp_reset: True

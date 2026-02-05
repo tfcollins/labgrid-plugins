@@ -57,6 +57,7 @@ class BootFabric(Strategy):
         power: PowerProtocol (optional) - Power control (on/off)
         jtag: XilinxJTAGDriver - JTAG programming driver
         shell: ADIShellDriver (optional) - Serial console access
+        ssh: SSHDriver (optional) - SSH access
 
     Resources:
         XilinxDeviceJTAG: JTAG target IDs and file paths
@@ -76,6 +77,7 @@ class BootFabric(Strategy):
         "power": {"PowerProtocol", None},
         "jtag": "XilinxJTAGDriver",
         "shell": {"ADIShellDriver", None},  # Optional serial console
+        "ssh": {"SSHDriver", None},  # Optional SSH access
     }
 
     status = attr.ib(default=Status.unknown)
@@ -214,6 +216,16 @@ class BootFabric(Strategy):
                     self.shell.run("ifconfig eth0 up")
                     self.shell.run("udhcpc -i eth0")
                     time.sleep(2)
+                    # Update the IP address in the target configuration
+                    addresses = self.shell.get_ip_addresses()
+                    ip_address = addresses[0]
+                    # ip_address is of type IPv4Interface
+                    ip_address = str(ip_address.ip)
+                    # # Remove /24 suffix if present
+                    # if "/" in ip_address:
+                    #     ip_address = ip_address.split("/")[0]
+                    if self.ssh:
+                        self.ssh.networkservice.address = ip_address
                     self.target.deactivate(self.shell)
                     self.logger.info("Networking fixed up")
             else:
