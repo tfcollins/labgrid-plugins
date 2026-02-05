@@ -133,7 +133,7 @@ class BootFabric(Strategy):
         if not isinstance(status, Status):
             status = Status[status]
 
-        self.logger.debug(f"Transitioning to {status} (Current: {self.status})")
+        self.logger.info(f"Transitioning to {status} (Current: {self.status})")
 
         if status == Status.unknown:
             raise StrategyError(f"Cannot transition to {status}")
@@ -149,7 +149,7 @@ class BootFabric(Strategy):
             if self.power:
                 self.target.activate(self.power)
                 self.power.off()
-                self.logger.info("FPGA powered off")
+                self.logger.info("FPGA power-off command sent")
             else:
                 self.logger.info("Skipping power off (no power resource configured)")
 
@@ -157,18 +157,22 @@ class BootFabric(Strategy):
             self.transition(Status.powered_off)
             if self.power:
                 self.target.activate(self.power)
+                self.logger.info("Waiting for power to stabilize (2s)...")
                 time.sleep(2)
                 self.power.on()
+                self.logger.info("FPGA powered on, waiting for initialization (5s)...")
                 time.sleep(5)  # Wait for power stabilization
-                self.logger.info("FPGA powered on")
             else:
                 self.logger.info("Skipping power on (no power resource configured)")
 
         elif status == Status.flash_fpga:
             self.transition(Status.powered_on)
+            self.logger.info(
+                "Initializing JTAG and flashing bitstream/kernel (this may take several minutes)..."
+            )
             self.target.activate(self.jtag)
             self.jtag.load_bitstream_and_kernel_and_start()
-            self.logger.info("Bitstream flashed and kernel started via JTAG")
+            self.logger.info("Bitstream flashed and kernel started via JTAG successfully")
 
         # elif status == Status.bitstream_flashed:
         #     self.transition(Status.powered_on)
@@ -193,6 +197,9 @@ class BootFabric(Strategy):
             self.transition(Status.flash_fpga)
             self.boot_log = ""  # Reset boot log for this boot
             if self.shell:
+                self.logger.info(
+                    f"Waiting for Linux boot and '{self.reached_boot_marker}' prompt..."
+                )
                 self.shell.bypass_login = True
                 self.target.activate(self.shell)
                 # Wait for Linux kernel boot
@@ -207,9 +214,12 @@ class BootFabric(Strategy):
                     self.boot_log += before.decode("utf-8", errors="replace")
                 self.shell.bypass_login = False
                 self.target.deactivate(self.shell)
-                self.logger.info("Microblaze kernel booted")
+                self.logger.info("Microblaze kernel booted successfully")
             else:
                 # No shell configured, just wait
+                self.logger.info(
+                    f"No shell configured, waiting {self.wait_for_boot_timeout}s for assumed boot..."
+                )
                 time.sleep(self.wait_for_boot_timeout)
                 self.logger.info("Assumed booted (no shell verification)")
 
@@ -217,6 +227,7 @@ class BootFabric(Strategy):
             self.transition(Status.booted)
             if self.shell:
                 if self.trigger_dhcp_reset:
+                    self.logger.info("Fixing up networking (triggering DHCP reset)...")
                     self.target.activate(self.shell)
                     self.shell.run("ifconfig eth0 down")
                     self.shell.run("ifconfig eth0 up")
@@ -224,22 +235,21 @@ class BootFabric(Strategy):
                     time.sleep(2)
                     # Update the IP address in the target configuration
                     addresses = self.shell.get_ip_addresses()
-                    ip_address = addresses[0]
-                    # ip_address is of type IPv4Interface
-                    ip_address = str(ip_address.ip)
-                    # # Remove /24 suffix if present
-                    # if "/" in ip_address:
-                    #     ip_address = ip_address.split("/")[0]
-                    if self.ssh:
-                        self.ssh.networkservice.address = ip_address
+                    if addresses:
+                        ip_address = str(addresses[0].ip)
+                        if self.ssh:
+                            self.ssh.networkservice.address = ip_address
+                        self.logger.info(f"Networking fixed up, IP: {ip_address}")
+                    else:
+                        self.logger.warning("Could not obtain IP address")
                     self.target.deactivate(self.shell)
-                    self.logger.info("Networking fixed up")
             else:
                 raise StrategyError("Networking fixup requested but no shell driver configured")
 
         elif status == Status.shell:
             self.transition(Status.fixup_networking)
             if self.shell:
+                self.logger.info("Preparing interactive shell...")
                 self.target.activate(self.shell)
                 # Optional: Verify IIO device if configured
                 if self.verify_iio_device:

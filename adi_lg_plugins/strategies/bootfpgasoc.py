@@ -116,9 +116,7 @@ class BootFPGASoC(Strategy):
         if not isinstance(status, Status):
             status = Status[status]
 
-        self.logger.debug(
-            f"Transitioning to {status} (Existing status: {self.status}) {status == Status.shell}"
-        )
+        self.logger.info(f"Transitioning to {status} (Existing status: {self.status})")
 
         if status == Status.unknown:
             raise StrategyError(f"can not transition to {status}")
@@ -129,17 +127,20 @@ class BootFPGASoC(Strategy):
             self.target.deactivate(self.shell)
             self.target.activate(self.power)
             self.power.off()
-            self.logger.debug("DEBUG Powered off")
+            self.logger.info("Device powered off")
         elif status == Status.sd_mux_to_host:
             self.transition(Status.powered_off)
             self.target.activate(self.sdmux)
+            self.logger.info("Muxing SD card to host...")
             self.sdmux.set_mode("host")
             time.sleep(5)
-            self.logger.debug("DEBUG SD Mounted")
+            self.logger.info("SD card muxed to host")
         elif status == Status.update_boot_files:
             self.transition(Status.sd_mux_to_host)
             if self.image_writer and self.update_image:
-                self.logger.info("Writing image to mass storage device")
+                self.logger.info(
+                    "Writing full Kuiper image to SD card (this may take several minutes)..."
+                )
                 self.target.activate(self.image_writer)
                 from labgrid.driver.usbstoragedriver import Mode
 
@@ -148,30 +149,35 @@ class BootFPGASoC(Strategy):
                 self.target.deactivate(self.image_writer)
                 self.logger.info("Image written successfully")
 
+            self.logger.info("Updating boot files on SD card...")
             self.target.activate(self.mass_storage)
             self.mass_storage.mount_partition()
             for boot_file in self.kuiper._boot_files:
+                self.logger.info(f"Copying {boot_file} to SD card...")
                 self.mass_storage.copy_file(boot_file, "/")
             self.mass_storage.unmount_partition()
             self.target.deactivate(self.mass_storage)
-            self.logger.debug("DEBUG Boot files updated")
+            self.logger.info("Boot files updated successfully")
 
         elif status == Status.sd_mux_to_dut:
             self.transition(Status.update_boot_files)
+            self.logger.info("Muxing SD card back to DUT...")
             self.sdmux.set_mode("dut")
             time.sleep(5)
-            self.logger.debug("DEBUG SD Muxed to DUT")
+            self.logger.info("SD card muxed to DUT")
 
         elif status == Status.booting:
             self.transition(Status.sd_mux_to_dut)
             self.target.activate(self.power)
+            self.logger.info("Powering on device...")
             time.sleep(5)
             self.power.on()
-            self.logger.debug("DEBUG Booting...")
+            self.logger.info("Device powered on, booting...")
 
         elif status == Status.booted:
             self.transition(Status.booting)
             self.boot_log = ""  # Reset boot log for this boot
+            self.logger.info(f"Waiting for Linux boot and '{self.reached_linux_marker}' prompt...")
             self.shell.bypass_login = True
             self.target.activate(self.shell)
             # Check kernel start
@@ -186,13 +192,15 @@ class BootFPGASoC(Strategy):
                 self.boot_log += before.decode("utf-8", errors="replace")
             self.shell.bypass_login = False
             self.target.deactivate(self.shell)
-            self.logger.debug("DEBUG Booted")
+            self.logger.info("Device booted successfully")
 
         elif status == Status.shell:
             self.transition(Status.booted)
             # self.shell.bypass_login = True
+            self.logger.info("Preparing interactive shell...")
             self.target.activate(self.shell)
             # Post boot stuff...
+            self.logger.info("Shell access ready")
 
         elif status == Status.soft_off:
             # Stage is relatively standalone

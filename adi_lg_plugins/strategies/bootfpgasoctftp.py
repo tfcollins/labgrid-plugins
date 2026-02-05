@@ -76,7 +76,7 @@ class BootFPGASoCTFTP(Strategy):
         if not isinstance(status, Status):
             status = Status[status]
 
-        self.logger.debug(f"Transitioning to {status} (Existing status: {self.status})")
+        self.logger.info(f"Transitioning to {status} (Existing status: {self.status})")
 
         if status == Status.unknown:
             raise StrategyError(f"can not transition to {status}")
@@ -92,7 +92,7 @@ class BootFPGASoCTFTP(Strategy):
             if self.power:
                 self.target.activate(self.power)
                 self.power.off()
-            self.logger.debug("Powered off")
+            self.logger.info("Device powered off")
 
         elif status == Status.update_boot_files:
             self.transition(Status.powered_off)
@@ -102,20 +102,23 @@ class BootFPGASoCTFTP(Strategy):
             if not self.kuiper:
                 self.logger.warning("No KuiperDLDriver attached, skipping boot file update check")
             else:
+                self.logger.info(f"Preparing TFTP boot files in {self.tftp_root_folder}...")
                 for boot_file in self.kuiper._boot_files:
-                    self.logger.debug(f"Copying {boot_file} to {self.tftp_root_folder}")
+                    self.logger.info(f"Copying {os.path.basename(boot_file)} to TFTP root...")
                     if not os.path.exists(boot_file):
                         raise StrategyError(f"Boot file {boot_file} does not exist")
                     target = os.path.join(self.tftp_root_folder, os.path.basename(boot_file))
                     shutil.copyfile(boot_file, target)
+                self.logger.info("TFTP boot files prepared successfully")
 
         elif status == Status.booting:
             self.transition(Status.update_boot_files)
             if self.power:
                 self.target.activate(self.power)
+                self.logger.info("Powering on device...")
                 time.sleep(5)
                 self.power.on()
-            self.logger.debug("Booting...")
+            self.logger.info("Device powered on, booting...")
 
         elif status == Status.booted:
             self.transition(Status.booting)
@@ -123,8 +126,9 @@ class BootFPGASoCTFTP(Strategy):
             self.target.activate(self.shell)
 
             # Stop autoboot
+            self.logger.info("Waiting for U-Boot autoboot prompt...")
             self.shell.console.expect("Hit any key to stop autoboot", timeout=30)
-            self.logger.info("Found autoboot prompt, stopping autoboot")
+            self.logger.info("Stopping autoboot...")
             self.shell.console.sendline(" ")
             time.sleep(2)
 
@@ -149,34 +153,37 @@ class BootFPGASoCTFTP(Strategy):
                 f"tftpboot {self.dtb_addr} system.dtb",
             ]
 
+            self.logger.info("Configuring U-Boot for TFTP boot...")
             for cmd in commands:
+                self.logger.info(f"U-Boot: {cmd}")
                 self.shell.run_uboot(f"{cmd}\n", timeout=60)  # Increased timeout for TFTP
                 self.shell._check_prompt_uboot()
 
             # Boot the kernel
             # booti will start the kernel, so we don't expect the U-Boot prompt to return
+            self.logger.info("Starting kernel execution (booti)...")
             self.shell.console.sendline(f"booti {self.kernel_addr} - {self.dtb_addr}")
 
             # Check if we reached Linux prompt
+            self.logger.info(f"Waiting for Linux boot and '{self.reached_linux_marker}' prompt...")
             self.shell.prompt = org_prompt
             self.shell.console.expect(
                 self.reached_linux_marker, timeout=self.wait_for_linux_prompt_timeout
             )
             self.shell.bypass_login = False
             self.target.deactivate(self.shell)
-            self.logger.debug("Booted")
+            self.logger.info("Device booted successfully via TFTP")
 
         elif status == Status.shell:
-            self.transition(
-                Status.booting_new
-                if hasattr(Status, "booting_new") and self.status == Status.booting_new
-                else Status.booted
-            )  # fallback to booted if direct path
+            self.transition(Status.booted)
+            self.logger.info("Preparing interactive shell...")
             self.target.activate(self.shell)
+            self.logger.info("Shell access ready")
 
         elif status == Status.soft_off:
             self.transition(Status.shell)
             try:
+                self.logger.info("Triggering soft power off...")
                 self.shell.run("poweroff")
                 self.shell.console.expect("Power down", timeout=30)
                 self.target.deactivate(self.shell)
@@ -189,7 +196,7 @@ class BootFPGASoCTFTP(Strategy):
             if self.power:
                 self.target.activate(self.power)
                 self.power.off()
-            self.logger.debug("Soft powered off")
+            self.logger.info("Device powered off")
 
         else:
             raise StrategyError(f"no transition found from {self.status} to {status}")

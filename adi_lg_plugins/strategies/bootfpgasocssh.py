@@ -1,4 +1,5 @@
 import enum
+import os
 import time
 
 import attr
@@ -97,9 +98,7 @@ class BootFPGASoCSSH(Strategy):
         if not isinstance(status, Status):
             status = Status[status]
 
-        self.logger.debug(
-            f"Transitioning to {status} (Existing status: {self.status}) {status == Status.shell}"
-        )
+        self.logger.info(f"Transitioning to {status} (Existing status: {self.status})")
 
         if status == Status.unknown:
             raise StrategyError(f"can not transition to {status}")
@@ -111,18 +110,20 @@ class BootFPGASoCSSH(Strategy):
             if self.power:
                 self.target.activate(self.power)
                 self.power.off()
-            self.logger.debug("DEBUG Powered off")
+            self.logger.info("Device powered off")
         elif status == Status.booting:
             self.transition(Status.powered_off)
             if self.power:
                 self.target.activate(self.power)
+                self.logger.info("Powering on device...")
                 time.sleep(5)
                 self.power.on()
-            self.logger.debug("DEBUG Booting...")
+            self.logger.info("Device powered on, booting...")
         elif status == Status.booted:
             self.transition(Status.booting)
             self.boot_log = ""  # Reset boot log for this boot
             if self.power:
+                self.logger.info("Waiting for Linux boot...")
                 self.shell.bypass_login = True
                 self.target.activate(self.shell)
                 # Check kernel start
@@ -131,11 +132,12 @@ class BootFPGASoCSSH(Strategy):
                     self.boot_log += before.decode("utf-8", errors="replace")
                 self.shell.bypass_login = False
                 self.target.deactivate(self.shell)
-            self.logger.debug("DEBUG Booted")
+            self.logger.info("Initial boot successful")
 
         elif status == Status.update_boot_files:
             self.transition(Status.booted)
 
+            self.logger.info("Identifying device IP for SSH file transfer...")
             # Get IP address from shell
             self.target.activate(self.shell)
             addresses = self.shell.get_ip_addresses("eth0")
@@ -144,46 +146,46 @@ class BootFPGASoCSSH(Strategy):
             self.target.deactivate(self.shell)
 
             if self.ssh.networkservice.address != ip:
-                self.logger.warning(
-                    f"IP address mismatch between ShellDriver ({ip}) and SSHDriver ({self.ssh.networkservice.address})"
-                )
-                self.logger.warning("Updating SSHDriver IP address to match ShellDriver")
+                self.logger.info(f"Updating SSHDriver IP address to {ip}")
                 self.ssh.networkservice.address = ip  # Update
 
             self.target.activate(self.ssh)
 
             if self.kuiper:
                 if self.kuiper._boot_files:
+                    self.logger.info(
+                        f"Uploading {len(self.kuiper._boot_files)} boot files via SSH..."
+                    )
                     for local_path in self.kuiper._boot_files:
                         remote_path = "/boot/"
-                        self.logger.info(f"Uploading {local_path} to {remote_path} via SSH")
+                        self.logger.info(
+                            f"Uploading {os.path.basename(local_path)} to {remote_path}..."
+                        )
                         self.ssh.put(local_path, remote_path)
                 else:
                     self.logger.warning("No boot files found in KuiperDLDriver to upload")
             else:
                 self.logger.warning("KuiperDLDriver not available; no boot files to upload")
 
-            # self.ssh.put("/tmp/testfile.txt", "/tmp/testfile.txt")
-
             self.target.deactivate(self.ssh)
-
-            # Use SSH to update boot files here
-            self.logger.debug("DEBUG Boot files updated via SSH")
+            self.logger.info("Boot files updated via SSH successfully")
 
         elif status == Status.reboot:
             self.transition(Status.update_boot_files)
             self.target.activate(self.shell)
+            self.logger.info("Triggering device reboot...")
             try:
                 self.shell.run("reboot")
             except Exception as e:
-                self.logger.info(f"DEBUG Reboot command exception (expected): {e}")
+                self.logger.debug(f"Reboot command exception (expected): {e}")
             self.target.deactivate(self.shell)
-            self.logger.debug("DEBUG Rebooted")
+            self.logger.info("Reboot command sent")
 
         elif status == Status.booting_new:
             self.transition(Status.reboot)
             self.boot_log = ""  # Reset boot log for this boot (new kernel)
 
+            self.logger.info(f"Waiting for Linux boot and '{self.reached_linux_marker}' prompt...")
             self.shell.bypass_login = True
             self.target.activate(self.shell)
             # Check kernel start
@@ -198,12 +200,14 @@ class BootFPGASoCSSH(Strategy):
                 self.boot_log += before.decode("utf-8", errors="replace")
             self.target.deactivate(self.shell)
             self.shell.bypass_login = False
-            self.logger.debug("DEBUG Booting new...")
+            self.logger.info("Device booted with new files successfully")
 
         elif status == Status.shell:
             self.transition(Status.booting_new)
+            self.logger.info("Preparing interactive shell...")
             self.target.activate(self.shell)
             # Post boot stuff...
+            self.logger.info("Shell access ready")
         elif status == Status.soft_off:
             self.transition(Status.shell)
             try:

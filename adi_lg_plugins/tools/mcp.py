@@ -1,5 +1,6 @@
 import asyncio
 import json
+import logging
 import os
 import threading
 import uuid
@@ -86,17 +87,7 @@ def _get_target_and_strategy(
             _, tg, strategy = session_manager.get_session(session_id)
             return tg, strategy, session_id
         except ValueError:
-            pass  # Fallback to creating new if not found (or raise error?) -> Let's reuse logic below
-
-    # Create new session if requested (implied by this helper usage pattern usually)
-    # But for backward compatibility of simple calls, we might just return ephemeral objects
-    # However, to support state, we should probably encourage session usage.
-
-    # If no session_id provided, we create a new ephemeral one but don't store it unless we return it.
-    # The tools wrapping this will handle the session_id return.
-
-    # Actually, let's change the helper to always return (tg, strategy, session_id)
-    # If session_id input was None, we create a new session.
+            pass
 
     new_session_id = session_manager.create_session(config_path, target_name, strategy_driver)
     _, tg, strategy = session_manager.get_session(new_session_id)
@@ -464,6 +455,7 @@ def _run_shell_command(session_id: str, command: str) -> str:
         if not shell:
             return "Error: No shell driver found."
 
+        logging.info(f"Executing shell command on session {session_id}: {command}")
         tg.activate(shell)
         stdout, stderr, returncode = shell.run(command)
 
@@ -537,6 +529,7 @@ def _run_ssh_command(session_id: str, command: str) -> str:
         if not ssh:
             return "Error: No SSH driver found in this session."
 
+        logging.info(f"Executing SSH command on session {session_id}: {command}")
         tg.activate(ssh)
         stdout, stderr, returncode = ssh.run(command)
 
@@ -560,6 +553,13 @@ async def run_ssh_command(session_id: str, command: str) -> str:
 
 def main():
     """Main entry point for the MCP server."""
+    # Configure logging to show info level by default
+    logging.basicConfig(
+        level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+    # Ensure labgrid logger is also at info level
+    logging.getLogger("labgrid").setLevel(logging.INFO)
+
     mcp.run()
 
 
