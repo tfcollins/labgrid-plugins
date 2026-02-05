@@ -1,4 +1,5 @@
 import asyncio
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -29,15 +30,20 @@ def test_mcp_registration():
 def test_boot_fabric_mcp(mock_get, tmp_path):
     mock_tg = MagicMock()
     mock_strat = MagicMock()
+    mock_strat.boot_log = "Test boot log output"
     mock_get.return_value = (mock_tg, mock_strat, "session-123")
 
     config = tmp_path / "config.yaml"
     config.write_text("targets: {main: {}}")
 
     result = _boot_fabric(str(config), target="main", state="shell")
+    result_json = json.loads(result)
 
-    assert "Successfully reached state 'shell'" in result
-    assert "Session ID: session-123" in result
+    assert result_json["status"] == "success"
+    assert result_json["session_id"] == "session-123"
+    assert "Successfully reached state 'shell'" in result_json["message"]
+    assert result_json["boot_log"] == "Test boot log output"
+    assert result_json["error"] == ""
     mock_strat.transition.assert_called_with("shell")
 
 
@@ -45,15 +51,19 @@ def test_boot_fabric_mcp(mock_get, tmp_path):
 def test_boot_soc_mcp(mock_get, tmp_path):
     mock_tg = MagicMock()
     mock_strat = MagicMock()
+    mock_strat.boot_log = "SoC boot log"
     mock_get.return_value = (mock_tg, mock_strat, "session-456")
 
     config = tmp_path / "config.yaml"
     config.write_text("targets: {main: {}}")
 
     result = _boot_soc(str(config), release_version="2023_R2", state="booted")
+    result_json = json.loads(result)
 
-    assert "Successfully reached state 'booted'" in result
-    assert "Session ID: session-456" in result
+    assert result_json["status"] == "success"
+    assert result_json["session_id"] == "session-456"
+    assert "Successfully reached state 'booted'" in result_json["message"]
+    assert result_json["boot_log"] == "SoC boot log"
     mock_strat.transition.assert_called_with("booted")
 
 
@@ -61,14 +71,19 @@ def test_boot_soc_mcp(mock_get, tmp_path):
 def test_boot_selmap_mcp(mock_get, tmp_path):
     mock_tg = MagicMock()
     mock_strat = MagicMock()
+    mock_strat.boot_log = "SelMap boot log"
     mock_get.return_value = (mock_tg, mock_strat, "session-789")
 
     config = tmp_path / "config.yaml"
     config.write_text("targets: {main: {}}")
 
     result = _boot_selmap(str(config), pre_boot_files={"local.bin": "/boot/remote.bin"})
+    result_json = json.loads(result)
 
-    assert "Successfully reached state 'shell'" in result
+    assert result_json["status"] == "success"
+    assert result_json["session_id"] == "session-789"
+    assert "Successfully reached state 'shell'" in result_json["message"]
+    assert result_json["boot_log"] == "SelMap boot log"
     assert mock_strat.pre_boot_boot_files is not None
     mock_strat.transition.assert_called_with("shell")
 
@@ -81,7 +96,11 @@ def test_mcp_error_handling(mock_get, tmp_path):
     config.write_text("targets: {main: {}}")
 
     result = _boot_fabric(str(config))
-    assert "Error during BootFabric transition: Environment error" in result
+    result_json = json.loads(result)
+
+    assert result_json["status"] == "fail"
+    assert result_json["message"] == "Boot failed"
+    assert "Environment error" in result_json["error"]
 
 
 def test_boot_fabric_real(lg_config):
@@ -98,16 +117,15 @@ def test_boot_fabric_real(lg_config):
     result = _boot_fabric(config_path=lg_config, target="main", state="shell")
 
     print("Result:", result)
-    assert "Successfully reached state 'shell'" in result
-    assert "Session ID: " in result
+    result_json = json.loads(result)
 
-    # Extract Session ID
-    import re
+    assert result_json["status"] == "success"
+    assert "Successfully reached state 'shell'" in result_json["message"]
+    assert result_json["session_id"]
 
-    match = re.search(r"Session ID: ([a-f0-9\-]+)", result)
-    assert match, "Could not extract Session ID"
-    session_id = match.group(1)
+    session_id = result_json["session_id"]
     print(f"Extracted Session ID: {session_id}")
+    print(f"Boot log (first 500 chars): {result_json['boot_log'][:500]}")
 
     # Test shell command execution
     result = _run_shell_command(session_id=session_id, command="uname -a")

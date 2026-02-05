@@ -77,6 +77,7 @@ class BootFPGASoC(Strategy):
     reached_linux_marker = attr.ib(default="analog")
     update_image = attr.ib(default=False)
     wait_for_linux_prompt_timeout = attr.ib(default=60)
+    boot_log = attr.ib(default="", init=False)
 
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
@@ -170,14 +171,19 @@ class BootFPGASoC(Strategy):
 
         elif status == Status.booted:
             self.transition(Status.booting)
+            self.boot_log = ""  # Reset boot log for this boot
             self.shell.bypass_login = True
             self.target.activate(self.shell)
             # Check kernel start
-            self.shell.console.expect("Linux", timeout=30)
+            _, before, _, _ = self.shell.console.expect("Linux", timeout=30)
+            if before:
+                self.boot_log += before.decode("utf-8", errors="replace")
             # Check device prompt
-            self.shell.console.expect(
+            _, before, _, _ = self.shell.console.expect(
                 self.reached_linux_marker, timeout=self.wait_for_linux_prompt_timeout
             )  # Adjust prompt as needed
+            if before:
+                self.boot_log += before.decode("utf-8", errors="replace")
             self.shell.bypass_login = False
             self.target.deactivate(self.shell)
             self.logger.debug("DEBUG Booted")

@@ -64,6 +64,7 @@ class BootSelMap(Strategy):
     iio_jesd_driver_name = attr.ib(default="axi-ad9081-rx-hpc")
     pre_boot_boot_files = attr.ib(default=None)
     post_boot_boot_files = attr.ib(default=None)
+    boot_log = attr.ib(default="", init=False)
 
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
@@ -122,12 +123,17 @@ class BootSelMap(Strategy):
             self.logger.debug("DEBUG Booting Zynq...")
         elif status == Status.booted_zynq:
             self.transition(Status.booting_zynq)
+            self.boot_log = ""  # Reset boot log for this boot
             self.shell.bypass_login = True
             self.target.activate(self.shell)
             # Check kernel start
-            self.shell.console.expect("Linux", timeout=30)
+            _, before, _, _ = self.shell.console.expect("Linux", timeout=30)
+            if before:
+                self.boot_log += before.decode("utf-8", errors="replace")
             # Check device prompt
-            self.shell.console.expect(self.reached_linux_marker, timeout=30)
+            _, before, _, _ = self.shell.console.expect(self.reached_linux_marker, timeout=30)
+            if before:
+                self.boot_log += before.decode("utf-8", errors="replace")
             self.shell.bypass_login = False
             self.target.deactivate(self.shell)
             time.sleep(5)
