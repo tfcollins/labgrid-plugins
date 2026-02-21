@@ -67,3 +67,16 @@ BootFabric
    :members:
    :undoc-members:
    :no-index:
+
+SoftwareProvisioningStrategy
+----------------------------
+
+.. autoclass:: adi_lg_plugins.strategies.software_provisioning.SoftwareProvisioningStrategy
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. autoclass:: adi_lg_plugins.strategies.software_provisioning.Status
+   :members:
+   :undoc-members:
+   :no-index:
