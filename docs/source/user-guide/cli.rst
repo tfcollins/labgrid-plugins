@@ -148,3 +148,26 @@ Use the ``--debug`` flag to see every step of the transition and the output from
 If you only want to power on the device and flash the bitstream without waiting for Linux to boot:
 
     adi-lg boot-fabric -c soc.yaml --state flash_fpga
+
+provision-software
+~~~~~~~~~~~~~~~~~~
+
+Provision software on a target system using the ``SoftwareProvisioningStrategy``. This command allows you to install packages, clone repositories, build software, and run tests.
+
+.. code-block:: bash
+
+    adi-lg provision-software --config dut.yaml \
+        --package htop \
+        --repo "https://github.com/my/repo.git,/home/root/repo,main" \
+        --build "make,/home/root/repo" \
+        --test "pytest,/home/root/repo"
+
+**Options:**
+
+* ``-c, --config <path>``: (Required) Labgrid configuration file.
+* ``--package <name>``: Package to install using the system package manager (e.g., apt, dnf). Can be specified multiple times.
+* ``--repo <url,dest[,branch]>``: Git repository to clone. Format: URL, destination path, and optional branch/tag. Can be specified multiple times.
+* ``--build <cmd,dir>``: Build command to run in a specific directory. Format: command, directory. Can be specified multiple times.
+* ``--test <cmd,dir>``: Test command to run in a specific directory. Format: command, directory. Can be specified multiple times.
+* ``-t, --target <name>``: Target name in the configuration (default: ``main``).
+* ``--state <name>``: Target state to transition to (default: ``tested``).

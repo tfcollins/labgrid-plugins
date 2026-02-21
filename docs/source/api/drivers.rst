@@ -96,3 +96,14 @@ Utility Classes
 .. autoclass:: adi_lg_plugins.drivers.imageextractor.IMGFileExtractor
    :members:
    :undoc-members:
+
+Software Installer
+------------------
+
+SoftwareInstallerDriver
+~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autoclass:: adi_lg_plugins.drivers.softwareinstaller.SoftwareInstallerDriver
+   :members:
+   :undoc-members:
+   :show-inheritance:
