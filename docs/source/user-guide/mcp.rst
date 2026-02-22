@@ -120,6 +120,37 @@ boot_selmap
 ^^^^^^^^^^^
 Executes the ``BootSelMap`` strategy for dual-FPGA systems.
 
+boot_soc_tftp
+^^^^^^^^^^^^^
+Executes the ``BootFPGASoCTFTP`` strategy. Loads the kernel via TFTP.
+
+- **Arguments:**
+    - ``config_path`` (string, required): Labgrid configuration path.
+    - ``tftp_root`` (string, optional): Override TFTP root directory.
+    - ``kernel_path`` (string, optional): Override kernel image path.
+    - ``dtb_path`` (string, optional): Override device tree path.
+    - ``release_version`` (string, optional): Kuiper release version.
+    - ``target`` (string, default: "main"): Labgrid target name.
+    - ``state`` (string, default: "shell"): Desired transition state.
+    - ``session_id`` (string, optional): Reuse an existing session.
+
+Provisioning Tools
+~~~~~~~~~~~~~~~~~~
+
+provision_software
+^^^^^^^^^^^^^^^^^^
+Executes the ``SoftwareProvisioningStrategy`` to automate software installation, builds, and testing.
+
+- **Arguments:**
+    - ``config_path`` (string, required): Labgrid configuration path.
+    - ``packages`` (list[string], optional): List of package names to install.
+    - ``repos`` (list[dict|list], optional): List of repositories to clone.
+    - ``build_steps`` (list[dict|list], optional): List of build commands to run.
+    - ``test_steps`` (list[dict|list], optional): List of test commands to run.
+    - ``target`` (string, default: "main"): Labgrid target name.
+    - ``state`` (string, default: "tested"): Desired transition state.
+    - ``session_id`` (string, optional): Reuse an existing session.
+
 Interaction Tools
 ~~~~~~~~~~~~~~~~~
 
@@ -149,6 +180,19 @@ List all active sessions and their associated metadata (config path, target, str
 get_session_info
 ^^^^^^^^^^^^^^^^
 Get detailed information about a specific session by its ID.
+
+Resources
+---------
+
+The MCP server exposes resources that allow clients to read session state directly.
+
+labgrid://sessions
+~~~~~~~~~~~~~~~~~~
+Returns a JSON list of all active sessions, including metadata like target name, strategy, and config path.
+
+labgrid://sessions/{session_id}
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Returns detailed JSON information about a specific session identified by ``session_id``.
 
 Logging and Progress
 --------------------
