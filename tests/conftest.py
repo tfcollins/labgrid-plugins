@@ -1,5 +1,6 @@
 import pytest
 
+
 def pytest_addoption(parser):
     """Add command-line options."""
     parser.addoption(
@@ -15,8 +16,10 @@ def pytest_addoption(parser):
         help="Run tests that require real hardware.",
     )
 
+
 def pytest_configure(config):
     config.addinivalue_line("markers", "hardware: mark test as requiring real hardware")
+
 
 def pytest_collection_modifyitems(config, items):
     if config.getoption("--run-hardware"):
@@ -26,6 +29,7 @@ def pytest_collection_modifyitems(config, items):
     for item in items:
         if "hardware" in item.keywords:
             item.add_marker(skip_hardware)
+
 
 @pytest.fixture
 def lg_config(request):
