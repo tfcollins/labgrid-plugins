@@ -229,24 +229,24 @@ def boot_selmap(config, pre_boot_file, post_boot_file, target, state):
 @click.option("--state", default="tested", help="Target state to transition to (default: tested)")
 def provision_software(config, package, repo, build, test, target, state):
     """Provision software on the target.
-    
+
     This command installs packages, clones repos, builds software, and runs tests
     using the SoftwareProvisioningStrategy.
     """
     env = Environment(config)
     tg = env.get_target(target)
-    
+
     strategy = tg.get_driver("SoftwareProvisioningStrategy")
-    
+
     if package:
         strategy.packages = list(package)
-        
+
     if repo:
         repos = []
         for item in repo:
             parts = item.split(",")
             if len(parts) < 2:
-                 raise click.BadParameter("Repo format must be url,dest[,branch]")
+                raise click.BadParameter("Repo format must be url,dest[,branch]")
             url, dest = parts[0], parts[1]
             branch = parts[2] if len(parts) > 2 else None
             repos.append({"url": url, "dest": dest, "branch": branch})
@@ -256,7 +256,7 @@ def provision_software(config, package, repo, build, test, target, state):
         builds = []
         for item in build:
             if "," not in item:
-                 raise click.BadParameter("Build format must be cmd,dir")
+                raise click.BadParameter("Build format must be cmd,dir")
             cmd, directory = item.split(",", 1)
             builds.append({"cmd": cmd, "dir": directory})
         strategy.build_steps = builds
@@ -264,12 +264,12 @@ def provision_software(config, package, repo, build, test, target, state):
     if test:
         tests = []
         for item in test:
-             if "," not in item:
-                  raise click.BadParameter("Test format must be cmd,dir")
-             cmd, directory = item.split(",", 1)
-             tests.append({"cmd": cmd, "dir": directory})
+            if "," not in item:
+                raise click.BadParameter("Test format must be cmd,dir")
+            cmd, directory = item.split(",", 1)
+            tests.append({"cmd": cmd, "dir": directory})
         strategy.test_steps = tests
-        
+
     with console.status(f"[bold green]Provisioning software on {target} to {state}..."):
         try:
             strategy.transition(state)
