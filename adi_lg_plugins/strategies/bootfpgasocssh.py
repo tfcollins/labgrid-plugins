@@ -60,6 +60,8 @@ class BootFPGASoCSSH(Strategy):
     wait_for_linux_prompt_timeout = attr.ib(default=60)
     boot_log = attr.ib(default="", init=False)
 
+    debug_write_boot_log = attr.ib(default=False)
+
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
         self.logger.info("BootFPGASoCSSH strategy initialized")
@@ -189,18 +191,26 @@ class BootFPGASoCSSH(Strategy):
             self.shell.bypass_login = True
             self.target.activate(self.shell)
             # Check kernel start
-            _, before, _, _ = self.shell.console.expect("Linux", timeout=30)
-            if before:
-                self.boot_log += before.decode("utf-8", errors="replace")
-            # Check device prompt
-            _, before, _, _ = self.shell.console.expect(
-                self.reached_linux_marker, timeout=self.wait_for_linux_prompt_timeout
-            )
-            if before:
-                self.boot_log += before.decode("utf-8", errors="replace")
-            self.target.deactivate(self.shell)
-            self.shell.bypass_login = False
-            self.logger.info("Device booted with new files successfully")
+            try:
+                _, before, _, _ = self.shell.console.expect("Linux", timeout=30)
+                if before:
+                    self.boot_log += before.decode("utf-8", errors="replace")
+                # Check device prompt
+                _, before, _, _ = self.shell.console.expect(
+                    self.reached_linux_marker, timeout=self.wait_for_linux_prompt_timeout
+                )
+                if before:
+                    self.boot_log += before.decode("utf-8", errors="replace")
+                self.target.deactivate(self.shell)
+                self.shell.bypass_login = False
+                self.logger.info("Device booted with new files successfully")
+            except Exception as e:
+                if self.debug_write_boot_log:
+                    uart_log_filename = f"uart_log_{int(time.time())}.txt"
+                    with open(uart_log_filename, "wb") as f:
+                        f.write(self.shell.console._expect.before)
+                        self.logger.info(f"Wrote log file to {uart_log_filename}")
+                raise e
 
         elif status == Status.shell:
             self.transition(Status.booting_new)

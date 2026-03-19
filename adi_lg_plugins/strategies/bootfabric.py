@@ -100,6 +100,8 @@ class BootFabric(Strategy):
     )
     boot_log = attr.ib(default="", init=False)
 
+    debug_write_boot_log = attr.ib(default=False)
+
     def __attrs_post_init__(self):
         """Initialize strategy."""
         super().__attrs_post_init__()
@@ -203,18 +205,26 @@ class BootFabric(Strategy):
                 self.shell.bypass_login = True
                 self.target.activate(self.shell)
                 # Wait for Linux kernel boot
-                _, before, _, _ = self.shell.console.expect("Linux", timeout=30)
-                if before:
-                    self.boot_log += before.decode("utf-8", errors="replace")
-                # Wait for login prompt or marker
-                _, before, _, _ = self.shell.console.expect(
-                    self.reached_boot_marker, timeout=self.wait_for_boot_timeout
-                )
-                if before:
-                    self.boot_log += before.decode("utf-8", errors="replace")
-                self.shell.bypass_login = False
-                self.target.deactivate(self.shell)
-                self.logger.info("Microblaze kernel booted successfully")
+                try:
+                    _, before, _, _ = self.shell.console.expect("Linux", timeout=30)
+                    if before:
+                        self.boot_log += before.decode("utf-8", errors="replace")
+                    # Wait for login prompt or marker
+                    _, before, _, _ = self.shell.console.expect(
+                        self.reached_boot_marker, timeout=self.wait_for_boot_timeout
+                    )
+                    if before:
+                        self.boot_log += before.decode("utf-8", errors="replace")
+                    self.shell.bypass_login = False
+                    self.target.deactivate(self.shell)
+                    self.logger.info("Microblaze kernel booted successfully")
+                except Exception as e:
+                    if self.debug_write_boot_log:
+                        uart_log_filename = f"uart_log_{int(time.time())}.txt"
+                        with open(uart_log_filename, "wb") as f:
+                            f.write(self.shell.console._expect.before)
+                            self.logger.info(f"Wrote log file to {uart_log_filename}")
+                    raise e
             else:
                 # No shell configured, just wait
                 self.logger.info(

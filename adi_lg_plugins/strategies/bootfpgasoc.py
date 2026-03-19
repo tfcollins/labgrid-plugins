@@ -194,9 +194,9 @@ class BootFPGASoC(Strategy):
             except Exception as e:
                 if self.debug_write_boot_log:
                     uart_log_filename = f"uart_log_{int(time.time())}.txt"
-                    with open(f"/tmp/{uart_log_filename}", "wb") as f:
+                    with open(uart_log_filename, "wb") as f:
                         f.write(self.shell.console._expect.before)
-                        self.logger.info(f"Wrote log file to /tmp/{uart_log_filename}")
+                        self.logger.info(f"Wrote log file to {uart_log_filename}")
                 raise e
             if before:
                 self.boot_log += before.decode("utf-8", errors="replace")
