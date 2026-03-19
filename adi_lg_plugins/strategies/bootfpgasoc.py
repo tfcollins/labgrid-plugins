@@ -79,6 +79,8 @@ class BootFPGASoC(Strategy):
     wait_for_linux_prompt_timeout = attr.ib(default=60)
     boot_log = attr.ib(default="", init=False)
 
+    debug_write_boot_log = attr.ib(default=False)
+
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
         self.logger.info("BootFPGASoC strategy initialized")
@@ -185,9 +187,17 @@ class BootFPGASoC(Strategy):
             if before:
                 self.boot_log += before.decode("utf-8", errors="replace")
             # Check device prompt
-            _, before, _, _ = self.shell.console.expect(
-                self.reached_linux_marker, timeout=self.wait_for_linux_prompt_timeout
-            )  # Adjust prompt as needed
+            try:
+                _, before, _, _ = self.shell.console.expect(
+                    self.reached_linux_marker, timeout=self.wait_for_linux_prompt_timeout
+                )  # Adjust prompt as needed
+            except Exception as e:
+                if self.debug_write_boot_log:
+                    uart_log_filename = f"uart_log_{int(time.time())}.txt"
+                    with open(f"/tmp/{uart_log_filename}", "wb") as f:
+                        f.write(self.shell.console._expect.before)
+                        self.logger.info(f"Wrote log file to /tmp/{uart_log_filename}")
+                raise e
             if before:
                 self.boot_log += before.decode("utf-8", errors="replace")
             self.shell.bypass_login = False
