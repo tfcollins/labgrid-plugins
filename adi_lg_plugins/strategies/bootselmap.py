@@ -62,6 +62,8 @@ class BootSelMap(Strategy):
     reached_linux_marker = attr.ib(default="analog")
     ethernet_interface = attr.ib(default=None)
     iio_jesd_driver_name = attr.ib(default="axi-ad9081-rx-hpc")
+    iio_jesd_data_mode = attr.ib(default="DATA")
+    iio_jesd_link_mode_attr = attr.ib(default="jesd204_link_mode")
     pre_boot_boot_files = attr.ib(default=None)
     post_boot_boot_files = attr.ib(default=None)
     boot_log = attr.ib(default="", init=False)
@@ -245,14 +247,21 @@ class BootSelMap(Strategy):
 
             jesd_finished = False
             self.logger.info("Waiting for JESD FSM to reach post_running_stage...")
+            data_mode_ready = False
             for t in range(120):
                 stdout, stderr, returncode = self.shell.run(
                     f"iio_attr -d {self.iio_jesd_driver_name} jesd204_fsm_state", timeout=4
                 )
                 if "opt_post_running_stage" in stdout:
-                    jesd_finished = True
-                    self.logger.info("JESD FSM reached post_running_stage")
-                    break
+                    if self.check_jesd_links_data_mode():
+                        jesd_finished = True
+                        data_mode_ready = True
+                        self.logger.info("JESD FSM reached post_running_stage and links are in DATA mode")
+                        break
+                    self.logger.warning(
+                        "JESD FSM reached post_running_stage but links are not DATA yet (%d/120)",
+                        t + 1,
+                    )
                 else:
                     if t % 10 == 0:
                         self.logger.info(f"JESD FSM state: {stdout.strip()} ({t + 1}/120)")
@@ -260,6 +269,8 @@ class BootSelMap(Strategy):
 
             if not jesd_finished:
                 raise StrategyError("Virtex JESD did not finish successfully within timeout")
+            if not data_mode_ready:
+                raise StrategyError("Virtex JESD links are not in DATA mode")
 
             # Restart IIOD
             self.logger.info("Restarting IIOD service...")
@@ -292,3 +303,42 @@ class BootSelMap(Strategy):
         else:
             raise StrategyError(f"no transition found from {self.status} to {status}")
         self.status = status
+
+    def _parse_jesd_link_modes(self, output: str) -> list[str]:
+        """Parse JESD link mode output from iio_attr."""
+        modes: list[str] = []
+        for line in output.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            value = line
+            for sep in (":", "="):
+                if sep in value:
+                    value = value.split(sep, 1)[1].strip()
+                    break
+            tokens = [token.strip() for token in value.replace(",", " ").split() if token.strip()]
+            modes.extend(tokens)
+        return modes
+
+    def check_jesd_links_data_mode(self, timeout: int = 4) -> bool:
+        """
+        Check JESD link modes and return True when all linked modes are DATA.
+
+        Returns False when no modes are found or if any mode is not DATA.
+        """
+        stdout, _, return_code = self.shell.run(
+            f"iio_attr -d {self.iio_jesd_driver_name} {self.iio_jesd_link_mode_attr}",
+            timeout=timeout,
+        )
+        if return_code != 0:
+            return False
+
+        link_modes = self._parse_jesd_link_modes(stdout)
+        if not link_modes:
+            self.logger.warning(
+                "No JESD link modes detected for %s", self.iio_jesd_driver_name
+            )
+            return False
+
+        self.logger.info("JESD link modes: %s", ", ".join(link_modes))
+        return all(mode.upper() == self.iio_jesd_data_mode for mode in link_modes)

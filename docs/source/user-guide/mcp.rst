@@ -85,7 +85,7 @@ You can then interact with the agent:
 Exposed Tools
 -------------
 
-The MCP server exposes several tools for hardware management. All boot tools return a ``session_id`` which must be used for subsequent shell or SSH commands to maintain the same environment.
+The MCP server exposes several tools for hardware management. All boot tools return a ``session_id`` which must be used for subsequent shell or SSH commands to maintain the same environment. Boot tools also return structured result fields such as ``boot_log`` and, when available, a local ``uart_log_path`` capturing the UART console output.
 
 Boot Tools
 ~~~~~~~~~~
@@ -101,6 +101,19 @@ Executes the JTAG-based ``BootFabric`` strategy.
     - ``target`` (string, default: "main"): Labgrid target name.
     - ``state`` (string, default: "shell"): Desired transition state.
     - ``session_id`` (string, optional): Reuse an existing session.
+    - ``timeout_seconds`` (number, default: 300): Maximum time the MCP call waits for the board to reach success or failure.
+
+- **Returns:**
+    - ``status`` (string): ``"success"`` or ``"fail"``
+    - ``session_id`` (string): Session identifier for follow-up shell or SSH commands
+    - ``boot_log`` (string): Captured boot console text
+    - ``uart_log_path`` (string): Local filesystem path to a saved UART log file
+    - ``uri`` (string): Target URI when available
+    - ``jesd_status`` (object, optional): JESD204 link state details when available
+    - ``message`` (string): Summary message
+    - ``error`` (string, optional): Traceback or failure details
+
+The ``boot_fabric`` tool does not treat an unverifiable boot as success. If the strategy cannot confirm boot completion, or the overall call exceeds ``timeout_seconds``, the MCP result returns ``status="fail"``.
 
 boot_soc
 ^^^^^^^^
@@ -209,3 +222,4 @@ Example logs seen during execution:
     INFO: Transitioning to Status.booted (Current: Status.flash_fpga)
     INFO: Waiting for Linux boot and 'login:' prompt...
     INFO: Microblaze kernel booted successfully
+    INFO: Wrote log file to /abs/path/uart_log_1711200000.txt

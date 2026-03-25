@@ -1,6 +1,7 @@
 """Strategy to boot logic-only Xilinx FPGAs (Virtex/Artix/Kintex) with Microblaze."""
 
 import enum
+import os
 import time
 
 import attr
@@ -94,9 +95,23 @@ class BootFabric(Strategy):
         default=None,
         validator=attr.validators.optional(attr.validators.instance_of(str)),
     )
+
+    def _write_uart_log(self, content: bytes) -> str:
+        """Write UART output to a local log file and return its absolute path."""
+        uart_log_filename = os.path.abspath(f"uart_log_{int(time.time())}.txt")
+        with open(uart_log_filename, "wb") as f:
+            f.write(content)
+        self.uart_log_path = uart_log_filename
+        self.logger.info(f"Wrote log file to {uart_log_filename}")
+        return uart_log_filename
+
     trigger_dhcp_reset = attr.ib(
         default=False,
         validator=attr.validators.instance_of(bool),
+    )
+    power_off_delay = attr.ib(
+        default=2,
+        validator=attr.validators.instance_of(int),
     )
     boot_log = attr.ib(default="", init=False)
 
@@ -105,6 +120,8 @@ class BootFabric(Strategy):
     def __attrs_post_init__(self):
         """Initialize strategy."""
         super().__attrs_post_init__()
+        self.boot_log = ""
+        self.uart_log_path = ""
         self.logger.info("BootFabric strategy initialized")
 
     @never_retry
@@ -159,8 +176,8 @@ class BootFabric(Strategy):
             self.transition(Status.powered_off)
             if self.power:
                 self.target.activate(self.power)
-                self.logger.info("Waiting for power to stabilize (2s)...")
-                time.sleep(2)
+                self.logger.info(f"Waiting for power to stabilize ({self.power_off_delay}s)...")
+                time.sleep(self.power_off_delay)
                 self.power.on()
                 self.logger.info("FPGA powered on, waiting for initialization (5s)...")
                 time.sleep(5)  # Wait for power stabilization
@@ -198,6 +215,7 @@ class BootFabric(Strategy):
             # self.transition(Status.booting)
             self.transition(Status.flash_fpga)
             self.boot_log = ""  # Reset boot log for this boot
+            self.uart_log_path = ""
             if self.shell:
                 self.logger.info(
                     f"Waiting for Linux boot and '{self.reached_boot_marker}' prompt..."
@@ -217,21 +235,18 @@ class BootFabric(Strategy):
                         self.boot_log += before.decode("utf-8", errors="replace")
                     self.shell.bypass_login = False
                     self.target.deactivate(self.shell)
+                    self._write_uart_log(self.boot_log.encode("utf-8", errors="replace"))
                     self.logger.info("Microblaze kernel booted successfully")
                 except Exception as e:
                     if self.debug_write_boot_log:
-                        uart_log_filename = f"uart_log_{int(time.time())}.txt"
-                        with open(uart_log_filename, "wb") as f:
-                            f.write(self.shell.console._expect.before)
-                            self.logger.info(f"Wrote log file to {uart_log_filename}")
+                        partial = self.boot_log.encode("utf-8", errors="replace")
+                        partial += getattr(self.shell.console._expect, "before", b"")
+                        self._write_uart_log(partial)
                     raise e
             else:
-                # No shell configured, just wait
-                self.logger.info(
-                    f"No shell configured, waiting {self.wait_for_boot_timeout}s for assumed boot..."
+                raise StrategyError(
+                    "BootFabric cannot verify boot completion without a shell driver"
                 )
-                time.sleep(self.wait_for_boot_timeout)
-                self.logger.info("Assumed booted (no shell verification)")
 
         elif status == Status.fixup_networking:
             self.transition(Status.booted)
@@ -252,7 +267,9 @@ class BootFabric(Strategy):
                         self.logger.info(f"Networking fixed up, IP: {ip_address}")
                     else:
                         self.logger.warning("Could not obtain IP address")
-                    self.target.deactivate(self.shell)
+                    # Shell intentionally left active so Status.shell inherits _status=1
+                    # and skips _await_login(), avoiding a 60s timeout from post-DHCP
+                    # UART output flooding the console.
             else:
                 raise StrategyError("Networking fixup requested but no shell driver configured")
 

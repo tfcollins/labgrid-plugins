@@ -1,80 +1,51 @@
-"""Tests for BootFabric strategy on VCU118+AD9081 platform."""
+"""Unit tests for the BootFabric strategy."""
+
+from unittest.mock import MagicMock
 
 import pytest
+from labgrid.strategy import StrategyError
 
-# @pytest.fixture(scope="module")
-# def env():
-#     """Load test environment for VCU118."""
-#     env_path = "tests/test_fabric_vcu118.yaml"
-#     env = Environment(env_path)
-#     env.get_target("main")
-#     return env
+from adi_lg_plugins.strategies.bootfabric import BootFabric, Status
 
 
-# @pytest.fixture(scope="module")
-# def target(env):
-#     """Get target from environment."""
-#     return env.get_target("main")
+@pytest.fixture
+def bootfabric_strategy():
+    """Create a BootFabric strategy wired to mocked labgrid resources."""
+    target = MagicMock()
+
+    def bind(item):
+        item.target = target
+
+    target.bind.side_effect = bind
+
+    strategy = BootFabric(target, "bootfabric")
+    strategy.power = None
+    strategy.jtag = MagicMock()
+    strategy.shell = None
+    strategy.ssh = None
+    return strategy
 
 
-# @pytest.fixture(scope="module")
-# def strategy(target):
-#     """Get BootFabric strategy."""
-#     return target.get_driver("BootFabric")
+def test_booted_requires_verification_when_no_shell(bootfabric_strategy):
+    """BootFabric must not claim success without a shell or other boot evidence."""
+    with pytest.raises(StrategyError, match="cannot verify boot completion"):
+        bootfabric_strategy.transition(Status.booted)
 
 
-@pytest.fixture(scope="module")
-def in_shell(strategy):
-    """Boot to shell and cleanup after tests."""
-    strategy.transition("shell")
-    yield
-    strategy.transition("soft_off")
+def test_booted_waits_for_marker_when_shell_present(bootfabric_strategy):
+    """BootFabric should succeed when the shell reaches the boot marker."""
+    shell = MagicMock()
+    shell.console.expect.side_effect = [
+        (None, b"Linux boot log\n", None, None),
+        (None, b"login:\n", None, None),
+    ]
+    bootfabric_strategy.shell = shell
 
+    bootfabric_strategy.transition(Status.booted)
 
-def test_boot_to_shell(target, in_shell):
-    """Test boot sequence to shell."""
-    shell = target.get_driver("ADIShellDriver")
-    stdout, stderr, returncode = shell.run("uname -a")
-    assert returncode == 0, f"Command failed with stderr: {stderr}"
-    if isinstance(stdout, list):
-        stdout = "\n".join(stdout)
-    assert "Linux" in stdout, f"Linux not found in output: {stdout}"
-    assert "microblaze" in stdout, f"microblaze not found in output: {stdout}"
-
-
-def test_iio_device_available(target, in_shell):
-    """Test AD9081 IIO device is available."""
-    shell = target.get_driver("ADIShellDriver")
-    stdout, stderr, returncode = shell.run("iio_attr -d axi-ad9081-rx-hpc name")
-    assert returncode == 0, f"IIO device check failed with stderr: {stderr}"
-    assert "could not find device" not in stdout, f"Device not found: {stdout}"
-
-
-def test_bitstream_flash(target):
-    """Test bitstream flashing."""
-    strategy = target.get_driver("BootFabric")
-    strategy.transition("powered_on")
-    strategy.transition("bitstream_flashed")
-    assert strategy.status.name == "bitstream_flashed"
-
-
-def test_kernel_download(target):
-    """Test kernel download."""
-    strategy = target.get_driver("BootFabric")
-    strategy.transition("bitstream_flashed")
-    strategy.transition("kernel_downloaded")
-    assert strategy.status.name == "kernel_downloaded"
-
-
-@pytest.mark.parametrize(
-    "marker",
-    [
-        "login:",  # Default Linux login prompt
-        "root@",  # Root shell prompt
-    ],
-)
-def test_custom_boot_marker(marker):
-    """Test custom boot marker configuration."""
-    # This test demonstrates how to use custom boot markers
-    # In practice, you would create a new target with custom marker
-    assert marker in ["login:", "root@", "# "]
+    assert bootfabric_strategy.status == Status.booted
+    shell.console.expect.assert_any_call("Linux", timeout=30)
+    shell.console.expect.assert_any_call(
+        bootfabric_strategy.reached_boot_marker,
+        timeout=bootfabric_strategy.wait_for_boot_timeout,
+    )

@@ -1,10 +1,12 @@
 import asyncio
 import json
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
 
 from adi_lg_plugins.tools.mcp import (
+    SessionManager,
     _run_strategy,
     boot_fabric,
     boot_soc,
@@ -44,6 +46,7 @@ def test_run_strategy_success(mock_get, tmp_path):
     mock_tg = MagicMock()
     mock_strat = MagicMock()
     mock_strat.boot_log = "Test boot log"
+    mock_strat.uart_log_path = str(tmp_path / "uart_log_123.txt")
     mock_get.return_value = (mock_tg, mock_strat, "session-123")
 
     config = tmp_path / "config.yaml"
@@ -71,6 +74,7 @@ def test_run_strategy_success(mock_get, tmp_path):
     assert result_json["session_id"] == "session-123"
     assert "Successfully reached state 'shell'" in result_json["message"]
     assert result_json["boot_log"] == "Test boot log"
+    assert result_json["uart_log_path"] == str(tmp_path / "uart_log_123.txt")
     mock_strat.transition.assert_called_with("shell")
     assert setup_called
     assert mock_strat.custom_attr == "value"
@@ -97,6 +101,33 @@ def test_run_strategy_failure(mock_get, tmp_path):
     assert "Strategy error" in result_json["error"]
 
 
+@patch("adi_lg_plugins.tools.mcp._get_target_and_strategy")
+def test_run_strategy_failure_includes_uart_log_path(mock_get, tmp_path):
+    """Test _run_strategy failure returns any local UART log path."""
+    mock_tg = MagicMock()
+    mock_strat = MagicMock()
+    mock_strat.boot_log = "Partial boot log"
+    mock_strat.uart_log_path = str(tmp_path / "uart_log_fail.txt")
+    mock_strat.transition.side_effect = Exception("Boot failed")
+    mock_get.return_value = (mock_tg, mock_strat, "session-456")
+
+    config = tmp_path / "config.yaml"
+    config.write_text("targets: {main: {}}")
+
+    result = _run_strategy(
+        str(config),
+        target_name="main",
+        strategy_driver="TestDriver",
+        state="shell",
+        session_id=None,
+    )
+    result_json = json.loads(result)
+
+    assert result_json["status"] == "fail"
+    assert result_json["boot_log"] == "Partial boot log"
+    assert result_json["uart_log_path"] == str(tmp_path / "uart_log_fail.txt")
+
+
 @pytest.mark.asyncio
 @patch("adi_lg_plugins.tools.mcp._run_strategy")
 async def test_boot_fabric_tool(mock_run):
@@ -116,6 +147,29 @@ async def test_boot_fabric_tool(mock_run):
     assert args[1] == "main"
     assert args[2] == "BootFabric"
     assert args[3] == "shell"
+
+
+@pytest.mark.asyncio
+@patch("adi_lg_plugins.tools.mcp._run_strategy")
+async def test_boot_fabric_tool_timeout_returns_failure_json(mock_run):
+    """boot_fabric should fail if the strategy exceeds the MCP timeout."""
+
+    def slow_run(*args, **kwargs):
+        time.sleep(0.2)
+        return "{}"
+
+    mock_run.side_effect = slow_run
+
+    result = await boot_fabric(
+        config_path="conf.yaml",
+        target="main",
+        state="shell",
+        timeout_seconds=0.01,
+    )
+
+    payload = json.loads(result)
+    assert payload["status"] == "fail"
+    assert "timed out" in payload["message"]
 
 
 @pytest.mark.asyncio
@@ -211,6 +265,26 @@ def test_get_session_info_mcp(mock_session_manager):
     result = asyncio.run(get_session_info(session_id="s1"))
 
     assert "test.yaml" in result
+
+
+def test_session_manager_details_include_uart_log_path():
+    """Session metadata should expose the latest UART log path when available."""
+    manager = SessionManager()
+    mock_tg = MagicMock()
+    mock_strat = MagicMock()
+    mock_strat.uart_log_path = "/tmp/uart_log_123.txt"
+    manager.sessions["s1"] = {
+        "env": MagicMock(),
+        "target": mock_tg,
+        "strategy": mock_strat,
+        "meta": {"config_path": "cfg.yaml", "target_name": "main"},
+    }
+
+    details = manager.get_session_details("s1")
+    sessions = manager.list_sessions()
+
+    assert details["uart_log_path"] == "/tmp/uart_log_123.txt"
+    assert sessions["s1"]["uart_log_path"] == "/tmp/uart_log_123.txt"
 
 
 # --- Resource Tests ---
