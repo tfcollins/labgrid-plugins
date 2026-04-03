@@ -161,9 +161,9 @@ def _read_jesd_sysfs(tg: Any, strategy: Any) -> dict | None:
 
         def _to_lines(out):
             if isinstance(out, list):
-                return [l.strip() for l in out if l.strip()]
+                return [line.strip() for line in out if line.strip()]
             if isinstance(out, str):
-                return [l.strip() for l in out.strip().splitlines() if l.strip()]
+                return [line.strip() for line in out.strip().splitlines() if line.strip()]
             return []
 
         # Retry up to 10 times with a 3s delay — the IIO subsystem may take
