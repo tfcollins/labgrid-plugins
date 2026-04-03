@@ -90,6 +90,7 @@ bootselmap = "adi_lg_plugins.strategies.bootselmap:BootSelMap"
 bootfabric = "adi_lg_plugins.strategies.bootfabric:BootFabric"
 bootsoctftp = "adi_lg_plugins.strategies.bootfpgasoctftp:BootFPGASoCTFTP"
 softwareprovisioning = "adi_lg_plugins.strategies.software_provisioning:SoftwareProvisioningStrategy"
+bootrpi = "adi_lg_plugins.strategies.bootrpi:BootRPI"
 
 [tool.ruff]
 line-length = 100

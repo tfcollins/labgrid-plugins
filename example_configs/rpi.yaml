@@ -1,0 +1,11 @@
+targets:
+  main:
+    resources:
+      NetworkService:
+        address: 10.0.0.149
+        username: root
+        password: analog
+    drivers:
+      SSHDriver: {}
+      BootRPI:
+        ssh_boot_timeout: 30

@@ -524,6 +524,160 @@ the Zynq (primary) and Virtex (secondary) FPGAs:
    - Ensure local files don't change between boots
    - Check _copied_pre_boot_files flag is being set correctly
 
+BootRPI Strategy
+----------------
+
+**Purpose**: Manage Raspberry Pi devices primarily via SSH, with optional power control, serial console, and SD card mux support.
+
+**Use Case**: General-purpose RPI management for testing and automation. Works with minimal hardware (SSH only) or full setups with power control and serial console. The strategy uses a cascading priority for reboot and shutdown operations, falling back through available drivers.
+
+**State Machine**:
+
+.. mermaid::
+
+   stateDiagram-v2
+       [*] --> unknown
+       unknown --> off: Initialize
+       off --> booting: Power on / reboot
+
+       booting --> booted: Wait for SSH connectivity
+
+       note right of booting
+           Reboot priority: power > serial > SSH
+       end note
+
+       booted --> shell: SSH session ready
+
+       note right of booted
+           Retries SSH connection with timeout
+       end note
+
+       shell --> soft_off: Graceful shutdown
+       soft_off --> [*]
+
+       note right of off
+           Shutdown priority: power > serial > SSH
+       end note
+
+**Reboot/Shutdown Priority**:
+
+The strategy cascades through available drivers for power operations:
+
+1. **Power driver** (e.g., VeSync, CyberPower) -- hard power cycle
+2. **Serial console** (ADIShellDriver) -- ``reboot`` / ``poweroff`` command
+3. **SSH** (SSHDriver) -- ``sudo reboot`` / ``sudo poweroff`` command
+
+When no power driver is available and the device is in ``unknown`` state, the strategy skips the off/booting cycle and connects directly via SSH, assuming the device is already running.
+
+**Hardware Requirements**:
+
+- SSH access (SSHDriver) -- **required**
+- Power control (PowerProtocol) -- optional, enables hard power cycling
+- Serial console (ADIShellDriver) -- optional, provides boot monitoring and fallback reboot
+- SD card mux (USBSDMuxDriver) -- optional, for SD card management
+
+**Configuration Example (SSH only)**:
+
+.. code-block:: yaml
+
+    targets:
+      rpi:
+        resources:
+          NetworkService:
+            address: 10.0.0.149
+            username: root
+            password: analog
+
+        drivers:
+          SSHDriver: {}
+          BootRPI:
+            ssh_boot_timeout: 60
+
+**Configuration Example (with power and serial)**:
+
+.. code-block:: yaml
+
+    targets:
+      rpi:
+        resources:
+          NetworkService:
+            address: 10.0.0.149
+            username: root
+            password: analog
+
+          VesyncOutlet:
+            outlet_names: 'RPI Power'
+            username: 'your_email@example.com'
+            password: 'your_password'
+            delay: 5.0
+
+          RawSerialPort:
+            port: /dev/ttyUSB0
+            speed: 115200
+
+        drivers:
+          SSHDriver: {}
+          VesyncPowerDriver: {}
+          SerialDriver: {}
+          ADIShellDriver:
+            prompt: 'root@.*:.*#'
+            login_prompt: 'login:'
+            username: 'root'
+            password: 'analog'
+          BootRPI:
+            ssh_boot_timeout: 120
+            power_off_delay: 5
+
+**Usage Example**:
+
+.. code-block:: python
+
+    env = Environment("rpi.yaml")
+    target = env.get_target("rpi")
+    strategy = target.get_driver("BootRPI")
+
+    # Connect to the RPI
+    strategy.transition("shell")
+
+    # Run commands via SSH
+    ssh = target.get_driver("SSHDriver")
+    stdout, stderr, returncode = ssh.run("uname -a")
+    print(stdout)
+
+    # Transfer files
+    ssh.put("/local/path/config.txt", "/remote/path/config.txt")
+
+    # Graceful shutdown
+    strategy.transition("soft_off")
+
+**Attributes**:
+
+- ``ssh_boot_timeout`` (int): Seconds to wait for SSH connectivity after boot (default: 120)
+- ``power_off_delay`` (int): Seconds to wait after power off before power on (default: 2)
+
+**Troubleshooting**:
+
+*SSH connection times out during boot*:
+   - Increase ``ssh_boot_timeout`` for slower devices
+   - Verify the RPI's IP address is correct in the NetworkService resource
+   - Check network connectivity: ``ping <device-ip>``
+   - Ensure SSH server is running on the RPI
+
+*Device powers off but doesn't come back*:
+   - Without a power driver, ``sudo poweroff`` shuts down the RPI permanently
+   - Add a power driver (VeSync, CyberPower, HomeAssistant) for reliable power cycling
+   - Or use serial console as a fallback for reboot commands
+
+*Permission denied on SSH commands*:
+   - Verify username and password in NetworkService resource
+   - Check SSH key configuration if using key-based auth
+   - Ensure the user has sudo privileges for reboot/poweroff commands
+
+*Strategy enters "broken state"*:
+   - The ``@never_retry`` decorator marks the strategy as broken after any failure
+   - Create a new target/strategy instance to recover
+   - Check logs for the original exception that caused the broken state
+
 Best Practices
 --------------
 
@@ -905,6 +1059,34 @@ This section provides quick reference tables for valid state transitions in each
    * - soft_off
      - (end)
      - FPGA powered down
+
+**BootRPI State Transitions**:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 30 40
+
+   * - From State
+     - To State
+     - Actions Performed
+   * - unknown
+     - off
+     - Deactivate drivers, shutdown via cascade
+   * - unknown
+     - booted
+     - Skip off/booting (no power driver), connect SSH directly
+   * - off
+     - booting
+     - Power on or reboot via cascade
+   * - booting
+     - booted
+     - Wait for SSH connectivity (retry loop)
+   * - booted
+     - shell
+     - SSH session ready for commands and file transfer
+   * - any
+     - soft_off
+     - Graceful shutdown via cascade, deactivate power
 
 See Also
 ~~~~~~~~

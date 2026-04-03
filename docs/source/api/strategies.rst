@@ -68,6 +68,19 @@ BootFabric
    :undoc-members:
    :no-index:
 
+BootRPI
+-------
+
+.. autoclass:: adi_lg_plugins.strategies.bootrpi.BootRPI
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. autoclass:: adi_lg_plugins.strategies.bootrpi.Status
+   :members:
+   :undoc-members:
+   :no-index:
+
 SoftwareProvisioningStrategy
 ----------------------------
 
