@@ -256,7 +256,9 @@ class BootSelMap(Strategy):
                     if self.check_jesd_links_data_mode():
                         jesd_finished = True
                         data_mode_ready = True
-                        self.logger.info("JESD FSM reached post_running_stage and links are in DATA mode")
+                        self.logger.info(
+                            "JESD FSM reached post_running_stage and links are in DATA mode"
+                        )
                         break
                     self.logger.warning(
                         "JESD FSM reached post_running_stage but links are not DATA yet (%d/120)",
@@ -335,9 +337,7 @@ class BootSelMap(Strategy):
 
         link_modes = self._parse_jesd_link_modes(stdout)
         if not link_modes:
-            self.logger.warning(
-                "No JESD link modes detected for %s", self.iio_jesd_driver_name
-            )
+            self.logger.warning("No JESD link modes detected for %s", self.iio_jesd_driver_name)
             return False
 
         self.logger.info("JESD link modes: %s", ", ".join(link_modes))

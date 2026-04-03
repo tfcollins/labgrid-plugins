@@ -171,9 +171,7 @@ def _read_jesd_sysfs(tg: Any, strategy: Any) -> dict | None:
         lines = []
         for attempt in range(10):
             stdout, _, rc = shell.run(cmd)
-            logger.info(
-                "JESD sysfs attempt %d: rc=%d, stdout=%r", attempt, rc, stdout
-            )
+            logger.info("JESD sysfs attempt %d: rc=%d, stdout=%r", attempt, rc, stdout)
             lines = _to_lines(stdout) if stdout else []
             if len(lines) >= 2:
                 break
@@ -310,8 +308,7 @@ def _run_strategy(
                 addrs = shell.get_ip_addresses()
                 if addrs:
                     actual_ip = str(addrs[0].ip)
-                    logger.info("Actual IP from shell: %s (resource had: %s)",
-                                actual_ip, uri)
+                    logger.info("Actual IP from shell: %s (resource had: %s)", actual_ip, uri)
                     uri = f"ip:{actual_ip}"
             except Exception as e:
                 logger.info("Could not read IP from shell: %s", e)
