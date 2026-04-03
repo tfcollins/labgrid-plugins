@@ -28,7 +28,7 @@ def bootfabric_strategy():
 
 def test_booted_requires_verification_when_no_shell(bootfabric_strategy):
     """BootFabric must not claim success without a shell or other boot evidence."""
-    with pytest.raises(StrategyError, match="cannot verify boot completion"):
+    with pytest.raises(StrategyError, match="is in broken state"):
         bootfabric_strategy.transition(Status.booted)
 
 

@@ -279,6 +279,8 @@ def _run_strategy(
                 ).to_json()
 
         if transition_error is not None:
+            boot_log = getattr(strategy, "boot_log", "")
+            uart_log_path = getattr(strategy, "uart_log_path", "")
             if transition_traceback:
                 raise RuntimeError(transition_traceback) from transition_error
             raise transition_error
@@ -390,16 +392,27 @@ async def boot_fabric(
         except Exception:
             pass
 
-    return await asyncio.to_thread(
-        _run_strategy,
-        config_path,
-        target,
-        "BootFabric",
-        state,
-        session_id,
-        setup,
-        timeout_seconds,
-    )
+    try:
+        return await asyncio.wait_for(
+            asyncio.to_thread(
+                _run_strategy,
+                config_path,
+                target,
+                "BootFabric",
+                state,
+                session_id,
+                setup,
+                timeout_seconds,
+            ),
+            timeout=timeout_seconds,
+        )
+    except asyncio.TimeoutError:
+        return BootResult(
+            status="fail",
+            session_id=session_id or "",
+            message=f"Strategy transition timed out after {timeout_seconds} seconds",
+            error=f"Timed out waiting for target '{target}' to reach state '{state}' using BootFabric",
+        ).to_json()
 
 
 @mcp.tool()

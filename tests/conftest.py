@@ -1,5 +1,14 @@
 import pytest
 
+# Tests that use labgrid's built-in `strategy` fixture crash at collection
+# when no --lg-env is provided (labgrid hook accesses env.config which is None).
+# Exclude these modules unless --run-hardware is given via collect_ignore_glob.
+collect_ignore_glob = [
+    "test_soc_strat.py",
+    "test_soc_strat_custom.py",
+    "test_soc_strat_tftp.py",
+]
+
 
 def pytest_addoption(parser):
     """Add command-line options."""

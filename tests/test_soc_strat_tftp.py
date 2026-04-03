@@ -1,5 +1,7 @@
 import pytest
 
+pytestmark = pytest.mark.hardware
+
 
 @pytest.fixture(scope="module")
 def in_shell(strategy):

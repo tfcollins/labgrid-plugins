@@ -1,6 +1,8 @@
 import iio
 import pytest
 
+pytestmark = pytest.mark.hardware
+
 # @pytest.fixture(scope="function")
 # def in_bootloader(strategy, capsys):
 #     with capsys.disabled():
