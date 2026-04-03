@@ -178,9 +178,7 @@ class BootRPI(Strategy):
             else:
                 # No power driver and unknown state: device is presumably already running
                 self.logger.info("No power driver, assuming device is already running")
-            self.logger.info(
-                f"Waiting for SSH connectivity (timeout: {self.ssh_boot_timeout}s)..."
-            )
+            self.logger.info(f"Waiting for SSH connectivity (timeout: {self.ssh_boot_timeout}s)...")
             deadline = time.time() + self.ssh_boot_timeout
             while time.time() < deadline:
                 try:
@@ -191,9 +189,7 @@ class BootRPI(Strategy):
                     self.target.deactivate(self.ssh)
                     time.sleep(5)
             else:
-                raise StrategyError(
-                    f"SSH connection failed after {self.ssh_boot_timeout}s timeout"
-                )
+                raise StrategyError(f"SSH connection failed after {self.ssh_boot_timeout}s timeout")
 
         elif status == Status.shell:
             self.transition(Status.booted)
