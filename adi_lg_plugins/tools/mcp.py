@@ -3,8 +3,8 @@ import json
 import logging
 import math
 import os
-import traceback
 import threading
+import traceback
 import uuid
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
@@ -245,7 +245,7 @@ def _run_strategy(
         ):
             strategy.wait_for_boot_timeout = min(
                 max(1, math.ceil(timeout_seconds)),
-                int(getattr(strategy, "wait_for_boot_timeout")),
+                int(strategy.wait_for_boot_timeout),
             )
 
         transition_error: Exception | None = None

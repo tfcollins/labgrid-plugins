@@ -19,6 +19,14 @@ CyberPowerOutlet
    :undoc-members:
    :show-inheritance:
 
+HomeAssistantOutlet
+-------------------
+
+.. autoclass:: adi_lg_plugins.resources.homeassistant.HomeAssistantOutlet
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 MassStorageDevice
 -----------------
 

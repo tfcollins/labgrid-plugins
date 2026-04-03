@@ -18,6 +18,7 @@ dependencies = [
     "pytsk3",
     "pysnmp",
     "pylibiio",
+    "requests",
     "click",
     "rich",
     "fastmcp",
@@ -69,6 +70,7 @@ cyberpowerdriver = "adi_lg_plugins.drivers.cyberpowerdriver:CyberPowerDriver"
 xilinxjtagdriver = "adi_lg_plugins.drivers.xilinxjtagdriver:XilinxJTAGDriver"
 tftpserverdriver = "adi_lg_plugins.drivers.tftpserverdriver:TFTPServerDriver"
 softwareinstaller = "adi_lg_plugins.drivers.softwareinstaller:SoftwareInstallerDriver"
+homeassistantdriver = "adi_lg_plugins.drivers.homeassistantdriver:HomeAssistantPowerDriver"
 
 [project.entry-points."labgrid.resources"]
 vesyncresource = "adi_lg_plugins.resources.vesync:VesyncOutlet"
@@ -78,6 +80,7 @@ cyberpowerresource = "adi_lg_plugins.resources.cyberpowerpdu:CyberPowerOutlet"
 xilinxdevicejtag = "adi_lg_plugins.resources.xilinxdevice:XilinxDeviceJTAG"
 xilinxvivadotool = "adi_lg_plugins.resources.xilinxtool:XilinxVivadoTool"
 tftpserverresource = "adi_lg_plugins.resources.tftpserver:TFTPServerResource"
+homeassistantresource = "adi_lg_plugins.resources.homeassistant:HomeAssistantOutlet"
 
 
 [project.entry-points."labgrid.strategies"]

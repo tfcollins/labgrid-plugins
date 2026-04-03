@@ -30,6 +30,22 @@ CyberPowerPdu
    :undoc-members:
    :show-inheritance:
 
+HomeAssistantPowerDriver
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. autoclass:: adi_lg_plugins.drivers.homeassistantdriver.HomeAssistantPowerDriver
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+HomeAssistantClient
+~~~~~~~~~~~~~~~~~~~
+
+.. autoclass:: adi_lg_plugins.drivers.homeassistantdriver.HomeAssistantClient
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 Shell and File Transfer
 ------------------------
 
