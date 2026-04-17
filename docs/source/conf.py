@@ -113,10 +113,6 @@ html_theme_options = {
     "source_repository": "https://github.com/analogdevicesinc/adi-labgrid-plugins",
     "source_branch": "main",
     "source_directory": "docs/source/",
-}
-
-
-html_theme_options = {
     "light_logo": "lg_adi_light.svg",
     "dark_logo": "lg_adi_dark.svg",
 }
