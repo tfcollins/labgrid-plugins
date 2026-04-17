@@ -1,0 +1,38 @@
+## Labgrid exporter config for ZCU102 + AD9081
+## Converted from lg_ad9081_zcu102.yaml environment config
+##
+## Usage:
+##   labgrid-exporter -c 10.0.0.41:20408 -n bq examples/lg_ad9081_zcu102_exporter.yaml
+
+tlab:
+  location: tlab
+  NetworkService:
+    cls: NetworkService
+    address: "10.0.0.23"
+    username: "root"
+    password: "analog"
+  RawSerialPort:
+    cls: RawSerialPort
+    port: "/dev/ttyUSB0"
+    speed: 115200
+  USBMassStorage:
+    cls: USBMassStorage
+    match:
+      ID_PATH: "pci-0000:00:14.0-usb-0:1.1:1.0-scsi-0:0:0:0"
+      SUBSYSTEM: "block"
+  USBSDMuxDevice:
+    cls: USBSDMuxDevice
+  VesyncOutlet:
+    cls: VesyncOutlet
+    outlet_names: "Apollo"
+    ## Fill in your VeSync account credentials (or point at a local secrets
+    ## file via ${LG_VESYNC_USER} / ${LG_VESYNC_PASS} in your tooling).
+    username: "REPLACE_ME@example.com"
+    password: "REPLACE_ME"
+  KuiperRelease:
+    cls: KuiperRelease
+    release_version: "2023_R2_P1"
+    cache_path: "/tmp/kuiper_cache"
+    kernel_path: "release:zynqmp-common/Image"
+    BOOTBIN_path: "release:zynqmp-zcu102-rev10-ad9081/m8_l4/BOOT.BIN"
+    device_tree_path: "release:zynqmp-zcu102-rev10-ad9081/m8_l4/system.dtb"

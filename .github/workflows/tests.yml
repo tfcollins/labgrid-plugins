@@ -30,6 +30,10 @@ jobs:
     - name: Lint with nox
       run: nox -s lint
 
+    - name: Type-check with nox (informational)
+      continue-on-error: true
+      run: nox -s typecheck
+
     - name: Run tests with nox
       run: |
         # Only run unit tests that don't require hardware or large downloads

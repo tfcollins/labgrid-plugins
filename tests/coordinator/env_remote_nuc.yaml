@@ -1,0 +1,31 @@
+## Environment for hardware tier tests against the 'nuc' place (VCU118 +
+## FMCDAQ3 attached to nuc at 10.0.0.121). Run:
+##
+##   LG_COORDINATOR=10.0.0.41:20408 \
+##   LG_EXPORTER_HOST=nuc \
+##   LG_EXPORTER_NAME=nuc \
+##   LG_EXPORTER_YAML=examples/lg_fmcdaq3_vcu118_exporter.yaml \
+##   pytest tests/coordinator/test_fabric_strat_coordinator.py -v \
+##       --run-hardware --lg-config tests/coordinator/env_remote_nuc.yaml
+
+targets:
+  main:
+    resources:
+      RemotePlace:
+        name: nuc
+    drivers:
+      SerialDriver: {}
+      ADIShellDriver:
+        prompt: '#.*'
+        login_prompt: 'buildroot login: '
+        username: 'root'
+        password: 'analog'
+      XilinxJTAGDriver: {}
+      SSHDriver: {}
+      VesyncPowerDriver: {}
+      BootFabric:
+        reached_boot_marker: 'login:'
+        trigger_dhcp_reset: true
+        wait_for_boot_timeout: 700
+        debug_write_boot_log: true
+        power_off_delay: 30

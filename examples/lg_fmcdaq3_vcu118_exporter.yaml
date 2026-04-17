@@ -1,0 +1,49 @@
+## Labgrid exporter config for VCU118 + FMCDAQ3 attached to nuc (10.0.0.121).
+##
+## Differences from the legacy lg_fmcdaq3_vcu118.yaml (monolithic env):
+##   - Serial console: CP2105 dual-UART channel 0 (stable by-id symlink).
+##     If the DUT console is on a different CP2105 channel, change the
+##     trailing -if0X-port0 to if01.
+##   - JTAG: FT232H USB device on nuc exports XilinxDeviceJTAG (IDs +
+##     kernel/bitstream paths — resolved on the test runner side).
+##   - Publishes XilinxVivadoTool too, but the driver loads xsdb from the
+##     path string on the test runner; either Vivado must be at this
+##     path on the test runner, or a remote-hw_server flow is needed.
+##     See note below.
+##
+## Usage:
+##   labgrid-exporter -c 10.0.0.41:20408 -n nuc examples/lg_fmcdaq3_vcu118_exporter.yaml
+
+tlab:
+  location: tlab
+  RawSerialPort:
+    cls: RawSerialPort
+    port: "/dev/serial/by-id/usb-Silicon_Labs_CP2105_Dual_USB_to_UART_Bridge_Controller_008116FD-if01-port0"
+    speed: 115200
+
+  XilinxDeviceJTAG:
+    cls: XilinxDeviceJTAG
+    root_target: 1
+    microblaze_target: 3
+    kernel_path: "/jenkins/vcu118_fmcdaq3/simpleImage.vcu118_fmcdaq3.strip"
+    bitstream_path: "/jenkins/vcu118_fmcdaq3/system_top.bit"
+
+  XilinxVivadoTool:
+    cls: XilinxVivadoTool
+    ## This path is read verbatim on the test runner side. The test runner
+    ## must have xsdb at {vivado_path}/bin/xsdb (or similar) for the
+    ## XilinxJTAGDriver to construct.
+    vivado_path: "/tools/Xilinx/2025.1/Vivado"
+
+  NetworkService:
+    cls: NetworkService
+    address: "10.0.0.231"
+    username: "root"
+    password: "analog"
+
+  VesyncOutlet:
+    cls: VesyncOutlet
+    outlet_names: "FPGA (Nook),Apollo"
+    ## Fill in your VeSync account credentials before running.
+    username: "REPLACE_ME@example.com"
+    password: "REPLACE_ME"

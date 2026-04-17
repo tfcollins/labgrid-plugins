@@ -1,0 +1,18 @@
+## Multi-exporter config consumed by the remote_exporters fixture in
+## test_coordinator_integration.py. Each entry spawns labgrid-exporter on
+## the host (via ssh, or locally when host == the test runner) with the
+## listed yaml, registered on the coordinator as `name`.
+##
+## Use in a pytest run with:
+##   LG_COORDINATOR=10.0.0.41:20408 \
+##   LG_EXPORTERS_CONFIG=tests/coordinator/exporters_all.yaml \
+##   pytest tests/coordinator \
+##       --run-hardware --lg-config tests/coordinator/env_remote_all.yaml
+
+exporters:
+  - name: mini2
+    host: mini2
+    yaml: examples/lg_ad9081_zcu102_mini2_exporter.yaml
+  - name: nuc
+    host: nuc
+    yaml: examples/lg_fmcdaq3_vcu118_exporter.yaml

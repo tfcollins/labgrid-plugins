@@ -1,8 +1,10 @@
 import asyncio
+import atexit
 import json
 import logging
 import math
 import os
+import subprocess
 import threading
 import traceback
 import uuid
@@ -10,6 +12,7 @@ from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from typing import Any
 
+import yaml as _yaml
 from fastmcp import FastMCP
 from labgrid import Environment
 
@@ -36,6 +39,38 @@ class BootResult:
         return json.dumps(asdict(self), indent=2)
 
 
+def _detect_remote_place(config_path: str, target_name: str) -> str | None:
+    """Return the RemotePlace name from the env yaml, or None for local targets."""
+    try:
+        with open(config_path) as f:
+            cfg = _yaml.safe_load(f)
+        rp = (
+            (cfg or {})
+            .get("targets", {})
+            .get(target_name, {})
+            .get("resources", {})
+            .get("RemotePlace", {})
+        )
+        return rp.get("name") if isinstance(rp, dict) else None
+    except Exception:
+        return None
+
+
+def _coordinator_url() -> str | None:
+    return os.environ.get("LG_COORDINATOR")
+
+
+def _acquire_place(coord: str, place: str):
+    subprocess.check_call(["labgrid-client", "-x", coord, "-p", place, "acquire"], timeout=15)
+
+
+def _release_place(coord: str, place: str):
+    try:
+        subprocess.check_call(["labgrid-client", "-x", coord, "-p", place, "release"], timeout=15)
+    except subprocess.SubprocessError:
+        logger.warning("Failed to release place %s on %s", place, coord)
+
+
 class SessionManager:
     """Manages persistent Labgrid environments for MCP sessions."""
 
@@ -44,9 +79,25 @@ class SessionManager:
         self._lock = threading.RLock()
 
     def create_session(self, config_path: str, target_name: str, strategy_driver: str) -> str:
-        """Create a new session and return its ID."""
+        """Create a new session and return its ID.
+
+        If the env yaml defines a RemotePlace for the target and
+        LG_COORDINATOR is set, the place is acquired automatically.
+        """
         with self._lock:
             session_id = str(uuid.uuid4())
+
+            place_name = _detect_remote_place(config_path, target_name)
+            coord = _coordinator_url()
+            acquired_place = False
+
+            if place_name and coord:
+                _acquire_place(coord, place_name)
+                acquired_place = True
+                from labgrid.resource.common import ResourceManager
+
+                ResourceManager.instances.clear()
+
             env = Environment(config_path)
             tg = env.get_target(target_name)
             strategy = tg.get_driver(strategy_driver)
@@ -58,10 +109,41 @@ class SessionManager:
                     "config_path": config_path,
                     "target_name": target_name,
                     "strategy_driver": strategy_driver,
-                    "created_at": str(os.path.getmtime(config_path)),  # Approximate timestamp
+                    "created_at": str(os.path.getmtime(config_path)),
                 },
+                "place_name": place_name if acquired_place else None,
+                "coordinator": coord if acquired_place else None,
             }
             return session_id
+
+    def destroy_session(self, session_id: str):
+        """Tear down a session: soft-off if possible, release the place."""
+        with self._lock:
+            if session_id not in self.sessions:
+                raise ValueError(f"Session {session_id} not found")
+            session = self.sessions.pop(session_id)
+
+        strategy = session.get("strategy")
+        if strategy:
+            try:
+                strategy.transition("soft_off")
+            except Exception:
+                logger.debug("soft_off failed for session %s (may already be off)", session_id)
+
+        place = session.get("place_name")
+        coord = session.get("coordinator")
+        if place and coord:
+            _release_place(coord, place)
+
+    def destroy_all(self):
+        """Release every active session. Called on process exit."""
+        with self._lock:
+            sids = list(self.sessions.keys())
+        for sid in sids:
+            try:
+                self.destroy_session(sid)
+            except Exception:
+                pass
 
     def get_session(self, session_id: str):
         """Retrieve session components by ID."""
@@ -78,7 +160,9 @@ class SessionManager:
                 raise ValueError(f"Session {session_id} not found")
             session = self.sessions[session_id]
             meta = session["meta"].copy()
-            # Extract current target IP from NetworkService if available
+            if session.get("place_name"):
+                meta["place_name"] = session["place_name"]
+                meta["coordinator"] = session["coordinator"]
             try:
                 tg = session["target"]
                 net = tg.get_resource("NetworkService")
@@ -105,6 +189,7 @@ class SessionManager:
 
 
 session_manager = SessionManager()
+atexit.register(session_manager.destroy_all)
 
 
 def _get_target_and_strategy(
@@ -737,13 +822,166 @@ async def resource_session_info(session_id: str) -> str:
         return "{}"
 
 
+# --- Coordinator Discovery ---
+
+
+def _list_places() -> list[dict]:
+    coord = _coordinator_url()
+    if not coord:
+        return []
+    try:
+        out = subprocess.check_output(
+            ["labgrid-client", "-x", coord, "places"],
+            text=True,
+            stderr=subprocess.STDOUT,
+            timeout=10,
+        )
+    except subprocess.SubprocessError as e:
+        logger.warning("Failed to query coordinator places: %s", e)
+        return []
+
+    places = []
+    for name in (ln.strip() for ln in out.splitlines() if ln.strip()):
+        info = {"name": name}
+        try:
+            show = subprocess.check_output(
+                ["labgrid-client", "-x", coord, "-p", name, "show"],
+                text=True,
+                stderr=subprocess.STDOUT,
+                timeout=10,
+            )
+            for line in show.splitlines():
+                line = line.strip()
+                if line.startswith("tags:"):
+                    info["tags"] = line[len("tags:") :].strip()
+                elif line.startswith("acquired:"):
+                    val = line[len("acquired:") :].strip()
+                    info["acquired"] = None if val == "None" else val
+        except subprocess.SubprocessError:
+            pass
+        places.append(info)
+    return places
+
+
+@mcp.tool()
+async def list_places() -> str:
+    """List hardware places registered on the labgrid coordinator.
+
+    Requires the LG_COORDINATOR environment variable.
+
+    Returns:
+        JSON array of place objects with name, tags, and acquired status.
+    """
+    coord = _coordinator_url()
+    if not coord:
+        return json.dumps({"error": "LG_COORDINATOR environment variable not set"})
+    return json.dumps(await asyncio.to_thread(_list_places), indent=2)
+
+
+# --- Session Lifecycle ---
+
+
+@mcp.tool()
+async def destroy_session(session_id: str) -> str:
+    """Destroy a session: soft-off the target, release the coordinator
+    place if acquired, and clean up session state.
+
+    Args:
+        session_id: The session to destroy.
+    """
+    try:
+        await asyncio.to_thread(session_manager.destroy_session, session_id)
+        return json.dumps({"status": "ok", "message": f"Session {session_id} destroyed"})
+    except ValueError as e:
+        return json.dumps({"status": "error", "message": str(e)})
+
+
+# --- Power Control ---
+
+
+def _get_power_driver(session_id: str):
+    _, tg, _ = session_manager.get_session(session_id)
+    for driver_name in ("VesyncPowerDriver", "CyberPowerDriver", "HomeAssistantDriver"):
+        try:
+            drv = tg.get_driver(driver_name)
+            tg.activate(drv)
+            return drv
+        except Exception:
+            continue
+    raise ValueError(f"No power driver found in session {session_id}")
+
+
+@mcp.tool()
+async def power_on(session_id: str) -> str:
+    """Turn on the target's power supply.
+
+    Args:
+        session_id: The session whose target to power on.
+    """
+    try:
+        drv = await asyncio.to_thread(_get_power_driver, session_id)
+        await asyncio.to_thread(drv.on)
+        return json.dumps({"status": "ok", "message": "Power ON"})
+    except Exception as e:
+        return json.dumps({"status": "error", "message": str(e)})
+
+
+@mcp.tool()
+async def power_off(session_id: str) -> str:
+    """Turn off the target's power supply.
+
+    Args:
+        session_id: The session whose target to power off.
+    """
+    try:
+        drv = await asyncio.to_thread(_get_power_driver, session_id)
+        await asyncio.to_thread(drv.off)
+        return json.dumps({"status": "ok", "message": "Power OFF"})
+    except Exception as e:
+        return json.dumps({"status": "error", "message": str(e)})
+
+
+@mcp.tool()
+async def power_cycle(session_id: str) -> str:
+    """Power-cycle the target (off, delay, on).
+
+    Args:
+        session_id: The session whose target to power-cycle.
+    """
+    try:
+        drv = await asyncio.to_thread(_get_power_driver, session_id)
+        await asyncio.to_thread(drv.cycle)
+        return json.dumps({"status": "ok", "message": "Power cycled"})
+    except Exception as e:
+        return json.dumps({"status": "error", "message": str(e)})
+
+
+# --- BootRPI ---
+
+
+@mcp.tool()
+async def boot_rpi(
+    config_path: str,
+    target: str = "main",
+    state: str = "shell",
+    session_id: str | None = None,
+) -> str:
+    """Boot a Raspberry Pi using the BootRPI strategy.
+
+    Args:
+        config_path: Path to the Labgrid configuration file (yaml).
+        target: Target name in the configuration (default: 'main').
+        state: Target state to transition to (default: 'shell').
+        session_id: Optional session ID to reuse an existing session.
+    """
+    return await asyncio.to_thread(_run_strategy, config_path, target, "BootRPI", state, session_id)
+
+
 def main():
     """Main entry point for the MCP server."""
-    # Configure logging to show info level by default
     logging.basicConfig(
         level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
     )
-    # Ensure labgrid logger is also at info level
     logging.getLogger("labgrid").setLevel(logging.INFO)
 
     mcp.run()

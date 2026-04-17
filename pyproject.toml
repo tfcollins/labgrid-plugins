@@ -15,7 +15,6 @@ dependencies = [
     "labgrid @ git+https://github.com/tfcollins/labgrid.git@tfcollins/plugin-support",
     "pyvesync>=1.1.5,<3.0.0",
     "tqdm",
-    "pytsk3",
     "pysnmp",
     "pylibiio",
     "requests",
@@ -28,9 +27,15 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "ruff>=0.8.0",
+    "ty",
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
     "pylibiio",
+]
+## Installed on hosts that actually need to unpack Kuiper disk images.
+## Requires a C toolchain (pytsk3 ships only as an sdist).
+kuiper = [
+    "pytsk3",
 ]
 docs = [
     "sphinx>=7.0.0",
@@ -92,6 +97,31 @@ bootsoctftp = "adi_lg_plugins.strategies.bootfpgasoctftp:BootFPGASoCTFTP"
 softwareprovisioning = "adi_lg_plugins.strategies.software_provisioning:SoftwareProvisioningStrategy"
 bootrpi = "adi_lg_plugins.strategies.bootrpi:BootRPI"
 
+[tool.ty.environment]
+# ty picks up `venv/` automatically; overridable via `ty check --python <path>`.
+python-version = "3.10"
+
+[tool.ty.rules]
+# Labgrid drivers declare their dependency resources via a `bindings = {...}`
+# class attribute; matching instance attributes (e.g. self.cyberpower_outlet)
+# are injected at bind time. ty can't see this, so a faithful check would
+# flag every binding access. Demote to ignore until driver classes grow
+# explicit attribute type annotations.
+unresolved-attribute = "ignore"
+# labgrid's @step() decorator transforms signatures in a way ty doesn't
+# understand, producing false positives on well-formed driver methods.
+too-many-positional-arguments = "ignore"
+
+[tool.ty.src]
+exclude = [
+    "venv",
+    ".venv",
+    "build",
+    "dist",
+    "coordinator/web",
+    "docs/build",
+]
+
 [tool.ruff]
 line-length = 100
 target-version = "py310"
@@ -107,6 +137,31 @@ select = [
 ]
 ignore = [
     "E501",  # line too long (handled by formatter)
+]
+
+[tool.ruff.lint.flake8-bugbear]
+## FastAPI idiom: dependency injection happens via `param = Depends(...)` in
+## function signatures. Same applies to Query/Body/Header/etc. ruff's B008
+## would otherwise flag every FastAPI endpoint.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Body",
+    "fastapi.Form",
+    "fastapi.Header",
+    "fastapi.Cookie",
+    "fastapi.File",
+    "fastapi.Path",
+    "fastapi.Security",
+    "Depends",
+    "Query",
+    "Body",
+    "Form",
+    "Header",
+    "Cookie",
+    "File",
+    "Path",
+    "Security",
 ]
 
 [tool.ruff.format]

@@ -9,11 +9,17 @@ from adi_lg_plugins.tools.mcp import (
     SessionManager,
     _run_strategy,
     boot_fabric,
+    boot_rpi,
     boot_soc,
     boot_soc_tftp,
+    destroy_session,
     get_session_info,
+    list_places,
     list_sessions,
     mcp,
+    power_cycle,
+    power_off,
+    power_on,
     provision_software,
     resource_list_sessions,
     resource_session_info,
@@ -35,9 +41,15 @@ async def test_mcp_registration():
     assert "boot_soc_ssh" in tool_names
     assert "boot_selmap" in tool_names
     assert "boot_soc_tftp" in tool_names
+    assert "boot_rpi" in tool_names
     assert "provision_software" in tool_names
     assert "run_shell_command" in tool_names
     assert "list_sessions" in tool_names
+    assert "list_places" in tool_names
+    assert "destroy_session" in tool_names
+    assert "power_on" in tool_names
+    assert "power_off" in tool_names
+    assert "power_cycle" in tool_names
 
 
 @patch("adi_lg_plugins.tools.mcp._get_target_and_strategy")
@@ -305,3 +317,177 @@ def test_resource_session_info(mock_session_manager):
 
     result = asyncio.run(resource_session_info("s1"))
     assert "test.yaml" in result
+
+
+# --- Coordinator / list_places tests ---
+
+
+@patch("adi_lg_plugins.tools.mcp._coordinator_url", return_value=None)
+def test_list_places_no_coordinator(mock_coord):
+    result = asyncio.run(list_places())
+    assert "error" in json.loads(result)
+
+
+@patch("adi_lg_plugins.tools.mcp.subprocess.check_output")
+@patch("adi_lg_plugins.tools.mcp._coordinator_url", return_value="10.0.0.41")
+def test_list_places_returns_places(mock_coord, mock_check):
+    mock_check.side_effect = [
+        "mini2\nnuc\n",
+        "Place 'mini2':\n  tags: board=zcu102\n  acquired: None\n",
+        "Place 'nuc':\n  tags: board=vcu118\n  acquired: alice\n",
+    ]
+    result = asyncio.run(list_places())
+    places = json.loads(result)
+    assert len(places) == 2
+    assert places[0]["name"] == "mini2"
+    assert places[0]["acquired"] is None
+    assert places[1]["name"] == "nuc"
+    assert places[1]["acquired"] == "alice"
+
+
+# --- Coordinator-aware session tests ---
+
+
+@patch("adi_lg_plugins.tools.mcp._release_place")
+@patch("adi_lg_plugins.tools.mcp._acquire_place")
+@patch("adi_lg_plugins.tools.mcp._coordinator_url", return_value="10.0.0.41")
+def test_create_session_acquires_remote_place(mock_coord, mock_acquire, mock_release, tmp_path):
+    config = tmp_path / "env.yaml"
+    config.write_text(
+        "targets:\n  mini2:\n    resources:\n      RemotePlace:\n        name: mini2\n"
+    )
+    manager = SessionManager()
+    with patch.object(manager, "create_session", wraps=manager.create_session):
+        with patch("adi_lg_plugins.tools.mcp.Environment") as mock_env_cls:
+            mock_tg = MagicMock()
+            mock_env_cls.return_value.get_target.return_value = mock_tg
+            mock_tg.get_driver.return_value = MagicMock()
+
+            sid = manager.create_session(str(config), "mini2", "BootFPGASoC")
+
+    mock_acquire.assert_called_once_with("10.0.0.41", "mini2")
+    assert manager.sessions[sid]["place_name"] == "mini2"
+    assert manager.sessions[sid]["coordinator"] == "10.0.0.41"
+
+    manager.destroy_session(sid)
+    mock_release.assert_called_once_with("10.0.0.41", "mini2")
+
+
+@patch("adi_lg_plugins.tools.mcp._coordinator_url", return_value=None)
+def test_create_session_local_no_acquire(mock_coord, tmp_path):
+    config = tmp_path / "local.yaml"
+    config.write_text("targets:\n  main:\n    resources: {}\n")
+    manager = SessionManager()
+    with patch("adi_lg_plugins.tools.mcp.Environment") as mock_env_cls:
+        mock_tg = MagicMock()
+        mock_env_cls.return_value.get_target.return_value = mock_tg
+        mock_tg.get_driver.return_value = MagicMock()
+        sid = manager.create_session(str(config), "main", "BootFabric")
+
+    assert manager.sessions[sid]["place_name"] is None
+    assert manager.sessions[sid]["coordinator"] is None
+
+
+# --- destroy_session tool ---
+
+
+@patch("adi_lg_plugins.tools.mcp.session_manager")
+def test_destroy_session_tool(mock_sm):
+    result = asyncio.run(destroy_session("s1"))
+    mock_sm.destroy_session.assert_called_once_with("s1")
+    assert json.loads(result)["status"] == "ok"
+
+
+@patch("adi_lg_plugins.tools.mcp.session_manager")
+def test_destroy_session_tool_not_found(mock_sm):
+    mock_sm.destroy_session.side_effect = ValueError("Session s99 not found")
+    result = asyncio.run(destroy_session("s99"))
+    assert json.loads(result)["status"] == "error"
+
+
+# --- Power tools ---
+
+
+@patch("adi_lg_plugins.tools.mcp.session_manager")
+def test_power_on_tool(mock_sm):
+    mock_tg = MagicMock()
+    mock_drv = MagicMock()
+    mock_tg.get_driver.return_value = mock_drv
+    mock_sm.get_session.return_value = (MagicMock(), mock_tg, MagicMock())
+
+    result = asyncio.run(power_on("s1"))
+    assert json.loads(result)["status"] == "ok"
+    mock_drv.on.assert_called_once()
+
+
+@patch("adi_lg_plugins.tools.mcp.session_manager")
+def test_power_off_tool(mock_sm):
+    mock_tg = MagicMock()
+    mock_drv = MagicMock()
+    mock_tg.get_driver.return_value = mock_drv
+    mock_sm.get_session.return_value = (MagicMock(), mock_tg, MagicMock())
+
+    result = asyncio.run(power_off("s1"))
+    assert json.loads(result)["status"] == "ok"
+    mock_drv.off.assert_called_once()
+
+
+@patch("adi_lg_plugins.tools.mcp.session_manager")
+def test_power_cycle_tool(mock_sm):
+    mock_tg = MagicMock()
+    mock_drv = MagicMock()
+    mock_tg.get_driver.return_value = mock_drv
+    mock_sm.get_session.return_value = (MagicMock(), mock_tg, MagicMock())
+
+    result = asyncio.run(power_cycle("s1"))
+    assert json.loads(result)["status"] == "ok"
+    mock_drv.cycle.assert_called_once()
+
+
+@patch("adi_lg_plugins.tools.mcp.session_manager")
+def test_power_on_no_driver(mock_sm):
+    mock_tg = MagicMock()
+    mock_tg.get_driver.side_effect = Exception("not found")
+    mock_sm.get_session.return_value = (MagicMock(), mock_tg, MagicMock())
+
+    result = asyncio.run(power_on("s1"))
+    assert json.loads(result)["status"] == "error"
+
+
+# --- boot_rpi tool ---
+
+
+@pytest.mark.asyncio
+@patch("adi_lg_plugins.tools.mcp._run_strategy")
+async def test_boot_rpi_tool(mock_run):
+    mock_run.return_value = "{}"
+    await boot_rpi(config_path="conf.yaml", target="rpi", state="shell")
+    args, _ = mock_run.call_args
+    assert args[2] == "BootRPI"
+
+
+# --- atexit cleanup ---
+
+
+@patch("adi_lg_plugins.tools.mcp._release_place")
+def test_destroy_all_releases_places(mock_release):
+    manager = SessionManager()
+    manager.sessions["s1"] = {
+        "env": MagicMock(),
+        "target": MagicMock(),
+        "strategy": MagicMock(),
+        "meta": {},
+        "place_name": "mini2",
+        "coordinator": "10.0.0.41",
+    }
+    manager.sessions["s2"] = {
+        "env": MagicMock(),
+        "target": MagicMock(),
+        "strategy": MagicMock(),
+        "meta": {},
+        "place_name": None,
+        "coordinator": None,
+    }
+    manager.destroy_all()
+    mock_release.assert_called_once_with("10.0.0.41", "mini2")
+    assert len(manager.sessions) == 0
