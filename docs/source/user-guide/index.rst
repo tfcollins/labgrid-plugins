@@ -11,4 +11,9 @@ Comprehensive guides for using adi-labgrid-plugins.
    strategies
    cli
    mcp
+   coordinator
+   coordinator-testing
+   web-dashboard
+   exporter-setup
+   exporter-deployment
    examples

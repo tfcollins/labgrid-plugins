@@ -731,11 +731,55 @@ Design Principles
 - No core modification needed
 - Standard interfaces ensure compatibility
 
+Coordinator Infrastructure
+--------------------------
+
+For distributed hardware testing, a coordinator service manages places,
+resources, and reservations across multiple exporter hosts. The project
+includes a Docker-based deployment with a web dashboard.
+
+.. mermaid::
+
+   graph TB
+       subgraph Docker Compose
+           COORD[Coordinator<br/>gRPC :20408]
+           API[FastAPI<br/>REST + WebSocket :8000]
+           WEB[React Dashboard<br/>nginx :3000]
+       end
+
+       EXP1[Exporter Host 1<br/>VCU118 + AD9081] -->|ExporterStream| COORD
+       EXP2[Exporter Host 2<br/>Raspberry Pi| -->|ExporterStream| COORD
+       API -->|ClientStream| COORD
+       WEB -->|/api proxy| API
+       CLIENT[labgrid-client] -->|ClientStream| COORD
+       BROWSER[Browser] -->|HTTP + WS| WEB
+
+       subgraph Data Flow
+           COORD -->|place/resource updates| API
+           API -->|WebSocket broadcast| WEB
+       end
+
+**Key components**:
+
+- ``coordinator/labgrid-coordinator/`` - Docker container for the labgrid
+  gRPC coordinator
+- ``coordinator/api/`` - FastAPI backend bridging gRPC to REST/WebSocket.
+  The ``CoordinatorClient`` class in ``grpc_client.py`` implements the
+  labgrid ``ClientStream`` protocol with in-memory caching.
+- ``coordinator/web/`` - React + Chakra UI dashboard with real-time updates
+  via WebSocket and TanStack Query for state management.
+- ``coordinator/mock-exporter/`` - Standalone mock exporter for testing
+  without hardware.
+
+See :doc:`../user-guide/coordinator` for setup and usage.
+
 See Also
 --------
 
 - :doc:`../user-guide/strategies` - Strategy usage guide
 - :doc:`../user-guide/drivers` - Driver reference
 - :doc:`../user-guide/resources` - Resource configuration
+- :doc:`../user-guide/coordinator` - Coordinator setup
+- :doc:`../user-guide/web-dashboard` - Web dashboard guide
 - :doc:`../api/index` - Complete API reference
 - Labgrid documentation: https://labgrid.readthedocs.io/
