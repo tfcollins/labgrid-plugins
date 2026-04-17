@@ -1,0 +1,26 @@
+# Exporter template: VCU118 + AD9081
+# Group naming convention: <BOARD>_<CHIP>
+#
+# Usage: Fill in the Jinja2 variables for your specific host, then run the
+# exporter with:
+#   labgrid-exporter -c <coordinator>:20408 -n <exporter_name> this_file.yaml
+
+{{ exporter_name | default("lab-host-01") }}:
+  VCU118_AD9081:
+    NetworkService:
+      cls: NetworkService
+      address: "{{ target_ip }}"
+      username: "root"
+    RawSerialPort:
+      cls: RawSerialPort
+      port: "{{ serial_port | default('/dev/ttyUSB1') }}"
+      speed: 115200
+    XilinxDeviceJTAG:
+      cls: XilinxDeviceJTAG
+      root_target: {{ root_target | default(1) }}
+      microblaze_target: {{ microblaze_target | default(3) }}
+      bitstream_path: "{{ bitstream_path }}"
+      kernel_path: "{{ kernel_path }}"
+    XilinxVivadoTool:
+      cls: XilinxVivadoTool
+      vivado_path: "{{ vivado_path | default('/tools/Xilinx/2025.1/Vivado') }}"

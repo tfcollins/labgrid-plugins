@@ -1,0 +1,9 @@
+# Exporter template: Raspberry Pi
+# Group naming convention: <BOARD>_<VARIANT>
+
+{{ exporter_name | default("lab-host-01") }}:
+  RPI_{{ variant | default("CM4") }}:
+    NetworkService:
+      cls: NetworkService
+      address: "{{ target_ip }}"
+      username: "{{ username | default('root') }}"

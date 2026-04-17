@@ -1,0 +1,24 @@
+# Mock exporter resource definitions
+# Simulates two board setups for testing the coordinator dashboard
+
+VCU118_AD9081:
+  NetworkService:
+    cls: NetworkService
+    address: "10.0.0.23"
+    username: "root"
+  RawSerialPort:
+    cls: RawSerialPort
+    port: "/dev/ttyUSB1"
+    speed: 115200
+  XilinxDeviceJTAG:
+    cls: XilinxDeviceJTAG
+    root_target: 1
+    microblaze_target: 3
+    bitstream_path: "ref/vcu118_ad9081/system_top.bit"
+    kernel_path: "ref/vcu118_ad9081/simpleImage.strip"
+
+RPI_CM4:
+  NetworkService:
+    cls: NetworkService
+    address: "10.0.0.149"
+    username: "root"
