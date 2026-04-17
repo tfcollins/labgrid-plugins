@@ -1,6 +1,8 @@
 import nox
 
 # Define default sessions
+## `typecheck` is opt-in (`nox -s typecheck`) until the baseline is cleaned;
+## running `nox` with no args should not fail on pre-existing diagnostics.
 nox.options.sessions = ["lint", "tests", "docs"]
 nox.options.default_venv_backend = "uv"
 
@@ -20,6 +22,15 @@ def lint(session):
     session.install("ruff")
     session.run("ruff", "check", ".")
     session.run("ruff", "format", "--check", ".")
+
+
+@nox.session
+def typecheck(session):
+    """Run ty static type checker."""
+    # Install the package + deps so ty can resolve third-party imports.
+    session.install("-e", ".[dev]")
+    # Point ty at the session's own virtualenv.
+    session.run("ty", "check", "--python", session.virtualenv.location, *session.posargs)
 
 
 @nox.session

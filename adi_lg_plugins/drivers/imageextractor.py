@@ -1,6 +1,19 @@
 import os
 
-import pytsk3
+## Lazy-imported on first use: pytsk3 ships only as an sdist (C build) and
+## isn't needed at import time — only when extracting files from a disk
+## image. Importing eagerly forced a C compiler on every host that merely
+## registered the KuiperDLDriver entry point.
+pytsk3 = None
+
+
+def _pytsk3():
+    global pytsk3
+    if pytsk3 is None:
+        import pytsk3 as _m
+
+        pytsk3 = _m
+    return pytsk3
 
 
 class IMGFileExtractor:
@@ -26,7 +39,7 @@ class IMGFileExtractor:
 
     def __init__(self, img_path, logger=None):
         self.img_path = img_path
-        self.img_handle = pytsk3.Img_Info(img_path)
+        self.img_handle = _pytsk3().Img_Info(img_path)
         self.logger = logger
 
     def log(self, message):
@@ -38,7 +51,7 @@ class IMGFileExtractor:
     def get_partitions(self):
         """List all partitions in the IMG file"""
         try:
-            volume = pytsk3.Volume_Info(self.img_handle)
+            volume = _pytsk3().Volume_Info(self.img_handle)
             partitions = []
 
             for partition in volume:
@@ -64,7 +77,7 @@ class IMGFileExtractor:
     def open_filesystem(self, partition_offset):
         """Open filesystem at a specific partition offset"""
         try:
-            return pytsk3.FS_Info(self.img_handle, offset=partition_offset)
+            return _pytsk3().FS_Info(self.img_handle, offset=partition_offset)
         except Exception as e:
             raise Exception(f"Could not open filesystem at offset {partition_offset}: {e}") from e
 
@@ -84,7 +97,7 @@ class IMGFileExtractor:
                 full_path = f"{path}/{name}".replace("//", "/")
 
                 # Check if it's a directory
-                if entry.info.meta and entry.info.meta.type == pytsk3.TSK_FS_META_TYPE_DIR:
+                if entry.info.meta and entry.info.meta.type == _pytsk3().TSK_FS_META_TYPE_DIR:
                     files.append({"path": full_path, "type": "dir", "size": 0})
                     # Recursively list subdirectory
                     files.extend(self.list_files(fs, full_path))
@@ -132,7 +145,7 @@ class IMGFileExtractor:
 
     def close(self):
         """Close the IMG file handle"""
-        # pytsk3.Img_Info doesn't require explicit closing
+        # _pytsk3().Img_Info doesn't require explicit closing
         # The resources will be released when the object is garbage collected
         pass
 

@@ -1,0 +1,50 @@
+## Labgrid exporter config for ZCU102 + AD9081 attached to mini2
+##
+## Differences from lg_ad9081_zcu102_exporter.yaml (bq):
+##   - Serial console: CP2108 quad-UART channel 0 (via stable by-id symlink)
+##     instead of FTDI /dev/ttyUSB0. If the DUT console is on a different
+##     CP2108 channel, change the trailing -if0X-port0 to if01/02/03.
+##   - SD mux USB path: Microchip 0424:4041 sdmux (ID_PATH changes with wiring)
+##   - MassStorageDevice.path: populated once an SD card is inserted and the
+##     mux is switched to host mode. Update to the actual partition path (or
+##     by-partuuid symlink) that appears.
+##
+## Usage:
+##   LG_EXPORTER_HOST=mini2 \
+##   LG_EXPORTER_NAME=mini2 \
+##   LG_EXPORTER_YAML=examples/lg_ad9081_zcu102_mini2_exporter.yaml \
+##   LG_COORDINATOR=10.0.0.41:20408 \
+##   pytest tests/coordinator/test_soc_strat_coordinator.py -v \
+##       --run-hardware --lg-config tests/coordinator/env_remote_mini2.yaml
+
+tlab:
+  location: tlab
+  NetworkService:
+    cls: NetworkService
+    address: "10.0.0.23"
+    username: "root"
+    password: "analog"
+  RawSerialPort:
+    cls: RawSerialPort
+    port: "/dev/serial/by-id/usb-Silicon_Labs_CP2108_Quad_USB_to_UART_Bridge_Controller_BCA68DE82B6E6E9011E7151BA60BB61-if00-port0"
+    speed: 115200
+  USBMassStorage:
+    cls: USBMassStorage
+    match:
+      ID_PATH: "pci-0000:00:14.0-usb-0:14.1:1.0-scsi-0:0:0:0"
+      SUBSYSTEM: "block"
+  USBSDMuxDevice:
+    cls: USBSDMuxDevice
+  VesyncOutlet:
+    cls: VesyncOutlet
+    outlet_names: "Apollo"
+    ## Fill in your VeSync account credentials before running.
+    username: "REPLACE_ME@example.com"
+    password: "REPLACE_ME"
+  KuiperRelease:
+    cls: KuiperRelease
+    release_version: "2023_R2_P1"
+    cache_path: "/tmp/kuiper_cache"
+    kernel_path: "release:zynqmp-common/Image"
+    BOOTBIN_path: "release:zynqmp-zcu102-rev10-ad9081/m8_l4/BOOT.BIN"
+    device_tree_path: "release:zynqmp-zcu102-rev10-ad9081/m8_l4/system.dtb"

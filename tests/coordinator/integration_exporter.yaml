@@ -1,0 +1,58 @@
+## Sanitized exporter config used by tests/test_coordinator_integration.py
+## smoke tests. Every plugin resource class is represented so that the
+## smoke tier can validate gRPC round-trip for each one.
+##
+## Placeholder addresses / credentials only — never put real secrets here.
+## The exporter happily registers resources that aren't actually present;
+## they just show up as `avail: false`, which is fine because we're only
+## testing class registration + plumbing, not real-hardware availability.
+
+test:
+  location: integration-tests
+
+  ## ---- labgrid built-ins (already covered by lg_ad9081_zcu102_exporter.yaml) ----
+  NetworkService:
+    cls: NetworkService
+    address: "127.0.0.1"
+    username: "test"
+    password: "test"
+  RawSerialPort:
+    cls: RawSerialPort
+    port: "/dev/null"
+    speed: 115200
+  USBMassStorage:
+    cls: USBMassStorage
+    match:
+      ID_PATH: "this-pci-path-does-not-exist"
+  USBSDMuxDevice:
+    cls: USBSDMuxDevice
+  MassStorageDevice:
+    cls: MassStorageDevice
+    path: "/dev/null"
+
+  ## ---- adi_lg_plugins resources ----
+  VesyncOutlet:
+    cls: VesyncOutlet
+    outlet_names: "TestOutlet"
+    username: "test@example.invalid"
+    password: "placeholder"
+  KuiperRelease:
+    cls: KuiperRelease
+    release_version: "0.0.0"
+    cache_path: "/tmp/_kuiper_test_cache"
+    kernel_path: "release:test/Image"
+    BOOTBIN_path: "release:test/BOOT.BIN"
+  CyberPowerOutlet:
+    cls: CyberPowerOutlet
+    address: "127.0.0.1"
+    outlet: 1
+  HomeAssistantOutlet:
+    cls: HomeAssistantOutlet
+    url: "http://127.0.0.1:8123"
+    token: "placeholder-token"
+    entity_id: "switch.test"
+  TFTPServerResource:
+    cls: TFTPServerResource
+    address: "127.0.0.1"
+    port: 30069
+    root: "/tmp/_tftp_test"
