@@ -25,7 +25,7 @@ class MassStorageDriver(Driver):
     """
 
     bindings = {
-        "mass_storage": {"MassStorageDevice", "USBMassStorage", "NetworkUSBMassStorage"},
+        "mass_storage": {"MassStorageDevice"},
     }
 
     partition = attr.ib(
@@ -46,7 +46,19 @@ class MassStorageDriver(Driver):
 
     @property
     def _prefix(self):
-        return list(getattr(self.mass_storage, "command_prefix", []) or [])
+        # NetworkResource subclasses expose ``command_prefix`` directly.
+        prefix = list(getattr(self.mass_storage, "command_prefix", []) or [])
+        if prefix:
+            return prefix
+        # Plain Resources proxied from a coordinator expose the exporter
+        # host via ``extra['proxy']``; build an ssh command prefix to it.
+        proxy = self._proxy_host()
+        if proxy:
+            from labgrid.util.ssh import sshmanager
+
+            conn = sshmanager.get(proxy)
+            return conn.get_prefix() + ["--"]
+        return []
 
     @property
     def _is_remote(self):
@@ -54,7 +66,16 @@ class MassStorageDriver(Driver):
 
     @property
     def _host(self):
-        return getattr(self.mass_storage, "host", None)
+        host = getattr(self.mass_storage, "host", None)
+        if host:
+            return host
+        return self._proxy_host()
+
+    def _proxy_host(self):
+        extra = getattr(self.mass_storage, "extra", None) or {}
+        if not isinstance(extra, dict):
+            return None
+        return extra.get("proxy")
 
     def _device_path(self):
         return self.partition or self.mass_storage.path
