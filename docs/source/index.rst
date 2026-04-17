@@ -23,6 +23,12 @@ adi-labgrid-plugins Documentation
 
         Learn how to configure and use drivers, resources, and strategies.
 
+    .. grid-item-card:: YAML Reference
+        :link: yaml-reference/index
+        :link-type: doc
+
+        Quick schema lookup for every resource, driver, and strategy.
+
     .. grid-item-card:: Developer Guide
         :link: developer-guide/index
         :link-type: doc
@@ -81,6 +87,7 @@ Quick Example
 
    getting-started/index
    user-guide/index
+   yaml-reference/index
    api/index
    developer-guide/index
    examples/index

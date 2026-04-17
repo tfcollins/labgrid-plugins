@@ -324,6 +324,119 @@ Always transition to ``soft_off`` to gracefully shutdown:
    - Verify device allows root login via SSH
    - Check /boot partition is writable on device
 
+BootFPGASoCTFTP Strategy
+------------------------
+
+**Purpose**: Boot an FPGA SoC device by interrupting U-Boot and loading the kernel and device tree over TFTP. Useful when the SD card cannot be rewritten between boots — new boot images land in the TFTP root on the host instead.
+
+**State Machine**:
+
+The strategy manages 7 states:
+
+.. mermaid::
+
+   stateDiagram-v2
+       [*] --> unknown
+
+       unknown --> powered_off: Initialize
+       powered_off --> update_boot_files: Deactivate shell + TFTP driver, power off
+       update_boot_files --> booting: Stage Image/dtb into TFTP root
+       booting --> booted: Power on, interrupt U-Boot, tftpboot, booti
+       booted --> shell: Activate shell on Linux prompt
+       shell --> soft_off: poweroff, then hard power cut
+       soft_off --> [*]
+
+       note right of update_boot_files
+           Copies Kuiper boot files into tftp_root_folder.
+           Requires KuiperDLDriver when files are staged.
+       end note
+
+       note right of booted
+           U-Boot: dhcp, set serverip/tftpport,
+           tftpboot Image + system.dtb, then booti.
+       end note
+
+**Required Resources and Drivers**
+
+- ``PowerProtocol`` (any power driver, optional — skipped if absent)
+- ``ADIShellDriver`` (serial console)
+- ``TFTPServerResource`` + ``TFTPServerDriver`` (host-side TFTP server)
+- ``KuiperDLDriver`` (optional — source of boot files)
+- ``SSHDriver`` (optional — not used by this strategy itself, accepted for composition)
+
+**Configuration Example**
+
+.. code-block:: yaml
+
+    targets:
+      zcu102_tftp:
+        resources:
+          RawSerialPort:
+            port: '/dev/ttyUSB0'
+            speed: 115200
+
+          VesyncOutlet:
+            outlet_names: 'ZCU102 Power'
+            username: 'lab@example.com'
+            password: '...'
+
+          TFTPServerResource:
+            address: 'auto'
+            port: 3069
+            root: '/var/lib/tftpboot'
+
+          KuiperRelease:
+            release: '2023_R2_P1'
+            cache_dir: '/var/cache/kuiper'
+
+        drivers:
+          SerialDriver: {}
+          ADIShellDriver:
+            prompt: 'root@analog:.*#'
+            login_prompt: 'login:'
+            username: 'root'
+            password: 'analog'
+          VesyncPowerDriver: {}
+          TFTPServerDriver: {}
+          KuiperDLDriver: {}
+
+          BootFPGASoCTFTP:
+            reached_linux_marker: 'analog'
+            wait_for_linux_prompt_timeout: 60
+            kernel_addr: '0x30000000'
+            dtb_addr:    '0x2A000000'
+            bootargs: 'console=ttyPS0,115200 root=/dev/mmcblk0p2 rw earlycon earlyprintk rootfstype=ext4 rootwait'
+
+**Attributes**
+
+- ``reached_linux_marker`` (str, default ``'analog'``): Console marker that signals Linux has booted.
+- ``wait_for_linux_prompt_timeout`` (int, default 60): Seconds to wait for that marker after ``booti``.
+- ``tftp_root_folder`` (str, default ``'/var/lib/tftpboot'``): Overridden at init time from the bound ``TFTPServerDriver``'s resource root.
+- ``kernel_addr`` (str, default ``'0x30000000'``): Memory address loaded by the ``tftpboot Image`` command.
+- ``dtb_addr`` (str, default ``'0x2A000000'``): Memory address loaded by the ``tftpboot system.dtb`` command.
+- ``bootargs`` (str): Default Linux kernel command line. Override for non- ``/dev/mmcblk0p2`` rootfs.
+
+**Usage Example**
+
+.. code-block:: python
+
+    strategy = target.get_driver("BootFPGASoCTFTP")
+
+    # Boot kernel over TFTP and drop into a shell
+    strategy.transition("shell")
+
+    shell = target.get_driver("ADIShellDriver")
+    print(shell.run("uname -a"))
+
+    # Graceful shutdown
+    strategy.transition("soft_off")
+
+**Troubleshooting**
+
+- **``tftpboot`` times out in U-Boot**: Confirm the host TFTP server is actually listening on ``port`` (``ss -lun | grep 3069``). If U-Boot talks to port 69, add an ``iptables`` redirect to ``port``.
+- **``dhcp`` fails on the DUT**: Make sure the DUT's Ethernet is connected to the same L2 segment as the host running the TFTP server.
+- **Boot files missing**: Attach a ``KuiperDLDriver`` to stage ``Image`` / ``system.dtb``, or drop them into ``tftp_root_folder`` manually.
+
 BootSelMap Strategy
 -------------------
 
@@ -977,6 +1090,90 @@ BootFabric Strategy
    - Check kernel has appropriate IIO drivers compiled
    - Verify device tree matches your hardware
    - Run ``dmesg`` to see kernel boot messages
+
+SoftwareProvisioningStrategy
+----------------------------
+
+**Purpose**: Provision software on a target: install packages, clone repositories, run builds, and run tests. Orthogonal to the boot strategies — run it after any boot strategy has reached a shell state.
+
+**State Machine**:
+
+.. mermaid::
+
+   stateDiagram-v2
+       [*] --> unknown
+       unknown --> connected: Activate SoftwareInstallerDriver
+       connected --> software_installed: Install packages
+       software_installed --> repos_cloned: Clone repositories
+       repos_cloned --> built: Run build steps
+       built --> tested: Run test steps
+       tested --> [*]
+
+       note right of software_installed
+           Auto-detects package manager:
+           apt-get / dnf / opkg / pacman / apk
+       end note
+
+**Required Resources and Drivers**
+
+- ``SoftwareInstallerDriver``, which itself requires ``CommandProtocol`` + ``FileTransferProtocol`` bindings (typically ``ADIShellDriver`` or ``SSHDriver``).
+
+**Configuration Example**
+
+.. code-block:: yaml
+
+    targets:
+      netdevice:
+        resources:
+          NetworkService:
+            address: '10.0.0.23'
+            username: 'root'
+            password: 'analog'
+
+        drivers:
+          SSHDriver: {}
+          SoftwareInstallerDriver: {}
+
+          SoftwareProvisioningStrategy:
+            packages:
+              - git
+              - build-essential
+              - cmake
+            repos:
+              - url:    'https://github.com/analogdevicesinc/libiio'
+                dest:   '/opt/libiio'
+                branch: 'main'
+              - ['https://github.com/analogdevicesinc/libad9361-iio', '/opt/libad9361']
+            build_steps:
+              - cmd: 'cmake -S . -B build && cmake --build build -j4'
+                dir: '/opt/libiio'
+            test_steps:
+              - cmd: 'ctest --test-dir build'
+                dir: '/opt/libiio'
+
+**Attributes**
+
+- ``packages`` (list[str]): Package names to install via the detected package manager.
+- ``repos`` (list[dict | tuple]): Each entry is either ``{'url': ..., 'dest': ..., 'branch': ...}`` or a positional tuple ``(url, dest[, branch])``.
+- ``build_steps`` (list[dict | tuple]): Each entry is ``{'cmd': ..., 'dir': ...}`` or ``(cmd, dir)``. Run with a 1-hour timeout.
+- ``test_steps`` (list[dict | tuple]): Same shape as ``build_steps``. ``dir`` is optional.
+
+**Usage Example**
+
+.. code-block:: python
+
+    # After any boot strategy has reached a shell state:
+    provision = target.get_driver("SoftwareProvisioningStrategy")
+
+    provision.transition("software_installed")   # packages
+    provision.transition("repos_cloned")         # + repos
+    provision.transition("built")                # + builds
+    provision.transition("tested")               # + tests
+
+**Notes**
+
+- Each transition cascades through the prior states, so ``transition("tested")`` from ``unknown`` runs everything end-to-end.
+- ``packages``, ``repos``, ``build_steps``, and ``test_steps`` all default to empty lists, so the strategy is a no-op until configured.
 
 State Transition Reference
 ---------------------------

@@ -299,6 +299,75 @@ CyberPowerDriver
 - **Access denied**: Confirm SNMP community string is "private" (standard for CyberPower)
 - **Outlet out of range**: Verify outlet number (typically 1-8, check your PDU documentation)
 
+HomeAssistantPowerDriver
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+**Purpose**: Control devices via a Home Assistant switch/outlet entity using the Home Assistant REST API.
+
+**Required Resource**: HomeAssistantOutlet
+
+**Bindings**: Implements ``PowerProtocol`` and ``PowerResetMixin``
+
+**Configuration**
+
+.. code-block:: yaml
+
+    targets:
+      lab_device:
+        resources:
+          HomeAssistantOutlet:
+            url: 'http://homeassistant.local:8123'
+            token: 'eyJhbGciOiJI...'             # Long-lived access token
+            entity_id: 'switch.lab_outlet_1'
+            delay: 5.0
+
+        drivers:
+          HomeAssistantPowerDriver: {}
+
+**Key Parameters** (on ``HomeAssistantOutlet``)
+
+- **url** (required): Base URL of the Home Assistant instance (no trailing slash required)
+- **token** (required): Long-lived access token with permission to call ``turn_on`` / ``turn_off`` services
+- **entity_id** (required): Entity ID of the switch to control. The domain prefix (``switch``, ``light``, etc.) selects the service endpoint.
+- **delay** (default=5.0): Seconds between power off and power on during ``cycle``/``reset``
+
+**Methods**
+
+.. code-block:: python
+
+    power = target.get_driver("HomeAssistantPowerDriver")
+    target.activate(power)
+
+    power.on()              # POST /api/services/<domain>/turn_on
+    power.off()             # POST /api/services/<domain>/turn_off
+    power.cycle()           # off → sleep(delay) → on
+    power.reset()           # same as cycle()
+
+    is_on = power.get()     # Reads /api/states/<entity_id>; True if state == 'on'
+
+**Usage Example**
+
+.. code-block:: python
+
+    power = target.get_driver("HomeAssistantPowerDriver")
+    target.activate(power)
+
+    power.off()
+    time.sleep(1)
+    power.on()
+
+    target.deactivate(power)
+
+**Creating a Long-Lived Access Token**
+
+In the Home Assistant web UI: user profile → *Security* → *Long-Lived Access Tokens* → *Create Token*. Treat the token like a password; store it outside version control.
+
+**Troubleshooting**
+
+- **401 Unauthorized**: Token missing or expired. Regenerate it.
+- **Connection refused / timeout**: Verify ``url`` is reachable from the host and that the Home Assistant API is enabled.
+- **404 on entity**: Confirm ``entity_id`` with *Developer Tools → States* in the UI; the domain prefix must match (``switch.*`` vs ``light.*``).
+
 Shell and File Transfer Driver
 ------------------------------
 
@@ -648,6 +717,125 @@ Downloading Kuiper release:
 - Subsequent runs use cached version (fast)
 - Boot files extracted to cache_dir automatically
 - Used by BootFPGASoC strategy for automatic Kuiper boot
+
+FPGA JTAG Driver
+----------------
+
+XilinxJTAGDriver
+~~~~~~~~~~~~~~~~
+
+**Purpose**: Program Xilinx FPGAs (Virtex/Artix/Kintex) and Microblaze soft processors via JTAG using ``xsdb``. Supports both local execution and remote execution (when the test runner has to ``ssh`` into an exporter host that owns the JTAG cable).
+
+**Required Resources**: ``XilinxDeviceJTAG`` (JTAG target IDs and firmware paths), ``XilinxVivadoTool`` (path to the ``xsdb`` binary).
+
+**Bindings**: ``xilinxdevicejtag``, ``xilinxvivado``
+
+**Configuration**
+
+.. code-block:: yaml
+
+    targets:
+      vcu118:
+        resources:
+          XilinxVivadoTool:
+            vivado_path: '/tools/Xilinx/2025.1/Vivado'
+            # xsdb_path is auto-derived from vivado_path if omitted.
+
+          XilinxDeviceJTAG:
+            root_target: 1                        # FPGA fabric target ID
+            microblaze_target: 3                  # Microblaze processor target ID
+            bitstream_path: '/builds/system_top.bit'
+            kernel_path:    '/builds/simpleImage.vcu118.strip'
+
+        drivers:
+          XilinxJTAGDriver: {}
+
+**Key Parameters** (on ``XilinxDeviceJTAG`` / ``XilinxVivadoTool``)
+
+- **root_target** (default=1): JTAG target ID for the FPGA fabric (as reported by ``xsdb`` ``targets`` command)
+- **microblaze_target** (default=3): JTAG target ID for the Microblaze processor core
+- **bitstream_path** (optional): Path to ``.bit`` bitstream (required for ``flash_bitstream``)
+- **kernel_path** (optional): Path to Microblaze Linux kernel image (``.strip``), required for ``download_kernel``
+- **vivado_path** (required on ``XilinxVivadoTool``): Root of the Vivado install
+- **xsdb_path** (optional): Absolute path to ``xsdb``. If unset, derived as ``{dirname(vivado_path)}/Vitis/bin/xsdb`` (the standard 2022.2+ layout).
+
+**Methods**
+
+.. code-block:: python
+
+    jtag = target.get_driver("XilinxJTAGDriver")
+    target.activate(jtag)
+
+    jtag.connect_jtag()                        # xsdb 'connect'
+    jtag.flash_bitstream()                     # fpga -f <bitstream_path> at root_target
+    jtag.download_kernel()                     # dow <kernel_path> at microblaze_target
+    jtag.start_execution()                     # 'con' on microblaze_target
+    jtag.load_bitstream_and_kernel_and_start() # all three in one xsdb session
+    jtag.disconnect_jtag()                     # xsdb 'disconnect'
+
+**Remote vs Local Execution**
+
+The driver runs ``xsdb`` locally unless *any* sibling resource on the target exposes a ``host`` attribute (i.e. came from a ``NetworkResource``). In that case, ``xsdb`` is invoked via ``ssh <host> xsdb ...`` and the TCL script is pushed with ``scp``. This matches the coordinator/exporter topology where the JTAG cable lives on the exporter host.
+
+**Troubleshooting**
+
+- **``xsdb: command not found``**: ``xsdb_path`` is wrong. Override it explicitly on ``XilinxVivadoTool``.
+- **Bitstream flash fails**: Run ``xsdb -interactive`` on the host owning the JTAG cable and issue ``targets`` — confirm ``root_target`` matches.
+- **Remote ssh prompts for password**: Set up passwordless SSH keys to the exporter host; the driver never sends a password.
+
+Software Provisioning Driver
+----------------------------
+
+SoftwareInstallerDriver
+~~~~~~~~~~~~~~~~~~~~~~~
+
+**Purpose**: Install packages, clone git repositories, copy local directories, and run build/test commands on a DUT. Used by ``SoftwareProvisioningStrategy``.
+
+**Bindings**: ``command`` (``CommandProtocol``), ``file_transfer`` (``FileTransferProtocol``). Typically bound to ``ADIShellDriver`` or ``SSHDriver``.
+
+**Configuration**
+
+.. code-block:: yaml
+
+    drivers:
+      SSHDriver:
+        hostname: '10.0.0.23'
+        username: 'root'
+        password: 'analog'
+      SoftwareInstallerDriver: {}
+
+**Key Parameters**
+
+None — the driver auto-detects the package manager on the target (``apt-get``, ``dnf``, ``opkg``, ``pacman``, or ``apk``).
+
+**Methods**
+
+.. code-block:: python
+
+    installer = target.get_driver("SoftwareInstallerDriver")
+    target.activate(installer)
+
+    installer.install_package("git", update=True)
+    installer.clone_repo(
+        "https://github.com/analogdevicesinc/libiio",
+        "/opt/libiio",
+        branch="main",
+    )
+    installer.copy_directory("/host/patches", "/opt/patches")   # tar → scp → untar
+    installer.run_build("make -j4", directory="/opt/libiio")
+    installer.run_binary("/opt/libiio/iio_info", args="-s")
+    installer.run_test("pytest tests/", directory="/opt/libiio")
+
+**Notes**
+
+- ``copy_directory`` tars the local tree, transfers the archive via the bound ``FileTransferProtocol``, and untars on the target. Requires ``tar`` on both sides.
+- ``run_build`` uses a 1-hour timeout to accommodate large builds.
+- If ``git`` is missing, ``clone_repo`` calls ``install_package("git")`` first.
+
+**Troubleshooting**
+
+- **"No supported package manager found"**: The target's PATH lacks ``apt-get``/``dnf``/``opkg``/``pacman``/``apk``. Install one or extend the driver.
+- **Build timeout**: A 3600 s ceiling is baked in. For longer builds, split the work into smaller build steps.
 
 See Also
 --------
