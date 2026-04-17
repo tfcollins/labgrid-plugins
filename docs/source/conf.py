@@ -25,6 +25,7 @@ release = "0.1.0"
 
 extensions = [
     "sphinx.ext.autodoc",  # Auto-generate API docs from docstrings
+    "sphinx.ext.autosectionlabel",  # Auto-generate refs for section headers
     "sphinx.ext.napoleon",  # Support for Google/NumPy style docstrings
     "sphinx.ext.viewcode",  # Add links to highlighted source code
     "sphinx.ext.intersphinx",  # Link to other project docs
@@ -34,6 +35,8 @@ extensions = [
     "sphinx_design",  # Better UI components (cards, tabs, etc.)
     "sphinxcontrib.mermaid",  # Mermaid diagram support for state machines
 ]
+
+autosectionlabel_prefix_document = True
 
 # -- Napoleon settings -------------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/extensions/napoleon.html

@@ -15,12 +15,16 @@ Resources in labgrid and adi-labgrid-plugins:
 - Are bound to drivers which provide the actual functionality
 - Contain validation logic to ensure configuration correctness
 
-The plugin provides four resources for different hardware scenarios:
+The plugin provides eight resources for different hardware scenarios:
 
 - **VesyncOutlet** — WiFi smart outlet for power control
 - **CyberPowerOutlet** — Network PDU outlet for power control
+- **HomeAssistantOutlet** — Switch/outlet controlled via Home Assistant REST API
 - **MassStorageDevice** — USB mass storage (typically SD card via mux)
 - **KuiperRelease** — ADI Kuiper Linux release descriptor
+- **TFTPServerResource** — TFTP server address/port/root configuration
+- **XilinxVivadoTool** — Xilinx Vivado/Vitis install paths
+- **XilinxDeviceJTAG** — Xilinx FPGA JTAG target IDs and firmware paths
 
 Resource Definition Patterns
 -----------------------------
@@ -236,6 +240,123 @@ KuiperRelease
 - Cache directory must be writable
 - Subsequent accesses use cached version (fast)
 - Checksums are verified automatically
+
+HomeAssistantOutlet
+~~~~~~~~~~~~~~~~~~~
+
+**Purpose**: Describes a switch/outlet controlled via the Home Assistant REST API.
+
+**Use With**: HomeAssistantPowerDriver
+
+**Required Parameters**
+
+- **url** (str): Base URL of the Home Assistant instance (e.g. ``http://homeassistant.local:8123``)
+- **token** (str): Long-lived access token
+- **entity_id** (str): Entity ID of the switch to control (e.g. ``switch.lab_outlet_1``)
+
+**Optional Parameters**
+
+- **delay** (float, default=5.0): Delay in seconds between off and on during ``cycle``/``reset``
+
+**Example**
+
+.. code-block:: yaml
+
+    resources:
+      HomeAssistantOutlet:
+        url: 'http://homeassistant.local:8123'
+        token: 'eyJhbGciOiJI...'
+        entity_id: 'switch.lab_outlet_1'
+        delay: 5.0
+
+**Notes**
+
+- The domain portion of ``entity_id`` (``switch``, ``light``, ``input_boolean``, ...) selects the service endpoint, so non-outlet entities work as long as they support ``turn_on`` / ``turn_off``.
+
+TFTPServerResource
+~~~~~~~~~~~~~~~~~~
+
+**Purpose**: Configures the TFTP server address, port, and root used by ``TFTPServerDriver`` and referenced by TFTP-based boot strategies.
+
+**Use With**: TFTPServerDriver, BootFPGASoCTFTP
+
+**Optional Parameters**
+
+- **address** (str, default ``'auto'``): Host IP to bind. When set to ``'auto'``, the resource discovers the local IP used for outbound traffic.
+- **port** (int, default 3069): UDP port to bind. Non-privileged; use ``iptables`` to redirect from the conventional port 69 if U-Boot requires it.
+- **root** (str, default ``'/var/lib/tftpboot'``): Directory served by the TFTP server.
+
+**Example**
+
+.. code-block:: yaml
+
+    resources:
+      TFTPServerResource:
+        address: 'auto'
+        port: 3069
+        root: '/var/lib/tftpboot'
+
+**Notes**
+
+- The resource has no required fields — an empty ``TFTPServerResource: {}`` stanza accepts all defaults.
+- ``get_ip()`` returns the configured address, or opens a UDP socket to 8.8.8.8 to discover the outbound-interface IP when set to ``'auto'``.
+
+XilinxVivadoTool
+~~~~~~~~~~~~~~~~
+
+**Purpose**: Declares the Xilinx Vivado/Vitis installation paths used by drivers that invoke ``xsdb``.
+
+**Use With**: XilinxJTAGDriver
+
+**Optional Parameters**
+
+- **vivado_path** (str, default ``'/tools/Xilinx/2025.1/Vivado'``): Root of the Vivado install.
+- **version** (str, optional): Informational version string.
+- **xsdb_path** (str, optional): Absolute path to the ``xsdb`` binary. When unset, derived as ``{dirname(vivado_path)}/Vitis/bin/xsdb``.
+
+**Example**
+
+.. code-block:: yaml
+
+    resources:
+      XilinxVivadoTool:
+        vivado_path: '/tools/Xilinx/2025.1/Vivado'
+        version: '2025.1'
+
+**Notes**
+
+- The resource does *not* probe the filesystem, so it round-trips safely through a labgrid coordinator (the ``xsdb`` binary may live only on the exporter host).
+- On 2022.2+ installs, Vivado and Vitis are siblings and ``xsdb`` ships with Vitis — the default derivation matches that layout.
+
+XilinxDeviceJTAG
+~~~~~~~~~~~~~~~~
+
+**Purpose**: Declares JTAG target IDs and firmware paths for a Xilinx FPGA with a Microblaze soft processor.
+
+**Use With**: XilinxJTAGDriver, BootFabric
+
+**Optional Parameters**
+
+- **root_target** (int, default=1): JTAG target ID for the FPGA fabric (from ``xsdb`` ``targets`` output).
+- **microblaze_target** (int, default=3): JTAG target ID for the Microblaze core.
+- **bitstream_path** (str, optional): Path to the ``.bit`` bitstream. Required for ``flash_bitstream`` and ``BootFabric``.
+- **kernel_path** (str, optional): Path to the Microblaze Linux kernel image (``.strip``). Required for ``download_kernel`` and ``BootFabric``.
+- **devicetree_path** (str, optional): Path to a standalone device-tree blob, if the kernel does not embed it.
+
+**Example**
+
+.. code-block:: yaml
+
+    resources:
+      XilinxDeviceJTAG:
+        root_target: 1
+        microblaze_target: 3
+        bitstream_path: 'ref/vcu118_ad9081_m8_l4/system_top.bit'
+        kernel_path:    'ref/vcu118_ad9081_m8_l4/simpleImage.vcu118_ad9081_m8_l4.strip'
+
+**Notes**
+
+- The default target IDs match typical VCU118 + Microblaze designs. Run ``xsdb`` ``targets`` on your hardware to verify.
 
 Configuration Best Practices
 -----------------------------
