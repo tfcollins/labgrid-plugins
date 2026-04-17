@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Labgrid Exporter Resource Configuration",
+  "description": "Validates exporter YAML resource definitions for consistency",
+  "type": "object",
+  "patternProperties": {
+    "^[a-zA-Z0-9_-]+$": {
+      "type": "object",
+      "description": "Resource group (e.g., VCU118_AD9081)",
+      "patternProperties": {
+        "^[a-zA-Z0-9_-]+$": {
+          "type": "object",
+          "description": "Individual resource definition",
+          "required": ["cls"],
+          "properties": {
+            "cls": {
+              "type": "string",
+              "description": "Resource class name"
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+
+  "$defs": {
+    "known_resource_classes": {
+      "enum": [
+        "NetworkService",
+        "RawSerialPort",
+        "XilinxDeviceJTAG",
+        "XilinxVivadoTool",
+        "USBSDMuxDevice",
+        "MassStorageDevice",
+        "CyberPowerOutlet",
+        "VesyncOutlet",
+        "HomeAssistantOutlet",
+        "TFTPServerResource",
+        "KuiperRelease"
+      ]
+    }
+  }
+}

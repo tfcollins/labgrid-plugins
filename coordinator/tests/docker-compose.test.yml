@@ -1,0 +1,30 @@
+services:
+  coordinator:
+    build: ../labgrid-coordinator
+    ports:
+      - "20408:20408"
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import grpc; ch = grpc.insecure_channel('localhost:20408'); grpc.channel_ready_future(ch).result(timeout=2)"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  mock-exporter:
+    build: ../mock-exporter
+    environment:
+      - LG_COORDINATOR=coordinator:20408
+    depends_on:
+      coordinator:
+        condition: service_healthy
+
+  api:
+    build: ../api
+    ports:
+      - "8000:8000"
+    environment:
+      - LG_COORDINATOR_ADDRESS=coordinator:20408
+    depends_on:
+      coordinator:
+        condition: service_healthy
+      mock-exporter:
+        condition: service_started

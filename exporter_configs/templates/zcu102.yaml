@@ -1,0 +1,16 @@
+# Exporter template: ZCU102 SoC
+# Group naming convention: <BOARD>_<CHIP>
+
+{{ exporter_name | default("lab-host-01") }}:
+  ZCU102_{{ chip | default("AD9081") }}:
+    NetworkService:
+      cls: NetworkService
+      address: "{{ target_ip }}"
+      username: "root"
+    RawSerialPort:
+      cls: RawSerialPort
+      port: "{{ serial_port | default('/dev/ttyUSB0') }}"
+      speed: 115200
+    USBSDMuxDevice:
+      cls: USBSDMuxDevice
+      control_path: "{{ sdmux_path | default('/dev/sg0') }}"

@@ -1,0 +1,44 @@
+services:
+  coordinator:
+    build: ./labgrid-coordinator
+    ports:
+      - "${LG_COORDINATOR_PORT:-20408}:20408"
+    volumes:
+      - coordinator-data:/var/lib/labgrid
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ..
+      dockerfile: coordinator/api/Dockerfile
+    ports:
+      - "${API_PORT:-8000}:8000"
+    environment:
+      - LG_COORDINATOR_ADDRESS=coordinator:20408
+      - LG_OIDC_ISSUER_URL
+      - LG_OIDC_CLIENT_ID
+      - LG_OIDC_CLIENT_SECRET
+      - LG_OIDC_AUTO_PROVISION
+      - LG_SESSION_TTL_HOURS
+      - LG_SESSION_COOKIE_NAME
+      - LG_SESSION_COOKIE_SECURE
+      - LG_RECORDINGS_DIR
+      - LG_RECORDING_RETENTION_DAYS
+      - LG_RECORDING_MAX_BYTES_PER_PLACE
+    volumes:
+      - api-data:/data
+    depends_on:
+      - coordinator
+    restart: unless-stopped
+
+  web:
+    build: ./web
+    ports:
+      - "${WEB_PORT:-3000}:80"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  coordinator-data:
+  api-data:
