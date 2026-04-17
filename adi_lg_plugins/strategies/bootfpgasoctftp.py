@@ -56,6 +56,16 @@ class BootFPGASoCTFTP(Strategy):
         default="console=ttyPS0,115200 root=/dev/mmcblk0p2 rw earlycon earlyprintk rootfstype=ext4 rootwait"
     )
 
+    # U-Boot / platform-specific overrides.  Defaults target ZynqMP
+    # (ZCU102); Zynq-7000 (ZC706) and similar platforms override these.
+    uboot_prompt = attr.ib(default="ZynqMP>.*")
+    kernel_image_name = attr.ib(default="Image")
+    dtb_image_name = attr.ib(default="system.dtb")
+    # ``booti`` is arm64 (ZynqMP); ``bootm`` is arm32 (Zynq-7000); ``bootz``
+    # for raw zImage.  The command is passed as
+    # ``<boot_cmd> <kernel_addr> - <dtb_addr>`` unless overridden.
+    boot_cmd = attr.ib(default="booti")
+
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
         self.logger.info("BootFPGASoCTFTP strategy initialized")
@@ -134,7 +144,7 @@ class BootFPGASoCTFTP(Strategy):
 
             org_prompt = self.shell.prompt
             # Temporarily set prompt to U-Boot prompt match
-            self.shell.prompt = "ZynqMP>.*"
+            self.shell.prompt = self.uboot_prompt
             self.shell.console.sendline("\n")
             self.shell._check_prompt_uboot()
 
@@ -149,8 +159,8 @@ class BootFPGASoCTFTP(Strategy):
                 f"ping {self.tftp_server.get_ip()}",
                 # Default bootargs if not set
                 f"setenv bootargs {self.bootargs}",
-                f"tftpboot {self.kernel_addr} Image",
-                f"tftpboot {self.dtb_addr} system.dtb",
+                f"tftpboot {self.kernel_addr} {self.kernel_image_name}",
+                f"tftpboot {self.dtb_addr} {self.dtb_image_name}",
             ]
 
             self.logger.info("Configuring U-Boot for TFTP boot...")
@@ -159,10 +169,11 @@ class BootFPGASoCTFTP(Strategy):
                 self.shell.run_uboot(f"{cmd}\n", timeout=60)  # Increased timeout for TFTP
                 self.shell._check_prompt_uboot()
 
-            # Boot the kernel
-            # booti will start the kernel, so we don't expect the U-Boot prompt to return
-            self.logger.info("Starting kernel execution (booti)...")
-            self.shell.console.sendline(f"booti {self.kernel_addr} - {self.dtb_addr}")
+            # Boot the kernel; the command does not return control to U-Boot.
+            self.logger.info(f"Starting kernel execution ({self.boot_cmd})...")
+            self.shell.console.sendline(
+                f"{self.boot_cmd} {self.kernel_addr} - {self.dtb_addr}"
+            )
 
             # Check if we reached Linux prompt
             self.logger.info(f"Waiting for Linux boot and '{self.reached_linux_marker}' prompt...")
