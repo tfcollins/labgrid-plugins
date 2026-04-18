@@ -77,6 +77,11 @@ class BootFPGASoC(Strategy):
     reached_linux_marker = attr.ib(default="analog")
     update_image = attr.ib(default=False)
     wait_for_linux_prompt_timeout = attr.ib(default=60)
+    # How long to wait, after power-on, for the first "Linux" banner
+    # from U-Boot/kernel.  A tight default (30 s) was a common source
+    # of flake on slow SD cards where FSBL+U-Boot+kernel load takes
+    # more than half a minute.
+    wait_for_kernel_banner_timeout = attr.ib(default=120)
     boot_log = attr.ib(default="", init=False)
 
     debug_write_boot_log = attr.ib(default=False)
@@ -182,8 +187,33 @@ class BootFPGASoC(Strategy):
             self.logger.info(f"Waiting for Linux boot and '{self.reached_linux_marker}' prompt...")
             self.shell.bypass_login = True
             self.target.activate(self.shell)
-            # Check kernel start
-            _, before, _, _ = self.shell.console.expect("Linux", timeout=30)
+            # Check kernel start.  If the board is silent during this
+            # window the problem is almost always FSBL/BOOT.BIN or the
+            # serial exporter, not a slow kernel — surface the captured
+            # UART buffer so we can tell which.
+            try:
+                _, before, _, _ = self.shell.console.expect(
+                    "Linux", timeout=self.wait_for_kernel_banner_timeout
+                )
+            except Exception as e:
+                captured = b""
+                try:
+                    captured = self.shell.console._expect.before or b""
+                except Exception:
+                    pass
+                if self.debug_write_boot_log:
+                    uart_log_filename = f"uart_log_kernel_banner_{int(time.time())}.txt"
+                    with open(uart_log_filename, "wb") as f:
+                        f.write(captured)
+                    self.logger.info(f"Wrote log file to {uart_log_filename}")
+                self.logger.error(
+                    "No 'Linux' banner on serial within %ss (%d bytes captured).",
+                    self.wait_for_kernel_banner_timeout,
+                    len(captured),
+                )
+                if captured:
+                    self.logger.error("Captured UART tail: %r", captured[-400:])
+                raise e
             if before:
                 self.boot_log += before.decode("utf-8", errors="replace")
             # Check device prompt
