@@ -46,6 +46,15 @@ class BootFPGASoCTFTP(Strategy):
 
     reached_linux_marker = attr.ib(default="analog")
     wait_for_linux_prompt_timeout = attr.ib(default=60)
+    # How long to wait for U-Boot's "Hit any key to stop autoboot"
+    # banner after power-on.  Hardcoded 30 s previously — too tight
+    # on slow SD or when the FPGA's FSBL takes a moment to hand off.
+    wait_for_autoboot_prompt_timeout = attr.ib(default=60)
+    # On a zero-byte autoboot-prompt timeout (board silent on UART),
+    # power-cycle and retry this many times before raising.  Same
+    # pattern the ``BootFPGASoC`` strategy uses for its
+    # kernel-banner expect.
+    autoboot_banner_retries = attr.ib(default=1)
     tftp_root_folder = attr.ib(default="/var/lib/tftpboot")
 
     # Memory addresses for boot components
@@ -125,7 +134,15 @@ class BootFPGASoCTFTP(Strategy):
             self.transition(Status.update_boot_files)
             if self.power:
                 self.target.activate(self.power)
-                self.logger.info("Powering on device...")
+                # Explicit off → settle → on cycle clears any residual
+                # board state left by the previous test / workflow run.
+                # Mirror of the ``BootFPGASoC`` pre-emptive cold-cycle
+                # fix — without it the first ``power.on()`` can leave
+                # the board in a latched state where FSBL doesn't run
+                # and the UART is completely silent until another
+                # power-cycle.
+                self.logger.info("Cold-cycling power to clear residual board state...")
+                self.power.off()
                 time.sleep(5)
                 self.power.on()
             self.logger.info("Device powered on, booting...")
@@ -135,9 +152,52 @@ class BootFPGASoCTFTP(Strategy):
             self.shell.bypass_login = True
             self.target.activate(self.shell)
 
-            # Stop autoboot
-            self.logger.info("Waiting for U-Boot autoboot prompt...")
-            self.shell.console.expect("Hit any key to stop autoboot", timeout=30)
+            # Wait for U-Boot's autoboot prompt.  Retry once on a
+            # zero-byte silence — the same flake mode that
+            # ``BootFPGASoC`` hits on SD-mux boards also hits TFTP
+            # boards occasionally, and one more cold-cycle is enough
+            # to clear it.
+            attempt = 0
+            max_attempts = int(self.autoboot_banner_retries) + 1
+            while True:
+                attempt += 1
+                try:
+                    self.logger.info("Waiting for U-Boot autoboot prompt...")
+                    self.shell.console.expect(
+                        "Hit any key to stop autoboot",
+                        timeout=self.wait_for_autoboot_prompt_timeout,
+                    )
+                    break
+                except Exception as e:
+                    captured = b""
+                    try:
+                        captured = self.shell.console._expect.before or b""
+                    except Exception:
+                        pass
+                    self.logger.error(
+                        "Attempt %d/%d: no autoboot prompt within %ss (%d bytes captured).",
+                        attempt,
+                        max_attempts,
+                        self.wait_for_autoboot_prompt_timeout,
+                        len(captured),
+                    )
+                    if captured:
+                        self.logger.error("Captured UART tail: %r", captured[-400:])
+                    # Only retry on zero-byte silence.  If the board
+                    # produced output, another power-cycle won't help.
+                    if attempt >= max_attempts or len(captured) > 0 or self.power is None:
+                        raise e
+                    self.logger.info(
+                        "Power-cycling the board and re-attempting the autoboot wait."
+                    )
+                    self.target.deactivate(self.shell)
+                    self.target.activate(self.power)
+                    self.power.off()
+                    time.sleep(5)
+                    self.power.on()
+                    self.logger.info("Device re-powered, booting...")
+                    self.shell.bypass_login = True
+                    self.target.activate(self.shell)
             self.logger.info("Stopping autoboot...")
             self.shell.console.sendline(" ")
             time.sleep(2)
