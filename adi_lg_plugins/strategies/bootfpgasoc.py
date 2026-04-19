@@ -182,7 +182,18 @@ class BootFPGASoC(Strategy):
         elif status == Status.booting:
             self.transition(Status.sd_mux_to_dut)
             self.target.activate(self.power)
-            self.logger.info("Powering on device...")
+            # Explicit off → settle → on sequence.  The prior
+            # powered_off transition already toggled power.off(), but
+            # the subsequent SD-mux operations take long enough (and
+            # the sdmux briefly energizes the SD slot from the host
+            # side) that the board can latch into a weird power state
+            # where the first `on()` looks applied but the board
+            # emits zero UART for 2+ minutes.  Forcing another clean
+            # off/on cycle right before the boot window is reliable
+            # and shaves ~120 s per run compared to relying on the
+            # kernel-banner retry to catch this after the fact.
+            self.logger.info("Cold-cycling power to clear residual board state...")
+            self.power.off()
             time.sleep(5)
             self.power.on()
             self.logger.info("Device powered on, booting...")
