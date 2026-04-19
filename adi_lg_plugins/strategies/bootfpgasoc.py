@@ -82,6 +82,12 @@ class BootFPGASoC(Strategy):
     # of flake on slow SD cards where FSBL+U-Boot+kernel load takes
     # more than half a minute.
     wait_for_kernel_banner_timeout = attr.ib(default=120)
+    # If the banner expect times out with zero bytes on the serial
+    # (board didn't actually power on, ser2net stuck on a stale
+    # session, FAT write didn't flush, etc.), power-cycle and try
+    # again this many times before giving up.  One retry is enough
+    # to catch typical flakes without masking real failures.
+    kernel_banner_retries = attr.ib(default=1)
     boot_log = attr.ib(default="", init=False)
 
     debug_write_boot_log = attr.ib(default=False)
@@ -187,33 +193,65 @@ class BootFPGASoC(Strategy):
             self.logger.info(f"Waiting for Linux boot and '{self.reached_linux_marker}' prompt...")
             self.shell.bypass_login = True
             self.target.activate(self.shell)
+
             # Check kernel start.  If the board is silent during this
             # window the problem is almost always FSBL/BOOT.BIN or the
             # serial exporter, not a slow kernel — surface the captured
-            # UART buffer so we can tell which.
-            try:
-                _, before, _, _ = self.shell.console.expect(
-                    "Linux", timeout=self.wait_for_kernel_banner_timeout
-                )
-            except Exception as e:
-                captured = b""
+            # UART buffer so we can tell which.  Retry the power-cycle
+            # once if the board is *completely* silent, which catches
+            # the common flake mode where the previous run left a
+            # stale ser2net session or the FAT write didn't flush.
+            before = b""
+            attempt = 0
+            max_attempts = int(self.kernel_banner_retries) + 1
+            while True:
+                attempt += 1
                 try:
-                    captured = self.shell.console._expect.before or b""
-                except Exception:
-                    pass
-                if self.debug_write_boot_log:
-                    uart_log_filename = f"uart_log_kernel_banner_{int(time.time())}.txt"
-                    with open(uart_log_filename, "wb") as f:
-                        f.write(captured)
-                    self.logger.info(f"Wrote log file to {uart_log_filename}")
-                self.logger.error(
-                    "No 'Linux' banner on serial within %ss (%d bytes captured).",
-                    self.wait_for_kernel_banner_timeout,
-                    len(captured),
-                )
-                if captured:
-                    self.logger.error("Captured UART tail: %r", captured[-400:])
-                raise e
+                    _, before, _, _ = self.shell.console.expect(
+                        "Linux", timeout=self.wait_for_kernel_banner_timeout
+                    )
+                    break
+                except Exception as e:
+                    captured = b""
+                    try:
+                        captured = self.shell.console._expect.before or b""
+                    except Exception:
+                        pass
+                    if self.debug_write_boot_log:
+                        uart_log_filename = (
+                            f"uart_log_kernel_banner_attempt{attempt}_{int(time.time())}.txt"
+                        )
+                        with open(uart_log_filename, "wb") as f:
+                            f.write(captured)
+                        self.logger.info(f"Wrote log file to {uart_log_filename}")
+                    self.logger.error(
+                        "Attempt %d/%d: no 'Linux' banner within %ss (%d bytes captured).",
+                        attempt,
+                        max_attempts,
+                        self.wait_for_kernel_banner_timeout,
+                        len(captured),
+                    )
+                    if captured:
+                        self.logger.error("Captured UART tail: %r", captured[-400:])
+                    # Only retry on zero-byte silence; if the board
+                    # produced *some* output we're looking at a real
+                    # boot problem that another power-cycle won't fix.
+                    if attempt >= max_attempts or len(captured) > 0:
+                        raise e
+                    self.logger.info(
+                        "Power-cycling the board and re-attempting the kernel banner wait."
+                    )
+                    self.target.deactivate(self.shell)
+                    self.target.activate(self.power)
+                    self.power.off()
+                    time.sleep(5)
+                    self.power.on()
+                    self.logger.info("Device re-powered, booting...")
+                    # Re-activate the shell driver so we get a fresh
+                    # serial reader thread on the retry.
+                    self.shell.bypass_login = True
+                    self.target.activate(self.shell)
+
             if before:
                 self.boot_log += before.decode("utf-8", errors="replace")
             # Check device prompt
