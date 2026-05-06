@@ -8,6 +8,7 @@ collect_ignore_glob = [
     "test_soc_strat_custom.py",
     "test_soc_strat_tftp.py",
     "test_rpi_hw.py",
+    "test_vpk180_hw.py",
 ]
 
 

@@ -96,6 +96,7 @@ bootfabric = "adi_lg_plugins.strategies.bootfabric:BootFabric"
 bootsoctftp = "adi_lg_plugins.strategies.bootfpgasoctftp:BootFPGASoCTFTP"
 softwareprovisioning = "adi_lg_plugins.strategies.software_provisioning:SoftwareProvisioningStrategy"
 bootrpi = "adi_lg_plugins.strategies.bootrpi:BootRPI"
+bootvpk180 = "adi_lg_plugins.strategies.bootvpk180:BootVPK180"
 
 [tool.ty.environment]
 # ty picks up `venv/` automatically; overridable via `ty check --python <path>`.
