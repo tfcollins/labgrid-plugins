@@ -9,7 +9,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Language: Python 3.10+
 - Package name: `adi-labgrid-plugins`
 - Plugin system: Entry-point based discovery for labgrid framework integration
-- License: LGPL-2.1-or-later
+- License: `pyproject.toml` declares LGPL-2.1-or-later but `LICENSE`/`README.md` are Apache 2.0 — treat as unresolved; ask before adding license headers.
 - Core dependency: labgrid fork at `https://github.com/tfcollins/labgrid.git@tfcollins/plugin-support`
 
 ## Common Development Commands
@@ -17,14 +17,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ```bash
 # Install in development mode
 pip install -e ".[dev,docs]"
+pip install -e ".[kuiper]"   # Adds pytsk3 (needs C toolchain) for KuiperDLDriver
 
 # Nox automation (uses uv backend)
-nox                          # Run all default sessions: lint, tests, docs
+nox                          # Default sessions only: lint, tests, docs (NOT typecheck)
 nox -s lint                  # Ruff check + format check
 nox -s format                # Auto-fix: ruff format + ruff check --fix
 nox -s tests                 # Run pytest
 nox -s tests -- -k test_name # Run specific test
 nox -s docs                  # Build Sphinx docs
+nox -s typecheck             # Opt-in: ty static check; baseline not yet clean
 
 # Direct commands
 pytest tests/test_cli.py                    # Run a specific test file
@@ -39,14 +41,18 @@ kuiperdl --release-version 2023_R2_P1
 
 **Ruff rules:** line length 100, double quotes, spaces, rules E/W/F/I/UP/B enabled, E501 ignored.
 
+**ty rules (`pyproject.toml`):** `unresolved-attribute` and `too-many-positional-arguments` are intentionally ignored — labgrid injects `bindings` attributes at bind time (invisible to ty) and `@step()` mangles signatures. Don't "fix" these by adding annotations to driver bindings without understanding the framework's injection model.
+
 ## Testing
 
 Tests are in `tests/`. Two categories:
 
-- **Unit/integration tests** — run without hardware (e.g., `test_cli.py`, `test_mcp.py`, `test_fabric_strat.py`). CI only runs `test_cli.py` and `test_mcp.py`.
+- **Unit/integration tests** — run without hardware (e.g., `test_cli.py`, `test_mcp.py`, `test_fabric_strat.py`).
 - **Hardware tests** — require `--run-hardware` flag and a labgrid config via `--lg-config`. Marked with `@pytest.mark.hardware`.
 
 Some test modules (`test_soc_strat.py`, `test_soc_strat_custom.py`, `test_soc_strat_tftp.py`, `test_rpi_hw.py`) are excluded from collection by default in `conftest.py` because they crash without `--lg-env`.
+
+**CI** (`.github/workflows/tests.yml`): Python 3.10/3.11/3.12 matrix. Runs `nox -s lint` (blocking) → `nox -s typecheck` (`continue-on-error: true`, informational) → `nox -s tests -- tests/test_cli.py tests/test_mcp.py`. New unit tests must opt-in here to be exercised by CI.
 
 ## Architecture
 
@@ -97,4 +103,13 @@ For any new driver, resource, or strategy:
 - **ADIShellDriver** requires XMODEM support on target device for file transfer
 - **MassStorageDriver** requires `pmount`/`pumount` installed on host
 - **CyberPowerDriver** handles both pysnmp v6.x (async) and v7.x (sync) with version detection
-- **KuiperDLDriver** depends on `pytsk3` which needs system-level filesystem libraries
+- **KuiperDLDriver** depends on `pytsk3` which needs system-level filesystem libraries (install via the `kuiper` extra)
+
+## Sibling Projects in This Repo
+
+The repo is not just the `adi_lg_plugins` package — two sibling subprojects live alongside it and have their own toolchains:
+
+- **`coordinator/`** — Docker-compose stack: a labgrid coordinator, a FastAPI REST/WebSocket bridge in `coordinator/api/` (its own `pyproject.toml`, ruff config, and ~30 pytest files under `coordinator/api/tests/`), and a React/Vite/TypeScript dashboard in `coordinator/web/`. Brought up with `docker compose up -d` from `coordinator/`. Ports: coordinator `:20408`, API `:8000`, web `:3000`. The API package depends on the same labgrid fork. Run its tests from `coordinator/api/` — they are *not* picked up by the top-level `nox -s tests`.
+- **`exporter_configs/`** — YAML templates (`templates/*.yaml`) for deploying labgrid exporters on RPi / VCU118 / ZCU102 hosts, plus `validate.py` and JSON schemas under `schemas/`. Use these when wiring up a new exporter host.
+
+When a task touches a coordinator concern (places, recordings, OIDC auth, env-gen, gRPC bridge, web UI), work inside `coordinator/` — its conventions and dependency set are independent of the top-level package.
