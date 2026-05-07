@@ -325,6 +325,21 @@ class KuiperDLDriver(Driver):
         # except Exception:
         #     pass
 
+    def get_full_image_path(self, release_version=None):
+        """Return the cached full SD image (.img) path for the configured release.
+
+        Downloads + extracts the release first if it isn't cached. Caller is
+        responsible for activating/deactivating the driver.
+        """
+        if release_version is None:
+            release_version = self.kuiper_resource.release_version
+        if not self.check_cached(release_version):
+            self.download_release(release_version)
+        cache_file_path = os.path.join(self.kuiper_resource.cache_path, self.cache_datafile)
+        with open(cache_file_path) as f:
+            cache_data = json.load(f)
+        return cache_data[release_version]["image_path"]
+
     def get_boot_files_from_release(self, get_all_files=False):
         if not self.check_cached():
             self.download_release(get_boot_files=False)
