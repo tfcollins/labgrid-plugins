@@ -166,6 +166,16 @@ class BootVPK180(Strategy):
     boot_partition_path = attr.ib(default="/boot")
     ssh_reboot_command = attr.ib(default="sudo reboot")
 
+    # When True, transition(booting) probes the SC with a short timeout first
+    # and skips the explicit cold-cycle if the SC is already responsive. The
+    # Versal target is then restarted by the sc_app -c reset command in
+    # sc_commands rather than by a board power-cycle. Reduces test time and
+    # avoids SC-wedge modes triggered by repeated power cycling. Skipped
+    # automatically when update_image or update_boot_files is True (those
+    # paths must go through powered_off → file staging → cold-cycle).
+    warm_boot_if_sc_alive = attr.ib(default=True)
+    warm_probe_timeout = attr.ib(default=3)
+
     boot_log = attr.ib(default="", init=False)
     debug_write_boot_log = attr.ib(default=False)
 
@@ -190,6 +200,37 @@ class BootVPK180(Strategy):
         self.power.off()
         time.sleep(5)
         self.power.on()
+
+    def _sc_appears_alive(self):
+        """Non-destructive check: is the SC at a Linux prompt right now?
+
+        Activates sc_shell with bypass_login=True (no-op on_activate), pokes
+        the console with a newline, looks for the configured prompt within
+        ``warm_probe_timeout`` seconds. Always deactivates and restores
+        bypass_login afterward. Returns False on any error.
+        """
+        prior_bypass = getattr(self.sc_shell, "bypass_login", False)
+        activated = False
+        try:
+            self.sc_shell.bypass_login = True
+            self.target.activate(self.sc_shell)
+            activated = True
+            self.sc_shell.console.sendline("")
+            try:
+                self.sc_shell.console.expect(self.sc_shell.prompt, timeout=self.warm_probe_timeout)
+                return True
+            except Exception:
+                return False
+        except Exception as e:
+            self.logger.debug("Warm SC probe failed during activation: %s", e)
+            return False
+        finally:
+            if activated:
+                try:
+                    self.target.deactivate(self.sc_shell)
+                except Exception:
+                    pass
+            self.sc_shell.bypass_login = prior_bypass
 
     def _dump_uart(self, console, phase, attempt):
         if not self.debug_write_boot_log:
@@ -434,6 +475,20 @@ class BootVPK180(Strategy):
             self.logger.info("SD card muxed to DUT")
 
         elif status == Status.booting:
+            # Warm-boot fast path: if SC is already responsive AND no
+            # file-update is requested, skip the cold-cycle and rely on
+            # `sc_app -c reset` (in sc_commands) to restart just the Versal
+            # target. Saves ~75-90s and avoids the SC-wedge mode caused by
+            # repeated power cycling. File-update flows must still go through
+            # powered_off → SD-mux/SSH → cold-cycle.
+            needs_file_update = self.update_boot_files or self.update_image
+            if self.warm_boot_if_sc_alive and not needs_file_update and self._sc_appears_alive():
+                self.logger.info("SC is already responsive — skipping cold-cycle (warm boot path).")
+                self.target.activate(self.power)
+                self.power.on()
+                self.status = status
+                return
+
             if self.sdmux:
                 self.transition(Status.sd_mux_to_dut)
             else:

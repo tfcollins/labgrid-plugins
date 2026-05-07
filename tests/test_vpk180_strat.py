@@ -292,6 +292,80 @@ def test_versal_banner_exhausts_retries_then_raises():
     assert s.target_shell.console.expect.call_count == 2
 
 
+# ---------- warm-boot path -----------------------------------------------
+
+
+def test_warm_boot_default_is_enabled():
+    s = _make_strategy()
+    assert s.warm_boot_if_sc_alive is True
+
+
+def test_sc_appears_alive_returns_true_when_prompt_matches():
+    s = _make_strategy()
+    s.sc_shell.prompt = r"\$ "
+    s.sc_shell.console.expect.return_value = (None, b"alive$ ", None, None)
+    assert s._sc_appears_alive() is True
+    s.sc_shell.console.sendline.assert_called_once_with("")
+
+
+def test_sc_appears_alive_returns_false_on_expect_timeout():
+    s = _make_strategy()
+    s.sc_shell.prompt = r"\$ "
+    s.sc_shell.console.expect.side_effect = TimeoutError("silent")
+    assert s._sc_appears_alive() is False
+
+
+def test_sc_appears_alive_restores_bypass_login():
+    s = _make_strategy()
+    s.sc_shell.bypass_login = False
+    s.sc_shell.prompt = r"\$ "
+    s.sc_shell.console.expect.return_value = (None, b"$ ", None, None)
+    s._sc_appears_alive()
+    assert s.sc_shell.bypass_login is False
+
+
+def test_booting_warm_path_skips_cold_cycle_when_sc_alive():
+    """SC alive + no file-update → skip the off/sleep/on dance."""
+    s = _make_strategy()
+    # Make _sc_appears_alive return True without a real expect call.
+    s._sc_appears_alive = lambda: True
+    s.update_boot_files = False
+    s.update_image = False
+
+    s.transition(Status.booting)
+    assert s.status == Status.booting
+    # Warm path: no power.off, only an idempotent power.on
+    s.power.off.assert_not_called()
+    s.power.on.assert_called_once()
+
+
+def test_booting_cold_cycle_when_warm_disabled():
+    s = _make_strategy()
+    s.warm_boot_if_sc_alive = False
+    s._sc_appears_alive = lambda: True  # would otherwise trigger warm path
+    s.transition(Status.booting)
+    assert s.status == Status.booting
+    s.power.off.assert_called_once()
+    s.power.on.assert_called_once()
+
+
+def test_booting_cold_cycle_when_sc_dead():
+    s = _make_strategy()
+    s._sc_appears_alive = lambda: False  # SC silent
+    s.transition(Status.booting)
+    assert s.status == Status.booting
+    s.power.off.assert_called_once()
+
+
+def test_booting_cold_cycle_when_update_boot_files():
+    """File-update flows must always cold-cycle, even when SC is alive."""
+    s = _make_strategy(kuiper=MagicMock(), ssh=MagicMock())
+    s.update_boot_files = True
+    s._sc_appears_alive = lambda: True  # would otherwise trigger warm path
+    s.transition(Status.booting)
+    s.power.off.assert_called_once()
+
+
 # ---------- transition() integration --------------------------------------
 
 
@@ -342,6 +416,7 @@ def test_transition_update_boot_files_noop_when_disabled():
 
 def test_transition_booted_full_happy_path():
     s = _make_strategy()
+    s.warm_boot_if_sc_alive = False  # exercise the cold-cycle path explicitly
     s.sc_commands = ["uname -a"]
     # Versal banner expects two successful expects: kernel banner, then prompt.
     s.target_shell.console.expect.side_effect = [
