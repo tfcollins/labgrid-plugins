@@ -70,7 +70,9 @@ def test_strategy_metadata(strategy):
     assert strategy.recovery_kernel, "recovery_kernel must be configured in YAML"
     assert strategy.recovery_dtb, "recovery_dtb must be configured in YAML"
     assert strategy.recovery_initramfs, "recovery_initramfs must be configured in YAML"
-    assert strategy.sd_image_url, "sd_image_url must be configured in YAML"
+    assert strategy.sd_image_url or strategy.sd_image_path, (
+        "either sd_image_url or sd_image_path must be configured in YAML"
+    )
 
 
 def test_jtag_bootstrap_only(strategy):
@@ -130,31 +132,34 @@ def test_recovery_sd_device_present(target, in_recovery_linux, strategy):
 
 
 @pytest.mark.destructive
-def test_full_sd_flash_e2e(strategy):
-    """Full pipeline through ``sd_flash_done``. **OVERWRITES THE SD CARD.**
+def test_full_sd_flash_and_boot_verified_e2e(strategy):
+    """End-to-end: full pipeline + reboot from freshly-flashed SD.
 
-    Gated by ``@pytest.mark.destructive`` so it doesn't fire on a routine
-    ``--run-hardware`` run. Opt in with ``--run-destructive``.
+    Walks all the way to ``sd_boot_verified``: dd's a fresh image into
+    /dev/mmcblk0, cold-cycles, and confirms BootROM reads the new
+    BOOT.BIN into a normal login prompt. The latter half catches "the
+    dd reported OK but actually wrote garbage" failure modes.
+
+    **OVERWRITES THE SD CARD.** Gated by ``@pytest.mark.destructive``;
+    opt in with ``--run-destructive``.
     """
     from adi_lg_plugins.strategies.bootzynq7000recovery import Status
 
     t0 = time.time()
     strategy.transition("sd_flash_done")
-    elapsed = time.time() - t0
-
+    flash_elapsed = time.time() - t0
     assert strategy.status == Status.sd_flash_done
     # Sanity check: a real ~10 GB image takes minutes over LAN. Sub-second
     # success means the dd command short-circuited (e.g., sd_device missing
     # but `&&` chain silently passed).
-    assert elapsed > 60, (
-        f"sd_flash_done returned suspiciously fast ({elapsed:.1f}s) — "
+    assert flash_elapsed > 60, (
+        f"sd_flash_done returned suspiciously fast ({flash_elapsed:.1f}s) — "
         "real flash takes minutes; check SD_FLASH_OK was actually emitted"
     )
 
-
-def test_soft_off(strategy):
-    """``soft_off`` powers the board down cleanly after a flash."""
-    from adi_lg_plugins.strategies.bootzynq7000recovery import Status
-
-    strategy.transition("soft_off")
-    assert strategy.status == Status.soft_off
+    # Now verify the freshly-written SD actually boots normally. The
+    # ``sd_boot_verified`` transition cascades through ``soft_off``
+    # internally and then JTAG-loads U-Boot to drive an SD boot, so a
+    # PASS here covers the full pipeline including the soft_off path.
+    strategy.transition("sd_boot_verified")
+    assert strategy.status == Status.sd_boot_verified

@@ -465,13 +465,21 @@ The strategy manages 9 states. Each transition cascades through prior states, so
        linux_recovery --> sd_flash_done: ADIShellDriver login\n+ wget URL | dd of=/dev/mmcblk0\n+ sync
 
        sd_flash_done --> soft_off: poweroff (or hard power cut)
-       soft_off --> [*]
+       soft_off --> sd_boot_verified: cold-cycle\n+ wait for normal login marker
+       sd_boot_verified --> [*]
 
        note right of jtag_bootstrap
            FPGA bitstream is mandatory when the
            DTB references fabric IPs (axi_clkgen,
            axi_jesd204_*, axi_adxcvr); kernel
            hangs on the AXI probe otherwise.
+       end note
+
+       note right of sd_boot_verified
+           Optional post-flash check. No boot-mode
+           switches change — the board is on SD the
+           whole time; BootROM now reads the freshly
+           written BOOT.BIN instead of the corrupt one.
        end note
 
        note right of linux_recovery
@@ -612,6 +620,12 @@ The strategy manages 9 states. Each transition cascades through prior states, so
 - ``sd_image_url`` (str, required): HTTP URL of the SD-card image to flash.
 - ``sd_device`` (str, default ``'/dev/mmcblk0'``): target block device inside the recovery rootfs.
 - ``download_cmd_template`` (str, default ``'wget -q -O - "{url}"'``): formatted with ``url=<sd_image_url>`` to compose the download command. Switch to ``'curl -fsSL --retry 3 "{url}"'`` if your rootfs has curl.
+- ``board_variant`` (str, optional): subdirectory name inside the FAT boot partition that holds the per-board ``BOOT.BIN`` / ``uImage`` / ``devicetree.dtb`` (e.g. ``zynq-zc706-adv7511-adrv937x``). When set, the strategy mounts ``{sd_device}p{sd_boot_partition}`` after the dd and copies the listed files up to the partition root, sync, unmount. Required when flashing ADI's multi-board ``Kuiper-full`` image — Zynq-7000 BootROM only reads ``BOOT.BIN`` at the root, and a raw dd of that image leaves the root empty of board-specific boot files.
+- ``board_variant_files`` (tuple[str, ...], default ``("BOOT.BIN", "uImage", "devicetree.dtb")``): file names copied from the variant subdirectory to the partition root. Extend for Kuiper variants that also ship ``boot.scr``, custom ``system.dtb``, etc.
+- ``sd_boot_partition`` (int, default ``1``): which numbered partition of ``sd_device`` holds the FAT boot files (so the strategy mounts ``/dev/mmcblk0p<N>``).
+- ``sd_mount_point`` (str, default ``'/mnt'``): mount point inside the recovery initramfs.
+- ``post_flash_commands`` (list[str], default ``[]``): extra shell commands run in the recovery shell after the dd + board-variant copy. Use for tweaks that don't fit the board-variant pattern.
+- ``post_flash_timeout`` (int, default ``120``): per-command timeout for the board-variant copy and each ``post_flash_commands`` entry.
 - ``uboot_prompt`` (str, default ``'zynq-uboot>|U-Boot>|=>'``): regex matched against the U-Boot prompt; tighten to e.g. ``'Zynq>.*'`` for Xilinx's shipped U-Boot.
 - ``kernel_addr`` / ``dtb_addr`` / ``initramfs_addr`` (str hex): DDR addresses loaded by ``tftpboot``. Defaults are conservative for a 1 GB Zynq-7000; bump ``initramfs_addr`` higher if your initramfs is large.
 - ``bootargs`` (str): kernel command line. Default uses ``rdinit=/init`` (cpio's own ``/init``) and intentionally omits ``root=`` because the unpacked initramfs is the rootfs.
@@ -1557,8 +1571,13 @@ This section provides quick reference tables for valid state transitions in each
      - soft_off
      - Try ``poweroff`` then hard power cut
    * - soft_off
+     - sd_boot_verified
+     - Cold-cycle, then ``console.expect`` ``verify_boot_login_marker``
+       (no boot-mode switches change — BootROM just reads the
+       freshly-written SD this time)
+   * - sd_boot_verified
      - (end)
-     - SD card freshly written; ready for normal cold boot
+     - SD boot confirmed; recovery verified end-to-end
 
 **BootRPI State Transitions**:
 

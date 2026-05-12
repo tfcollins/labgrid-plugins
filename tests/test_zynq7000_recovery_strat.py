@@ -257,6 +257,321 @@ def test_sd_flash_done_fails_when_marker_missing():
     assert "SD flash failed" in str(exc.value.__cause__)
 
 
+# ---------- board_variant copy + post_flash_commands ----------------------
+
+
+def test_post_flash_skipped_without_board_variant():
+    """No board_variant + empty post_flash_commands ⇒ no extra shell.run calls."""
+    s = _make_strategy()
+    s.status = Status.linux_recovery
+    s.shell.run.return_value = (["SD_FLASH_OK"], [], 0)
+
+    s.transition(Status.sd_flash_done)
+
+    # The dd command is the ONLY shell.run invocation in this path.
+    assert s.shell.run.call_count == 1
+
+
+def test_board_variant_copies_files_to_fat_root():
+    """``board_variant`` triggers the mount + cp + umount one-liner."""
+    s = _make_strategy()
+    s.board_variant = "zynq-zc706-adv7511-adrv937x"
+    s.status = Status.linux_recovery
+
+    # dd succeeds, then board-variant copy succeeds.
+    s.shell.run.side_effect = [
+        (["SD_FLASH_OK"], [], 0),
+        (["BOARD_VARIANT_COPY_OK"], [], 0),
+    ]
+
+    s.transition(Status.sd_flash_done)
+    assert s.status == Status.sd_flash_done
+    assert s.shell.run.call_count == 2
+
+    copy_cmd = s.shell.run.call_args_list[1].args[0]
+    # Mounts the configured boot partition,
+    # `-o sync` keeps writes synchronous (see commit history for the
+    # post-dd block-cache fight).
+    assert "mount -t vfat -o rw,sync /dev/mmcblk0p1 /mnt" in copy_cmd
+    # copies all three default files from the variant subdir to root,
+    for fname in ("BOOT.BIN", "uImage", "devicetree.dtb"):
+        assert (f'cp "/mnt/zynq-zc706-adv7511-adrv937x/{fname}" "/mnt/{fname}"') in copy_cmd
+    # syncs + unmounts + emits the success marker.
+    assert "sync && umount /mnt" in copy_cmd
+    assert "echo BOARD_VARIANT_COPY_OK" in copy_cmd
+
+
+def test_board_variant_copy_failure_raises():
+    """A non-zero return from the variant-copy must abort sd_flash_done."""
+    s = _make_strategy()
+    s.board_variant = "zynq-zc706-adv7511-adrv937x"
+    s.status = Status.linux_recovery
+    s.shell.run.side_effect = [
+        (["SD_FLASH_OK"], [], 0),
+        ([], ["cp: no such file or directory"], 1),
+    ]
+
+    with pytest.raises(StrategyError, match="broken state") as exc:
+        s.transition(Status.sd_flash_done)
+    assert "board_variant copy failed" in str(exc.value.__cause__)
+
+
+def test_board_variant_copy_missing_marker_raises():
+    """exit 0 but no BOARD_VARIANT_COPY_OK ⇒ surface as failure (truncated output)."""
+    s = _make_strategy()
+    s.board_variant = "zynq-zc706-adv7511-adrv937x"
+    s.status = Status.linux_recovery
+    s.shell.run.side_effect = [
+        (["SD_FLASH_OK"], [], 0),
+        (["mount: i/o error"], [], 0),  # rc=0 but marker absent
+    ]
+
+    with pytest.raises(StrategyError, match="broken state") as exc:
+        s.transition(Status.sd_flash_done)
+    assert "board_variant copy failed" in str(exc.value.__cause__)
+
+
+def test_board_variant_files_configurable():
+    """Override the default file list (e.g. add boot.scr for newer Kuiper)."""
+    s = _make_strategy()
+    s.board_variant = "zynq-zc706-adv7511-ad9081"
+    s.board_variant_files = ("BOOT.BIN", "uImage", "system.dtb", "boot.scr")
+    s.sd_boot_partition = 2  # non-default to verify it threads through
+    s.sd_mount_point = "/mnt/boot"
+    s.status = Status.linux_recovery
+    s.shell.run.side_effect = [
+        (["SD_FLASH_OK"], [], 0),
+        (["BOARD_VARIANT_COPY_OK"], [], 0),
+    ]
+
+    s.transition(Status.sd_flash_done)
+
+    copy_cmd = s.shell.run.call_args_list[1].args[0]
+    assert "mount -t vfat -o rw,sync /dev/mmcblk0p2 /mnt/boot" in copy_cmd
+    for fname in ("BOOT.BIN", "uImage", "system.dtb", "boot.scr"):
+        assert (f'cp "/mnt/boot/zynq-zc706-adv7511-ad9081/{fname}" "/mnt/boot/{fname}"') in copy_cmd
+
+
+def test_post_flash_commands_run_in_order():
+    """Each ``post_flash_commands`` entry runs as its own shell.run, in order."""
+    s = _make_strategy()
+    s.post_flash_commands = [
+        "echo first",
+        "echo second && touch /tmp/flag",
+    ]
+    s.status = Status.linux_recovery
+    s.shell.run.side_effect = [
+        (["SD_FLASH_OK"], [], 0),
+        ([], [], 0),
+        ([], [], 0),
+    ]
+
+    s.transition(Status.sd_flash_done)
+    assert s.shell.run.call_count == 3
+    assert s.shell.run.call_args_list[1].args[0] == "echo first"
+    assert s.shell.run.call_args_list[2].args[0] == "echo second && touch /tmp/flag"
+
+
+def test_post_flash_command_failure_raises():
+    s = _make_strategy()
+    s.post_flash_commands = ["false"]
+    s.status = Status.linux_recovery
+    s.shell.run.side_effect = [
+        (["SD_FLASH_OK"], [], 0),
+        ([], ["intentional failure"], 2),
+    ]
+
+    with pytest.raises(StrategyError, match="broken state") as exc:
+        s.transition(Status.sd_flash_done)
+    assert "post_flash_commands entry failed" in str(exc.value.__cause__)
+
+
+def test_board_variant_invalidates_block_cache_before_mount():
+    """The post-dd cache-invalidation sequence must precede the mount.
+
+    Order required: sync → drop_caches → blockdev --rereadpt → mount.
+    Without it the kernel mounts a stale pre-dd view of the FAT and
+    the cp writes vanish at umount (observed empirically on
+    Kuiper-full + busybox initramfs).
+    """
+    s = _make_strategy()
+    s.board_variant = "zynq-zc706-adv7511-adrv9371"
+    s.status = Status.linux_recovery
+    s.shell.run.side_effect = [
+        (["SD_FLASH_OK"], [], 0),
+        (["BOARD_VARIANT_COPY_OK"], [], 0),
+    ]
+    s.transition(Status.sd_flash_done)
+    copy_cmd = s.shell.run.call_args_list[1].args[0]
+    sync_idx = copy_cmd.find("sync &&")
+    drop_idx = copy_cmd.find("drop_caches")
+    rereadpt_idx = copy_cmd.find("--rereadpt")
+    mount_idx = copy_cmd.find("mount -t vfat")
+    assert 0 < sync_idx < drop_idx, copy_cmd
+    assert drop_idx < rereadpt_idx < mount_idx, copy_cmd
+    # Cache must also be flushed AT THE PARTITION level — distinct from
+    # the whole-disk cache, and the actual cause of post-dd ``cp``
+    # writes silently disappearing.
+    assert "--flushbufs /dev/mmcblk0p1" in copy_cmd
+
+
+def test_board_variant_runs_before_post_flash_commands():
+    """Variant copy first (so post-flash commands see the fresh root files)."""
+    s = _make_strategy()
+    s.board_variant = "zynq-zc706-adv7511-adrv937x"
+    s.post_flash_commands = ["mount /dev/mmcblk0p1 /mnt && ls /mnt/BOOT.BIN"]
+    s.status = Status.linux_recovery
+    s.shell.run.side_effect = [
+        (["SD_FLASH_OK"], [], 0),
+        (["BOARD_VARIANT_COPY_OK"], [], 0),
+        ([], [], 0),
+    ]
+
+    s.transition(Status.sd_flash_done)
+    calls = [c.args[0] for c in s.shell.run.call_args_list]
+    # dd → variant copy → user command, in that order.
+    assert "echo SD_FLASH_OK" in calls[0]
+    assert "BOARD_VARIANT_COPY_OK" in calls[1]
+    assert calls[2] == "mount /dev/mmcblk0p1 /mnt && ls /mnt/BOOT.BIN"
+
+
+def test_board_variant_paths_copies_from_multiple_subdirs():
+    """``board_variant_paths`` lets each file come from a different FAT subdir."""
+    s = _make_strategy()
+    s.board_variant_paths = {
+        "BOOT.BIN": "zynq-zc706-adv7511-adrv937x/BOOT.BIN",
+        "uImage": "zynq-common/uImage",
+        "devicetree.dtb": (
+            "zynq-zc706-adv7511-adrv937x/zynq-zc706-adv7511-adrv9371/devicetree.dtb"
+        ),
+    }
+    s.status = Status.linux_recovery
+    s.shell.run.side_effect = [
+        (["SD_FLASH_OK"], [], 0),
+        (["BOARD_VARIANT_COPY_OK"], [], 0),
+    ]
+
+    s.transition(Status.sd_flash_done)
+
+    copy_cmd = s.shell.run.call_args_list[1].args[0]
+    assert 'cp "/mnt/zynq-zc706-adv7511-adrv937x/BOOT.BIN" "/mnt/BOOT.BIN"' in copy_cmd
+    assert 'cp "/mnt/zynq-common/uImage" "/mnt/uImage"' in copy_cmd
+    assert (
+        'cp "/mnt/zynq-zc706-adv7511-adrv937x/zynq-zc706-adv7511-adrv9371/'
+        'devicetree.dtb" "/mnt/devicetree.dtb"'
+    ) in copy_cmd
+
+
+def test_board_variant_paths_overrides_board_variant():
+    """When both are set, ``board_variant_paths`` wins; ``board_variant`` is ignored."""
+    s = _make_strategy()
+    s.board_variant = "should-be-ignored"
+    s.board_variant_paths = {"BOOT.BIN": "elsewhere/BOOT.BIN"}
+    s.status = Status.linux_recovery
+    s.shell.run.side_effect = [
+        (["SD_FLASH_OK"], [], 0),
+        (["BOARD_VARIANT_COPY_OK"], [], 0),
+    ]
+
+    s.transition(Status.sd_flash_done)
+
+    copy_cmd = s.shell.run.call_args_list[1].args[0]
+    assert 'cp "/mnt/elsewhere/BOOT.BIN" "/mnt/BOOT.BIN"' in copy_cmd
+    assert "should-be-ignored" not in copy_cmd
+
+
+# ---------- sd_boot_verified ----------------------------------------------
+
+
+def test_sd_boot_verified_jtag_loads_uboot_and_drives_sd_boot(monkeypatch):
+    """Happy path: cold-cycle → JTAG-load U-Boot → fatload+bootm SD → wait login."""
+    s = _make_strategy()
+    s.status = Status.sd_flash_done
+    s.shell.run.return_value = ([], [], 0)
+    s.shell.run_uboot.return_value = ([], [], 0)
+    s.shell.console.expect.return_value = 0
+
+    s.transition(Status.sd_boot_verified)
+
+    assert s.status == Status.sd_boot_verified
+    # Cold-cycle off → on.
+    assert s.power.off.called and s.power.on.called
+    # U-Boot was JTAG-loaded so we don't depend on board boot-mode pins.
+    s.jtag.load_zynq_uboot.assert_called()
+    # Autoboot was caught and interrupted, then SD-load commands issued.
+    issued = " ".join(c.args[0] for c in s.shell.run_uboot.call_args_list)
+    assert "mmc rescan" in issued
+    assert f"fatload mmc 0:{s.sd_boot_partition} {s.kernel_addr} {s.verify_kernel_name}" in issued
+    assert f"fatload mmc 0:{s.sd_boot_partition} {s.dtb_addr} {s.verify_dtb_name}" in issued
+    assert f"setenv bootargs {s.verify_bootargs}" in issued
+    # bootm raw-sendline'd (run_uboot would block on prompt return).
+    sendlines = [c.args[0] for c in s.shell.console.sendline.call_args_list]
+    assert f"bootm {s.kernel_addr} - {s.dtb_addr}" in sendlines
+    # Login regex was the final expect.
+    final_expect = s.shell.console.expect.call_args_list[-1]
+    assert final_expect.args[0] == s.verify_boot_login_marker
+
+
+def test_sd_boot_verified_uses_bypass_login():
+    """The verify path mustn't try Linux-login during U-Boot phase."""
+    s = _make_strategy()
+    s.status = Status.sd_flash_done
+    s.shell.run.return_value = ([], [], 0)
+    s.shell.run_uboot.return_value = ([], [], 0)
+    s.shell.console.expect.return_value = 0
+    s.shell.bypass_login = False
+    s.transition(Status.sd_boot_verified)
+    assert s.shell.bypass_login is True
+
+
+def test_sd_boot_verified_raises_on_login_timeout():
+    """Timeout means the SD didn't boot — surface a clear StrategyError."""
+    s = _make_strategy()
+    s.status = Status.sd_flash_done
+    s.shell.run.return_value = ([], [], 0)
+    s.shell.run_uboot.return_value = ([], [], 0)
+
+    # console.expect is called twice: once for the autoboot prompt,
+    # then once for the post-bootm login marker. Only the latter
+    # should raise here.
+    autoboot_seen = {"count": 0}
+
+    def fake_expect(pattern, *args, **kwargs):
+        autoboot_seen["count"] += 1
+        if "login" in (pattern if isinstance(pattern, str) else ""):
+            raise TimeoutError("simulated login timeout")
+        # First call (autoboot prompt) succeeds.
+        return 0
+
+    s.shell.console.expect.side_effect = fake_expect
+    with pytest.raises(StrategyError, match="broken state") as exc:
+        s.transition(Status.sd_boot_verified)
+    assert "did not reach the expected login prompt" in str(exc.value.__cause__)
+
+
+def test_sd_boot_verified_honors_custom_attrs():
+    """The verify_* attrs flow through to fatload/setenv/expect."""
+    s = _make_strategy()
+    s.verify_kernel_name = "Image"
+    s.verify_dtb_name = "system.dtb"
+    s.verify_bootargs = "console=ttyPS0,115200 root=/dev/mmcblk1p2 ro"
+    s.verify_boot_login_marker = "buildroot login:"
+    s.wait_for_verify_boot_timeout = 30
+    s.status = Status.sd_flash_done
+    s.shell.run.return_value = ([], [], 0)
+    s.shell.run_uboot.return_value = ([], [], 0)
+    s.shell.console.expect.return_value = 0
+
+    s.transition(Status.sd_boot_verified)
+    issued = " ".join(c.args[0] for c in s.shell.run_uboot.call_args_list)
+    assert "fatload mmc 0:1 " in issued and " Image" in issued
+    assert "system.dtb" in issued
+    assert "root=/dev/mmcblk1p2" in issued
+    final_expect = s.shell.console.expect.call_args_list[-1]
+    assert final_expect.args[0] == "buildroot login:"
+    assert final_expect.kwargs["timeout"] == 30
+
+
 # ---------- auto-build initramfs ------------------------------------------
 
 

@@ -99,6 +99,13 @@ targets:
         sd_device: '/dev/mmcblk0'
         download_cmd_template: 'wget -q -O - "{url}"'
 
+        # The Kuiper-full image ships per-board BOOT.BIN/uImage/devicetree in
+        # named subdirectories; the FAT root is empty of those files. Tell
+        # the strategy which subdirectory matches this hardware so it can
+        # promote them after the dd. Drop ``board_variant`` for pre-cooked
+        # per-board images that already have BOOT.BIN at root.
+        board_variant: 'zynq-zc706-adv7511-adrv937x'
+
         # U-Boot env (Zynq-7000)
         uboot_prompt: 'Zynq>.*'
         # uImage already wraps bootargs; ramdisk address must clear the kernel.

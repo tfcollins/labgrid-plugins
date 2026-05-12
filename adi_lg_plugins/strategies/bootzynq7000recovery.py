@@ -20,6 +20,22 @@ responsibilities:
 - The SD image to flash, either as a local path (``sd_image_path``, served
   automatically) or a pre-existing URL (``sd_image_url``).
 
+Per-board file setup:
+
+- ADI's "Kuiper-full" SD image is multi-board and ships BOOT.BIN /
+  uImage / devicetree under named subdirectories (one per board); the
+  FAT root is empty of those files. The Zynq-7000 BootROM only reads
+  ``BOOT.BIN`` at the root, so a bare ``dd`` of Kuiper-full produces a
+  silent boot failure.
+- Setting ``board_variant=<subdir-name>`` (e.g.
+  ``zynq-zc706-adv7511-adrv937x``) tells the strategy to mount FAT
+  partition 1 after the dd, copy the per-board files up to the root,
+  sync, and unmount — all from inside the recovery initramfs.
+- For images that already have ``BOOT.BIN`` at root, leave
+  ``board_variant=None``.
+- For tweaks that don't fit the board-variant pattern, add entries to
+  ``post_flash_commands`` (a list of shell snippets run sequentially).
+
 Automation defaults (``auto_build_initramfs=True``, ``auto_serve_http=True``):
 
 - The recovery ``uInitrd.recovery`` is auto-built into the TFTP root on
@@ -65,6 +81,9 @@ class Status(enum.Enum):
     linux_recovery = 6
     sd_flash_done = 7
     soft_off = 8
+    # Optional post-flash check: cold-cycle, let BootROM read the
+    # freshly-flashed SD, wait for the normal Kuiper login prompt.
+    sd_boot_verified = 9
 
 
 @target_factory.reg_driver
@@ -80,10 +99,14 @@ class BootZynq7000JTAGRecovery(Strategy):
         4. TFTP-load recovery kernel/DTB/initramfs; ``bootm`` into RAM-rooted
            Linux.
         5. From Linux userspace, ``wget <sd_image_url> | dd of=/dev/mmcblk0``.
+        6. (optional) ``sd_boot_verified``: cold-cycle and confirm the
+           freshly-flashed SD boots all the way to a normal login prompt —
+           no boot-mode switches change, BootROM just reads the
+           freshly-written ``BOOT.BIN`` this time.
 
-    The strategy stops at ``sd_flash_done``; verifying the freshly-flashed SD
-    boots cleanly is the caller's job (chain a separate ``BootFPGASoCTFTP`` or
-    ``BootFPGASoC`` transition afterward).
+    Stop at ``sd_flash_done`` if you just want the flash, or transition all
+    the way to ``sd_boot_verified`` to also assert the resulting SD is
+    bootable. ``soft_off`` leaves the board powered down regardless.
 
     Generic across Zynq-7000 boards; board-specific values (memory addresses,
     DTB filename, ``ps7_init.tcl`` path) are all attributes.
@@ -117,6 +140,44 @@ class BootZynq7000JTAGRecovery(Strategy):
     sd_image_url = attr.ib(default=None)
     sd_device = attr.ib(default="/dev/mmcblk0")
     download_cmd_template = attr.ib(default='wget -q -O - "{url}"')
+
+    # Post-flash board-variant copy. ADI's "Kuiper-full" SD image ships per
+    # board BOOT.BIN/uImage/devicetree under named subdirectories
+    # (zynq-zc706-adv7511-adrv937x, zynqmp-zcu102-rev10-adrv937x, ...);
+    # BootROM only reads BOOT.BIN at the FAT root.
+    #
+    # Two ways to drive the post-dd copy:
+    #
+    #   simple — all files live under one subdir:
+    #     board_variant: "zynq-zc706-adv7511-adrv9371"
+    #     board_variant_files: ("BOOT.BIN", "uImage", "devicetree.dtb")  # default
+    #
+    #   complex — files span multiple subdirs (Kuiper-full ZC706, where
+    #   uImage is shared in zynq-common/ and devicetree.dtb is one level
+    #   deeper than BOOT.BIN):
+    #     board_variant_paths:
+    #       BOOT.BIN:       "zynq-zc706-adv7511-adrv937x/BOOT.BIN"
+    #       uImage:         "zynq-common/uImage"
+    #       devicetree.dtb: "zynq-zc706-adv7511-adrv937x/zynq-zc706-adv7511-adrv9371/devicetree.dtb"
+    #
+    # When ``board_variant_paths`` is set it takes precedence and the
+    # ``board_variant`` / ``board_variant_files`` pair is ignored.
+    # When neither is set the post-dd copy is skipped entirely (use for
+    # pre-cooked per-board images where BOOT.BIN is already at FAT root).
+    board_variant = attr.ib(default=None)
+    board_variant_files = attr.ib(default=("BOOT.BIN", "uImage", "devicetree.dtb"))
+    board_variant_paths = attr.ib(default=None)  # dict[target, fat_source] | None
+    sd_boot_partition = attr.ib(default=1)
+    # Mount point inside the recovery initramfs — must exist as an empty
+    # dir (the strategy ``mkdir -p`` it first to be safe).
+    sd_mount_point = attr.ib(default="/mnt")
+
+    # Arbitrary post-flash shell commands executed in the recovery
+    # initramfs after the dd + board_variant copy succeed (one
+    # ``shell.run`` per entry, in order). Use for one-off image-shape
+    # tweaks that don't fit the board_variant pattern.
+    post_flash_commands = attr.ib(factory=list)
+    post_flash_timeout = attr.ib(default=120)
 
     # --- Automation knobs --------------------------------------------------
     # When True (default), the strategy will:
@@ -166,6 +227,33 @@ class BootZynq7000JTAGRecovery(Strategy):
     wait_for_uboot_prompt_timeout = attr.ib(default=60)
     wait_for_recovery_linux_timeout = attr.ib(default=180)
     wait_for_sd_flash_timeout = attr.ib(default=1800)
+
+    # sd_boot_verified: drive the freshly-flashed SD through a real
+    # boot sequence and assert it reaches userspace.
+    #
+    # The strategy JTAG-loads U-Boot, interrupts autoboot, then has
+    # U-Boot ``fatload`` the kernel+dtb from the SD's FAT boot
+    # partition and ``bootm`` them. This avoids two real-world snags
+    # on Zynq-7000 dev boards:
+    #
+    #   - boot-mode pins set to JTAG: BootROM doesn't try SD, so a
+    #     cold-power-only test produces no UART output regardless of
+    #     SD content.
+    #   - U-Boot environment configured for TFTP boot: the default
+    #     autoboot script doesn't fatload from SD; we drive it
+    #     explicitly.
+    #
+    # The end state still depends on the SD's content (kernel + dtb +
+    # rootfs) being correct — the SD is what's actually booted.
+    verify_kernel_name = attr.ib(default="uImage")
+    verify_dtb_name = attr.ib(default="devicetree.dtb")
+    verify_bootargs = attr.ib(
+        default=(
+            "console=ttyPS0,115200 root=/dev/mmcblk0p2 rw earlyprintk rootfstype=ext4 rootwait"
+        )
+    )
+    verify_boot_login_marker = attr.ib(default="(analog|raspberrypi|kuiper).*login:")
+    wait_for_verify_boot_timeout = attr.ib(default=180)
 
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
@@ -252,6 +340,91 @@ class BootZynq7000JTAGRecovery(Strategy):
             ctx.__exit__(None, None, None)
         except Exception as e:  # pragma: no cover - cleanup is best-effort
             self.logger.warning("HTTP server teardown raised: %s", e)
+
+    def _resolve_board_variant_paths(self) -> dict[str, str] | None:
+        """Return {target_filename: fat_source_path} or None if no copy needed.
+
+        Explicit ``board_variant_paths`` wins. Otherwise expand
+        ``board_variant`` + ``board_variant_files`` into a flat
+        ``{f: f"{board_variant}/{f}"}`` mapping. Returns ``None`` when
+        neither is configured so the caller can skip the copy step.
+        """
+        if self.board_variant_paths:
+            return dict(self.board_variant_paths)
+        if self.board_variant:
+            return {f: f"{self.board_variant}/{f}" for f in self.board_variant_files}
+        return None
+
+    def _build_board_variant_cmd(self, paths: dict[str, str]) -> str:
+        """Compose the post-dd Kuiper-multi → root copy one-liner.
+
+        Mounts the FAT boot partition, copies each ``paths[target]``
+        source file up to the partition root as ``target``, syncs, and
+        unmounts. Emits ``BOARD_VARIANT_COPY_OK`` on success so the
+        caller can assert against output rather than just exit code.
+        """
+        partition = f"{self.sd_device}p{self.sd_boot_partition}"
+        mount = self.sd_mount_point
+        copies = " && ".join(f'cp "{mount}/{src}" "{mount}/{dst}"' for dst, src in paths.items())
+        # The kernel keeps a per-block-device page cache. The post-dd
+        # whole-disk write (to ``sd_device``) doesn't invalidate the
+        # partition's own cache (``{sd_device}p{N}``) — they're distinct
+        # device entities. So even after sync + drop_caches +
+        # ``blockdev --flushbufs sd_device``, mounting the partition
+        # still sees the pre-dd FAT, ``cp`` updates only that cache,
+        # and umount discards everything.
+        #
+        # The fix: invalidate BOTH the whole-disk and the partition
+        # caches, re-read the partition table (which also drops the
+        # partitions' buffers), then mount with ``-o sync`` so writes
+        # land synchronously regardless of any remaining cache games.
+        return (
+            f"mkdir -p {mount} && "
+            "sync && "
+            "echo 3 > /proc/sys/vm/drop_caches 2>/dev/null || true && "
+            f"blockdev --flushbufs {self.sd_device} 2>/dev/null || true && "
+            f"blockdev --flushbufs {partition} 2>/dev/null || true && "
+            f"blockdev --rereadpt {self.sd_device} 2>/dev/null || "
+            f"partprobe {self.sd_device} 2>/dev/null || true && "
+            "sleep 1 && "
+            f"mount -t vfat -o rw,sync {partition} {mount} && "
+            f"{copies} && "
+            "sync && "
+            f"umount {mount} && "
+            "sync && "
+            f"blockdev --flushbufs {partition} 2>/dev/null || true && "
+            f"blockdev --flushbufs {self.sd_device} 2>/dev/null || true && "
+            "echo BOARD_VARIANT_COPY_OK"
+        )
+
+    def _run_post_flash(self) -> None:
+        """Run board-variant copy (if configured) + post_flash_commands."""
+        paths = self._resolve_board_variant_paths()
+        if paths is not None:
+            cmd = self._build_board_variant_cmd(paths)
+            self.logger.info(
+                "Copying %d board-variant file(s) to FAT root: %s",
+                len(paths),
+                ", ".join(f"{src} -> {dst}" for dst, src in paths.items()),
+            )
+            stdout, stderr, returncode = self.shell.run(cmd, timeout=self.post_flash_timeout)
+            stdout_str = "\n".join(stdout) if isinstance(stdout, list) else str(stdout)
+            stderr_str = "\n".join(stderr) if isinstance(stderr, list) else str(stderr)
+            if returncode != 0 or "BOARD_VARIANT_COPY_OK" not in stdout_str:
+                raise StrategyError(
+                    f"board_variant copy failed (rc={returncode}): {stderr_str or stdout_str}"
+                )
+
+        for extra in self.post_flash_commands:
+            self.logger.info(f"Post-flash command: {extra}")
+            stdout, stderr, returncode = self.shell.run(extra, timeout=self.post_flash_timeout)
+            if returncode != 0:
+                stderr_str = "\n".join(stderr) if isinstance(stderr, list) else str(stderr)
+                stdout_str = "\n".join(stdout) if isinstance(stdout, list) else str(stdout)
+                raise StrategyError(
+                    f"post_flash_commands entry failed (rc={returncode}): "
+                    f"{extra}\n{stderr_str or stdout_str}"
+                )
 
     def _require(self, name: str) -> str:
         """Fetch a required attr or raise StrategyError naming the field."""
@@ -463,6 +636,10 @@ class BootZynq7000JTAGRecovery(Strategy):
                 raise StrategyError(
                     f"SD flash failed (rc={returncode}): {stderr_str or stdout_str}"
                 )
+            # Run board-variant copy + any user post-flash commands. Must
+            # happen after the dd succeeds so the freshly-written FAT is
+            # what we're mounting / editing.
+            self._run_post_flash()
             self.logger.info("SD card reflashed successfully")
 
         elif status == Status.soft_off:
@@ -481,6 +658,87 @@ class BootZynq7000JTAGRecovery(Strategy):
             self.target.activate(self.power)
             self.power.off()
             self.logger.info("Device powered off")
+
+        elif status == Status.sd_boot_verified:
+            self.transition(Status.soft_off)
+            # Cold-cycle from soft_off; chip is otherwise already off.
+            self.logger.info("Cold-cycling for SD-boot verification...")
+            self._cold_cycle()
+
+            # JTAG-load U-Boot. Many ADI dev-bench setups leave the
+            # boot-mode pins on JTAG, so a cold-power-only test
+            # produces zero UART output even with a perfect SD. By
+            # using JTAG we always reach a known U-Boot state, and
+            # the actual boot below still depends on the SD content.
+            self.target.activate(self.jtag)
+            self.jtag.load_zynq_uboot(
+                ps7_init_tcl=self._require("ps7_init_tcl"),
+                uboot_elf=self._require("uboot_elf"),
+                a9_target_name=self.a9_target_name,
+                bitstream_path=self.bitstream_path,
+                fsbl_elf=self.fsbl_elf,
+            )
+
+            self.shell.bypass_login = True
+            self.target.activate(self.shell)
+            self.logger.info("Waiting for U-Boot autoboot prompt...")
+            self.shell.console.expect(
+                "Hit any key to stop autoboot",
+                timeout=self.wait_for_uboot_prompt_timeout,
+            )
+            self.shell.console.sendline(" ")
+            time.sleep(2)
+            self._original_prompt = self.shell.prompt
+            self.shell.prompt = self.uboot_prompt
+            self.shell.console.sendline("\n")
+            self.shell._check_prompt_uboot()
+
+            # Drive U-Boot to fatload from the SD and bootm. This is
+            # what proves the freshly-flashed SD content is correct:
+            # the kernel + dtb come from the SD, and root= points at
+            # /dev/mmcblk0p2 so the rootfs comes from there too.
+            partition = f"0:{self.sd_boot_partition}"
+            commands = [
+                "mmc rescan",
+                f"fatload mmc {partition} {self.kernel_addr} {self.verify_kernel_name}",
+                f"fatload mmc {partition} {self.dtb_addr} {self.verify_dtb_name}",
+                f"setenv bootargs {self.verify_bootargs}",
+            ]
+            self.logger.info("Configuring U-Boot for SD-boot verification...")
+            for cmd in commands:
+                self.logger.info(f"U-Boot: {cmd}")
+                self.shell.run_uboot(f"{cmd}\n", timeout=60)
+                self.shell._check_prompt_uboot()
+
+            bootm = f"bootm {self.kernel_addr} - {self.dtb_addr}"
+            self.logger.info(f"Booting from SD: {bootm}")
+            self.shell.console.sendline(bootm)
+            self.logger.info(
+                f"Waiting for SD-boot login marker '{self.verify_boot_login_marker}' "
+                f"(timeout {self.wait_for_verify_boot_timeout}s)..."
+            )
+            try:
+                self.shell.console.expect(
+                    self.verify_boot_login_marker,
+                    timeout=self.wait_for_verify_boot_timeout,
+                )
+            except Exception as e:
+                captured = b""
+                try:
+                    captured = self.shell.console._expect.before or b""
+                except Exception:
+                    pass
+                self.logger.error(
+                    "SD-boot verification timed out (%d bytes captured).",
+                    len(captured),
+                )
+                if captured:
+                    self.logger.error("UART tail: %r", captured[-1000:])
+                raise StrategyError(
+                    "Freshly-flashed SD did not reach the expected login "
+                    f"prompt within {self.wait_for_verify_boot_timeout}s"
+                ) from e
+            self.logger.info("SD card boots normally — recovery verified")
 
         else:
             raise StrategyError(f"no transition found from {self.status} to {status}")
