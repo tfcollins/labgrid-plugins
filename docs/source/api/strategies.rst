@@ -42,6 +42,19 @@ BootFPGASoCTFTP
    :undoc-members:
    :no-index:
 
+BootZynq7000JTAGRecovery
+------------------------
+
+.. autoclass:: adi_lg_plugins.strategies.bootzynq7000recovery.BootZynq7000JTAGRecovery
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+.. autoclass:: adi_lg_plugins.strategies.bootzynq7000recovery.Status
+   :members:
+   :undoc-members:
+   :no-index:
+
 BootSelMap
 ----------
 
