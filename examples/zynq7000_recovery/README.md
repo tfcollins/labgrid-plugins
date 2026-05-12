@@ -11,41 +11,43 @@ lives in `adi_lg_plugins.recovery` so it ships with the package.
 ## End-to-end recipe
 
 ```bash
-# 1. Cross-compile static busybox for ARMv7-A (Cortex-A9). One-time.
-export CROSS_COMPILE=/path/to/arm-none-linux-gnueabihf-
-export ARCH=arm
-cd busybox-1.36.1
-make defconfig
-sed -i 's/^# CONFIG_STATIC is not set/CONFIG_STATIC=y/' .config
-make -j$(nproc) busybox
+# 1. Install an ARM cross-toolchain (one-time, system-wide).
+#    Ubuntu/Debian:  sudo apt install gcc-arm-linux-gnueabihf
+#    or use the Arm GNU toolchain release tarball.
 
-# 2. Build the recovery initramfs and stage it on the TFTP server.
-adi-lg build-recovery-initramfs \
-    --busybox $(pwd)/busybox \
-    --out /var/lib/tftpboot/uInitrd.recovery
-
-# 3. Extract the JTAG bootstrap inputs from a known-good BOOT.BIN.
+# 2. Extract the JTAG bootstrap inputs from a known-good BOOT.BIN.
 #    Yields fsbl.elf, u-boot.elf, system_top.bit. The bitstream is
 #    required when the recovery DTB references FPGA fabric peripherals
-#    (axi_clkgen, axi_jesd204_*, axi_adxcvr, …); without it the kernel
+#    (axi_clkgen, axi_jesd204_*, axi_adxcvr, ...); without it the kernel
 #    hangs probing AXI addresses.
 bootgen -arch zynq -read /path/to/BOOT.BIN
 # Also: generate ps7_init.tcl from your design's .xsa (Vivado emits it).
 
-# 4. Serve the SD image you want flashed.
-python3 -m http.server 8080 --directory /path/to/sd-images &
-
-# 5. Adapt lg_zc706_recovery.yaml — point ps7_init_tcl, uboot_elf,
-#    bitstream_path, sd_image_url at your files, and replace the
+# 3. Adapt lg_zc706_recovery.yaml — point ps7_init_tcl, uboot_elf,
+#    bitstream_path, sd_image_path at your files, and replace the
 #    HomeAssistant URL/token/entity with your own.
 
-# 6. Run the recovery.
+# 4. Run the recovery. The strategy:
+#      - cross-compiles busybox on first run (cached in ~/.cache/...)
+#      - builds uInitrd.recovery into the TFTP root if missing
+#      - opens an ephemeral HTTP server for sd_image_path
+#      - JTAG-bootstraps U-Boot, TFTPs recovery, dd's the image
 python3 -c "
 import adi_lg_plugins  # registers entry-point drivers
 from labgrid import Environment
 t = Environment('lg_zc706_recovery.yaml').get_target('main')
 t.get_strategy().transition('sd_flash_done')
 "
+```
+
+That's it — the user only invokes `transition('sd_flash_done')`. If you
+already have a cross-compiled busybox or you want to stage every artifact
+by hand, you can also call the lower-level helpers directly:
+
+```bash
+adi-lg build-recovery-initramfs \
+    --busybox /path/to/static/busybox \
+    --out /var/lib/tftpboot/uInitrd.recovery
 ```
 
 Expected log highlights:

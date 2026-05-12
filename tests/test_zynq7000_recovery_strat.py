@@ -36,6 +36,10 @@ def _make_strategy(**overrides):
         recovery_dtb="zynq-zc706.recovery.dtb",
         recovery_initramfs="uInitrd.recovery",
         sd_image_url="http://host:8080/zc706-kuiper.img",
+        # Default-off for the existing test suite; the auto_* tests
+        # below explicitly flip these and stage their own fixtures.
+        auto_build_initramfs=False,
+        auto_serve_http=False,
     )
 
     s.power = MagicMock()
@@ -44,6 +48,7 @@ def _make_strategy(**overrides):
     s.shell.prompt = "# "
     s.tftp_server = MagicMock()
     s.tftp_server.get_ip.return_value = "10.0.0.1"
+    s.tftp_server.root = "/tmp/tftp"
     s.tftp_driver = MagicMock()
     s.tftp_driver.resource.port = 3069
     s.tftp_driver.resource.root = "/tmp/tftp"
@@ -250,3 +255,239 @@ def test_sd_flash_done_fails_when_marker_missing():
     with pytest.raises(StrategyError, match="broken state") as exc:
         s.transition(Status.sd_flash_done)
     assert "SD flash failed" in str(exc.value.__cause__)
+
+
+# ---------- auto-build initramfs ------------------------------------------
+
+
+def _record(name, store):
+    """Make a lambda-friendly recorder that returns a fixed value."""
+
+    def _fn(**kw):
+        store[name] = kw
+        return store.get(f"{name}_ret")
+
+    return _fn
+
+
+def test_auto_build_skipped_when_file_present(tmp_path, monkeypatch):
+    """If uInitrd.recovery already exists, the build helpers must not run."""
+    s = _make_strategy()
+    s.auto_build_initramfs = True
+    s.tftp_server.root = str(tmp_path)
+    (tmp_path / s.recovery_initramfs).write_bytes(b"already there")
+
+    monkeypatch.setattr(
+        "adi_lg_plugins.recovery.build_recovery_initramfs",
+        lambda **_kw: pytest.fail("build_recovery_initramfs should not run"),
+    )
+    monkeypatch.setattr(
+        "adi_lg_plugins.recovery.busybox.ensure_busybox_static",
+        lambda **_kw: pytest.fail("ensure_busybox_static should not run"),
+    )
+
+    s._ensure_recovery_initramfs()  # must not raise
+
+
+def test_auto_build_invokes_helpers_when_missing(tmp_path, monkeypatch):
+    s = _make_strategy()
+    s.auto_build_initramfs = True
+    s.tftp_server.root = str(tmp_path)
+    s.busybox_source_url = "https://example.invalid/busybox.tar.bz2"
+    s.cross_compile = "arm-none-linux-gnueabihf-"
+    s.recovery_cache_dir = str(tmp_path / "cache")
+
+    captured = {}
+
+    def fake_ensure(**kw):
+        captured["ensure"] = kw
+        return "/cached/busybox"
+
+    def fake_build(**kw):
+        captured["build"] = kw
+        with open(kw["output"], "wb") as f:
+            f.write(b"x")
+        return {"cpio": 100, "gz": 50, "uimage": 60}
+
+    monkeypatch.setattr("adi_lg_plugins.recovery.busybox.ensure_busybox_static", fake_ensure)
+    monkeypatch.setattr("adi_lg_plugins.recovery.build_recovery_initramfs", fake_build)
+
+    s._ensure_recovery_initramfs()
+
+    assert captured["ensure"]["cache_dir"] == str(tmp_path / "cache")
+    assert captured["ensure"]["source_url"] == "https://example.invalid/busybox.tar.bz2"
+    assert captured["ensure"]["cross_compile"] == "arm-none-linux-gnueabihf-"
+    assert captured["build"]["busybox"] == "/cached/busybox"
+    assert captured["build"]["output"].endswith(s.recovery_initramfs)
+
+
+def test_auto_build_disabled_skips_helpers(tmp_path, monkeypatch):
+    s = _make_strategy()
+    # The fixture already sets auto_build_initramfs=False.
+    s.tftp_server.root = str(tmp_path)  # file absent — would otherwise trigger
+
+    monkeypatch.setattr(
+        "adi_lg_plugins.recovery.build_recovery_initramfs",
+        lambda **_kw: pytest.fail("build helper invoked despite auto_build=False"),
+    )
+    monkeypatch.setattr(
+        "adi_lg_plugins.recovery.busybox.ensure_busybox_static",
+        lambda **_kw: pytest.fail("ensure helper invoked despite auto_build=False"),
+    )
+
+    s._ensure_recovery_initramfs()  # silent no-op
+
+
+def test_auto_build_prefers_explicit_busybox(tmp_path, monkeypatch):
+    s = _make_strategy()
+    s.auto_build_initramfs = True
+    s.tftp_server.root = str(tmp_path)
+    s.busybox_static_path = "/already/built/busybox"
+
+    monkeypatch.setattr(
+        "adi_lg_plugins.recovery.busybox.ensure_busybox_static",
+        lambda **_kw: pytest.fail("ensure_busybox_static must be bypassed"),
+    )
+
+    captured = {}
+
+    def fake_build(**kw):
+        captured.update(kw)
+        with open(kw["output"], "wb") as f:
+            f.write(b"x")
+        return {"cpio": 1, "gz": 1, "uimage": 1}
+
+    monkeypatch.setattr("adi_lg_plugins.recovery.build_recovery_initramfs", fake_build)
+
+    s._ensure_recovery_initramfs()
+    assert captured["busybox"] == "/already/built/busybox"
+
+
+# ---------- auto-serve HTTP -----------------------------------------------
+
+
+def test_auto_serve_constructs_url_from_sd_image_path(tmp_path, monkeypatch):
+    img = tmp_path / "kuiper.img"
+    img.write_bytes(b"\x00" * 16)
+
+    s = _make_strategy()
+    s.auto_serve_http = True
+    s.sd_image_url = None  # force auto path
+    s.sd_image_path = str(img)
+    s.tftp_server.get_ip.return_value = "10.0.0.156"
+
+    class _FakeCtx:
+        def __init__(self, directory):
+            self.directory = directory
+
+        def __enter__(self):
+            return ("0.0.0.0", 54321)
+
+        def __exit__(self, *_a):
+            return False
+
+    holder = {}
+
+    def fake_serve(directory, port):
+        holder["directory"] = directory
+        holder["port"] = port
+        holder["ctx"] = _FakeCtx(directory)
+        return holder["ctx"]
+
+    monkeypatch.setattr("adi_lg_plugins.recovery.http.serve_directory", fake_serve)
+
+    s._ensure_sd_image_url()
+
+    assert s.sd_image_url == "http://10.0.0.156:54321/kuiper.img"
+    assert holder["directory"] == str(tmp_path)
+    assert s._http_ctx is holder["ctx"]
+
+
+def test_auto_serve_skipped_when_url_explicit(monkeypatch):
+    s = _make_strategy()
+    s.auto_serve_http = True  # auto IS on; but sd_image_url already set
+    monkeypatch.setattr(
+        "adi_lg_plugins.recovery.http.serve_directory",
+        lambda *_a, **_kw: pytest.fail("should not be called"),
+    )
+    s._ensure_sd_image_url()
+    assert s._http_ctx is None
+
+
+def test_auto_serve_disabled_is_silent_noop(monkeypatch):
+    """When auto_serve_http is off the helper must not touch the server."""
+    s = _make_strategy()  # auto_serve_http=False by default in fixture
+    s.sd_image_url = None
+    monkeypatch.setattr(
+        "adi_lg_plugins.recovery.http.serve_directory",
+        lambda *_a, **_kw: pytest.fail("should not start a server"),
+    )
+    # No raise — the missing-URL error is deferred to _build_sd_flash_cmd.
+    s._ensure_sd_image_url()
+    assert s._http_ctx is None
+
+
+def test_sd_flash_done_raises_when_no_url_and_no_auto():
+    """End-to-end: with both auto off and no URL, sd_flash_done must fail."""
+    s = _make_strategy()
+    s.status = Status.linux_recovery
+    s.sd_image_url = None  # no URL, no auto-serve, no image path
+
+    with pytest.raises(StrategyError):
+        s.transition(Status.sd_flash_done)
+
+
+def test_auto_serve_errors_when_image_path_missing(tmp_path):
+    s = _make_strategy()
+    s.auto_serve_http = True
+    s.sd_image_url = None
+    s.sd_image_path = str(tmp_path / "does-not-exist.img")
+    with pytest.raises(StrategyError, match="sd_image_path does not exist"):
+        s._ensure_sd_image_url()
+
+
+def test_auto_serve_errors_when_no_image_path_and_no_url():
+    s = _make_strategy()
+    s.auto_serve_http = True
+    s.sd_image_url = None
+    s.sd_image_path = None
+    with pytest.raises(StrategyError, match="set sd_image_url or sd_image_path"):
+        s._ensure_sd_image_url()
+
+
+def test_http_teardown_is_idempotent():
+    s = _make_strategy()
+    s._http_ctx = None
+    s._teardown_http_server()  # must not raise
+
+    closed = []
+
+    class _Ctx:
+        def __exit__(self, *_a):
+            closed.append(True)
+            return False
+
+    s._http_ctx = _Ctx()
+    s._teardown_http_server()
+    s._teardown_http_server()  # second call no-op
+    assert closed == [True]
+
+
+def test_sd_flash_done_tears_down_http_on_failure(monkeypatch):
+    s = _make_strategy()
+    s.status = Status.linux_recovery
+    s.shell.run.return_value = ([], ["boom"], 1)
+
+    closed = []
+    monkeypatch.setattr(s, "_ensure_sd_image_url", lambda: None)
+
+    class _Ctx:
+        def __exit__(self, *_a):
+            closed.append(True)
+            return False
+
+    s._http_ctx = _Ctx()
+
+    with pytest.raises(StrategyError):
+        s.transition(Status.sd_flash_done)
+    assert closed == [True], "HTTP server must be torn down even when dd fails"

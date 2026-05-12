@@ -83,14 +83,19 @@ targets:
         bitstream_path: /tmp/bootgen_extract/system_top.bit
         a9_target_name: '*Cortex-A9 MPCore #0'
 
-        # Recovery image (filenames inside TFTPServerResource.root)
+        # Recovery image (filenames inside TFTPServerResource.root).
+        # uInitrd.recovery is auto-built on first run (auto_build_initramfs
+        # defaults to True); supply a busybox_static_path attribute below
+        # if you'd rather skip the on-demand cross-compile.
         recovery_kernel: 'uImage'
         recovery_dtb: 'devicetree.dtb'
         recovery_initramfs: 'uInitrd.recovery'
         recovery_login_marker: 'recovery login:'
 
-        # SD-flash inputs
-        sd_image_url: 'http://10.0.0.156:8080/2025-03-18-ADI-Kuiper-full.img'
+        # SD-flash inputs. With auto_serve_http=True (default), the strategy
+        # opens an ephemeral HTTP server on the host and composes the URL
+        # itself — caller only needs the local image path.
+        sd_image_path: '/tmp/kuiper_cache/2025-03-18-ADI-Kuiper-full.img'
         sd_device: '/dev/mmcblk0'
         download_cmd_template: 'wget -q -O - "{url}"'
 
