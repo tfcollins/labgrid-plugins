@@ -65,6 +65,9 @@ class Status(enum.Enum):
     linux_recovery = 6
     sd_flash_done = 7
     soft_off = 8
+    # Optional post-flash check: cold-cycle, let BootROM read the
+    # freshly-flashed SD, wait for the normal Kuiper login prompt.
+    sd_boot_verified = 9
 
 
 @target_factory.reg_driver
@@ -80,10 +83,14 @@ class BootZynq7000JTAGRecovery(Strategy):
         4. TFTP-load recovery kernel/DTB/initramfs; ``bootm`` into RAM-rooted
            Linux.
         5. From Linux userspace, ``wget <sd_image_url> | dd of=/dev/mmcblk0``.
+        6. (optional) ``sd_boot_verified``: cold-cycle and confirm the
+           freshly-flashed SD boots all the way to a normal login prompt —
+           no boot-mode switches change, BootROM just reads the
+           freshly-written ``BOOT.BIN`` this time.
 
-    The strategy stops at ``sd_flash_done``; verifying the freshly-flashed SD
-    boots cleanly is the caller's job (chain a separate ``BootFPGASoCTFTP`` or
-    ``BootFPGASoC`` transition afterward).
+    Stop at ``sd_flash_done`` if you just want the flash, or transition all
+    the way to ``sd_boot_verified`` to also assert the resulting SD is
+    bootable. ``soft_off`` leaves the board powered down regardless.
 
     Generic across Zynq-7000 boards; board-specific values (memory addresses,
     DTB filename, ``ps7_init.tcl`` path) are all attributes.
@@ -166,6 +173,13 @@ class BootZynq7000JTAGRecovery(Strategy):
     wait_for_uboot_prompt_timeout = attr.ib(default=60)
     wait_for_recovery_linux_timeout = attr.ib(default=180)
     wait_for_sd_flash_timeout = attr.ib(default=1800)
+
+    # sd_boot_verified: serial marker the freshly-booted SD must print to
+    # be considered "back to normal". Matches Kuiper / Raspbian login
+    # prompt by default; override for distros that announce themselves
+    # differently. Regex; passed straight to ``console.expect``.
+    verify_boot_login_marker = attr.ib(default="(analog|raspberrypi|kuiper).*login:")
+    wait_for_verify_boot_timeout = attr.ib(default=120)
 
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
@@ -481,6 +495,47 @@ class BootZynq7000JTAGRecovery(Strategy):
             self.target.activate(self.power)
             self.power.off()
             self.logger.info("Device powered off")
+
+        elif status == Status.sd_boot_verified:
+            self.transition(Status.soft_off)
+            # Cold-cycle so BootROM samples the freshly-written SD from
+            # a known-clean state. Board is already powered off from
+            # soft_off; _cold_cycle handles the off+settle+on dance
+            # idempotently.
+            self.logger.info("Cold-cycling for SD-boot verification...")
+            self._cold_cycle()
+
+            # Listen on the existing console without trying to log in —
+            # we just want to confirm BootROM -> FSBL -> U-Boot -> Linux
+            # ran through and userspace reached a login prompt.
+            self.shell.bypass_login = True
+            self.target.activate(self.shell)
+            self.logger.info(
+                f"Waiting for SD-boot login marker '{self.verify_boot_login_marker}' "
+                f"(timeout {self.wait_for_verify_boot_timeout}s)..."
+            )
+            try:
+                self.shell.console.expect(
+                    self.verify_boot_login_marker,
+                    timeout=self.wait_for_verify_boot_timeout,
+                )
+            except Exception as e:
+                captured = b""
+                try:
+                    captured = self.shell.console._expect.before or b""
+                except Exception:
+                    pass
+                self.logger.error(
+                    "SD-boot verification timed out (%d bytes captured).",
+                    len(captured),
+                )
+                if captured:
+                    self.logger.error("UART tail: %r", captured[-600:])
+                raise StrategyError(
+                    "Freshly-flashed SD did not reach the expected login "
+                    f"prompt within {self.wait_for_verify_boot_timeout}s"
+                ) from e
+            self.logger.info("SD card boots normally — recovery verified")
 
         else:
             raise StrategyError(f"no transition found from {self.status} to {status}")

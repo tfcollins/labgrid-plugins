@@ -257,6 +257,73 @@ def test_sd_flash_done_fails_when_marker_missing():
     assert "SD flash failed" in str(exc.value.__cause__)
 
 
+# ---------- sd_boot_verified ----------------------------------------------
+
+
+def test_sd_boot_verified_cold_cycles_and_expects_login(monkeypatch):
+    """Happy path: soft_off → cold-cycle → wait for login marker."""
+    s = _make_strategy()
+    s.status = Status.sd_flash_done  # skip through soft_off transitively
+
+    # Stub the soft_off side of the transition; we test that branch
+    # separately, just verify sd_boot_verified does its own work.
+    s.shell.run.return_value = ([], [], 0)
+    s.shell.console.expect.return_value = 0
+
+    s.transition(Status.sd_boot_verified)
+
+    assert s.status == Status.sd_boot_verified
+    # Cold-cycle goes off → on (the _cold_cycle helper).
+    assert s.power.off.called
+    assert s.power.on.called
+    # Should have asked the console for the login marker — verify the
+    # exact regex from the YAML reaches expect().
+    expect_call = s.shell.console.expect.call_args_list[-1]
+    assert expect_call.args[0] == s.verify_boot_login_marker
+    assert expect_call.kwargs["timeout"] == s.wait_for_verify_boot_timeout
+
+
+def test_sd_boot_verified_uses_bypass_login():
+    """Marker hunt mustn't try to log in — initramfs login creds don't apply."""
+    s = _make_strategy()
+    s.status = Status.sd_flash_done
+    s.shell.run.return_value = ([], [], 0)
+    s.shell.console.expect.return_value = 0
+    s.shell.bypass_login = False  # forced to true by the transition
+
+    s.transition(Status.sd_boot_verified)
+
+    assert s.shell.bypass_login is True
+
+
+def test_sd_boot_verified_raises_on_login_timeout():
+    """Timeout means the SD didn't boot — surface a clear StrategyError."""
+    s = _make_strategy()
+    s.status = Status.sd_flash_done
+    s.shell.run.return_value = ([], [], 0)
+    s.shell.console.expect.side_effect = TimeoutError("simulated timeout")
+
+    with pytest.raises(StrategyError, match="broken state") as exc:
+        s.transition(Status.sd_boot_verified)
+    assert "did not reach the expected login prompt" in str(exc.value.__cause__)
+
+
+def test_sd_boot_verified_honors_custom_marker():
+    """``verify_boot_login_marker`` is configurable for non-Kuiper distros."""
+    s = _make_strategy()
+    s.verify_boot_login_marker = "buildroot login:"
+    s.wait_for_verify_boot_timeout = 30
+    s.status = Status.sd_flash_done
+    s.shell.run.return_value = ([], [], 0)
+    s.shell.console.expect.return_value = 0
+
+    s.transition(Status.sd_boot_verified)
+
+    expect_call = s.shell.console.expect.call_args_list[-1]
+    assert expect_call.args[0] == "buildroot login:"
+    assert expect_call.kwargs["timeout"] == 30
+
+
 # ---------- auto-build initramfs ------------------------------------------
 
 

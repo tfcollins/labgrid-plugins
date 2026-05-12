@@ -465,13 +465,21 @@ The strategy manages 9 states. Each transition cascades through prior states, so
        linux_recovery --> sd_flash_done: ADIShellDriver login\n+ wget URL | dd of=/dev/mmcblk0\n+ sync
 
        sd_flash_done --> soft_off: poweroff (or hard power cut)
-       soft_off --> [*]
+       soft_off --> sd_boot_verified: cold-cycle\n+ wait for normal login marker
+       sd_boot_verified --> [*]
 
        note right of jtag_bootstrap
            FPGA bitstream is mandatory when the
            DTB references fabric IPs (axi_clkgen,
            axi_jesd204_*, axi_adxcvr); kernel
            hangs on the AXI probe otherwise.
+       end note
+
+       note right of sd_boot_verified
+           Optional post-flash check. No boot-mode
+           switches change — the board is on SD the
+           whole time; BootROM now reads the freshly
+           written BOOT.BIN instead of the corrupt one.
        end note
 
        note right of linux_recovery
@@ -1557,8 +1565,13 @@ This section provides quick reference tables for valid state transitions in each
      - soft_off
      - Try ``poweroff`` then hard power cut
    * - soft_off
+     - sd_boot_verified
+     - Cold-cycle, then ``console.expect`` ``verify_boot_login_marker``
+       (no boot-mode switches change — BootROM just reads the
+       freshly-written SD this time)
+   * - sd_boot_verified
      - (end)
-     - SD card freshly written; ready for normal cold boot
+     - SD boot confirmed; recovery verified end-to-end
 
 **BootRPI State Transitions**:
 
