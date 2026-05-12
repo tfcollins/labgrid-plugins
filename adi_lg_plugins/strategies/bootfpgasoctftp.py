@@ -187,9 +187,7 @@ class BootFPGASoCTFTP(Strategy):
                     # produced output, another power-cycle won't help.
                     if attempt >= max_attempts or len(captured) > 0 or self.power is None:
                         raise e
-                    self.logger.info(
-                        "Power-cycling the board and re-attempting the autoboot wait."
-                    )
+                    self.logger.info("Power-cycling the board and re-attempting the autoboot wait.")
                     self.target.deactivate(self.shell)
                     self.target.activate(self.power)
                     self.power.off()
@@ -231,9 +229,7 @@ class BootFPGASoCTFTP(Strategy):
 
             # Boot the kernel; the command does not return control to U-Boot.
             self.logger.info(f"Starting kernel execution ({self.boot_cmd})...")
-            self.shell.console.sendline(
-                f"{self.boot_cmd} {self.kernel_addr} - {self.dtb_addr}"
-            )
+            self.shell.console.sendline(f"{self.boot_cmd} {self.kernel_addr} - {self.dtb_addr}")
 
             # Check if we reached Linux prompt
             self.logger.info(f"Waiting for Linux boot and '{self.reached_linux_marker}' prompt...")

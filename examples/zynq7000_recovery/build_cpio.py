@@ -7,7 +7,6 @@ The cpio newc format is documented in linux/Documentation/early-userspace/buffer
 
 import os
 import stat
-import struct
 import sys
 
 S_IFREG = 0o100000
