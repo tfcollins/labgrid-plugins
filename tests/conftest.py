@@ -9,6 +9,7 @@ collect_ignore_glob = [
     "test_soc_strat_tftp.py",
     "test_rpi_hw.py",
     "test_vpk180_hw.py",
+    "test_zynq7000_recovery_hw.py",
 ]
 
 
@@ -26,20 +27,38 @@ def pytest_addoption(parser):
         default=False,
         help="Run tests that require real hardware.",
     )
+    parser.addoption(
+        "--run-destructive",
+        action="store_true",
+        default=False,
+        help=(
+            "Also run hardware tests that overwrite persistent storage on the DUT "
+            "(e.g. SD card flashing). Implies --run-hardware."
+        ),
+    )
 
 
 def pytest_configure(config):
     config.addinivalue_line("markers", "hardware: mark test as requiring real hardware")
+    config.addinivalue_line(
+        "markers",
+        "destructive: mark test as overwriting persistent state on the DUT "
+        "(requires --run-destructive)",
+    )
 
 
 def pytest_collection_modifyitems(config, items):
-    if config.getoption("--run-hardware"):
-        # --run-hardware given in cli: do not skip hardware tests
-        return
     skip_hardware = pytest.mark.skip(reason="need --run-hardware option to run")
+    skip_destructive = pytest.mark.skip(
+        reason="need --run-destructive option to run (overwrites DUT storage)"
+    )
+    run_hw = config.getoption("--run-hardware") or config.getoption("--run-destructive")
+    run_destructive = config.getoption("--run-destructive")
     for item in items:
-        if "hardware" in item.keywords:
+        if "hardware" in item.keywords and not run_hw:
             item.add_marker(skip_hardware)
+        if "destructive" in item.keywords and not run_destructive:
+            item.add_marker(skip_destructive)
 
 
 @pytest.fixture
