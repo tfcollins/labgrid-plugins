@@ -70,7 +70,9 @@ def test_strategy_metadata(strategy):
     assert strategy.recovery_kernel, "recovery_kernel must be configured in YAML"
     assert strategy.recovery_dtb, "recovery_dtb must be configured in YAML"
     assert strategy.recovery_initramfs, "recovery_initramfs must be configured in YAML"
-    assert strategy.sd_image_url, "sd_image_url must be configured in YAML"
+    assert strategy.sd_image_url or strategy.sd_image_path, (
+        "either sd_image_url or sd_image_path must be configured in YAML"
+    )
 
 
 def test_jtag_bootstrap_only(strategy):
@@ -155,16 +157,9 @@ def test_full_sd_flash_and_boot_verified_e2e(strategy):
         "real flash takes minutes; check SD_FLASH_OK was actually emitted"
     )
 
-    # Now verify the freshly-written SD actually boots normally. No
-    # boot-mode switch changes — the board has been on SD the whole
-    # time; BootROM just reads the new BOOT.BIN this round.
+    # Now verify the freshly-written SD actually boots normally. The
+    # ``sd_boot_verified`` transition cascades through ``soft_off``
+    # internally and then JTAG-loads U-Boot to drive an SD boot, so a
+    # PASS here covers the full pipeline including the soft_off path.
     strategy.transition("sd_boot_verified")
     assert strategy.status == Status.sd_boot_verified
-
-
-def test_soft_off(strategy):
-    """``soft_off`` powers the board down cleanly after a flash."""
-    from adi_lg_plugins.strategies.bootzynq7000recovery import Status
-
-    strategy.transition("soft_off")
-    assert strategy.status == Status.soft_off
