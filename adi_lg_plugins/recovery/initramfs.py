@@ -81,6 +81,8 @@ DEFAULT_APPLETS: tuple[str, ...] = (
     "chown",
     "mount",
     "umount",
+    "blockdev",
+    "partprobe",
     "mktemp",
     "touch",
     "stat",
