@@ -20,6 +20,22 @@ responsibilities:
 - The SD image to flash, either as a local path (``sd_image_path``, served
   automatically) or a pre-existing URL (``sd_image_url``).
 
+Per-board file setup:
+
+- ADI's "Kuiper-full" SD image is multi-board and ships BOOT.BIN /
+  uImage / devicetree under named subdirectories (one per board); the
+  FAT root is empty of those files. The Zynq-7000 BootROM only reads
+  ``BOOT.BIN`` at the root, so a bare ``dd`` of Kuiper-full produces a
+  silent boot failure.
+- Setting ``board_variant=<subdir-name>`` (e.g.
+  ``zynq-zc706-adv7511-adrv937x``) tells the strategy to mount FAT
+  partition 1 after the dd, copy the per-board files up to the root,
+  sync, and unmount — all from inside the recovery initramfs.
+- For images that already have ``BOOT.BIN`` at root, leave
+  ``board_variant=None``.
+- For tweaks that don't fit the board-variant pattern, add entries to
+  ``post_flash_commands`` (a list of shell snippets run sequentially).
+
 Automation defaults (``auto_build_initramfs=True``, ``auto_serve_http=True``):
 
 - The recovery ``uInitrd.recovery`` is auto-built into the TFTP root on
@@ -124,6 +140,29 @@ class BootZynq7000JTAGRecovery(Strategy):
     sd_image_url = attr.ib(default=None)
     sd_device = attr.ib(default="/dev/mmcblk0")
     download_cmd_template = attr.ib(default='wget -q -O - "{url}"')
+
+    # Post-flash board-variant copy. ADI's "Kuiper-full" SD image ships per
+    # board BOOT.BIN/uImage/devicetree under named subdirectories
+    # (zynq-zc706-adv7511-adrv937x, zynqmp-zcu102-rev10-adrv937x, ...);
+    # BootROM only reads BOOT.BIN at the FAT root. When ``board_variant``
+    # is set, the strategy mounts ``{sd_device}p{sd_boot_partition}`` and
+    # copies the listed files from ``{subdir}/`` up to the partition root
+    # before declaring sd_flash_done complete. Leave ``None`` when your
+    # source image already has BOOT.BIN at root (typical for pre-cooked
+    # per-board images).
+    board_variant = attr.ib(default=None)
+    board_variant_files = attr.ib(default=("BOOT.BIN", "uImage", "devicetree.dtb"))
+    sd_boot_partition = attr.ib(default=1)
+    # Mount point inside the recovery initramfs — must exist as an empty
+    # dir (the strategy ``mkdir -p`` it first to be safe).
+    sd_mount_point = attr.ib(default="/mnt")
+
+    # Arbitrary post-flash shell commands executed in the recovery
+    # initramfs after the dd + board_variant copy succeed (one
+    # ``shell.run`` per entry, in order). Use for one-off image-shape
+    # tweaks that don't fit the board_variant pattern.
+    post_flash_commands = attr.ib(factory=list)
+    post_flash_timeout = attr.ib(default=120)
 
     # --- Automation knobs --------------------------------------------------
     # When True (default), the strategy will:
@@ -266,6 +305,55 @@ class BootZynq7000JTAGRecovery(Strategy):
             ctx.__exit__(None, None, None)
         except Exception as e:  # pragma: no cover - cleanup is best-effort
             self.logger.warning("HTTP server teardown raised: %s", e)
+
+    def _build_board_variant_cmd(self) -> str:
+        """Compose the post-dd Kuiper-multi → root copy one-liner.
+
+        Mounts the FAT boot partition, copies the configured per-board
+        files from ``board_variant/`` up to the partition root, syncs,
+        and unmounts. Emits ``BOARD_VARIANT_COPY_OK`` on success so the
+        caller can assert against output rather than just exit code.
+        """
+        partition = f"{self.sd_device}p{self.sd_boot_partition}"
+        mount = self.sd_mount_point
+        copies = " && ".join(
+            f'cp "{mount}/{self.board_variant}/{fname}" "{mount}/"'
+            for fname in self.board_variant_files
+        )
+        return (
+            f"mkdir -p {mount} && "
+            f"mount {partition} {mount} && "
+            f"{copies} && "
+            f"sync && umount {mount} && "
+            "echo BOARD_VARIANT_COPY_OK"
+        )
+
+    def _run_post_flash(self) -> None:
+        """Run board_variant copy (if configured) + post_flash_commands."""
+        if self.board_variant:
+            cmd = self._build_board_variant_cmd()
+            self.logger.info(
+                f"Copying '{self.board_variant}' variant files "
+                f"({', '.join(self.board_variant_files)}) to FAT root..."
+            )
+            stdout, stderr, returncode = self.shell.run(cmd, timeout=self.post_flash_timeout)
+            stdout_str = "\n".join(stdout) if isinstance(stdout, list) else str(stdout)
+            stderr_str = "\n".join(stderr) if isinstance(stderr, list) else str(stderr)
+            if returncode != 0 or "BOARD_VARIANT_COPY_OK" not in stdout_str:
+                raise StrategyError(
+                    f"board_variant copy failed (rc={returncode}): {stderr_str or stdout_str}"
+                )
+
+        for extra in self.post_flash_commands:
+            self.logger.info(f"Post-flash command: {extra}")
+            stdout, stderr, returncode = self.shell.run(extra, timeout=self.post_flash_timeout)
+            if returncode != 0:
+                stderr_str = "\n".join(stderr) if isinstance(stderr, list) else str(stderr)
+                stdout_str = "\n".join(stdout) if isinstance(stdout, list) else str(stdout)
+                raise StrategyError(
+                    f"post_flash_commands entry failed (rc={returncode}): "
+                    f"{extra}\n{stderr_str or stdout_str}"
+                )
 
     def _require(self, name: str) -> str:
         """Fetch a required attr or raise StrategyError naming the field."""
@@ -477,6 +565,10 @@ class BootZynq7000JTAGRecovery(Strategy):
                 raise StrategyError(
                     f"SD flash failed (rc={returncode}): {stderr_str or stdout_str}"
                 )
+            # Run board-variant copy + any user post-flash commands. Must
+            # happen after the dd succeeds so the freshly-written FAT is
+            # what we're mounting / editing.
+            self._run_post_flash()
             self.logger.info("SD card reflashed successfully")
 
         elif status == Status.soft_off:

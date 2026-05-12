@@ -257,6 +257,153 @@ def test_sd_flash_done_fails_when_marker_missing():
     assert "SD flash failed" in str(exc.value.__cause__)
 
 
+# ---------- board_variant copy + post_flash_commands ----------------------
+
+
+def test_post_flash_skipped_without_board_variant():
+    """No board_variant + empty post_flash_commands ⇒ no extra shell.run calls."""
+    s = _make_strategy()
+    s.status = Status.linux_recovery
+    s.shell.run.return_value = (["SD_FLASH_OK"], [], 0)
+
+    s.transition(Status.sd_flash_done)
+
+    # The dd command is the ONLY shell.run invocation in this path.
+    assert s.shell.run.call_count == 1
+
+
+def test_board_variant_copies_files_to_fat_root():
+    """``board_variant`` triggers the mount + cp + umount one-liner."""
+    s = _make_strategy()
+    s.board_variant = "zynq-zc706-adv7511-adrv937x"
+    s.status = Status.linux_recovery
+
+    # dd succeeds, then board-variant copy succeeds.
+    s.shell.run.side_effect = [
+        (["SD_FLASH_OK"], [], 0),
+        (["BOARD_VARIANT_COPY_OK"], [], 0),
+    ]
+
+    s.transition(Status.sd_flash_done)
+    assert s.status == Status.sd_flash_done
+    assert s.shell.run.call_count == 2
+
+    copy_cmd = s.shell.run.call_args_list[1].args[0]
+    # Mounts the configured boot partition,
+    assert "mount /dev/mmcblk0p1 /mnt" in copy_cmd
+    # copies all three default files from the variant subdir to root,
+    for fname in ("BOOT.BIN", "uImage", "devicetree.dtb"):
+        assert f'cp "/mnt/zynq-zc706-adv7511-adrv937x/{fname}" "/mnt/"' in copy_cmd
+    # syncs + unmounts + emits the success marker.
+    assert "sync && umount /mnt" in copy_cmd
+    assert "echo BOARD_VARIANT_COPY_OK" in copy_cmd
+
+
+def test_board_variant_copy_failure_raises():
+    """A non-zero return from the variant-copy must abort sd_flash_done."""
+    s = _make_strategy()
+    s.board_variant = "zynq-zc706-adv7511-adrv937x"
+    s.status = Status.linux_recovery
+    s.shell.run.side_effect = [
+        (["SD_FLASH_OK"], [], 0),
+        ([], ["cp: no such file or directory"], 1),
+    ]
+
+    with pytest.raises(StrategyError, match="broken state") as exc:
+        s.transition(Status.sd_flash_done)
+    assert "board_variant copy failed" in str(exc.value.__cause__)
+
+
+def test_board_variant_copy_missing_marker_raises():
+    """exit 0 but no BOARD_VARIANT_COPY_OK ⇒ surface as failure (truncated output)."""
+    s = _make_strategy()
+    s.board_variant = "zynq-zc706-adv7511-adrv937x"
+    s.status = Status.linux_recovery
+    s.shell.run.side_effect = [
+        (["SD_FLASH_OK"], [], 0),
+        (["mount: i/o error"], [], 0),  # rc=0 but marker absent
+    ]
+
+    with pytest.raises(StrategyError, match="broken state") as exc:
+        s.transition(Status.sd_flash_done)
+    assert "board_variant copy failed" in str(exc.value.__cause__)
+
+
+def test_board_variant_files_configurable():
+    """Override the default file list (e.g. add boot.scr for newer Kuiper)."""
+    s = _make_strategy()
+    s.board_variant = "zynq-zc706-adv7511-ad9081"
+    s.board_variant_files = ("BOOT.BIN", "uImage", "system.dtb", "boot.scr")
+    s.sd_boot_partition = 2  # non-default to verify it threads through
+    s.sd_mount_point = "/mnt/boot"
+    s.status = Status.linux_recovery
+    s.shell.run.side_effect = [
+        (["SD_FLASH_OK"], [], 0),
+        (["BOARD_VARIANT_COPY_OK"], [], 0),
+    ]
+
+    s.transition(Status.sd_flash_done)
+
+    copy_cmd = s.shell.run.call_args_list[1].args[0]
+    assert "mount /dev/mmcblk0p2 /mnt/boot" in copy_cmd
+    for fname in ("BOOT.BIN", "uImage", "system.dtb", "boot.scr"):
+        assert f'cp "/mnt/boot/zynq-zc706-adv7511-ad9081/{fname}" "/mnt/boot/"' in copy_cmd
+
+
+def test_post_flash_commands_run_in_order():
+    """Each ``post_flash_commands`` entry runs as its own shell.run, in order."""
+    s = _make_strategy()
+    s.post_flash_commands = [
+        "echo first",
+        "echo second && touch /tmp/flag",
+    ]
+    s.status = Status.linux_recovery
+    s.shell.run.side_effect = [
+        (["SD_FLASH_OK"], [], 0),
+        ([], [], 0),
+        ([], [], 0),
+    ]
+
+    s.transition(Status.sd_flash_done)
+    assert s.shell.run.call_count == 3
+    assert s.shell.run.call_args_list[1].args[0] == "echo first"
+    assert s.shell.run.call_args_list[2].args[0] == "echo second && touch /tmp/flag"
+
+
+def test_post_flash_command_failure_raises():
+    s = _make_strategy()
+    s.post_flash_commands = ["false"]
+    s.status = Status.linux_recovery
+    s.shell.run.side_effect = [
+        (["SD_FLASH_OK"], [], 0),
+        ([], ["intentional failure"], 2),
+    ]
+
+    with pytest.raises(StrategyError, match="broken state") as exc:
+        s.transition(Status.sd_flash_done)
+    assert "post_flash_commands entry failed" in str(exc.value.__cause__)
+
+
+def test_board_variant_runs_before_post_flash_commands():
+    """Variant copy first (so post-flash commands see the fresh root files)."""
+    s = _make_strategy()
+    s.board_variant = "zynq-zc706-adv7511-adrv937x"
+    s.post_flash_commands = ["mount /dev/mmcblk0p1 /mnt && ls /mnt/BOOT.BIN"]
+    s.status = Status.linux_recovery
+    s.shell.run.side_effect = [
+        (["SD_FLASH_OK"], [], 0),
+        (["BOARD_VARIANT_COPY_OK"], [], 0),
+        ([], [], 0),
+    ]
+
+    s.transition(Status.sd_flash_done)
+    calls = [c.args[0] for c in s.shell.run.call_args_list]
+    # dd → variant copy → user command, in that order.
+    assert "echo SD_FLASH_OK" in calls[0]
+    assert "BOARD_VARIANT_COPY_OK" in calls[1]
+    assert calls[2] == "mount /dev/mmcblk0p1 /mnt && ls /mnt/BOOT.BIN"
+
+
 # ---------- sd_boot_verified ----------------------------------------------
 
 
