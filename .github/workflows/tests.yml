@@ -37,4 +37,9 @@ jobs:
     - name: Run tests with nox
       run: |
         # Only run unit tests that don't require hardware or large downloads
-        nox -s tests -- tests/test_cli.py tests/test_mcp.py tests/test_vpk180_strat.py
+        nox -s tests -- \
+          tests/test_cli.py \
+          tests/test_mcp.py \
+          tests/test_vpk180_strat.py \
+          tests/test_xilinx_jtag_driver_zynq.py \
+          tests/test_zynq7000_recovery_strat.py

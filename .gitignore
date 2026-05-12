@@ -226,3 +226,6 @@ capture-screenshots.mjs
 uart_log_*.txt
 /loop.sh
 coordinator/web/tsconfig.tsbuildinfo
+
+# Local env files holding lab/HA tokens — never commit.
+/exp.sh

@@ -1,0 +1,109 @@
+# Example labgrid environment for BootZynq7000JTAGRecovery.
+# Reference setup: ADRV9371-ZC706 + Vivado 2023.2 + Digilent JTAG-HS3.
+# Substitute IP addresses, paths, and tokens for your own bench.
+#
+# Use when the SD card is corrupted or you need to re-flash from a known-good
+# image: JTAG-bootstraps U-Boot, TFTPs a recovery initramfs, streams a fresh
+# SD image over HTTP.
+#
+# Host-side prerequisites (one-time):
+#   - Vivado/Vitis 2023.2+ with xsdb on PATH.
+#   - Digilent Adept Runtime installed (libdftd2xx/libdjtg in ldconfig).
+#   - udev rule unbinding ftdi_sio from the Digilent FT232H, e.g.:
+#       /etc/udev/rules.d/53-digilent-jtag-unbind.rules
+#   - An HTTP server hosting the SD image, e.g.:
+#       python3 -m http.server 8080 --directory /path/to/sd-images
+#   - TFTP root populated with uImage, devicetree.dtb, uInitrd.recovery
+#     (see README.md for how to build the initramfs).
+#   - Bootgen-extracted ps7_init.tcl, u-boot.elf, and the FPGA bitstream.
+#
+# Secrets (HA token, etc.) are NEVER committed; keep them in a gitignored
+# env file and reference via ${VAR} or substitute at deploy time.
+
+targets:
+  main:
+    features:
+      - adrv9371
+      - zc706
+      - jtag-recovery
+    resources:
+      # Power + serial + network
+      HomeAssistantOutlet:
+        url: 'http://YOUR_HA_HOST:8123'
+        token: 'REPLACE_WITH_LONG_LIVED_HA_TOKEN'
+        entity_id: 'switch.your_board_outlet'
+      RawSerialPort:
+        port: /dev/serial/by-id/usb-Silicon_Labs_CP2103_USB_to_UART_Bridge_Controller_0001-if00-port0
+        speed: 115200
+      NetworkService:
+        address: 10.0.0.23
+        username: root
+        password: analog
+
+      # TFTP for recovery kernel/dtb/initramfs
+      TFTPServerResource:
+        address: '10.0.0.156'
+        port: 3069
+        root: /var/lib/tftpboot
+
+      # JTAG cable + Vivado/xsdb paths
+      XilinxDeviceJTAG:
+        root_target: 1
+      XilinxVivadoTool:
+        vivado_path: /opt/Xilinx/Vivado/2023.2
+        # Override default xsdb_path derivation: this host's Vitis lives at
+        # /opt/Xilinx/Vitis/2023.2, but the smoke-tested xsdb is Vivado's own.
+        xsdb_path: /opt/Xilinx/Vivado/2023.2/bin/xsdb
+        version: '2023.2'
+
+    drivers:
+      HomeAssistantPowerDriver: {}
+      SerialDriver: {}
+      TFTPServerDriver: {}
+      XilinxJTAGDriver: {}
+
+      ADIShellDriver:
+        # The recovery initramfs prints exactly "recovery login:" then asks
+        # for a password (any value passes); after auth it execs /bin/sh
+        # with PS1='root@recovery:/# '. Regexes below match both the
+        # recovery flow and (after re-flash) a normal Kuiper login.
+        prompt: 'root@.*[#$]'
+        login_prompt: '(analog|recovery) login: ?'
+        username: 'root'
+        password: 'analog'
+
+      BootZynq7000JTAGRecovery:
+        # JTAG bootstrap inputs (paths on this host that xsdb reads).
+        # The FPGA bitstream MUST be loaded before booting the kernel — the
+        # ADRV9371-ZC706 DTB references AXI peripherals (axi_clkgen,
+        # axi_jesd204_rx/tx, axi_adxcvr, etc.) that live in the FPGA fabric.
+        # Without a programmed FPGA those AXI reads hang the kernel forever.
+        ps7_init_tcl: /tmp/recovery/ps7_init.tcl
+        uboot_elf: /tmp/recovery/u-boot.elf
+        bitstream_path: /tmp/bootgen_extract/system_top.bit
+        a9_target_name: '*Cortex-A9 MPCore #0'
+
+        # Recovery image (filenames inside TFTPServerResource.root)
+        recovery_kernel: 'uImage'
+        recovery_dtb: 'devicetree.dtb'
+        recovery_initramfs: 'uInitrd.recovery'
+        recovery_login_marker: 'recovery login:'
+
+        # SD-flash inputs
+        sd_image_url: 'http://10.0.0.156:8080/2025-03-18-ADI-Kuiper-full.img'
+        sd_device: '/dev/mmcblk0'
+        download_cmd_template: 'wget -q -O - "{url}"'
+
+        # U-Boot env (Zynq-7000)
+        uboot_prompt: 'Zynq>.*'
+        # uImage already wraps bootargs; ramdisk address must clear the kernel.
+        kernel_addr: '0x3000000'
+        dtb_addr: '0x2A00000'
+        initramfs_addr: '0x10000000'  # well above kernel+dtb, leaves room for ramdisk
+        bootargs: 'console=ttyPS0,115200 earlyprintk loglevel=8 rdinit=/init'
+
+        # Robustness
+        jtag_bootstrap_retries: 1
+        wait_for_uboot_prompt_timeout: 90
+        wait_for_recovery_linux_timeout: 240
+        wait_for_sd_flash_timeout: 1800
