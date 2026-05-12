@@ -51,6 +51,11 @@ include = ["adi_lg_plugins", "adi_lg_plugins.*"]
 exclude = ["test*"]
 namespaces = true
 
+[tool.setuptools.package-data]
+# Recovery initramfs templates (init script + udhcpc hook) are loaded via
+# importlib.resources at runtime — must ship with the wheel.
+"adi_lg_plugins.recovery.templates" = ["init", "udhcpc-default.script"]
+
 [project.urls]
 Homepage = "https://github.com/analogdevicesinc/adi-labgrid-plugins"
 Documentation = "https://adi-labgrid-plugins.readthedocs.io/"
@@ -97,6 +102,7 @@ bootsoctftp = "adi_lg_plugins.strategies.bootfpgasoctftp:BootFPGASoCTFTP"
 softwareprovisioning = "adi_lg_plugins.strategies.software_provisioning:SoftwareProvisioningStrategy"
 bootrpi = "adi_lg_plugins.strategies.bootrpi:BootRPI"
 bootvpk180 = "adi_lg_plugins.strategies.bootvpk180:BootVPK180"
+bootzynq7000recovery = "adi_lg_plugins.strategies.bootzynq7000recovery:BootZynq7000JTAGRecovery"
 
 [tool.ty.environment]
 # ty picks up `venv/` automatically; overridable via `ty check --python <path>`.

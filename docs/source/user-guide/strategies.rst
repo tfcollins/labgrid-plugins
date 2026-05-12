@@ -437,6 +437,272 @@ The strategy manages 7 states:
 - **``dhcp`` fails on the DUT**: Make sure the DUT's Ethernet is connected to the same L2 segment as the host running the TFTP server.
 - **Boot files missing**: Attach a ``KuiperDLDriver`` to stage ``Image`` / ``system.dtb``, or drop them into ``tftp_root_folder`` manually.
 
+BootZynq7000JTAGRecovery Strategy
+---------------------------------
+
+**Purpose**: Re-flash a Zynq-7000 SD card when ``BOOT.BIN`` is unreadable, so BootROM cannot stage FSBL. Bypasses the SD entirely by loading U-Boot directly into DDR over JTAG, then boots a minimal RAM-rooted Linux that streams a fresh disk image to ``/dev/mmcblk0``.
+
+**Use Case**: SD recovery when an interrupted ``BootFPGASoCTFTP`` write, a power cut during file update, or filesystem corruption makes the on-card BOOT.BIN unbootable. Also useful for first-time provisioning of a blank SD on a board where SD-mux hardware is not present.
+
+**State Machine**:
+
+The strategy manages 9 states. Each transition cascades through prior states, so ``transition('sd_flash_done')`` from ``unknown`` runs everything end-to-end.
+
+.. mermaid::
+
+   stateDiagram-v2
+       [*] --> unknown
+
+       unknown --> powered_off: Initialize
+       powered_off --> powered_on: Cold-cycle (off+5s+on)
+
+       powered_on --> jtag_bootstrap: xsdb load FPGA bitstream\n+ ps7_init + dow u-boot.elf
+
+       jtag_bootstrap --> uboot_prompt: Catch "Hit any key to stop autoboot"\n+ send space
+
+       uboot_prompt --> tftp_recovery_kernel: setenv autoload/serverip/bootargs\n+ tftpboot kernel/dtb/uInitrd
+       tftp_recovery_kernel --> linux_recovery: bootm \n+ wait for recovery_login_marker
+       linux_recovery --> sd_flash_done: ADIShellDriver login\n+ wget URL | dd of=/dev/mmcblk0\n+ sync
+
+       sd_flash_done --> soft_off: poweroff (or hard power cut)
+       soft_off --> [*]
+
+       note right of jtag_bootstrap
+           FPGA bitstream is mandatory when the
+           DTB references fabric IPs (axi_clkgen,
+           axi_jesd204_*, axi_adxcvr); kernel
+           hangs on the AXI probe otherwise.
+       end note
+
+       note right of linux_recovery
+           Initramfs prints "recovery login:" then
+           drops to /bin/sh with PS1='root@recovery:/#';
+           ADIShellDriver drives it normally.
+       end note
+
+       note right of sd_flash_done
+           ~12 min wall-clock for a 10 GB image
+           over gigabit LAN (busybox wget|dd).
+       end note
+
+**Sequence diagram** — actor interactions through a successful run:
+
+.. mermaid::
+
+   sequenceDiagram
+       participant Host as Test runner (host)
+       participant HA as HomeAssistant outlet
+       participant XSDB as xsdb / hw_server
+       participant Cable as Digilent JTAG cable
+       participant SoC as Zynq-7000 (PS + PL)
+       participant UART as Serial console
+       participant TFTP as TFTP server (host)
+       participant HTTP as HTTP server (host)
+
+       Host->>HA: turn_off (REST)
+       Host->>HA: turn_on (REST)
+       Note over SoC: BootROM probes SD; fails on bad BOOT.BIN.
+
+       Host->>XSDB: connect, rst -system
+       XSDB->>Cable: JTAG TAP control
+       Cable->>SoC: halt A9 #0
+       XSDB->>SoC: ps7_init (DDR + clocks + MIO)
+       XSDB->>SoC: fpga -f system_top.bit
+       XSDB->>SoC: dow u-boot.elf @ 0x4000000
+       XSDB->>SoC: con (resume A9 from U-Boot entry)
+       SoC->>UART: U-Boot banner
+
+       Host->>UART: read until "Hit any key..."
+       Host->>UART: send space (stop autoboot)
+       Host->>UART: setenv autoload no / dhcp / serverip / tftpport
+       Host->>UART: setenv bootargs ...rdinit=/init
+       Host->>UART: tftpboot kernel / dtb / uInitrd.recovery
+       UART->>TFTP: TFTP GET (over Ethernet)
+       TFTP-->>UART: kernel + dtb + uInitrd bytes
+       Host->>UART: bootm <kernel> <initramfs> <dtb>
+
+       SoC->>UART: Linux boot, /init runs
+       Note over SoC: udhcpc brings eth0 up.
+       SoC->>UART: "recovery login:"
+       Host->>UART: send "root\n" + "analog\n"
+       SoC->>UART: PS1='root@recovery:/# '
+
+       Host->>UART: wget URL | dd of=/dev/mmcblk0 bs=4M conv=fsync && sync && echo SD_FLASH_OK
+       UART->>SoC: dd writes to MMC
+       SoC->>HTTP: GET sd-image.img (over Ethernet)
+       HTTP-->>SoC: ~10 GB image
+       SoC->>UART: "SD_FLASH_OK"
+       Host->>HA: turn_off
+
+**Hardware Requirements**:
+
+- Power control (any ``PowerProtocol`` implementation; HomeAssistant outlets and VeSync both work)
+- Serial console on ``/dev/ttyPS0`` via ``ADIShellDriver``
+- Digilent or compatible JTAG cable on the Zynq's PJTAG header, accessible to ``xsdb`` (Vivado/Vitis 2023.2+)
+- TFTP server (labgrid's ``TFTPServerDriver`` is fine) serving kernel/dtb/initramfs from a directory the strategy can read
+- HTTP server (e.g. ``python3 -m http.server``) hosting the SD image to flash
+- A recovery initramfs that prints ``recovery login:`` and drops to a busybox shell; see ``examples/zynq7000_recovery/`` for a working reference
+
+**Configuration Example**:
+
+.. code-block:: yaml
+
+   targets:
+     zc706_recovery:
+       resources:
+         RawSerialPort:
+           port: '/dev/serial/by-id/usb-Silicon_Labs_CP2103_USB_to_UART_Bridge_Controller_0001-if00-port0'
+           speed: 115200
+
+         HomeAssistantOutlet:
+           url: 'http://YOUR_HA_HOST:8123'
+           token: '${HA_TOKEN}'
+           entity_id: 'switch.your_board_outlet'
+
+         TFTPServerResource:
+           address: '10.0.0.156'
+           port: 3069
+           root: '/var/lib/tftpboot'
+
+         XilinxDeviceJTAG:
+           root_target: 1
+         XilinxVivadoTool:
+           vivado_path: '/opt/Xilinx/Vivado/2023.2'
+           xsdb_path: '/opt/Xilinx/Vivado/2023.2/bin/xsdb'
+           version: '2023.2'
+
+       drivers:
+         SerialDriver: {}
+         HomeAssistantPowerDriver: {}
+         TFTPServerDriver: {}
+         XilinxJTAGDriver: {}
+
+         ADIShellDriver:
+           prompt: 'root@.*[#$]'
+           login_prompt: '(analog|recovery) login: ?'
+           username: 'root'
+           password: 'analog'
+
+         BootZynq7000JTAGRecovery:
+           ps7_init_tcl: '/tmp/recovery/ps7_init.tcl'
+           uboot_elf: '/tmp/recovery/u-boot.elf'
+           bitstream_path: '/tmp/recovery/system_top.bit'
+           recovery_kernel: 'uImage'
+           recovery_dtb: 'devicetree.dtb'
+           recovery_initramfs: 'uInitrd.recovery'
+           recovery_login_marker: 'recovery login:'
+           sd_image_url: 'http://10.0.0.156:8080/2025-03-18-ADI-Kuiper-full.img'
+           sd_device: '/dev/mmcblk0'
+           download_cmd_template: 'wget -q -O - "{url}"'
+           uboot_prompt: 'Zynq>.*'
+           kernel_addr: '0x3000000'
+           dtb_addr: '0x2A00000'
+           initramfs_addr: '0x10000000'
+           bootargs: 'console=ttyPS0,115200 earlyprintk loglevel=8 rdinit=/init'
+           wait_for_sd_flash_timeout: 1800
+
+**Attributes**:
+
+- ``ps7_init_tcl`` / ``uboot_elf`` (str, required): host paths xsdb sources to bring up DDR and load U-Boot. Extract from a known-good ``BOOT.BIN`` with ``bootgen -arch zynq -read BOOT.BIN``.
+- ``bitstream_path`` (str, optional but **required when the recovery DTB references FPGA-fabric peripherals**): Vivado ``.bit`` file. The driver re-flashes it via ``fpga -f`` before downloading U-Boot.
+- ``fsbl_elf`` (str, optional): if your bring-up needs an FSBL stage between ps7_init and U-Boot, set this; the driver downloads + runs it, then halts before the U-Boot stage.
+- ``a9_target_name`` (str, default ``'*Cortex-A9 MPCore #0'``): xsdb target filter.
+- ``recovery_kernel`` / ``recovery_dtb`` / ``recovery_initramfs`` (str, required): filenames inside the bound TFTP root.
+- ``recovery_login_marker`` (str, default ``'recovery login:'``): what ``/init`` prints just before reading the username.
+- ``sd_image_url`` (str, required): HTTP URL of the SD-card image to flash.
+- ``sd_device`` (str, default ``'/dev/mmcblk0'``): target block device inside the recovery rootfs.
+- ``download_cmd_template`` (str, default ``'wget -q -O - "{url}"'``): formatted with ``url=<sd_image_url>`` to compose the download command. Switch to ``'curl -fsSL --retry 3 "{url}"'`` if your rootfs has curl.
+- ``uboot_prompt`` (str, default ``'zynq-uboot>|U-Boot>|=>'``): regex matched against the U-Boot prompt; tighten to e.g. ``'Zynq>.*'`` for Xilinx's shipped U-Boot.
+- ``kernel_addr`` / ``dtb_addr`` / ``initramfs_addr`` (str hex): DDR addresses loaded by ``tftpboot``. Defaults are conservative for a 1 GB Zynq-7000; bump ``initramfs_addr`` higher if your initramfs is large.
+- ``bootargs`` (str): kernel command line. Default uses ``rdinit=/init`` (cpio's own ``/init``) and intentionally omits ``root=`` because the unpacked initramfs is the rootfs.
+- ``jtag_bootstrap_retries`` (int, default 2): max retries on xsdb failure; cold-cycles power between attempts.
+- ``wait_for_uboot_prompt_timeout`` (int, default 60) / ``wait_for_recovery_linux_timeout`` (int, default 180) / ``wait_for_sd_flash_timeout`` (int, default 1800): per-phase timeouts.
+
+**Usage Example**:
+
+.. code-block:: python
+
+   from labgrid import Environment
+
+   env = Environment("zc706_recovery.yaml")
+   target = env.get_target("zc706_recovery")
+   strategy = target.get_driver("BootZynq7000JTAGRecovery")
+
+   # Walk the whole pipeline; cascades through all prior states.
+   strategy.transition("sd_flash_done")
+
+   # Power off and leave the freshly-flashed SD ready for a normal cold boot.
+   strategy.transition("soft_off")
+
+**Building the recovery initramfs**:
+
+The recovery initramfs builder lives in :mod:`adi_lg_plugins.recovery`.
+You provide a cross-compiled static busybox; the module bundles the
+``/init`` script, udhcpc hook, applet symlinks, cpio packer, and
+``mkimage`` wrap.
+
+.. code-block:: bash
+
+   # One-time: cross-compile static busybox for ARMv7-A (Cortex-A9).
+   export CROSS_COMPILE=/path/to/arm-none-linux-gnueabihf-
+   export ARCH=arm
+   cd busybox-1.36.1 && make defconfig
+   sed -i 's/^# CONFIG_STATIC is not set/CONFIG_STATIC=y/' .config
+   make -j$(nproc) busybox
+
+   # Build + stage the initramfs in one shot.
+   adi-lg build-recovery-initramfs \
+       --busybox $(pwd)/busybox \
+       --out /var/lib/tftpboot/uInitrd.recovery
+
+Or programmatically:
+
+.. code-block:: python
+
+   from adi_lg_plugins.recovery import build_recovery_initramfs
+   build_recovery_initramfs(
+       busybox="/path/to/static/busybox",
+       output="/var/lib/tftpboot/uInitrd.recovery",
+   )
+
+See ``examples/zynq7000_recovery/README.md`` for customization hooks
+(``stage_recovery_rootfs`` + ``build_cpio``) when the defaults don't fit.
+
+**Troubleshooting**:
+
+*Kernel goes silent at "zynq-pinctrl initialized" and never reaches /init*:
+   The recovery DTB references FPGA-fabric peripherals (``axi_clkgen``, ``axi_jesd204_*``, ``axi_adxcvr``, etc.) and your ``bitstream_path`` isn't set or the bitstream is wrong. AXI reads to unprogrammed fabric hang the CPU. Set ``bitstream_path`` to the matching ``.bit`` file extracted from ``BOOT.BIN``.
+
+*"Run /init as init process" prints but nothing further*:
+   The cpio is missing ``/dev/console`` (char 5:1). The kernel ``exec``'s ``/init`` with closed stdio so every ``echo`` vanishes. Standard ``find . | cpio -o -H newc`` cannot create device nodes without root; use the bundled ``examples/zynq7000_recovery/build_cpio.py`` which writes the newc bytes directly.
+
+*"sh: mktemp: not found" / "No XMODEM receiver (lrz, rz, rx) available"*:
+   ADIShellDriver's file-transfer path needs ``mktemp`` and ``rx``/``rz``/``lrz``. Add the corresponding busybox applet symlinks in the rootfs:
+
+   .. code-block:: bash
+
+      for app in mktemp rx rz base64 tee find head tail wc tr; do
+          ln -sf busybox rootfs/bin/$app
+      done
+
+*sd_flash hangs after XMODEM xfer*:
+   busybox ``rx`` over a raw initramfs console can fail to return to prompt cleanly. The strategy avoids this by using ``shell.run()`` inline rather than ``shell.run_script()``. If you've subclassed and reintroduced ``run_script``, switch back to inline ``run``.
+
+*"FTDMGR wasn't properly initialized" from xsdb*:
+   Vivado's bundled FTDI plumbing needs Digilent Adept Runtime installed system-wide. ``sudo apt install ./digilent.adept.runtime_*.deb`` from the Digilent website.
+
+*xsdb says "available targets: none" with the cable plugged in*:
+   Linux's ``ftdi_sio`` driver claimed the Digilent FT232H as a TTY. Add a udev rule that unbinds it:
+
+   .. code-block:: text
+
+      # /etc/udev/rules.d/53-digilent-jtag-unbind.rules
+      ACTION=="add", SUBSYSTEM=="usb", ATTR{idVendor}=="0403", \
+          ATTR{idProduct}=="6014", ATTR{manufacturer}=="Digilent", \
+          RUN+="/bin/bash -c 'sleep 0.3; echo -n %k:1.0 > /sys/bus/usb/drivers/ftdi_sio/unbind 2>/dev/null || true'"
+
+   Then ``sudo udevadm control --reload-rules`` and replug (or power-cycle the board, since the FT232H is bus-powered from it).
+
 BootSelMap Strategy
 -------------------
 
@@ -1256,6 +1522,43 @@ This section provides quick reference tables for valid state transitions in each
    * - soft_off
      - (end)
      - FPGA powered down
+
+**BootZynq7000JTAGRecovery State Transitions**:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 30 40
+
+   * - From State
+     - To State
+     - Actions Performed
+   * - unknown
+     - powered_off
+     - Deactivate shell + TFTP, power off
+   * - powered_off
+     - powered_on
+     - Cold-cycle (off + 5 s + on)
+   * - powered_on
+     - jtag_bootstrap
+     - xsdb: ps7_init + optional bitstream + dow u-boot.elf + con
+   * - jtag_bootstrap
+     - uboot_prompt
+     - Activate TFTP + shell, wait for autoboot, send space, set U-Boot prompt
+   * - uboot_prompt
+     - tftp_recovery_kernel
+     - dhcp + setenv + tftpboot kernel/dtb/initramfs + bootm
+   * - tftp_recovery_kernel
+     - linux_recovery
+     - Wait for recovery_login_marker, login via ADIShellDriver
+   * - linux_recovery
+     - sd_flash_done
+     - shell.run("wget URL | dd of=/dev/mmcblk0 ... && echo SD_FLASH_OK")
+   * - sd_flash_done
+     - soft_off
+     - Try ``poweroff`` then hard power cut
+   * - soft_off
+     - (end)
+     - SD card freshly written; ready for normal cold boot
 
 **BootRPI State Transitions**:
 

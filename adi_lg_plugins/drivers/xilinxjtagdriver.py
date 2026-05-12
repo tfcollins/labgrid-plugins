@@ -207,3 +207,78 @@ class XilinxJTAGDriver(Driver):
         if returncode != 0:
             self.logger.warning(f"JTAG disconnect warning: {stderr}")
         self.logger.debug(f"JTAG disconnect output: {stdout}")
+
+    @Driver.check_active
+    @step()
+    def load_zynq_uboot(
+        self,
+        ps7_init_tcl: str,
+        uboot_elf: str,
+        a9_target_name: str = "*Cortex-A9 MPCore #0",
+        bitstream_path: str | None = None,
+        fsbl_elf: str | None = None,
+    ) -> None:
+        """JTAG-bootstrap U-Boot on a Zynq-7000 device.
+
+        The board can be in any boot state — xsdb will ``rst -system`` first
+        to clear residual DDR/PS state before sourcing the board-specific
+        ``ps7_init.tcl``. Used for SD-card recovery when BootROM cannot load
+        FSBL from a corrupted card.
+
+        The ``a9_target_name`` filter is used instead of an integer target
+        index because Zynq-7000 xsdb target ordering shifts when the PL is
+        loaded; the name-pattern form matches Xilinx's generated wrappers
+        and is stable across Vivado versions.
+        """
+        self.logger.info(f"JTAG-bootstrapping Zynq-7000 U-Boot from {uboot_elf}")
+
+        optional_lines = []
+        if bitstream_path:
+            optional_lines.append(f"fpga -f {bitstream_path}")
+            optional_lines.append("after 2000")
+        optional_lines.append(f"source {ps7_init_tcl}")
+        optional_lines.append("ps7_init")
+        optional_lines.append("ps7_post_config")
+        if fsbl_elf:
+            optional_lines.append(f"dow {fsbl_elf}")
+            optional_lines.append("con")
+            optional_lines.append("after 2000")
+            optional_lines.append("stop")
+        optional_lines.append(f"dow {uboot_elf}")
+        optional_lines.append("con")
+
+        optional_block = "\n        ".join(optional_lines)
+
+        tcl_script = f"""
+        connect
+        after 1000
+        targets -set -filter {{name =~ "{a9_target_name}"}}
+        after 500
+        rst -system
+        after 2000
+        {optional_block}
+        puts "U-Boot started via JTAG"
+        """
+        self.logger.debug(f"Zynq U-Boot bootstrap TCL:\n{tcl_script}")
+        stdout, stderr, returncode = self._run_xsdb(tcl_script)
+        if returncode != 0:
+            raise ExecutionError(f"Zynq U-Boot bootstrap failed: {stderr}")
+        self.logger.info("Zynq U-Boot bootstrap completed")
+        self.logger.debug(f"Bootstrap output: {stdout}")
+
+    @Driver.check_active
+    @step()
+    def stop_zynq_cpu(self, a9_target_name: str = "*Cortex-A9 MPCore #0") -> None:
+        """Halt the A9 #0 core — used between failed bootstrap attempts."""
+        self.logger.info(f"Stopping Zynq A9 CPU ({a9_target_name})")
+        tcl_script = f"""
+        connect
+        after 500
+        targets -set -filter {{name =~ "{a9_target_name}"}}
+        stop
+        puts "A9 CPU stopped"
+        """
+        stdout, stderr, returncode = self._run_xsdb(tcl_script)
+        if returncode != 0:
+            self.logger.warning(f"Stop CPU warning: {stderr}")
+        self.logger.debug(f"Stop CPU output: {stdout}")

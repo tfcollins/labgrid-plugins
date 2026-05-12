@@ -279,5 +279,61 @@ def provision_software(config, package, repo, build, test, target, state):
             raise click.ClickException(str(e)) from e
 
 
+@cli.command(name="build-recovery-initramfs")
+@click.option(
+    "--busybox",
+    required=True,
+    type=click.Path(exists=True, dir_okay=False),
+    help="Path to the cross-compiled static busybox binary (ARM EABI for Zynq-7000).",
+)
+@click.option(
+    "--out",
+    "-o",
+    "output",
+    required=True,
+    type=click.Path(dir_okay=False),
+    help="Destination uImage path (e.g. /var/lib/tftpboot/uInitrd.recovery).",
+)
+@click.option(
+    "--work-dir",
+    type=click.Path(file_okay=False),
+    default=None,
+    help="Directory for intermediate cpio + rootfs staging. Defaults to <out>.workdir.",
+)
+@click.option("--image-name", default="ZC706-recovery", help="uImage 'Image Name' field.")
+@click.option(
+    "--raw-cpio-gz/--uimage",
+    default=False,
+    help="Emit raw cpio.gz instead of a U-Boot uImage (skips the mkimage step).",
+)
+def build_recovery_initramfs_cmd(busybox, output, work_dir, image_name, raw_cpio_gz):
+    """Build a recovery initramfs for ``BootZynq7000JTAGRecovery``.
+
+    Bundles the ``/init`` + udhcpc hook + busybox applet symlinks defined
+    in :mod:`adi_lg_plugins.recovery` and packages them as either a raw
+    cpio.gz or a U-Boot uImage ready for ``bootm``.
+    """
+    from adi_lg_plugins.recovery import build_recovery_initramfs
+
+    try:
+        sizes = build_recovery_initramfs(
+            busybox=busybox,
+            output=output,
+            work_dir=work_dir,
+            image_name=image_name,
+            wrap_uimage=not raw_cpio_gz,
+        )
+    except Exception as e:
+        console.print(f"[bold red]Build failed: {e}[/bold red]")
+        raise click.ClickException(str(e)) from e
+
+    console.print(
+        f"[bold green]Wrote {output}[/bold green]\n"
+        f"  cpio:   {sizes['cpio']:>10} B\n"
+        f"  cpio.gz: {sizes['gz']:>10} B"
+        + (f"\n  uImage:  {sizes['uimage']:>10} B" if "uimage" in sizes else "")
+    )
+
+
 if __name__ == "__main__":
     cli()
