@@ -51,6 +51,11 @@ include = ["adi_lg_plugins", "adi_lg_plugins.*"]
 exclude = ["test*"]
 namespaces = true
 
+[tool.setuptools.package-data]
+# Recovery initramfs templates (init script + udhcpc hook) are loaded via
+# importlib.resources at runtime — must ship with the wheel.
+"adi_lg_plugins.recovery.templates" = ["init", "udhcpc-default.script"]
+
 [project.urls]
 Homepage = "https://github.com/analogdevicesinc/adi-labgrid-plugins"
 Documentation = "https://adi-labgrid-plugins.readthedocs.io/"

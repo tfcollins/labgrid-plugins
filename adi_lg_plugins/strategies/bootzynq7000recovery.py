@@ -19,24 +19,29 @@ The caller is responsible for staging:
   enough. The strategy fetches via the configured ``download_cmd_template``
   (default ``wget -q -O -``; override to use ``curl`` if your rootfs has it).
 
-Recovery initramfs requirements:
+Building the recovery initramfs:
 
-- A static busybox with ``sh``, ``dd``, ``sync``, ``wget`` (or ``curl``),
-  ``udhcpc``, ``mount``, ``ifconfig``, ``mktemp`` (used by ADIShellDriver),
-  ``read``, ``test``, ``echo``.
-- ``/dev/console`` (char 5:1) baked into the cpio archive (the kernel opens it
-  for the init process's stdio; without it, init runs but produces no output).
-- A ``/init`` script that emulates a minimal getty/login so ADIShellDriver
-  can do its normal login-then-shell handshake. The script must:
-    - mount ``/proc``, ``/sys``, ``/dev`` (devtmpfs)
-    - bring ``eth0`` up via DHCP (provide ``/etc/udhcpc/default.script``)
-    - print ``recovery login:`` (or whatever you set ``recovery_login_marker``
-      to), read username, print ``Password:``, read password, then
-      ``exec /bin/sh -i`` with ``PS1`` matching the ADIShellDriver prompt
-      regex.
+    The sibling :mod:`adi_lg_plugins.recovery` subpackage produces a
+    suitable uImage end-to-end from a cross-compiled static busybox::
 
-See ``BootZynq7000JTAGRecovery`` doc + the per-board YAML for the exact wiring
-of these inputs.
+        from adi_lg_plugins.recovery import build_recovery_initramfs
+        build_recovery_initramfs(
+            busybox="/path/to/static/busybox",
+            output="/var/lib/tftpboot/uInitrd.recovery",
+        )
+
+    Or via the CLI::
+
+        adi-lg build-recovery-initramfs \\
+            --busybox /path/to/busybox \\
+            --out /var/lib/tftpboot/uInitrd.recovery
+
+    The builder bundles the ``/init`` getty-emulating script, the
+    ``udhcpc`` hook, busybox applet symlinks (sh/dd/wget/mktemp/rx/...),
+    and the required device nodes (``/dev/console`` etc.).
+
+See ``examples/zynq7000_recovery/`` for the per-board YAML and a
+customization recipe.
 """
 
 import enum

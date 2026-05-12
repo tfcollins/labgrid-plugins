@@ -636,13 +636,37 @@ The strategy manages 9 states. Each transition cascades through prior states, so
 
 **Building the recovery initramfs**:
 
-See ``examples/zynq7000_recovery/README.md`` for the full recipe. In brief:
+The recovery initramfs builder lives in :mod:`adi_lg_plugins.recovery`.
+You provide a cross-compiled static busybox; the module bundles the
+``/init`` script, udhcpc hook, applet symlinks, cpio packer, and
+``mkimage`` wrap.
 
-1. Cross-compile static busybox 1.36+ for ARMv7-A with ``CONFIG_STATIC=y``.
-2. Build the rootfs tree (``bin/busybox`` + applet symlinks + ``/init`` + ``/etc/udhcpc/default.script``).
-3. Pack with ``examples/zynq7000_recovery/build_cpio.py`` (NOT plain ``find | cpio`` — see "Why a custom builder" below).
-4. ``gzip -9`` and wrap with ``mkimage -A arm -O linux -T ramdisk -C gzip`` to produce ``uInitrd.recovery``.
-5. Drop it in the bound ``TFTPServerResource.root`` directory.
+.. code-block:: bash
+
+   # One-time: cross-compile static busybox for ARMv7-A (Cortex-A9).
+   export CROSS_COMPILE=/path/to/arm-none-linux-gnueabihf-
+   export ARCH=arm
+   cd busybox-1.36.1 && make defconfig
+   sed -i 's/^# CONFIG_STATIC is not set/CONFIG_STATIC=y/' .config
+   make -j$(nproc) busybox
+
+   # Build + stage the initramfs in one shot.
+   adi-lg build-recovery-initramfs \
+       --busybox $(pwd)/busybox \
+       --out /var/lib/tftpboot/uInitrd.recovery
+
+Or programmatically:
+
+.. code-block:: python
+
+   from adi_lg_plugins.recovery import build_recovery_initramfs
+   build_recovery_initramfs(
+       busybox="/path/to/static/busybox",
+       output="/var/lib/tftpboot/uInitrd.recovery",
+   )
+
+See ``examples/zynq7000_recovery/README.md`` for customization hooks
+(``stage_recovery_rootfs`` + ``build_cpio``) when the defaults don't fit.
 
 **Troubleshooting**:
 

@@ -5,23 +5,24 @@ ADRV9371-ZC706 with Vivado 2023.2; adapt paths/values for your board.
 
 ## What's in this directory
 
-- `init` — `/init` for the recovery initramfs. Mounts pseudo-filesystems,
-  brings `eth0` up via DHCP, prints `recovery login:`, accepts any
-  username/password, then `exec /bin/sh -i` with `PS1=root@recovery:/#`
-  so labgrid's ADIShellDriver can drive it.
-- `udhcpc-default.script` — busybox `udhcpc` hook for IP / route / DNS
-  configuration. Install as `/etc/udhcpc/default.script` (executable).
-- `build_cpio.py` — Python cpio-archive builder. Required because the
-  recovery initramfs needs `/dev/console` (char 5:1) baked in; standard
-  `find . | cpio -o -H newc` can't create device nodes without root,
-  but this builder writes the cpio bytes directly.
+- `init`, `udhcpc-default.script` — copies of the templates bundled in
+  `adi_lg_plugins.recovery.templates`. Kept here for offline reference;
+  the strategy and CLI both pull the in-package versions.
+- `build_cpio.py` — thin wrapper around `adi_lg_plugins.recovery.cpio`.
+  Useful when you want to copy-paste a single file; use the module API
+  in real code.
 - `lg_zc706_recovery.yaml` — example labgrid environment.
 
-## Building the initramfs (host side)
+## Building the initramfs
+
+The recovery initramfs builder lives in `adi_lg_plugins.recovery`. You
+provide a cross-compiled static busybox; the module bundles the `/init`
+script, udhcpc hook, applet symlinks, cpio packer, and `mkimage` wrap.
+
+### CLI
 
 ```bash
-# 1. Cross-compile static busybox for ARMv7 (Cortex-A9).
-#    Use any arm-none-linux-gnueabihf toolchain.
+# 1. Cross-compile static busybox for ARMv7 (Cortex-A9) — one-time.
 export CROSS_COMPILE=/path/to/arm-none-linux-gnueabihf-
 export ARCH=arm
 cd busybox-1.36.1
@@ -29,37 +30,38 @@ make defconfig
 sed -i 's/^# CONFIG_STATIC is not set/CONFIG_STATIC=y/' .config
 make -j$(nproc) busybox
 
-# 2. Build the rootfs tree.
-mkdir -p rootfs/{bin,sbin,etc/udhcpc,proc,sys,dev,tmp}
-cp busybox rootfs/bin/busybox
-for app in sh ash dd mount umount wget udhcpc ifconfig ip route cat echo \
-           ls mkdir mknod ln rm cp mv chmod chown sleep sync poweroff halt \
-           reboot mdev dmesg sed grep cut awk printf test '[' true false env \
-           hostname ping mktemp base64 tee find head tail wc tr md5sum touch \
-           dirname basename date readlink xargs sort uniq tar gunzip rx rz; do
-    ln -sf busybox rootfs/bin/$app
-done
-ln -sf ../bin/busybox rootfs/sbin/init
-ln -sf ../bin/busybox rootfs/sbin/udhcpc
-ln -sf ../bin/busybox rootfs/sbin/poweroff
-ln -sf ../bin/busybox rootfs/sbin/halt
-ln -sf ../bin/busybox rootfs/sbin/ifconfig
-cp examples/zynq7000_recovery/init rootfs/init
-chmod +x rootfs/init
-cp examples/zynq7000_recovery/udhcpc-default.script rootfs/etc/udhcpc/default.script
-chmod +x rootfs/etc/udhcpc/default.script
+# 2. Have the plugin assemble + cpio + gzip + mkimage in one shot.
+adi-lg build-recovery-initramfs \
+    --busybox $(pwd)/busybox \
+    --out /var/lib/tftpboot/uInitrd.recovery
+```
 
-# 3. Build the cpio (with /dev/console + companions baked in).
-python3 examples/zynq7000_recovery/build_cpio.py rootfs initramfs.cpio
-gzip -9 -c initramfs.cpio > initramfs.cpio.gz
+### Python
 
-# 4. Wrap as U-Boot uImage so `bootm` can load it.
-mkimage -A arm -O linux -T ramdisk -C gzip \
-        -n "ZC706-recovery" \
-        -d initramfs.cpio.gz uInitrd.recovery
+```python
+from adi_lg_plugins.recovery import build_recovery_initramfs
 
-# 5. Stage on the TFTP server. The strategy will TFTP this from U-Boot.
-cp uInitrd.recovery /var/lib/tftpboot/
+sizes = build_recovery_initramfs(
+    busybox="/path/to/static/busybox",
+    output="/var/lib/tftpboot/uInitrd.recovery",
+)
+print(sizes)  # {'cpio': ..., 'gz': ..., 'uimage': ...}
+```
+
+Need a different `/init` or extra applets? Drop one level:
+
+```python
+from adi_lg_plugins.recovery import (
+    DEFAULT_APPLETS,
+    DEFAULT_DEV_NODES,
+    build_cpio,
+    stage_recovery_rootfs,
+)
+
+# Stage the standard rootfs then add your own bits before packaging.
+stage_recovery_rootfs("/path/to/busybox", "rootfs", applets=DEFAULT_APPLETS + ("crond",))
+# ... your customizations ...
+build_cpio("rootfs", "initramfs.cpio", dev_nodes=DEFAULT_DEV_NODES)
 ```
 
 ## Staging the JTAG bootstrap inputs
