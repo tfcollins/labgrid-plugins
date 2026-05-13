@@ -1,0 +1,40 @@
+# Maps place.tags.carrier -> how to test it in CI.
+#
+# Each entry is keyed by the value of the place's `carrier` tag (the FPGA
+# carrier board: zc706, zcu102, vcu118, etc.). Tags are set via
+# `labgrid-client -p <place> set-tags carrier=<key>` or the coordinator
+# REST API. Adding a new carrier family is a no-code operation: drop an
+# entry here and tag the relevant place(s) on the coordinator.
+#
+# Fields:
+#   lg_env         repo-relative path passed to pytest as --lg-config.
+#   tests          list of pytest node ids (files, optionally with selectors).
+#   runner_labels  GHA self-hosted runner labels the job must land on
+#                  (host wired to that board's serial/power/JTAG).
+#   python_version optional; default 3.12.
+boards:
+  zc706:
+    lg_env: examples/zynq7000_recovery/lg_zc706_recovery.yaml
+    tests:
+      - tests/test_zynq7000_recovery_hw.py
+    runner_labels: [self-hosted, lab, zc706]
+  zcu102:
+    lg_env: examples/lg_ad9081_zcu102_exporter.yaml
+    tests:
+      - tests/coordinator/test_soc_strat_coordinator.py
+    runner_labels: [self-hosted, lab, zcu102]
+  vcu118:
+    lg_env: examples/lg_fmcdaq3_vcu118_exporter.yaml
+    tests:
+      - tests/coordinator/test_fabric_strat_coordinator.py
+    runner_labels: [self-hosted, lab, vcu118]
+  # rpi:
+  #   lg_env: examples/lg_rpi_exporter.yaml
+  #   tests:
+  #     - tests/test_rpi_hw.py
+  #   runner_labels: [self-hosted, lab, rpi]
+  # vpk180:
+  #   lg_env: examples/lg_vpk180_exporter.yaml
+  #   tests:
+  #     - tests/test_vpk180_hw.py
+  #   runner_labels: [self-hosted, lab, vpk180]
