@@ -45,14 +45,23 @@ jobs:
           python-version: ${{ matrix.python_version }}
       - name: Install nox
         run: pip install nox uv
+      - name: Substitute ${LG_PLACE} into lg_env
+        env:
+          LG_PLACE: ${{ matrix.place }}
+        run: |
+          mkdir -p .hw-ci
+          envsubst '${LG_PLACE}' < "${{ matrix.lg_env }}" > .hw-ci/lg_env.yaml
+          echo "--- effective lg_env ---"
+          cat .hw-ci/lg_env.yaml
       - name: Run hardware tests
         env:
           LG_PLACE: ${{ matrix.place }}
+          LG_COORDINATOR: ${{ vars.LG_COORDINATOR }}
         run: |
           nox -s tests -- \
             ${{ join(matrix.tests, ' ') }} \
             --run-hardware \
-            --lg-config "${{ matrix.lg_env }}" \
+            --lg-config .hw-ci/lg_env.yaml \
             -v
 
   summary:

@@ -1,0 +1,20 @@
+## Coordinator-tier env for zc706-tagged places. The CI workflow runs
+## `envsubst '${LG_PLACE}' < env_remote_zc706.yaml` before pytest, so
+## one file covers every zc706 place (e.g. `bq`, `nemo`). When running
+## locally, set LG_PLACE to the place name and pre-substitute yourself,
+## or replace `${LG_PLACE}` with the literal name.
+##
+## Scope is intentionally lightweight: enough to acquire the place over
+## the coordinator and prove the per-place CI job can reach it.
+## BootZynq7000JTAGRecovery itself is a JTAG/serial-local strategy and
+## is not bound here — exercising it requires running on a host
+## physically wired to the board (use examples/zynq7000_recovery/
+## lg_zc706_recovery.yaml for that).
+
+targets:
+  main:
+    resources:
+      RemotePlace:
+        name: ${LG_PLACE}
+    drivers:
+      SerialDriver: {}
