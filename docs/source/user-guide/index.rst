@@ -16,4 +16,5 @@ Comprehensive guides for using adi-labgrid-plugins.
    web-dashboard
    exporter-setup
    exporter-deployment
+   hardware-ci
    examples

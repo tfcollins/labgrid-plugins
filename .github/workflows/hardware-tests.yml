@@ -1,0 +1,69 @@
+name: hardware-tests
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 7 * * *"   # 07:00 UTC nightly
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  discover:
+    runs-on: [self-hosted, lab]
+    outputs:
+      matrix: ${{ steps.q.outputs.matrix }}
+      has_places: ${{ steps.q.outputs.has_places }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install discovery deps
+        run: pip install pyyaml
+      - name: Query coordinator and emit matrix
+        id: q
+        env:
+          COORDINATOR_API_URL: ${{ vars.COORDINATOR_API_URL }}
+        run: python ci/discover_places.py
+
+  hardware-test:
+    needs: discover
+    if: needs.discover.outputs.has_places == 'true'
+    continue-on-error: true
+    runs-on: ${{ matrix.runner_labels }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.discover.outputs.matrix) }}
+    name: hw / ${{ matrix.carrier }} / ${{ matrix.place }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python_version }}
+      - name: Install nox
+        run: pip install nox uv
+      - name: Run hardware tests
+        env:
+          LG_PLACE: ${{ matrix.place }}
+        run: |
+          nox -s tests -- \
+            ${{ join(matrix.tests, ' ') }} \
+            --run-hardware \
+            --lg-config "${{ matrix.lg_env }}" \
+            -v
+
+  summary:
+    needs: [discover, hardware-test]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Render workflow summary
+        run: |
+          {
+            echo "## Hardware-test workflow result"
+            echo "- discover.has_places: \`${{ needs.discover.outputs.has_places }}\`"
+            echo "- hardware-test outcome: \`${{ needs.hardware-test.result }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
