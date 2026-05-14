@@ -229,6 +229,36 @@ jobs:
           # place acquired so pytest can run against it.
           "$LG" -x "$LG_COORDINATOR" -c "$LG_ENV" -p "$LG_PLACE" -s shell power get
 
+      - name: Wait for IIOD reachable
+        shell: bash --noprofile --norc -eo pipefail {0}
+        env:
+          LG_COORDINATOR: ${{ env.COORDINATOR }}
+          LG_PLACE: ${{ matrix.entry.place }}
+        run: |
+          # The strategy's "shell" state is the serial-console login prompt.
+          # After login, the board still needs ~5-30s to bring up eth0 + DHCP
+          # + start the IIOD daemon. Without this wait, the first pytest
+          # call hits `errno 113 (No route to host)` because ARP hasn't even
+          # learned the board's MAC yet. Poll the IIOD port until it answers.
+          VENV_DIR_EXPANDED=$(eval echo "${{ inputs.venv_dir }}")
+          LG="$VENV_DIR_EXPANDED/bin/labgrid-client"
+          ADDR=$("$LG" -x "$LG_COORDINATOR" -p "$LG_PLACE" show \
+              | sed -n "s/.*['\"]address['\"]\s*[:=]\s*['\"]\([0-9.]\+\)['\"].*/\1/p" \
+              | head -1)
+          if [[ -z "$ADDR" ]]; then
+              echo "::warning::no NetworkService address advertised for $LG_PLACE; skipping wait"
+              exit 0
+          fi
+          echo "Probing $ADDR:30431 (iiod) for up to 120s"
+          for i in $(seq 1 24); do
+              if timeout 3 bash -c "echo > /dev/tcp/$ADDR/30431" 2>/dev/null; then
+                  echo "iiod reachable at $ADDR:30431 after $((i*5))s"
+                  exit 0
+              fi
+              sleep 5
+          done
+          echo "::warning::iiod at $ADDR:30431 not reachable after 120s; pytest will surface the real error"
+
       - name: Pre-pytest hook
         if: inputs.pre_pytest_cmd != ''
         run: |

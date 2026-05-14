@@ -13,7 +13,7 @@ targets:
         name: ${place_name}
     drivers:
       XilinxJTAGDriver: {}
-      VesyncPowerDriver: {}
+      ${power_driver}: {}
       SerialDriver: {}
       ADIShellDriver:
         prompt: '> '

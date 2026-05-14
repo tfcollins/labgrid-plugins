@@ -11,7 +11,7 @@ targets:
       RemotePlace:
         name: ${place_name}
     drivers:
-      VesyncPowerDriver: {}
+      ${power_driver}: {}
       XilinxJTAGDriver: {}
       SerialDriver: {}
       ADIShellDriver:

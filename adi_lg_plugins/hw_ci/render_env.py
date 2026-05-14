@@ -74,12 +74,22 @@ def render_env(
     caller's values.
     """
     template_text = _load_template(place.boot_strategy)
+    # `power-driver` is an optional place tag carrying the labgrid driver
+    # class name to use for power control (e.g. `VesyncPowerDriver`,
+    # `HomeAssistantDriver`). Different lab setups use different power
+    # outlets per board, and labgrid binds drivers to resources by class
+    # name — so the env yaml must list the driver class that matches the
+    # outlet resource the place actually exposes. Defaults to
+    # `VesyncPowerDriver` for back-compat with the first generation of
+    # ADI lab places.
+    power_driver = place.extra_tags.get("power-driver", "VesyncPowerDriver")
     subs: dict[str, str] = {
         "place_name": place.name,
         "carrier": place.carrier,
         "daughter_board": place.daughter_board,
         "hdl_config": place.hdl_config or "",
         "board_location": place.board_location or "",
+        "power_driver": power_driver,
     }
     if extra_subs:
         subs.update({str(k): str(v) for k, v in extra_subs.items()})
