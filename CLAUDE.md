@@ -113,3 +113,24 @@ The repo is not just the `adi_lg_plugins` package — two sibling subprojects li
 - **`exporter_configs/`** — YAML templates (`templates/*.yaml`) for deploying labgrid exporters on RPi / VCU118 / ZCU102 hosts, plus `validate.py` and JSON schemas under `schemas/`. Use these when wiring up a new exporter host.
 
 When a task touches a coordinator concern (places, recordings, OIDC auth, env-gen, gRPC bridge, web UI), work inside `coordinator/` — its conventions and dependency set are independent of the top-level package.
+
+## Sibling Repo CI (reusable hw-matrix workflow)
+
+This repo also hosts the **reusable GitHub Actions workflow** that sibling repos (`pyadi-dt`, `pyadi-iio`, `vrt49`) consume to run HW tests. Three things live here on top of the per-repo CI:
+
+- `.github/workflows/hw-matrix.yml` — `workflow_call`-triggered. Preflight probes the coordinator for available places, then fans out a per-place matrix (`hw-direct` and/or `hw-coord` legs) with JUnit aggregation and optional Prism upload.
+- `.github/actions/{setup-uv-venv,acquire-place}/action.yml` — composite actions used by `hw-matrix.yml` and reusable standalone.
+- `.github/scripts/register-hw-runners.sh` — parameterized runner-registration helper with `--scopes` for dual/triple registration (one lab host, multiple GH scopes — see `docs/source/user-guide/hardware-ci.rst`).
+
+Consumer repos pin via `uses: tfcollins/labgrid-plugins/.github/workflows/hw-matrix.yml@v<tag>`. This repo must stay **public** for cross-org callers to skip the allowlist gate.
+
+### labgrid fork pin
+
+Both `pyproject.toml:15` and `coordinator/api/pyproject.toml:21` pin `tfcollins/labgrid` to the **same 40-char SHA**. The `lint-labgrid-pin` job in `.github/workflows/tests.yml` enforces this; it fails on drift or any non-SHA pin (branch/tag refs are rejected to keep CI reproducible).
+
+To bump:
+```bash
+scripts/bump-labgrid.sh <new-sha>     # or --tip to resolve current branch head
+git diff pyproject.toml coordinator/api/pyproject.toml
+```
+The script repins both files and re-runs `uv lock` if uv is available. Always submit as a single PR; never bump one file without the other.

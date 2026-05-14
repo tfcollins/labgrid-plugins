@@ -12,7 +12,7 @@ authors = [
     {name = "Analog Devices, Inc."},
 ]
 dependencies = [
-    "labgrid @ git+https://github.com/tfcollins/labgrid.git@tfcollins/plugin-support",
+    "labgrid @ git+https://github.com/tfcollins/labgrid.git@81c35eda6436af63d3acf7f8b98893abae0bbbca",
     "pyvesync>=1.1.5,<3.0.0",
     "tqdm",
     "pysnmp",

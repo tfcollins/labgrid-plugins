@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/tfcollins/labgrid-plugins/exporter_configs/schemas/hw-nodes.schema.json",
+  "title": "hw-nodes manifest",
+  "description": "Per-repo manifest consumed by the labgrid-plugins hw-matrix reusable workflow. One entry per labgrid place.",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["place", "runner_label", "tests"],
+    "properties": {
+      "place": {
+        "type": "string",
+        "pattern": "^[a-zA-Z0-9_-]+$",
+        "description": "labgrid place name as registered on the coordinator"
+      },
+      "runner_label": {
+        "type": "string",
+        "pattern": "^[a-zA-Z0-9_-]+$",
+        "description": "Self-hosted GH Actions runner label, e.g. hw-bq"
+      },
+      "env_remote": {
+        "type": "string",
+        "description": "Repo-relative path to a committed LG_ENV yaml used by the coord leg"
+      },
+      "direct_env_var_name": {
+        "type": "string",
+        "default": "LG_DIRECT_ENV",
+        "description": "Runner-side env var holding the direct-mode LG_ENV path"
+      },
+      "tests": {
+        "type": "array",
+        "items": {"type": "string"},
+        "minItems": 1,
+        "description": "Test file or selector arguments passed to pytest for this place"
+      },
+      "extra_pytest_args": {
+        "type": "array",
+        "items": {"type": "string"},
+        "default": [],
+        "description": "Additional flags appended to the pytest invocation for this place"
+      },
+      "xilinx_board": {
+        "enum": ["zynq", "zynqmp", "versal", "microblaze", null],
+        "description": "Optional FPGA family hint; consumers may use it to gate Vivado sourcing"
+      },
+      "legs": {
+        "type": "array",
+        "items": {"enum": ["direct", "coord"]},
+        "default": ["direct", "coord"],
+        "description": "Which leg(s) to run. Defaults to both."
+      }
+    },
+    "additionalProperties": false
+  }
+}

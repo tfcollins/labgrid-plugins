@@ -1,0 +1,9 @@
+[
+  {
+    "place": "mini2",
+    "runner_label": "hw-mini2",
+    "env_remote": "tests/coordinator/env_remote_mini2.yaml",
+    "tests": ["tests/hw/test_smoke_mini2.py"],
+    "legs": ["coord"]
+  }
+]
