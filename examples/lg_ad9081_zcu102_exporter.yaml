@@ -1,6 +1,16 @@
 ## Labgrid exporter config for ZCU102 + AD9081
 ## Converted from lg_ad9081_zcu102.yaml environment config
 ##
+## HW-CI v2 place-tag contract: after this exporter registers, set
+## these tags on the resulting place so hw-matrix.yml@v2 can discover it:
+##
+##   labgrid-client -x $LG_COORDINATOR -p bq set-tags \
+##       carrier=zcu102 \
+##       daughter-board=ad9081 \
+##       boot-strategy=BootFPGASoC
+##
+## See docs/source/user-guide/hw-ci-v2.md for the full schema.
+##
 ## Usage:
 ##   labgrid-exporter -c 10.0.0.41:20408 -n bq examples/lg_ad9081_zcu102_exporter.yaml
 

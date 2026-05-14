@@ -1,0 +1,260 @@
+name: HW matrix v2 (reusable, discovery-driven)
+
+# Reusable workflow consumed by per-repo callers. Unlike v1 (which is
+# manifest-first), v2 discovers live hardware from the coordinator's
+# /api/places endpoint and intersects it with the caller's pytest
+# markers (@pytest.mark.iio_hardware and @pytest.mark.iio_carrier).
+#
+# Caller projects ship NO `.github/hw-nodes.json` and NO per-place
+# `env_remote_*.yaml`. The env yaml is rendered per-shard from the
+# place's `boot-strategy` tag against templates in
+# adi_lg_plugins/hw_ci/templates/.
+#
+# See docs/source/user-guide/hw-ci-v2.md for the consumer contract.
+
+on:
+  workflow_call:
+    inputs:
+      coordinator:
+        type: string
+        required: false
+        default: ""
+        description: >-
+          Coordinator host:port. Defaults to vars.ADI_LG_COORDINATOR
+          when empty.
+      marker_filter:
+        type: string
+        required: false
+        default: "iio_hardware"
+        description: >-
+          Top-level pytest marker used to harvest test → hardware
+          affinity. Non-iio projects can swap this out.
+      test_root:
+        type: string
+        required: false
+        default: "."
+        description: Path (relative to repo root) for `pytest --collect-only`.
+      venv_install_cmd:
+        type: string
+        required: true
+        description: >-
+          Shell command run with $VENV_DIR exported, installing the caller's
+          test deps PLUS adi-labgrid-plugins (so the marker plugin is
+          available during the discover step).
+      venv_dir:
+        type: string
+        required: false
+        default: "$HOME/.cache/hw-ci/venv"
+      pre_pytest_cmd:
+        type: string
+        required: false
+        default: ""
+        description: >-
+          Optional command run inside each shard before pytest. Use for
+          cmake builds, fixture pre-staging, etc.
+      pytest_cmd_template:
+        type: string
+        required: true
+        description: >-
+          Shell command run in each shard. The workflow exports
+          $MARKER_FILTER (pytest -m expression), $JUNIT, $LG_ENV (path
+          to the rendered env yaml), $LG_COORDINATOR, $LG_PLACE,
+          $VENV_DIR.
+      artifact_glob:
+        type: string
+        required: false
+        default: |
+          **/*.log
+          uart_log_*.txt
+          junit-hw-*.xml
+      timeout_minutes:
+        type: number
+        required: false
+        default: 40
+      place_wait_minutes:
+        type: number
+        required: false
+        default: 30
+      prism_upload:
+        type: boolean
+        required: false
+        default: false
+      prism_url:
+        type: string
+        required: false
+        default: ""
+      prism_project:
+        type: string
+        required: false
+        default: ""
+      runner_label:
+        type: string
+        required: false
+        default: "hw-coord"
+        description: >-
+          Extra label every shard runner must carry (alongside
+          `self-hosted`). Use this to pin tests to a subnet that can
+          reach the coordinator.
+
+    secrets:
+      PYADI_BUILD_TOKEN:
+        required: false
+      PRISM_API_TOKEN:
+        required: false
+
+env:
+  COORDINATOR: ${{ inputs.coordinator != '' && inputs.coordinator || vars.ADI_LG_COORDINATOR }}
+  PRISM_URL_RESOLVED: ${{ inputs.prism_url != '' && inputs.prism_url || vars.PRISM_URL }}
+
+jobs:
+  # 1) Discover: pull live places from the coordinator, harvest
+  #    markers from the caller's tests, intersect, emit a matrix.
+  discover:
+    runs-on: [self-hosted, "${{ inputs.runner_label }}"]
+    timeout-minutes: 6
+    outputs:
+      matrix: ${{ steps.discover.outputs.matrix }}
+      count: ${{ steps.discover.outputs.count }}
+    steps:
+      - name: Checkout caller repo
+        uses: actions/checkout@v4
+
+      - name: Setup uv venv
+        uses: tfcollins/labgrid-plugins/.github/actions/setup-uv-venv@main
+        env:
+          PYADI_BUILD_TOKEN: ${{ secrets.PYADI_BUILD_TOKEN }}
+        with:
+          venv_dir: ${{ inputs.venv_dir }}
+          install_cmd: |
+            set -euo pipefail
+            if [[ -n "${PYADI_BUILD_TOKEN:-}" ]]; then
+              export GIT_CONFIG_COUNT=1
+              export GIT_CONFIG_KEY_0="url.https://x-access-token:${PYADI_BUILD_TOKEN}@github.com/.insteadOf"
+              export GIT_CONFIG_VALUE_0="https://github.com/"
+            fi
+            ${{ inputs.venv_install_cmd }}
+
+      - name: Discover matrix
+        id: discover
+        shell: bash --noprofile --norc -eo pipefail {0}
+        env:
+          LG_COORDINATOR: ${{ env.COORDINATOR }}
+        run: |
+          VENV_DIR="${{ inputs.venv_dir }}"
+          # Resolve $HOME-style expansion (setup-uv-venv already did this,
+          # but be explicit for shell idempotency).
+          VENV_DIR_EXPANDED=$(eval echo "$VENV_DIR")
+          "$VENV_DIR_EXPANDED/bin/adi-lg-hw-ci" discover \
+              --coord "$LG_COORDINATOR" \
+              --test-root "${{ inputs.test_root }}" \
+              --marker "${{ inputs.marker_filter }}" \
+              --pytest-bin "$VENV_DIR_EXPANDED/bin/pytest" \
+              --github-output
+
+  # 2) HW: one shard per (place, daughter-board) intersection match.
+  hw:
+    needs: discover
+    if: needs.discover.outputs.count != '0' && needs.discover.outputs.count != ''
+    strategy:
+      fail-fast: false
+      matrix:
+        entry: ${{ fromJSON(needs.discover.outputs.matrix).include }}
+    name: hw (${{ matrix.entry.daughter_board }} on ${{ matrix.entry.carrier }} @ ${{ matrix.entry.place }})
+    runs-on: [self-hosted, "${{ inputs.runner_label }}"]
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    concurrency:
+      # concurrency.group: doesn't support the env context — inline the
+      # same resolution as the top-level env.COORDINATOR.
+      group: hw-place-${{ inputs.coordinator != '' && inputs.coordinator || vars.ADI_LG_COORDINATOR }}-${{ matrix.entry.place }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup uv venv
+        uses: tfcollins/labgrid-plugins/.github/actions/setup-uv-venv@main
+        env:
+          PYADI_BUILD_TOKEN: ${{ secrets.PYADI_BUILD_TOKEN }}
+        with:
+          venv_dir: ${{ inputs.venv_dir }}
+          install_cmd: |
+            set -euo pipefail
+            if [[ -n "${PYADI_BUILD_TOKEN:-}" ]]; then
+              export GIT_CONFIG_COUNT=1
+              export GIT_CONFIG_KEY_0="url.https://x-access-token:${PYADI_BUILD_TOKEN}@github.com/.insteadOf"
+              export GIT_CONFIG_VALUE_0="https://github.com/"
+            fi
+            ${{ inputs.venv_install_cmd }}
+
+      - name: Render env yaml from place tags
+        id: render
+        shell: bash --noprofile --norc -eo pipefail {0}
+        env:
+          LG_COORDINATOR: ${{ env.COORDINATOR }}
+        run: |
+          VENV_DIR_EXPANDED=$(eval echo "${{ inputs.venv_dir }}")
+          OUT_DIR="${{ runner.temp }}/hw-ci-env"
+          mkdir -p "$OUT_DIR"
+          OUT="$OUT_DIR/env-${{ matrix.entry.place }}.yaml"
+          "$VENV_DIR_EXPANDED/bin/adi-lg-hw-ci" render-env \
+              --coord "$LG_COORDINATOR" \
+              --place "${{ matrix.entry.place }}" \
+              --out "$OUT"
+          echo "env_path=$OUT" >> "$GITHUB_OUTPUT"
+          echo "--- rendered env yaml ---"
+          cat "$OUT"
+
+      - name: Pre-pytest hook
+        if: inputs.pre_pytest_cmd != ''
+        run: |
+          set -euo pipefail
+          ${{ inputs.pre_pytest_cmd }}
+
+      - name: Run hardware tests
+        shell: bash --noprofile --norc -eo pipefail {0}
+        env:
+          MARKER_FILTER: ${{ matrix.entry.marker_filter }}
+          LG_ENV: ${{ steps.render.outputs.env_path }}
+          LG_COORDINATOR: ${{ env.COORDINATOR }}
+          LG_PLACE: ${{ matrix.entry.place }}
+          JUNIT: junit-hw-${{ matrix.entry.place }}.xml
+        run: |
+          VENV_DIR=$(eval echo "${{ inputs.venv_dir }}")
+          export VENV_DIR
+          ${{ inputs.pytest_cmd_template }}
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hw-${{ matrix.entry.place }}-${{ matrix.entry.daughter_board }}
+          path: ${{ inputs.artifact_glob }}
+          if-no-files-found: ignore
+
+      - name: Upload to Prism
+        if: always() && inputs.prism_upload && env.PRISM_URL_RESOLVED != ''
+        continue-on-error: true
+        env:
+          PRISM_URL: ${{ env.PRISM_URL_RESOLVED }}
+          PRISM_API_TOKEN: ${{ secrets.PRISM_API_TOKEN }}
+          PRISM_PROJECT: ${{ inputs.prism_project }}
+        run: |
+          set -euo pipefail
+          : "${PRISM_PROJECT:?PRISM_PROJECT must be set when prism_upload=true}"
+          # Same upload script as v1 — TBD wire when v1's helper is split out.
+          echo "(Prism upload stub — point at the v1 helper action once factored)"
+
+  # 3) Summary: emit a clear annotation when the intersection is empty.
+  summary:
+    needs: discover
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print discovery summary
+        env:
+          COUNT: ${{ needs.discover.outputs.count }}
+        run: |
+          if [ -z "$COUNT" ] || [ "$COUNT" = "0" ]; then
+            echo "::warning::hw-ci discovery produced 0 matrix entries — no marked tests overlap with live coordinator hardware right now"
+          else
+            echo "::notice::hw-ci discovered $COUNT matrix entries"
+          fi

@@ -1,5 +1,12 @@
-Hardware CI
-===========
+Hardware CI (v1, manifest-first)
+================================
+
+.. note::
+
+   A discovery-driven successor (``hw-matrix.yml@v2``) is also
+   available — see :doc:`hw-ci-v2`. Both versions coexist; v1 stays
+   supported for projects that haven't migrated their tests to
+   ``@pytest.mark.iio_hardware`` markers yet.
 
 This repo ships a **reusable GitHub Actions workflow** that drives
 ``@pytest.mark.hardware`` tests against real boards. Sibling repos

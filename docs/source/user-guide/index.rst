@@ -17,4 +17,5 @@ Comprehensive guides for using adi-labgrid-plugins.
    exporter-setup
    exporter-deployment
    hardware-ci
+   hw-ci-v2
    examples
