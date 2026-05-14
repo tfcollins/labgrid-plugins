@@ -113,7 +113,10 @@ jobs:
       - name: Validate manifest against schema
         run: |
           set -euo pipefail
-          python3 -m pip install --quiet --user jsonschema
+          # Modern Debian/Ubuntu Python is externally-managed (PEP 668);
+          # the runner is single-purpose so installing into the system
+          # site is acceptable.
+          python3 -m pip install --quiet --user --break-system-packages jsonschema PyYAML
           # Validator script ships in this repo; consumers may not have it.
           # Fetch via raw URL when not present (e.g. caller is a different repo).
           if [[ -f exporter_configs/validate.py ]]; then
