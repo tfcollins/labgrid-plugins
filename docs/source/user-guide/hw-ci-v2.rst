@@ -199,6 +199,34 @@ Three things on the consumer side:
 That is the **entire** consumer surface. No ``.github/hw-nodes.json``,
 no ``test/hw/env/*.yaml``, no per-place wiring.
 
+Self-hosted runner contract (lab-admin)
+---------------------------------------
+
+The reusable workflow expects two classes of self-hosted runner to be
+registered against every consumer repo that calls into ``@v2``:
+
+* **One coordinator-adjacent runner** labeled
+  ``[self-hosted, hw-coordinator]``. The ``discover`` job runs here.
+  It only needs to be able to reach the coordinator's REST API and
+  run ``pytest --collect-only`` against the caller repo — no DUT
+  access is required.
+* **One runner per coordinator place**, labeled
+  ``[self-hosted, hw-<place>]``. The ``hw`` matrix shard for a given
+  place pins to ``hw-<place>`` — e.g. shard for place ``mini2`` lands
+  on the runner labeled ``hw-mini2``. This runner must be able to
+  power-cycle and reach the DUT(s) behind that place.
+
+This convention deliberately **does not** require any extra place
+tag: the place name itself drives the routing. To bring up a new
+place ``foo``, register a self-hosted runner with labels
+``[self-hosted, hw-foo]`` and tag the place per the schema above —
+no workflow or repo change is required.
+
+Override the coordinator-runner label with the
+``coordinator_runner_label`` input if your lab uses a different
+naming scheme. The per-shard ``hw-<place>`` mapping is fixed by the
+workflow (it derives from ``matrix.entry.place``).
+
 Migration from v1
 -----------------
 
