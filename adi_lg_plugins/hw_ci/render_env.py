@@ -24,12 +24,11 @@ tag is set but no template exists.
 from __future__ import annotations
 
 import string
+from collections.abc import Mapping
 from importlib import resources
 from pathlib import Path
-from typing import Mapping
 
 from .schema import Place
-
 
 _TEMPLATES_PKG = "adi_lg_plugins.hw_ci.templates"
 
@@ -54,9 +53,7 @@ def list_strategy_templates() -> list[str]:
 def _load_template(strategy: str) -> str:
     try:
         return (
-            resources.files(_TEMPLATES_PKG)
-            .joinpath(f"{strategy}.yaml")
-            .read_text(encoding="utf-8")
+            resources.files(_TEMPLATES_PKG).joinpath(f"{strategy}.yaml").read_text(encoding="utf-8")
         )
     except (ModuleNotFoundError, FileNotFoundError) as e:
         raise RenderError(

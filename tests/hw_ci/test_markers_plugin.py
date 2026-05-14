@@ -26,19 +26,25 @@ def _run_pytest(tmp_path: Path, test_body: str, *, marker: str = "iio_hardware")
     # register it twice and ValueError).
     proc = subprocess.run(
         [
-            sys.executable, "-m", "pytest",
-            "--collect-only", "--quiet", "--no-header",
+            sys.executable,
+            "-m",
+            "pytest",
+            "--collect-only",
+            "--quiet",
+            "--no-header",
             f"--hw-ci-export-markers={export}",
-            "-m", marker,
+            "-m",
+            marker,
             str(test_file),
         ],
-        capture_output=True, text=True, cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
     )
     # rc=5 (no tests collected) is OK; rc=0 is OK; anything else is a
     # genuine failure we want to surface.
     assert proc.returncode in (0, 5), (
-        f"pytest failed unexpectedly:\nstdout={proc.stdout}\n"
-        f"stderr={proc.stderr}"
+        f"pytest failed unexpectedly:\nstdout={proc.stdout}\nstderr={proc.stderr}"
     )
     if not export.exists():
         return {}

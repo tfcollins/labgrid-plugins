@@ -48,7 +48,7 @@ def test_optional_hdl_config_and_extras():
             "boot-strategy": "BootFPGASoC",
             "hdl-config": "m8_l4",
             "board-location": "mini2",
-            "site": "us-home",   # extra unknown tag → goes to extra_tags
+            "site": "us-home",  # extra unknown tag → goes to extra_tags
         }
     )
     p = validate_place(raw, known_strategies=STRATS)

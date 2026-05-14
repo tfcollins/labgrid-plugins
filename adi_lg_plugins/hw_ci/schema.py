@@ -16,8 +16,8 @@ automatically a valid tag value.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Iterable
 
 # Required-and-validated tag keys. Order is the documented schema order.
 REQUIRED_TAGS = ("carrier", "daughter-board", "boot-strategy")
@@ -69,9 +69,7 @@ def _strategy_registry() -> set[str]:
     names: set[str] = set()
     for mod_info in pkgutil.iter_modules(strategies_pkg.__path__):
         try:
-            mod = importlib.import_module(
-                f"{strategies_pkg.__name__}.{mod_info.name}"
-            )
+            mod = importlib.import_module(f"{strategies_pkg.__name__}.{mod_info.name}")
         except Exception:  # noqa: BLE001 — best-effort introspection
             continue
         for cls_name, cls_obj in inspect.getmembers(mod, inspect.isclass):
@@ -130,15 +128,11 @@ def validate_place(
     missing = [t for t in REQUIRED_TAGS if not tags.get(t)]
     if missing:
         raise PlaceValidationError(
-            f"place {name!r}: missing required tag(s) "
-            f"{', '.join(missing)}; have {sorted(tags)}"
+            f"place {name!r}: missing required tag(s) {', '.join(missing)}; have {sorted(tags)}"
         )
 
     boot_strategy = tags["boot-strategy"]
-    registry = (
-        frozenset(known_strategies) if known_strategies is not None
-        else KNOWN_STRATEGIES
-    )
+    registry = frozenset(known_strategies) if known_strategies is not None else KNOWN_STRATEGIES
     if registry and boot_strategy not in registry:
         raise PlaceValidationError(
             f"place {name!r}: boot-strategy {boot_strategy!r} is not a "

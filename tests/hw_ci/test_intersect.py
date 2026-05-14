@@ -124,7 +124,14 @@ def test_as_matrix_dict_shape():
     e = intersect(markers, places)[0]
     d = e.as_matrix_dict()
     # Required keys for GHA matrix include
-    for key in ("place", "carrier", "daughter_board", "boot_strategy",
-                "marker_filter", "tests", "hdl_config"):
+    for key in (
+        "place",
+        "carrier",
+        "daughter_board",
+        "boot_strategy",
+        "marker_filter",
+        "tests",
+        "hdl_config",
+    ):
         assert key in d
     assert d["hdl_config"] == "m8_l4"

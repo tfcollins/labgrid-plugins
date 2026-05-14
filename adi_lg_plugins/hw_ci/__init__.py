@@ -15,13 +15,13 @@ This package is the in-Python surface; ``adi_lg_plugins.hw_ci.cli``
 wraps it for use from the reusable workflow.
 """
 
+from .intersect import MarkerSpec, MatrixEntry, intersect
 from .schema import (
     KNOWN_STRATEGIES,
     Place,
     PlaceValidationError,
     validate_place,
 )
-from .intersect import MatrixEntry, MarkerSpec, intersect
 
 __all__ = [
     "KNOWN_STRATEGIES",

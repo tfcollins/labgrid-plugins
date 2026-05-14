@@ -25,7 +25,6 @@ import shutil
 import subprocess
 import tempfile
 from pathlib import Path
-from typing import Mapping
 
 from .intersect import MarkerSpec
 
@@ -82,7 +81,8 @@ def harvest_markers(
             "--no-header",
             # Plugin auto-registers via pytest11 entry point — no -p.
             f"--hw-ci-export-markers={export}",
-            "-m", marker,
+            "-m",
+            marker,
             str(test_root),
         ]
         if extra_args:
@@ -91,9 +91,7 @@ def harvest_markers(
         # bubble through. Non-zero rc is allowed only when the export
         # file exists (pytest exits 5 when no tests collected, which
         # is the expected case for repos with no marked tests).
-        proc = subprocess.run(
-            cmd, capture_output=True, text=True, cwd=test_root
-        )
+        proc = subprocess.run(cmd, capture_output=True, text=True, cwd=test_root)
         if not export.exists():
             raise RuntimeError(
                 f"pytest --collect-only did not write {export} "

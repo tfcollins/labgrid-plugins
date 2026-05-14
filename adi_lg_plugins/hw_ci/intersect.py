@@ -24,8 +24,8 @@ This module is pure; no I/O, no subprocess.
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
-from typing import Iterable, Mapping
 
 from .schema import Place
 
@@ -42,7 +42,7 @@ class MarkerSpec:
         cls,
         iio_hardware: Iterable[str],
         iio_carrier: Iterable[str] = (),
-    ) -> "MarkerSpec":
+    ) -> MarkerSpec:
         return cls(
             iio_hardware=frozenset(iio_hardware),
             iio_carrier=frozenset(iio_carrier),

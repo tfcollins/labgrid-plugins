@@ -91,8 +91,7 @@ def _cmd_discover(args: argparse.Namespace) -> int:
         wanted = sorted({h for spec in markers.values() for h in spec.iio_hardware})
         offered = sorted({p.daughter_board for p in places})
         print(
-            f"# project wants {wanted}; coordinator has {offered} "
-            f"— no overlap right now",
+            f"# project wants {wanted}; coordinator has {offered} — no overlap right now",
             file=sys.stderr,
         )
     return 0
@@ -101,7 +100,8 @@ def _cmd_discover(args: argparse.Namespace) -> int:
 def _cmd_render_env(args: argparse.Namespace) -> int:
     coord = coord_mod.resolve_coordinator(args.coord)
     places, _skipped = coord_mod.list_live_places(
-        coord, force_cli=args.force_cli,
+        coord,
+        force_cli=args.force_cli,
     )
     match = next((p for p in places if p.name == args.place), None)
     if match is None:
@@ -120,9 +120,7 @@ def _cmd_render_env(args: argparse.Namespace) -> int:
 def _cmd_list_strategies(_args: argparse.Namespace) -> int:
     strats = sorted(KNOWN_STRATEGIES)
     templates = render_mod.list_strategy_templates()
-    print(
-        json.dumps({"strategies": strats, "templates": templates}, indent=2)
-    )
+    print(json.dumps({"strategies": strats, "templates": templates}, indent=2))
     missing = sorted(set(strats) - set(templates))
     if missing:
         print(
@@ -141,34 +139,40 @@ def main(argv: list[str] | None = None) -> int:
     sub = p.add_subparsers(dest="cmd", required=True)
 
     pd = sub.add_parser("discover", help="emit matrix include list")
-    pd.add_argument("--coord", default=None,
-                    help="coordinator URL (default: $LG_COORDINATOR / "
-                         "$ADI_LG_COORDINATOR)")
-    pd.add_argument("--test-root", required=True,
-                    help="caller repo root to collect tests from")
-    pd.add_argument("--marker", default="iio_hardware",
-                    help="top-level pytest marker to harvest")
+    pd.add_argument(
+        "--coord",
+        default=None,
+        help="coordinator URL (default: $LG_COORDINATOR / $ADI_LG_COORDINATOR)",
+    )
+    pd.add_argument("--test-root", required=True, help="caller repo root to collect tests from")
+    pd.add_argument("--marker", default="iio_hardware", help="top-level pytest marker to harvest")
     pd.add_argument("--pytest-bin", default=None)
     pd.add_argument("--timeout", type=float, default=15.0)
-    pd.add_argument("--force-cli", action="store_true",
-                    help="skip REST, go straight to labgrid-client")
-    pd.add_argument("--include-acquired", action="store_true",
-                    help="(debug) include acquired places in the matrix")
-    pd.add_argument("--github-output", action="store_true",
-                    help="also append matrix=… count=… to $GITHUB_OUTPUT")
+    pd.add_argument(
+        "--force-cli", action="store_true", help="skip REST, go straight to labgrid-client"
+    )
+    pd.add_argument(
+        "--include-acquired",
+        action="store_true",
+        help="(debug) include acquired places in the matrix",
+    )
+    pd.add_argument(
+        "--github-output",
+        action="store_true",
+        help="also append matrix=… count=… to $GITHUB_OUTPUT",
+    )
     pd.set_defaults(func=_cmd_discover)
 
-    pr = sub.add_parser("render-env",
-                        help="render env yaml for a place from its tags")
+    pr = sub.add_parser("render-env", help="render env yaml for a place from its tags")
     pr.add_argument("--coord", default=None)
     pr.add_argument("--place", required=True)
     pr.add_argument("--out", required=True)
     pr.add_argument("--force-cli", action="store_true")
     pr.set_defaults(func=_cmd_render_env)
 
-    pl = sub.add_parser("list-strategies",
-                        help="dump known boot-strategy class names + "
-                             "which have render templates")
+    pl = sub.add_parser(
+        "list-strategies", help="dump known boot-strategy class names + which have render templates"
+    )
     pl.set_defaults(func=_cmd_list_strategies)
 
     ns = p.parse_args(argv)
