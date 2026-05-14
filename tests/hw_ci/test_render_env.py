@@ -81,3 +81,24 @@ def test_extra_subs_override_builtins(tmp_path):
     )
     assert "name: override" in out
     assert "name: mini2" not in out
+
+
+def test_power_driver_defaults_to_vesync():
+    """Places with no power-driver tag default to VesyncPowerDriver."""
+    out = render_env(_place("BootFPGASoC"))
+    assert "VesyncPowerDriver:" in out
+    assert "HomeAssistantDriver:" not in out
+
+
+def test_power_driver_tag_overrides():
+    """A `power-driver=HomeAssistantDriver` tag swaps the power driver."""
+    p = Place(
+        name="bq",
+        carrier="zc706",
+        daughter_board="adrv9371",
+        boot_strategy="BootFPGASoC",
+        extra_tags={"power-driver": "HomeAssistantDriver"},
+    )
+    out = render_env(p)
+    assert "HomeAssistantDriver:" in out
+    assert "VesyncPowerDriver:" not in out

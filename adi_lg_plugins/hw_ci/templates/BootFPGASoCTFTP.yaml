@@ -10,7 +10,7 @@ targets:
       RemotePlace:
         name: ${place_name}
     drivers:
-      VesyncPowerDriver: {}
+      ${power_driver}: {}
       SerialDriver: {}
       ADIShellDriver:
         prompt: 'root@.*'
