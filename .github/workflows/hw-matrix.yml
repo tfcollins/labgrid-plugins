@@ -122,11 +122,15 @@ jobs:
           if [[ -f exporter_configs/validate.py ]]; then
             VALIDATE=exporter_configs/validate.py
           else
-            VALIDATE=$(mktemp /tmp/validate.py.XXXXXX)
+            # Consumer repo: pull validate.py + schema into a sibling layout
+            # so validate.py's SCRIPT_DIR/schemas/hw-nodes.schema.json
+            # lookup resolves.
+            STAGE=$(mktemp -d)
+            mkdir -p "$STAGE/schemas"
+            VALIDATE="$STAGE/validate.py"
             curl -fsSL -o "$VALIDATE" \
               https://raw.githubusercontent.com/tfcollins/labgrid-plugins/main/exporter_configs/validate.py
-            mkdir -p exporter_configs/schemas
-            curl -fsSL -o exporter_configs/schemas/hw-nodes.schema.json \
+            curl -fsSL -o "$STAGE/schemas/hw-nodes.schema.json" \
               https://raw.githubusercontent.com/tfcollins/labgrid-plugins/main/exporter_configs/schemas/hw-nodes.schema.json
           fi
           python3 "$VALIDATE" --hw-nodes "${{ inputs.manifest_path }}"
