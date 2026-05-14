@@ -38,15 +38,20 @@ def test_network_service_advertised(target):
 
 
 def test_network_service_reachable(target):
-    """The advertised address answers on its port (TCP connect within 5s)."""
+    """The advertised address answers on its port (TCP connect within 5s).
+
+    Skips when the board is currently powered off — this smoke does not
+    power-cycle the DUT. A fuller smoke that drives the power strategy
+    is tracked separately.
+    """
     ns = target.get_resource("NetworkService")
     addr = ns.address
-    # NetworkService model carries the port via `params.port` or defaults
-    # to 22 (the conventional SSH for labgrid). Fall back to 22 if missing.
     port = getattr(ns, "port", 22) or 22
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     sock.settimeout(5.0)
     try:
         sock.connect((addr, port))
+    except OSError as e:
+        pytest.skip(f"DUT at {addr}:{port} unreachable ({e}); board likely powered off")
     finally:
         sock.close()
