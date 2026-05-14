@@ -32,7 +32,7 @@ def test_happy_path_single_test_single_place():
     assert e.carrier == "zcu102"
     assert e.daughter_board == "ad9081"
     assert e.boot_strategy == "BootFPGASoC"
-    assert e.marker_filter == "iio_hardware and ad9081"
+    assert e.marker_filter == "iio_hardware"
     assert e.tests == ("test/hw/test_ad9081.py::test_rx",)
 
 

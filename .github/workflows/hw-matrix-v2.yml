@@ -219,6 +219,12 @@ jobs:
           LG_COORDINATOR: ${{ env.COORDINATOR }}
           LG_PLACE: ${{ matrix.entry.place }}
           JUNIT: junit-hw-${{ matrix.entry.place }}.xml
+          # Consumed by adi_lg_plugins.pytest_plugin.pytest_collection_modifyitems
+          # to deselect tests whose iio_hardware / iio_carrier markers don't match
+          # this shard's place. The top-level -m expression
+          # ("$MARKER_FILTER") only filters on marker NAME; this narrows by ARG.
+          HW_DAUGHTER: ${{ matrix.entry.daughter_board }}
+          HW_CARRIER: ${{ matrix.entry.carrier }}
         run: |
           VENV_DIR=$(eval echo "${{ inputs.venv_dir }}")
           export VENV_DIR

@@ -8,6 +8,7 @@ the plugin exports.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -111,3 +112,133 @@ def test_x(): pass
 """
     out = _run_pytest(tmp_path, body)
     assert out == {}
+
+
+# --------------------------------------------------------------------------
+# Per-shard narrowing via HW_DAUGHTER / HW_CARRIER env vars
+# --------------------------------------------------------------------------
+
+
+def _run_pytest_with_env(tmp_path: Path, body: str, *, env: dict[str, str]):
+    """Run pytest -v -m iio_hardware against ``body`` with extra env vars.
+
+    Returns (returncode, stdout). We don't need the JSON export here —
+    we're verifying which tests pytest reports as PASSED vs SKIPPED.
+    """
+    test_file = tmp_path / "test_y.py"
+    test_file.write_text(body)
+    full_env = {**os.environ, **env}
+    proc = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "pytest",
+            "-v",
+            "--no-header",
+            "-m",
+            "iio_hardware",
+            str(test_file),
+        ],
+        capture_output=True,
+        text=True,
+        cwd=tmp_path,
+        env=full_env,
+    )
+    return proc.returncode, proc.stdout + proc.stderr
+
+
+def test_hw_daughter_narrows_to_matching_tests(tmp_path):
+    body = """
+import pytest
+
+@pytest.mark.iio_hardware(["ad9081"])
+def test_ad9081(): pass
+
+@pytest.mark.iio_hardware(["adrv9009"])
+def test_adrv9009(): pass
+
+@pytest.mark.iio_hardware(["adrv9371", "ad9371"])
+def test_ad9371_alias(): pass
+"""
+    rc, out = _run_pytest_with_env(tmp_path, body, env={"HW_DAUGHTER": "ad9081"})
+    assert "PASSED" in out and "test_ad9081" in out
+    assert "SKIPPED" in out and "test_adrv9009" in out
+    assert "test_ad9371_alias" in out  # also skipped
+    # exit-code 0 means at least one test ran successfully
+    assert rc == 0, out
+
+
+def test_hw_daughter_alias_match(tmp_path):
+    """An iio_hardware([\"adrv9371\", \"ad9371\"]) test runs when shard = ad9371."""
+    body = """
+import pytest
+
+@pytest.mark.iio_hardware(["adrv9371", "ad9371"])
+def test_alias(): pass
+"""
+    rc, out = _run_pytest_with_env(tmp_path, body, env={"HW_DAUGHTER": "ad9371"})
+    assert "PASSED" in out and "test_alias" in out
+    assert rc == 0, out
+
+
+def test_hw_carrier_narrows_when_marker_present(tmp_path):
+    body = """
+import pytest
+
+@pytest.mark.iio_hardware(["ad9081"])
+def test_any_carrier(): pass
+
+@pytest.mark.iio_hardware(["ad9081"])
+@pytest.mark.iio_carrier(["zcu102"])
+def test_zcu102_only(): pass
+
+@pytest.mark.iio_hardware(["ad9081"])
+@pytest.mark.iio_carrier(["vcu118"])
+def test_vcu118_only(): pass
+"""
+    rc, out = _run_pytest_with_env(
+        tmp_path,
+        body,
+        env={"HW_DAUGHTER": "ad9081", "HW_CARRIER": "zcu102"},
+    )
+    assert "PASSED" in out and "test_any_carrier" in out
+    assert "PASSED" in out and "test_zcu102_only" in out
+    assert "SKIPPED" in out and "test_vcu118_only" in out
+    assert rc == 0, out
+
+
+def test_no_env_vars_means_no_narrowing(tmp_path):
+    """Without HW_DAUGHTER / HW_CARRIER the hook is a no-op."""
+    body = """
+import pytest
+
+@pytest.mark.iio_hardware(["ad9081"])
+def test_a(): pass
+
+@pytest.mark.iio_hardware(["adrv9009"])
+def test_b(): pass
+"""
+    # Explicitly unset to avoid inherited env from the runner
+    rc, out = _run_pytest_with_env(tmp_path, body, env={"HW_DAUGHTER": "", "HW_CARRIER": ""})
+    # Both ran (no skips from our hook)
+    assert "PASSED" in out and "test_a" in out
+    assert "PASSED" in out and "test_b" in out
+    assert "SKIPPED" not in out
+    assert rc == 0, out
+
+
+def test_unmarked_test_left_alone_when_narrowing(tmp_path):
+    """Tests without iio_hardware are excluded by -m, not by our hook."""
+    body = """
+import pytest
+
+def test_unmarked(): pass
+
+@pytest.mark.iio_hardware(["ad9081"])
+def test_marked(): pass
+"""
+    rc, out = _run_pytest_with_env(tmp_path, body, env={"HW_DAUGHTER": "ad9081"})
+    assert "PASSED" in out and "test_marked" in out
+    # `-m iio_hardware` removes test_unmarked from collection.
+    assert "test_unmarked" not in out or "deselected" in out
+    assert rc == 0, out

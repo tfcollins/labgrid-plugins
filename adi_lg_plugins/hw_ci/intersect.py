@@ -122,11 +122,14 @@ def intersect(
     for place_name, tests in per_place.items():
         place = place_by_name[place_name]
         sorted_tests = tuple(sorted(tests))
-        marker_filter = f"iio_hardware and {place.daughter_board}"
-        # If the place has an hdl-config tag, narrow further so any
-        # test that marked iio_hdl_config gets honored. The marker
-        # name is reserved here so consumers can adopt it later
-        # without a schema change.
+        # `marker_filter` is the pytest -m expression. We use only
+        # `iio_hardware` here — pytest's -m is boolean over marker
+        # *names*, not args, so "iio_hardware and ad9081" would never
+        # match a test that wears `iio_hardware(["ad9081"])`. The
+        # per-shard daughter/carrier narrowing happens in the
+        # adi_lg_plugins.pytest_plugin collection hook driven by the
+        # HW_DAUGHTER / HW_CARRIER env vars the workflow exports.
+        marker_filter = "iio_hardware"
         entries.append(
             MatrixEntry(
                 place=place.name,
