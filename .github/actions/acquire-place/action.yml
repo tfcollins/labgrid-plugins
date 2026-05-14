@@ -45,8 +45,11 @@ runs:
         WAIT_SECONDS=$(( WAIT_MIN * 60 ))
         echo "Acquiring place '$PLACE' on $COORD (timeout ${WAIT_MIN}min)" >&2
 
-        # Path resolution: support ${HOME} in the default.
+        # Path resolution: GH Actions doesn't expand $HOME/${HOME} inside
+        # `env:` values; do it here.
         LGCLIENT_RESOLVED=$(eval echo "$LGCLIENT")
+        # Tilde expansion too (in case caller passes ~/...).
+        LGCLIENT_RESOLVED="${LGCLIENT_RESOLVED/#\~/$HOME}"
         if [[ ! -x "$LGCLIENT_RESOLVED" ]]; then
           echo "::error::labgrid-client not found at $LGCLIENT_RESOLVED" >&2
           echo "Set the 'labgrid_client' input to its actual path." >&2

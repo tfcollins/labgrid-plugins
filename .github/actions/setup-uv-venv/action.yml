@@ -41,10 +41,13 @@ runs:
     - name: Create venv if missing
       shell: bash
       env:
-        VENV_DIR: ${{ inputs.venv_dir }}
+        VENV_DIR_RAW: ${{ inputs.venv_dir }}
         PY_VERSION: ${{ inputs.python_version }}
       run: |
         set -euo pipefail
+        # GH Actions doesn't expand $HOME inside `env:` values; do it here.
+        VENV_DIR=$(eval echo "$VENV_DIR_RAW")
+        echo "VENV_DIR=$VENV_DIR" >> "$GITHUB_ENV"
         export PATH="$HOME/.local/bin:$PATH"
         if [[ ! -x "$VENV_DIR/bin/python" ]]; then
           echo "Creating uv venv at $VENV_DIR" >&2
@@ -57,8 +60,6 @@ runs:
 
     - name: Run install command
       shell: bash
-      env:
-        VENV_DIR: ${{ inputs.venv_dir }}
       run: |
         set -euo pipefail
         export PATH="$HOME/.local/bin:$VENV_DIR/bin:$PATH"
@@ -66,8 +67,6 @@ runs:
 
     - id: locate
       shell: bash
-      env:
-        VENV_DIR: ${{ inputs.venv_dir }}
       run: |
         echo "python=$VENV_DIR/bin/python" >> "$GITHUB_OUTPUT"
         echo "$VENV_DIR/bin" >> "$GITHUB_PATH"

@@ -244,8 +244,6 @@ jobs:
 
       - name: Pre-pytest hook
         if: steps.check_direct_env.outputs.skip != 'true' && inputs.pre_pytest_cmd != ''
-        env:
-          VENV_DIR: ${{ inputs.venv_dir }}
         run: |
           set -euo pipefail
           ${{ inputs.pre_pytest_cmd }}
@@ -253,7 +251,6 @@ jobs:
       - name: Run direct-mode tests
         if: steps.check_direct_env.outputs.skip != 'true'
         env:
-          VENV_DIR: ${{ inputs.venv_dir }}
           LG_ENV: ${{ steps.check_direct_env.outputs.direct_path }}
           LG_COORDINATOR: ${{ env.COORDINATOR }}
           LG_PLACE: ${{ matrix.node.place }}
@@ -275,7 +272,6 @@ jobs:
         env:
           PRISM_URL: ${{ env.PRISM_URL_RESOLVED }}
           PRISM_API_TOKEN: ${{ secrets.PRISM_API_TOKEN }}
-          VENV_DIR: ${{ inputs.venv_dir }}
         run: |
           set -euo pipefail
           "$VENV_DIR/bin/pip" install --quiet \
@@ -359,15 +355,12 @@ jobs:
 
       - name: Pre-pytest hook
         if: inputs.pre_pytest_cmd != ''
-        env:
-          VENV_DIR: ${{ inputs.venv_dir }}
         run: |
           set -euo pipefail
           ${{ inputs.pre_pytest_cmd }}
 
       - name: Run coordinator-mode tests
         env:
-          VENV_DIR: ${{ inputs.venv_dir }}
           LG_COORDINATOR: ${{ env.COORDINATOR }}
           LG_PLACE: ${{ matrix.node.place }}
           LG_ENV: ${{ github.workspace }}/${{ matrix.node.env_remote }}
@@ -386,7 +379,6 @@ jobs:
       - name: Release coordinator place
         if: always()
         env:
-          VENV_DIR: ${{ inputs.venv_dir }}
           LG_COORDINATOR: ${{ env.COORDINATOR }}
         run: |
           set -euo pipefail
@@ -402,7 +394,6 @@ jobs:
         env:
           PRISM_URL: ${{ env.PRISM_URL_RESOLVED }}
           PRISM_API_TOKEN: ${{ secrets.PRISM_API_TOKEN }}
-          VENV_DIR: ${{ inputs.venv_dir }}
         run: |
           set -euo pipefail
           "$VENV_DIR/bin/pip" install --quiet \
