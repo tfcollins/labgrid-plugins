@@ -1,0 +1,29 @@
+name: hardware-smoke
+
+# Nightly + on-demand smoke run that exercises labgrid-plugins' own boot
+# strategies against a small set of lab places. Consumed by the in-repo
+# reusable hw-matrix workflow; demonstrates the same shape downstream
+# repos use.
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 6 * * *"
+
+permissions:
+  contents: read
+  checks: write
+  pull-requests: write
+
+jobs:
+  smoke:
+    uses: ./.github/workflows/hw-matrix.yml
+    with:
+      manifest_path: .github/hw-nodes.json
+      venv_install_cmd: |
+        uv pip install --quiet --python "$VENV_DIR/bin/python" -e ".[dev]"
+      pytest_cmd_template: |
+        "$VENV_DIR/bin/pytest" -v --run-hardware --lg-config "$LG_ENV" $TESTS --junitxml="$JUNIT"
+      legs: coord
+      prism_project: labgrid-plugins-smoke
+    secrets: inherit

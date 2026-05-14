@@ -1,0 +1,73 @@
+name: Setup uv venv
+description: >-
+  Ensure uv is installed on the runner and create or refresh a persistent
+  venv at the requested path. Adds the venv bin dir to $GITHUB_PATH so
+  subsequent steps in the same job see installed scripts on $PATH.
+
+inputs:
+  venv_dir:
+    description: Absolute path to the persistent venv directory (created if missing).
+    required: true
+  install_cmd:
+    description: >-
+      Shell command run with $VENV_DIR exported. Typically
+      `uv pip install --python "$VENV_DIR/bin/python" -e ".[dev]"` or
+      `bash .github/scripts/install-venv.sh`.
+    required: true
+  python_version:
+    description: Python interpreter passed to `uv venv --python`. Empty = uv default.
+    required: false
+    default: ""
+
+outputs:
+  python:
+    description: Absolute path to the venv's python interpreter.
+    value: ${{ steps.locate.outputs.python }}
+
+runs:
+  using: composite
+  steps:
+    - name: Bootstrap uv
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [[ ! -x "$HOME/.local/bin/uv" ]]; then
+          echo "uv not found — installing via astral.sh" >&2
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+        fi
+        echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+        "$HOME/.local/bin/uv" --version
+
+    - name: Create venv if missing
+      shell: bash
+      env:
+        VENV_DIR: ${{ inputs.venv_dir }}
+        PY_VERSION: ${{ inputs.python_version }}
+      run: |
+        set -euo pipefail
+        export PATH="$HOME/.local/bin:$PATH"
+        if [[ ! -x "$VENV_DIR/bin/python" ]]; then
+          echo "Creating uv venv at $VENV_DIR" >&2
+          if [[ -n "$PY_VERSION" ]]; then
+            uv venv --quiet --python "$PY_VERSION" "$VENV_DIR"
+          else
+            uv venv --quiet "$VENV_DIR"
+          fi
+        fi
+
+    - name: Run install command
+      shell: bash
+      env:
+        VENV_DIR: ${{ inputs.venv_dir }}
+      run: |
+        set -euo pipefail
+        export PATH="$HOME/.local/bin:$VENV_DIR/bin:$PATH"
+        ${{ inputs.install_cmd }}
+
+    - id: locate
+      shell: bash
+      env:
+        VENV_DIR: ${{ inputs.venv_dir }}
+      run: |
+        echo "python=$VENV_DIR/bin/python" >> "$GITHUB_OUTPUT"
+        echo "$VENV_DIR/bin" >> "$GITHUB_PATH"
