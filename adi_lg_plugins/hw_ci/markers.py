@@ -21,6 +21,7 @@ be tested without spinning up pytest end-to-end.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import tempfile
@@ -79,7 +80,11 @@ def harvest_markers(
             "--collect-only",
             "--quiet",
             "--no-header",
-            # Plugin auto-registers via pytest11 entry point — no -p.
+            # Autoload is disabled below; load OUR plugin explicitly so
+            # the --hw-ci-export-markers option and the marker exporter
+            # hook are still registered.
+            "-p",
+            "adi_lg_plugins.pytest_plugin",
             f"--hw-ci-export-markers={export}",
             "-m",
             marker,
@@ -87,11 +92,19 @@ def harvest_markers(
         ]
         if extra_args:
             cmd.extend(extra_args)
+        # Disable pytest11 plugin autoload for the harvest subprocess. The
+        # caller venv often installs broader plugins (pytest-libiio etc.)
+        # whose import-time side effects (e.g. dlopen libiio) crash in
+        # environments that don't have the full DUT toolchain. Marker
+        # harvesting only needs *our* plugin, which we load explicitly
+        # via -p above. Bonus: any conftest in the caller's tree still
+        # imports normally.
+        env = {**os.environ, "PYTEST_DISABLE_PLUGIN_AUTOLOAD": "1"}
         # We deliberately let pytest emit to stderr — collection errors
         # bubble through. Non-zero rc is allowed only when the export
         # file exists (pytest exits 5 when no tests collected, which
         # is the expected case for repos with no marked tests).
-        proc = subprocess.run(cmd, capture_output=True, text=True, cwd=test_root)
+        proc = subprocess.run(cmd, capture_output=True, text=True, cwd=test_root, env=env)
         if not export.exists():
             raise RuntimeError(
                 f"pytest --collect-only did not write {export} "
