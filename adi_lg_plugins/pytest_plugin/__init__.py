@@ -18,7 +18,10 @@ after collection. This is what
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
+
+import pytest
 
 _MARKER_NAMES = ("iio_hardware", "iio_carrier")
 
@@ -70,6 +73,54 @@ def _marker_args(item, name) -> list[str]:
     # de-dupe preserving order
     seen: set[str] = set()
     return [x for x in out if not (x in seen or seen.add(x))]
+
+
+def pytest_collection_modifyitems(config, items):
+    """Per-shard narrowing: deselect items whose markers don't match.
+
+    Pytest's ``-m`` expression is boolean over marker *names*, not
+    marker arguments — ``-m "iio_hardware and ad9081"`` looks for two
+    separate markers, so a test wearing only
+    ``@pytest.mark.iio_hardware(["ad9081"])`` never matches.
+
+    Instead the v2 reusable workflow exports two env vars per shard:
+
+    * ``HW_DAUGHTER=<daughter-board>`` (required)
+    * ``HW_CARRIER=<carrier>``         (optional)
+
+    This hook reads those and skips items whose ``iio_hardware`` args
+    don't include the daughter, OR whose ``iio_carrier`` args are set
+    but don't include the carrier. Items without ``iio_hardware`` at
+    all are left alone for the top-level ``-m iio_hardware`` filter
+    to deselect.
+
+    Setting neither env var is a no-op — useful for ad-hoc local runs.
+    """
+    target_daughter = os.environ.get("HW_DAUGHTER", "").strip()
+    target_carrier = os.environ.get("HW_CARRIER", "").strip()
+    if not target_daughter and not target_carrier:
+        return
+
+    for item in items:
+        iio_hw = _marker_args(item, "iio_hardware")
+        if not iio_hw:
+            # Untouched — top-level -m iio_hardware will exclude it.
+            continue
+
+        if target_daughter and target_daughter not in iio_hw:
+            item.add_marker(
+                pytest.mark.skip(
+                    reason=f"hw-ci: daughter-board {target_daughter!r} not in {iio_hw}"
+                )
+            )
+            continue
+
+        if target_carrier:
+            iio_carr = _marker_args(item, "iio_carrier")
+            if iio_carr and target_carrier not in iio_carr:
+                item.add_marker(
+                    pytest.mark.skip(reason=f"hw-ci: carrier {target_carrier!r} not in {iio_carr}")
+                )
 
 
 def pytest_collection_finish(session):
