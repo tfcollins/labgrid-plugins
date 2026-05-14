@@ -19,6 +19,10 @@ targets:
         username: 'root'
         password: 'analog'
       KuiperDLDriver: {}
+      # BootFPGASoCSSH binds an SSHDriver to push updated boot files
+      # over the network. Username + password come from the place's
+      # NetworkService resource by default.
+      SSHDriver: {}
       BootFPGASoCSSH:
         reached_linux_marker: 'analog'
         wait_for_linux_prompt_timeout: 180
