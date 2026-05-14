@@ -144,6 +144,18 @@ Single-string shorthand is accepted:
 ``@pytest.mark.iio_hardware("ad9081")`` is equivalent to
 ``@pytest.mark.iio_hardware(["ad9081"])``.
 
+.. important::
+
+   The marker argument must be a **string literal** (or a literal
+   list/tuple of strings). The discover step harvests markers by
+   parsing the AST of every ``test_*.py`` file — it does **not**
+   import the modules. Computed arguments (variables, f-strings,
+   list comprehensions) cannot be statically harvested and the
+   affected test will silently be left out of the matrix. AST harvest
+   is what lets the coordinator-adjacent runner stay free of the
+   per-DUT toolchain (libiio, ``adi``, etc.) — those only need to be
+   present on the per-place ``hw-<place>`` runners.
+
 Consumer setup
 --------------
 

@@ -48,7 +48,6 @@ def _cmd_discover(args: argparse.Namespace) -> int:
     markers = markers_mod.harvest_markers(
         args.test_root,
         marker=args.marker,
-        pytest_bin=args.pytest_bin,
     )
     if not markers:
         print(
@@ -146,7 +145,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     pd.add_argument("--test-root", required=True, help="caller repo root to collect tests from")
     pd.add_argument("--marker", default="iio_hardware", help="top-level pytest marker to harvest")
-    pd.add_argument("--pytest-bin", default=None)
+    # --pytest-bin retained as a deprecated no-op so existing callers
+    # don't break; AST harvest doesn't shell out to pytest.
+    pd.add_argument("--pytest-bin", default=None, help=argparse.SUPPRESS)
     pd.add_argument("--timeout", type=float, default=15.0)
     pd.add_argument(
         "--force-cli", action="store_true", help="skip REST, go straight to labgrid-client"
