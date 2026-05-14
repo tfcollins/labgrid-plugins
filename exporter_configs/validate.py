@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""Validate a labgrid exporter YAML config against the standard schema.
+"""Validate a labgrid exporter YAML config (or hw-nodes manifest) against its schema.
 
 Usage:
     python validate.py exporter.yaml
     python validate.py --schema schemas/exporter_schema.json exporter.yaml
+    python validate.py --hw-nodes .github/hw-nodes.json
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ import yaml
 
 SCRIPT_DIR = Path(__file__).parent
 DEFAULT_SCHEMA = SCRIPT_DIR / "schemas" / "exporter_schema.json"
+HW_NODES_SCHEMA = SCRIPT_DIR / "schemas" / "hw-nodes.schema.json"
 
 # Known resource classes from the adi-labgrid-plugins project
 KNOWN_CLASSES = {
@@ -124,18 +126,64 @@ def validate_config(config_path: str, schema_path: str | None = None) -> list[st
     return issues
 
 
+def validate_hw_nodes(manifest_path: str) -> list[str]:
+    """Validate a hw-nodes.json manifest against its JSON schema."""
+    issues: list[str] = []
+
+    try:
+        with open(manifest_path) as f:
+            data = json.load(f)
+    except json.JSONDecodeError as e:
+        return [f"JSON parse error: {e}"]
+    except FileNotFoundError:
+        return [f"Manifest not found: {manifest_path}"]
+
+    try:
+        import jsonschema
+    except ImportError:
+        return ["jsonschema not installed; install with: pip install jsonschema"]
+
+    with open(HW_NODES_SCHEMA) as f:
+        schema = json.load(f)
+
+    validator = jsonschema.Draft202012Validator(schema)
+    for err in validator.iter_errors(data):
+        loc = "/".join(str(p) for p in err.absolute_path) or "(root)"
+        issues.append(f"{loc}: {err.message}")
+
+    # Cross-entry sanity checks not expressible in the schema.
+    if isinstance(data, list):
+        places = [entry.get("place") for entry in data if isinstance(entry, dict)]
+        seen: set[str] = set()
+        for p in places:
+            if p in seen:
+                issues.append(f"duplicate place '{p}'")
+            elif p is not None:
+                seen.add(p)
+
+    return issues
+
+
 def main():
     parser = argparse.ArgumentParser(description="Validate a labgrid exporter configuration")
-    parser.add_argument("config", help="Path to the exporter YAML config")
+    parser.add_argument("config", help="Path to the YAML config or hw-nodes.json manifest")
     parser.add_argument(
         "--schema",
         default=None,
         help=f"Path to JSON schema (default: {DEFAULT_SCHEMA})",
     )
+    parser.add_argument(
+        "--hw-nodes",
+        action="store_true",
+        help="Treat config as a hw-nodes.json manifest and validate against hw-nodes.schema.json",
+    )
     args = parser.parse_args()
 
-    schema = args.schema or str(DEFAULT_SCHEMA)
-    issues = validate_config(args.config, schema)
+    if args.hw_nodes:
+        issues = validate_hw_nodes(args.config)
+    else:
+        schema = args.schema or str(DEFAULT_SCHEMA)
+        issues = validate_config(args.config, schema)
 
     if issues:
         print(f"Validation FAILED for {args.config}:")

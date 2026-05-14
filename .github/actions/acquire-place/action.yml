@@ -1,0 +1,95 @@
+name: Acquire labgrid place (with reservation wait)
+description: >-
+  Reserve and acquire a labgrid place via the coordinator, waiting up to
+  wait_minutes for it to become free. Uses labgrid's reservation queue when
+  available, falling back to a polling loop. Composite actions cannot run
+  post-job cleanup; callers MUST pair this with a release step guarded by
+  `if: always()` to free the place even on failure.
+
+inputs:
+  coordinator:
+    description: Coordinator URL (host:port). Required.
+    required: true
+  place:
+    description: labgrid place name to acquire.
+    required: true
+  labgrid_client:
+    description: Path to the labgrid-client binary. Default looks in the hw-ci venv.
+    required: false
+    default: "${HOME}/.cache/hw-ci/venv/bin/labgrid-client"
+  wait_minutes:
+    description: Maximum time to wait for the place to become free, in minutes.
+    required: false
+    default: "30"
+
+outputs:
+  reservation_token:
+    description: Reservation token string, if a reservation was created.
+    value: ${{ steps.acquire.outputs.token }}
+  acquired_at:
+    description: ISO-8601 timestamp when the place was successfully acquired.
+    value: ${{ steps.acquire.outputs.acquired_at }}
+
+runs:
+  using: composite
+  steps:
+    - id: acquire
+      shell: bash
+      env:
+        COORD: ${{ inputs.coordinator }}
+        PLACE: ${{ inputs.place }}
+        LGCLIENT: ${{ inputs.labgrid_client }}
+        WAIT_MIN: ${{ inputs.wait_minutes }}
+      run: |
+        set -euo pipefail
+        WAIT_SECONDS=$(( WAIT_MIN * 60 ))
+        echo "Acquiring place '$PLACE' on $COORD (timeout ${WAIT_MIN}min)" >&2
+
+        # Path resolution: support ${HOME} in the default.
+        LGCLIENT_RESOLVED=$(eval echo "$LGCLIENT")
+        if [[ ! -x "$LGCLIENT_RESOLVED" ]]; then
+          echo "::error::labgrid-client not found at $LGCLIENT_RESOLVED" >&2
+          echo "Set the 'labgrid_client' input to its actual path." >&2
+          exit 1
+        fi
+
+        TOKEN=""
+        if "$LGCLIENT_RESOLVED" -x "$COORD" reserve --help 2>&1 | grep -q '\--wait'; then
+          # Modern labgrid: reservation with --wait blocks until head of queue.
+          echo "Using labgrid reserve --wait" >&2
+          if ! out=$(timeout "$WAIT_SECONDS" "$LGCLIENT_RESOLVED" -x "$COORD" \
+                       reserve --shell --wait "name=$PLACE" 2>&1); then
+            QUEUE=$("$LGCLIENT_RESOLVED" -x "$COORD" reservations 2>/dev/null | wc -l || echo "?")
+            echo "::error::Place '$PLACE' still in use after ${WAIT_MIN}min. Queue depth ~${QUEUE}." >&2
+            echo "Investigate with: $LGCLIENT_RESOLVED -x $COORD reservations" >&2
+            echo "$out" >&2
+            exit 1
+          fi
+          # reserve --shell emits `LG_TOKEN=...` for `eval`.
+          eval "$out"
+          TOKEN="${LG_TOKEN:-}"
+          if [[ -n "$TOKEN" ]]; then
+            "$LGCLIENT_RESOLVED" -x "$COORD" -p "+$TOKEN" acquire
+          else
+            "$LGCLIENT_RESOLVED" -x "$COORD" -p "$PLACE" acquire
+          fi
+        else
+          # Older labgrid: poll acquire with jittered backoff.
+          echo "labgrid reserve --wait unavailable; polling acquire" >&2
+          end=$(( $(date +%s) + WAIT_SECONDS ))
+          while :; do
+            if "$LGCLIENT_RESOLVED" -x "$COORD" -p "$PLACE" acquire 2>/dev/null; then
+              break
+            fi
+            if (( $(date +%s) >= end )); then
+              echo "::error::Place '$PLACE' still in use after ${WAIT_MIN}min (polling fallback)." >&2
+              exit 1
+            fi
+            sleep $(( RANDOM % 30 + 15 ))
+          done
+        fi
+
+        ACQUIRED_AT=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+        echo "Acquired '$PLACE' at $ACQUIRED_AT" >&2
+        echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+        echo "acquired_at=$ACQUIRED_AT" >> "$GITHUB_OUTPUT"

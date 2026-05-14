@@ -1,0 +1,462 @@
+name: HW matrix (reusable)
+
+# Reusable workflow consumed by per-repo callers under this and other repos.
+# See docs/source/user-guide/hw-ci.md for the consumer contract.
+
+on:
+  workflow_call:
+    inputs:
+      coordinator:
+        type: string
+        required: false
+        default: ""
+        description: >-
+          Coordinator host:port. Defaults to the caller's vars.ADI_LG_COORDINATOR
+          when empty.
+      manifest_path:
+        type: string
+        required: false
+        default: ".github/hw-nodes.json"
+        description: Repo-relative path to the hw-nodes manifest.
+      venv_install_cmd:
+        type: string
+        required: true
+        description: >-
+          Shell command run with $VENV_DIR exported, installing the caller's
+          test deps into the persistent venv.
+      venv_dir:
+        type: string
+        required: false
+        default: "$HOME/.cache/hw-ci/venv"
+        description: Persistent venv root on each runner host.
+      pre_pytest_cmd:
+        type: string
+        required: false
+        default: ""
+        description: >-
+          Shell command run inside each matrix-leg workspace before pytest.
+          Use this for cmake builds, cross-compilation, fixture pre-staging.
+      pytest_cmd_template:
+        type: string
+        required: true
+        description: >-
+          Shell command run after pre_pytest_cmd. The reusable workflow
+          exports $TESTS (space-joined tests from the manifest entry),
+          $JUNIT (per-leg JUnit XML path), $LG_ENV, $LG_COORDINATOR,
+          $LG_PLACE, and $VENV_DIR for use in the template.
+      artifact_glob:
+        type: string
+        required: false
+        default: |
+          **/*.log
+          uart_log_*.txt
+          junit-hw-*.xml
+        description: Newline-separated globs uploaded on every leg.
+      legs:
+        type: string
+        required: false
+        default: "direct,coord"
+        description: Comma-separated subset of legs to consider. Per-place legs in the manifest override this.
+      timeout_minutes:
+        type: number
+        required: false
+        default: 40
+        description: Per-leg timeout (covers acquire-wait + pytest + teardown).
+      place_wait_minutes:
+        type: number
+        required: false
+        default: 30
+        description: How long to wait for a busy place before failing the leg.
+      vivado_settings:
+        type: string
+        required: false
+        default: "/tools/Xilinx/2025.1/Vivado/settings64.sh"
+        description: Path to a Vivado settings64.sh; sourced if it exists, else skipped.
+      prism_upload:
+        type: boolean
+        required: false
+        default: false
+        description: Post JUnit + artifact bundle to Prism after each leg.
+      prism_url:
+        type: string
+        required: false
+        default: ""
+        description: Prism base URL. Defaults to vars.PRISM_URL when empty.
+      prism_project:
+        type: string
+        required: false
+        default: ""
+        description: Prism project slug. Required when prism_upload is true.
+
+    secrets:
+      PYADI_BUILD_TOKEN:
+        required: false
+        description: Token used to clone private deps during venv install.
+      PRISM_API_TOKEN:
+        required: false
+        description: API token used by the Prism upload step.
+
+env:
+  COORDINATOR: ${{ inputs.coordinator != '' && inputs.coordinator || vars.ADI_LG_COORDINATOR }}
+  PRISM_URL_RESOLVED: ${{ inputs.prism_url != '' && inputs.prism_url || vars.PRISM_URL }}
+
+jobs:
+  preflight:
+    runs-on: [self-hosted, hw-coordinator]
+    timeout-minutes: 3
+    outputs:
+      available_nodes_direct: ${{ steps.probe.outputs.available_nodes_direct }}
+      available_nodes_coord: ${{ steps.probe.outputs.available_nodes_coord }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate manifest against schema
+        run: |
+          set -euo pipefail
+          python3 -m pip install --quiet --user jsonschema
+          # Validator script ships in this repo; consumers may not have it.
+          # Fetch via raw URL when not present (e.g. caller is a different repo).
+          if [[ -f exporter_configs/validate.py ]]; then
+            VALIDATE=exporter_configs/validate.py
+          else
+            VALIDATE=$(mktemp /tmp/validate.py.XXXXXX)
+            curl -fsSL -o "$VALIDATE" \
+              https://raw.githubusercontent.com/tfcollins/labgrid-plugins/main/exporter_configs/validate.py
+            mkdir -p exporter_configs/schemas
+            curl -fsSL -o exporter_configs/schemas/hw-nodes.schema.json \
+              https://raw.githubusercontent.com/tfcollins/labgrid-plugins/main/exporter_configs/schemas/hw-nodes.schema.json
+          fi
+          python3 "$VALIDATE" --hw-nodes "${{ inputs.manifest_path }}"
+
+      - uses: ./.github/actions/setup-uv-venv
+        if: hashFiles('.github/actions/setup-uv-venv/action.yml') != ''
+        with:
+          venv_dir: $HOME/.cache/hw-ci/preflight-venv
+          install_cmd: >-
+            uv pip install --quiet --python "$VENV_DIR/bin/python"
+            "labgrid @ git+https://github.com/tfcollins/labgrid.git@81c35eda6436af63d3acf7f8b98893abae0bbbca"
+
+      - name: Bootstrap uv (fallback when caller has no local action copy)
+        if: hashFiles('.github/actions/setup-uv-venv/action.yml') == ''
+        run: |
+          set -euo pipefail
+          if [[ ! -x "$HOME/.local/bin/uv" ]]; then
+            curl -LsSf https://astral.sh/uv/install.sh | sh
+          fi
+          export PATH="$HOME/.local/bin:$PATH"
+          VENV="$HOME/.cache/hw-ci/preflight-venv"
+          if [[ ! -x "$VENV/bin/labgrid-client" ]]; then
+            uv venv --quiet "$VENV"
+            uv pip install --quiet --python "$VENV/bin/python" \
+              "labgrid @ git+https://github.com/tfcollins/labgrid.git@81c35eda6436af63d3acf7f8b98893abae0bbbca"
+          fi
+          echo "$VENV/bin" >> "$GITHUB_PATH"
+
+      - id: probe
+        timeout-minutes: 2
+        env:
+          LEGS_FILTER: ${{ inputs.legs }}
+        run: |
+          set -euo pipefail
+          MANIFEST="${{ inputs.manifest_path }}"
+          HOST="${COORDINATOR%%:*}"
+          PORT="${COORDINATOR##*:}"
+          if ! timeout 10 bash -c "</dev/tcp/$HOST/$PORT" 2>/dev/null; then
+            echo "Coordinator $COORDINATOR unreachable — marking all nodes unavailable." >&2
+            echo 'available_nodes_direct=[]' >> "$GITHUB_OUTPUT"
+            echo 'available_nodes_coord=[]' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          PLACES_OUT=$(timeout 30 labgrid-client -x "$COORDINATOR" places 2>&1 || true)
+          echo "--- places output ---" >&2
+          echo "$PLACES_OUT" >&2
+          echo "--- end places output ---" >&2
+          python3 - "$MANIFEST" "$PLACES_OUT" "$LEGS_FILTER" >> "$GITHUB_OUTPUT" <<'PY'
+          import json, sys
+          manifest = json.load(open(sys.argv[1]))
+          raw = sys.argv[2]
+          legs_filter = {x.strip() for x in sys.argv[3].split(",") if x.strip()}
+          places = {
+              line.strip()
+              for line in raw.splitlines()
+              if line.strip() and all(c.isalnum() or c in "-_" for c in line.strip())
+          }
+          avail = [n for n in manifest if n["place"] in places]
+          def keep(n, leg):
+              entry_legs = set(n.get("legs", ["direct", "coord"]))
+              return leg in entry_legs and leg in legs_filter
+          print("available_nodes_direct=" + json.dumps([n for n in avail if keep(n, "direct")]))
+          print("available_nodes_coord=" + json.dumps([n for n in avail if keep(n, "coord")]))
+          PY
+
+  hw-direct:
+    needs: preflight
+    if: needs.preflight.outputs.available_nodes_direct != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ${{ fromJSON(needs.preflight.outputs.available_nodes_direct) }}
+    name: hw-direct (${{ matrix.node.place }})
+    runs-on: [self-hosted, "${{ matrix.node.runner_label }}"]
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    concurrency:
+      group: hw-place-${{ inputs.coordinator }}-${{ matrix.node.place }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check direct-mode LG_ENV on runner
+        id: check_direct_env
+        env:
+          DIRECT_VAR: ${{ matrix.node.direct_env_var_name || 'LG_DIRECT_ENV' }}
+        run: |
+          DIRECT_PATH="${!DIRECT_VAR:-}"
+          if [ -z "$DIRECT_PATH" ]; then
+            echo "$DIRECT_VAR not set on this runner — skipping direct-mode tests." >&2
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ ! -f "$DIRECT_PATH" ]; then
+            echo "$DIRECT_VAR=$DIRECT_PATH does not exist." >&2
+            exit 1
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "direct_path=$DIRECT_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Setup uv venv
+        if: steps.check_direct_env.outputs.skip != 'true'
+        uses: tfcollins/labgrid-plugins/.github/actions/setup-uv-venv@main
+        env:
+          PYADI_BUILD_TOKEN: ${{ secrets.PYADI_BUILD_TOKEN }}
+        with:
+          venv_dir: ${{ inputs.venv_dir }}
+          install_cmd: |
+            set -euo pipefail
+            if [[ -n "${PYADI_BUILD_TOKEN:-}" ]]; then
+              export GIT_CONFIG_COUNT=1
+              export GIT_CONFIG_KEY_0="url.https://x-access-token:${PYADI_BUILD_TOKEN}@github.com/.insteadOf"
+              export GIT_CONFIG_VALUE_0="https://github.com/"
+            fi
+            ${{ inputs.venv_install_cmd }}
+
+      - name: Pre-pytest hook
+        if: steps.check_direct_env.outputs.skip != 'true' && inputs.pre_pytest_cmd != ''
+        env:
+          VENV_DIR: ${{ inputs.venv_dir }}
+        run: |
+          set -euo pipefail
+          ${{ inputs.pre_pytest_cmd }}
+
+      - name: Run direct-mode tests
+        if: steps.check_direct_env.outputs.skip != 'true'
+        env:
+          VENV_DIR: ${{ inputs.venv_dir }}
+          LG_ENV: ${{ steps.check_direct_env.outputs.direct_path }}
+          LG_COORDINATOR: ${{ env.COORDINATOR }}
+          LG_PLACE: ${{ matrix.node.place }}
+          TESTS: ${{ join(matrix.node.tests, ' ') }}
+          JUNIT: junit-hw-direct-${{ matrix.node.place }}.xml
+        run: |
+          set -euo pipefail
+          if [ -f "${{ inputs.vivado_settings }}" ]; then
+            set +u
+            # shellcheck disable=SC1090
+            source "${{ inputs.vivado_settings }}"
+            set -u
+          fi
+          ${{ inputs.pytest_cmd_template }}
+
+      - name: Upload to Prism
+        if: always() && steps.check_direct_env.outputs.skip != 'true' && inputs.prism_upload
+        continue-on-error: true
+        env:
+          PRISM_URL: ${{ env.PRISM_URL_RESOLVED }}
+          PRISM_API_TOKEN: ${{ secrets.PRISM_API_TOKEN }}
+          VENV_DIR: ${{ inputs.venv_dir }}
+        run: |
+          set -euo pipefail
+          "$VENV_DIR/bin/pip" install --quiet \
+            "prism-uploader @ git+https://github.com/analogdevicesinc/prism.git#subdirectory=scripts" \
+            || true
+          "$VENV_DIR/bin/python" -m prism_client.upload_run \
+            --url "$PRISM_URL" \
+            --project "${{ inputs.prism_project }}" \
+            --junit "junit-hw-direct-${{ matrix.node.place }}.xml" \
+            --artifacts-glob "${{ inputs.artifact_glob }}" \
+            --labgrid-place "${{ matrix.node.place }}" \
+            --runner-label "${{ matrix.node.runner_label }}" \
+            --leg direct \
+            --git-sha "$GITHUB_SHA"
+
+      - name: Publish hw-direct test results to PR
+        if: always() && steps.check_direct_env.outputs.skip != 'true'
+        uses: dorny/test-reporter@v1
+        with:
+          name: Tests (hw-direct ${{ matrix.node.place }})
+          path: junit-hw-direct-${{ matrix.node.place }}.xml
+          reporter: java-junit
+          fail-on-error: false
+
+      - name: Upload JUnit XML
+        if: always() && steps.check_direct_env.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-hw-direct-${{ matrix.node.place }}
+          path: junit-hw-direct-${{ matrix.node.place }}.xml
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Upload test output artifacts
+        if: always() && steps.check_direct_env.outputs.skip != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: hw-direct-${{ matrix.node.place }}-output
+          path: ${{ inputs.artifact_glob }}
+          if-no-files-found: ignore
+          retention-days: 14
+
+  hw-coord:
+    needs: preflight
+    if: needs.preflight.outputs.available_nodes_coord != '[]'
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ${{ fromJSON(needs.preflight.outputs.available_nodes_coord) }}
+    name: hw-coord (${{ matrix.node.place }})
+    runs-on: [self-hosted, "${{ matrix.node.runner_label }}"]
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    concurrency:
+      group: hw-place-${{ inputs.coordinator }}-${{ matrix.node.place }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup uv venv
+        uses: tfcollins/labgrid-plugins/.github/actions/setup-uv-venv@main
+        env:
+          PYADI_BUILD_TOKEN: ${{ secrets.PYADI_BUILD_TOKEN }}
+        with:
+          venv_dir: ${{ inputs.venv_dir }}
+          install_cmd: |
+            set -euo pipefail
+            if [[ -n "${PYADI_BUILD_TOKEN:-}" ]]; then
+              export GIT_CONFIG_COUNT=1
+              export GIT_CONFIG_KEY_0="url.https://x-access-token:${PYADI_BUILD_TOKEN}@github.com/.insteadOf"
+              export GIT_CONFIG_VALUE_0="https://github.com/"
+            fi
+            ${{ inputs.venv_install_cmd }}
+
+      - name: Acquire coordinator place
+        uses: tfcollins/labgrid-plugins/.github/actions/acquire-place@main
+        with:
+          coordinator: ${{ env.COORDINATOR }}
+          place: ${{ matrix.node.place }}
+          labgrid_client: ${{ inputs.venv_dir }}/bin/labgrid-client
+          wait_minutes: ${{ inputs.place_wait_minutes }}
+
+      - name: Pre-pytest hook
+        if: inputs.pre_pytest_cmd != ''
+        env:
+          VENV_DIR: ${{ inputs.venv_dir }}
+        run: |
+          set -euo pipefail
+          ${{ inputs.pre_pytest_cmd }}
+
+      - name: Run coordinator-mode tests
+        env:
+          VENV_DIR: ${{ inputs.venv_dir }}
+          LG_COORDINATOR: ${{ env.COORDINATOR }}
+          LG_PLACE: ${{ matrix.node.place }}
+          LG_ENV: ${{ github.workspace }}/${{ matrix.node.env_remote }}
+          TESTS: ${{ join(matrix.node.tests, ' ') }}
+          JUNIT: junit-hw-coord-${{ matrix.node.place }}.xml
+        run: |
+          set -euo pipefail
+          if [ -f "${{ inputs.vivado_settings }}" ]; then
+            set +u
+            # shellcheck disable=SC1090
+            source "${{ inputs.vivado_settings }}"
+            set -u
+          fi
+          ${{ inputs.pytest_cmd_template }}
+
+      - name: Release coordinator place
+        if: always()
+        env:
+          VENV_DIR: ${{ inputs.venv_dir }}
+          LG_COORDINATOR: ${{ env.COORDINATOR }}
+        run: |
+          set -euo pipefail
+          LGCLIENT="$VENV_DIR/bin/labgrid-client"
+          if [[ -x "$LGCLIENT" ]]; then
+            "$LGCLIENT" -x "$LG_COORDINATOR" -p "${{ matrix.node.place }}" release || true
+            "$LGCLIENT" -x "$LG_COORDINATOR" cancel-reservation --all 2>/dev/null || true
+          fi
+
+      - name: Upload to Prism
+        if: always() && inputs.prism_upload
+        continue-on-error: true
+        env:
+          PRISM_URL: ${{ env.PRISM_URL_RESOLVED }}
+          PRISM_API_TOKEN: ${{ secrets.PRISM_API_TOKEN }}
+          VENV_DIR: ${{ inputs.venv_dir }}
+        run: |
+          set -euo pipefail
+          "$VENV_DIR/bin/pip" install --quiet \
+            "prism-uploader @ git+https://github.com/analogdevicesinc/prism.git#subdirectory=scripts" \
+            || true
+          "$VENV_DIR/bin/python" -m prism_client.upload_run \
+            --url "$PRISM_URL" \
+            --project "${{ inputs.prism_project }}" \
+            --junit "junit-hw-coord-${{ matrix.node.place }}.xml" \
+            --artifacts-glob "${{ inputs.artifact_glob }}" \
+            --labgrid-place "${{ matrix.node.place }}" \
+            --runner-label "${{ matrix.node.runner_label }}" \
+            --leg coord \
+            --git-sha "$GITHUB_SHA"
+
+      - name: Publish hw-coord test results to PR
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: Tests (hw-coord ${{ matrix.node.place }})
+          path: junit-hw-coord-${{ matrix.node.place }}.xml
+          reporter: java-junit
+          fail-on-error: false
+
+      - name: Upload JUnit XML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-hw-coord-${{ matrix.node.place }}
+          path: junit-hw-coord-${{ matrix.node.place }}.xml
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Upload test output artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hw-coord-${{ matrix.node.place }}-output
+          path: ${{ inputs.artifact_glob }}
+          if-no-files-found: ignore
+          retention-days: 14
+
+  publish-pr-test-summary:
+    name: PR Test Summary
+    needs: [hw-direct, hw-coord]
+    if: always() && github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: junit-hw-*
+          path: junit
+          merge-multiple: true
+
+      - uses: EnricoMi/publish-unit-test-result-action@v2
+        with:
+          files: 'junit/**/*.xml'
+          check_name: 'Hardware Test Results'
+          comment_mode: always
+          report_individual_runs: true
