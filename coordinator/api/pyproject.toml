@@ -18,7 +18,7 @@ dependencies = [
     "authlib>=1.3.0",
     "httpx>=0.27",
     "itsdangerous>=2.2.0",
-    "labgrid @ git+https://github.com/tfcollins/labgrid.git@tfcollins/plugin-support",
+    "labgrid @ git+https://github.com/tfcollins/labgrid.git@81c35eda6436af63d3acf7f8b98893abae0bbbca",
 ]
 
 [project.optional-dependencies]
