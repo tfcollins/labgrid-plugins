@@ -19,7 +19,7 @@ import os
 import subprocess
 import urllib.error
 import urllib.request
-from typing import Iterable
+from collections.abc import Iterable
 
 from .schema import (
     Place,
@@ -53,7 +53,9 @@ def _fetch_places_cli(coord: str, timeout: float = 15.0) -> list[dict]:
     """
     list_out = subprocess.check_output(
         ["labgrid-client", "-x", coord, "places"],
-        text=True, stderr=subprocess.STDOUT, timeout=timeout,
+        text=True,
+        stderr=subprocess.STDOUT,
+        timeout=timeout,
     )
     places: list[dict] = []
     for line in list_out.splitlines():
@@ -63,7 +65,9 @@ def _fetch_places_cli(coord: str, timeout: float = 15.0) -> list[dict]:
         try:
             show = subprocess.check_output(
                 ["labgrid-client", "-x", coord, "-p", name, "show"],
-                text=True, stderr=subprocess.STDOUT, timeout=timeout,
+                text=True,
+                stderr=subprocess.STDOUT,
+                timeout=timeout,
             )
         except subprocess.SubprocessError:
             continue
@@ -73,13 +77,13 @@ def _fetch_places_cli(coord: str, timeout: float = 15.0) -> list[dict]:
             ln = ln.strip()
             if ln.startswith("tags:"):
                 # "tags: foo=bar, baz=qux"
-                for kv in ln[len("tags:"):].split(","):
+                for kv in ln[len("tags:") :].split(","):
                     kv = kv.strip()
                     if "=" in kv:
                         k, v = kv.split("=", 1)
                         tags[k.strip()] = v.strip()
             elif ln.startswith("acquired:"):
-                val = ln[len("acquired:"):].strip()
+                val = ln[len("acquired:") :].strip()
                 acquired = None if val == "None" else val
         places.append({"name": name, "tags": tags, "acquired": acquired})
     return places
@@ -101,8 +105,8 @@ def fetch_raw_places(
             return _fetch_places_rest(coord, timeout=timeout)
         except (urllib.error.URLError, json.JSONDecodeError) as e:
             logger.warning(
-                "coordinator REST /api/places failed (%s); "
-                "falling back to labgrid-client", e,
+                "coordinator REST /api/places failed (%s); falling back to labgrid-client",
+                e,
             )
     return _fetch_places_cli(coord, timeout=timeout)
 
@@ -140,8 +144,7 @@ def resolve_coordinator(explicit: str | None = None) -> str:
 
     Raises :class:`RuntimeError` if none of them are set.
     """
-    for src in (explicit, os.environ.get("LG_COORDINATOR"),
-                os.environ.get("ADI_LG_COORDINATOR")):
+    for src in (explicit, os.environ.get("LG_COORDINATOR"), os.environ.get("ADI_LG_COORDINATOR")):
         if src:
             return src
     raise RuntimeError(
