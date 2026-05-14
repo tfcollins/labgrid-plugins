@@ -229,35 +229,63 @@ jobs:
           # place acquired so pytest can run against it.
           "$LG" -x "$LG_COORDINATOR" -c "$LG_ENV" -p "$LG_PLACE" -s shell power get
 
-      - name: Wait for IIOD reachable
+      - name: Resolve board IP from serial + wait for IIOD
         shell: bash --noprofile --norc -eo pipefail {0}
         env:
           LG_COORDINATOR: ${{ env.COORDINATOR }}
           LG_PLACE: ${{ matrix.entry.place }}
+          LG_ENV: ${{ steps.render.outputs.env_path }}
         run: |
-          # The strategy's "shell" state is the serial-console login prompt.
-          # After login, the board still needs ~5-30s to bring up eth0 + DHCP
-          # + start the IIOD daemon. Without this wait, the first pytest
-          # call hits `errno 113 (No route to host)` because ARP hasn't even
-          # learned the board's MAC yet. Poll the IIOD port until it answers.
+          # The exporter's NetworkService.address is statically configured in
+          # the exporter yaml and goes stale whenever DHCP renews the board's
+          # lease to a different IP — pyadi-iio#749 found mini2 advertised as
+          # 10.0.0.23 while DHCP had actually given the board 10.0.0.211.
+          #
+          # Trust the running board, not the coordinator: drop into the serial
+          # console for a few seconds, ask it for eth0's address, and export
+          # IIO_URI_OVERRIDE so the caller's conftest uses the real IP.
           VENV_DIR_EXPANDED=$(eval echo "${{ inputs.venv_dir }}")
           LG="$VENV_DIR_EXPANDED/bin/labgrid-client"
-          ADDR=$("$LG" -x "$LG_COORDINATOR" -p "$LG_PLACE" show \
-              | sed -n "s/.*['\"]address['\"]\s*[:=]\s*['\"]\([0-9.]\+\)['\"].*/\1/p" \
-              | head -1)
-          if [[ -z "$ADDR" ]]; then
-              echo "::warning::no NetworkService address advertised for $LG_PLACE; skipping wait"
-              exit 0
+          LOG="${{ runner.temp }}/serial-${LG_PLACE}.log"
+
+          # Sentinel-delimited so we don't have to parse shell-prompt noise.
+          (
+              echo ""
+              sleep 2
+              echo "echo HWCI_IP_START && ip -4 -o addr show eth0 | awk '{print \$4}' | cut -d/ -f1 && echo HWCI_IP_END"
+              sleep 3
+          ) | timeout 20 "$LG" -x "$LG_COORDINATOR" -c "$LG_ENV" -p "$LG_PLACE" \
+              console --logfile "$LOG" 2>&1 | tail -5 || true
+
+          REAL_IP=""
+          if [[ -f "$LOG" ]]; then
+              REAL_IP=$(sed -n '/HWCI_IP_START/,/HWCI_IP_END/p' "$LOG" \
+                  | grep -oE '[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+' \
+                  | head -1)
           fi
-          echo "Probing $ADDR:30431 (iiod) for up to 120s"
+          if [[ -z "$REAL_IP" ]]; then
+              echo "::warning::could not read eth0 IP from serial console for $LG_PLACE; falling back to NetworkService.address"
+              REAL_IP=$("$LG" -x "$LG_COORDINATOR" -p "$LG_PLACE" show \
+                  | sed -n "s/.*['\"]address['\"]\s*[:=]\s*['\"]\([0-9.]\+\)['\"].*/\1/p" \
+                  | head -1)
+          fi
+          if [[ -z "$REAL_IP" ]]; then
+              echo "::error::no usable IP for $LG_PLACE; pytest will fail"
+              exit 1
+          fi
+          echo "Board IP resolved: $REAL_IP"
+          echo "Probing $REAL_IP:30431 (iiod) for up to 120s"
           for i in $(seq 1 24); do
-              if timeout 3 bash -c "echo > /dev/tcp/$ADDR/30431" 2>/dev/null; then
-                  echo "iiod reachable at $ADDR:30431 after $((i*5))s"
-                  exit 0
+              if timeout 3 bash -c "echo > /dev/tcp/$REAL_IP/30431" 2>/dev/null; then
+                  echo "iiod reachable at $REAL_IP:30431 after $((i*5))s"
+                  break
               fi
               sleep 5
           done
-          echo "::warning::iiod at $ADDR:30431 not reachable after 120s; pytest will surface the real error"
+          # Always export the resolved IP — even if the probe timed out, the
+          # caller's pytest will surface the real error against the right
+          # address (not the stale coordinator one).
+          echo "IIO_URI_OVERRIDE=ip:$REAL_IP" >> "$GITHUB_ENV"
 
       - name: Pre-pytest hook
         if: inputs.pre_pytest_cmd != ''
