@@ -1,5 +1,16 @@
 ## Labgrid exporter config for VCU118 + FMCDAQ3 attached to nuc (10.0.0.121).
 ##
+## HW-CI v2 place-tag contract: after this exporter registers, set
+## these tags on the resulting place so hw-matrix.yml@v2 can discover it:
+##
+##   labgrid-client -x $LG_COORDINATOR -p nuc set-tags \
+##       carrier=vcu118 \
+##       daughter-board=fmcdaq3 \
+##       boot-strategy=BootFabric
+##
+## See docs/source/user-guide/hw-ci-v2.md for the full schema. The
+## VCU118 has no SoC, so BootFabric (JTAG-only) is the right strategy.
+##
 ## Differences from the legacy lg_fmcdaq3_vcu118.yaml (monolithic env):
 ##   - Serial console: CP2105 dual-UART channel 0 (stable by-id symlink).
 ##     If the DUT console is on a different CP2105 channel, change the

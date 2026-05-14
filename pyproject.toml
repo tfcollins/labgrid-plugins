@@ -55,6 +55,8 @@ namespaces = true
 # Recovery initramfs templates (init script + udhcpc hook) are loaded via
 # importlib.resources at runtime — must ship with the wheel.
 "adi_lg_plugins.recovery.templates" = ["init", "udhcpc-default.script"]
+# HW-CI v2 per-strategy env-yaml templates (loaded via importlib.resources).
+"adi_lg_plugins.hw_ci.templates" = ["*.yaml"]
 
 [project.urls]
 Homepage = "https://github.com/analogdevicesinc/adi-labgrid-plugins"
@@ -68,6 +70,7 @@ Repository = "https://github.com/analogdevicesinc/adi-labgrid-plugins"
 kuiperdl = "adi_lg_plugins.tools.kuiperdl:main"
 adi-lg = "adi_lg_plugins.tools.cli:cli"
 adi-lg-mcp = "adi_lg_plugins.tools.mcp:main"
+adi-lg-hw-ci = "adi_lg_plugins.hw_ci.cli:main"
 
 # Entry points for plugin discovery
 # Labgrid automatically discovers and registers these components
@@ -103,6 +106,11 @@ softwareprovisioning = "adi_lg_plugins.strategies.software_provisioning:Software
 bootrpi = "adi_lg_plugins.strategies.bootrpi:BootRPI"
 bootvpk180 = "adi_lg_plugins.strategies.bootvpk180:BootVPK180"
 bootzynq7000recovery = "adi_lg_plugins.strategies.bootzynq7000recovery:BootZynq7000JTAGRecovery"
+
+# pytest auto-discovery — installs the iio_hardware / iio_carrier markers
+# in any project that pip-installs adi-labgrid-plugins.
+[project.entry-points."pytest11"]
+adi_lg_hw_ci = "adi_lg_plugins.pytest_plugin"
 
 [tool.ty.environment]
 # ty picks up `venv/` automatically; overridable via `ty check --python <path>`.

@@ -1,5 +1,18 @@
 ## Labgrid exporter config for ZCU102 + AD9081 attached to mini2
 ##
+## HW-CI v2 place-tag contract: after this exporter registers, set
+## these tags on the resulting place so hw-matrix.yml@v2 can discover it:
+##
+##   labgrid-client -x $LG_COORDINATOR -p mini2 set-tags \
+##       carrier=zcu102 \
+##       daughter-board=ad9081 \
+##       boot-strategy=BootFPGASoC \
+##       hdl-config=m8_l4
+##
+## See docs/source/user-guide/hw-ci-v2.md (place-tag-schema section)
+## for the full schema. Without those tags, the v2 discovery step
+## will skip this place with a clear "missing required tag" reason.
+##
 ## Differences from lg_ad9081_zcu102_exporter.yaml (bq):
 ##   - Serial console: CP2108 quad-UART channel 0 (via stable by-id symlink)
 ##     instead of FTDI /dev/ttyUSB0. If the DUT console is on a different
