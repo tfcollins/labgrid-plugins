@@ -270,13 +270,18 @@ jobs:
                   | head -1)
           fi
           if [[ -z "$REAL_IP" ]]; then
-              echo "::warning::could not read eth0 IP from serial console for $LG_PLACE; falling back to NetworkService.address"
-              REAL_IP=$("$LG" -x "$LG_COORDINATOR" -p "$LG_PLACE" show \
-                  | sed -n "s/.*['\"]address['\"]\s*[:=]\s*['\"]\([0-9.]\+\)['\"].*/\1/p" \
-                  | head -1)
-          fi
-          if [[ -z "$REAL_IP" ]]; then
-              echo "::error::no usable IP for $LG_PLACE; pytest will fail"
+              # Deliberately NO fallback to the coordinator's
+              # NetworkService.address. That field is statically configured
+              # in the exporter yaml and goes stale across DHCP renewals;
+              # using it risks pointing pytest at a different board
+              # entirely. Fail loud instead. Common causes for parse
+              # failure: `microcom` not installed on the runner (labgrid
+              # falls back to `telnet`, which ignores --logfile), or the
+              # board didn't reach the login prompt within the wait
+              # window.
+              echo "::error::could not read eth0 IP from serial console for $LG_PLACE; pytest aborted"
+              echo "--- captured serial log ($LOG) ---"
+              cat "$LOG" 2>/dev/null || echo "(no log file written — verify microcom is installed on the runner)"
               exit 1
           fi
           echo "Board IP resolved: $REAL_IP"
