@@ -205,6 +205,30 @@ jobs:
           echo "--- rendered env yaml ---"
           cat "$OUT"
 
+      - name: Acquire coordinator place
+        uses: tfcollins/labgrid-plugins/.github/actions/acquire-place@feature/hw-matrix-v2-discovery
+        with:
+          coordinator: ${{ env.COORDINATOR }}
+          place: ${{ matrix.entry.place }}
+          labgrid_client: ${{ inputs.venv_dir }}/bin/labgrid-client
+          wait_minutes: ${{ inputs.place_wait_minutes }}
+
+      - name: Boot place to shell state
+        shell: bash --noprofile --norc -eo pipefail {0}
+        env:
+          LG_COORDINATOR: ${{ env.COORDINATOR }}
+          LG_ENV: ${{ steps.render.outputs.env_path }}
+          LG_PLACE: ${{ matrix.entry.place }}
+        run: |
+          VENV_DIR_EXPANDED=$(eval echo "${{ inputs.venv_dir }}")
+          LG="$VENV_DIR_EXPANDED/bin/labgrid-client"
+          # `-s shell` triggers the strategy's transition('shell') BEFORE the
+          # subcommand runs. `power get` is a read-only target operation —
+          # the lightest subcommand that triggers _get_target, so the boot
+          # actually fires. After this step the board is up; we leave the
+          # place acquired so pytest can run against it.
+          "$LG" -x "$LG_COORDINATOR" -c "$LG_ENV" -p "$LG_PLACE" -s shell power get
+
       - name: Pre-pytest hook
         if: inputs.pre_pytest_cmd != ''
         run: |
@@ -229,6 +253,19 @@ jobs:
           VENV_DIR=$(eval echo "${{ inputs.venv_dir }}")
           export VENV_DIR
           ${{ inputs.pytest_cmd_template }}
+
+      - name: Release coordinator place
+        if: always()
+        shell: bash --noprofile --norc -eo pipefail {0}
+        env:
+          LG_COORDINATOR: ${{ env.COORDINATOR }}
+        run: |
+          VENV_DIR_EXPANDED=$(eval echo "${{ inputs.venv_dir }}")
+          LG="$VENV_DIR_EXPANDED/bin/labgrid-client"
+          if [[ -x "$LG" ]]; then
+            "$LG" -x "$LG_COORDINATOR" -p "${{ matrix.entry.place }}" release || true
+            "$LG" -x "$LG_COORDINATOR" cancel-reservation --all 2>/dev/null || true
+          fi
 
       - name: Upload artifacts
         if: always()
