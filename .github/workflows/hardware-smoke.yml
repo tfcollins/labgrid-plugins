@@ -23,7 +23,7 @@ jobs:
       venv_install_cmd: |
         uv pip install --quiet --python "$VENV_DIR/bin/python" -e ".[dev]"
       pytest_cmd_template: |
-        "$VENV_DIR/bin/pytest" -v --run-hardware --lg-config "$LG_ENV" $TESTS --junitxml="$JUNIT"
+        "$VENV_DIR/bin/pytest" -v --run-hardware --lg-env "$LG_ENV" $TESTS --junitxml="$JUNIT"
       legs: coord
       prism_project: labgrid-plugins-smoke
     secrets: inherit

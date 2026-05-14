@@ -1,0 +1,15 @@
+# Minimal coord-mode env yaml for the labgrid-plugins HW smoke run.
+#
+# Goal: validate the reusable workflow + composite actions + acquire/release
+# end-to-end against real hardware, without depending on the kuiper extra
+# (whose pytsk3 build needs libtsk-dev on the runner).
+#
+# Lists only the resources the smoke test actually touches: NetworkService
+# (so the test can ping the booted target) and a SerialDriver for completeness.
+targets:
+  main:
+    resources:
+      RemotePlace:
+        name: mini2
+    drivers:
+      SerialDriver: {}
