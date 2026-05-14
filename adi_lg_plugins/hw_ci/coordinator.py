@@ -13,11 +13,11 @@ on so the matrix still builds from the well-formed places.
 
 from __future__ import annotations
 
+import http.client
 import json
 import logging
 import os
 import subprocess
-import urllib.error
 import urllib.request
 from collections.abc import Iterable
 
@@ -103,9 +103,16 @@ def fetch_raw_places(
     if not force_cli:
         try:
             return _fetch_places_rest(coord, timeout=timeout)
-        except (urllib.error.URLError, json.JSONDecodeError) as e:
+        except (OSError, http.client.HTTPException, json.JSONDecodeError, ValueError) as e:
+            # Stock labgrid coordinator speaks WAMP/crossbar, not HTTP:
+            # hitting :20408/api/places returns garbled binary which surfaces
+            # as http.client.BadStatusLine. Any transport failure (connect
+            # refused, garbage response, timeout, bad JSON) is treated the
+            # same way — fall through to the labgrid-client CLI path,
+            # which is the canonical interface.
             logger.warning(
-                "coordinator REST /api/places failed (%s); falling back to labgrid-client",
+                "coordinator REST /api/places failed (%s: %s); falling back to labgrid-client",
+                type(e).__name__,
                 e,
             )
     return _fetch_places_cli(coord, timeout=timeout)
