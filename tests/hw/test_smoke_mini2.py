@@ -32,14 +32,14 @@ def test_env_resolves(target):
 
 def test_network_service_advertised(target):
     """The exporter publishes a NetworkService with a real address."""
-    ns = target.get_resource("NetworkService", await_=False)
+    ns = target.get_resource("NetworkService")
     assert ns is not None, "no NetworkService resource on the place"
     assert ns.address, f"NetworkService has empty address: {ns!r}"
 
 
 def test_network_service_reachable(target):
     """The advertised address answers on its port (TCP connect within 5s)."""
-    ns = target.get_resource("NetworkService", await_=False)
+    ns = target.get_resource("NetworkService")
     addr = ns.address
     # NetworkService model carries the port via `params.port` or defaults
     # to 22 (the conventional SSH for labgrid). Fall back to 22 if missing.
