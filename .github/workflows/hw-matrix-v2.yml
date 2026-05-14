@@ -87,14 +87,16 @@ on:
         type: string
         required: false
         default: ""
-      runner_label:
+      coordinator_runner_label:
         type: string
         required: false
-        default: "hw-coord"
+        default: "hw-coordinator"
         description: >-
-          Extra label every shard runner must carry (alongside
-          `self-hosted`). Use this to pin tests to a subnet that can
-          reach the coordinator.
+          Extra label the coordinator-adjacent runner must carry
+          (alongside `self-hosted`). Used by the `discover` and
+          `summary` jobs that talk to the coordinator REST API. Each
+          `hw` shard pins to `hw-<place>` automatically — set up one
+          self-hosted runner per place with that label convention.
 
     secrets:
       PYADI_BUILD_TOKEN:
@@ -110,7 +112,7 @@ jobs:
   # 1) Discover: pull live places from the coordinator, harvest
   #    markers from the caller's tests, intersect, emit a matrix.
   discover:
-    runs-on: [self-hosted, "${{ inputs.runner_label }}"]
+    runs-on: [self-hosted, "${{ inputs.coordinator_runner_label }}"]
     timeout-minutes: 6
     outputs:
       matrix: ${{ steps.discover.outputs.matrix }}
@@ -160,7 +162,7 @@ jobs:
       matrix:
         entry: ${{ fromJSON(needs.discover.outputs.matrix).include }}
     name: hw (${{ matrix.entry.daughter_board }} on ${{ matrix.entry.carrier }} @ ${{ matrix.entry.place }})
-    runs-on: [self-hosted, "${{ inputs.runner_label }}"]
+    runs-on: [self-hosted, "hw-${{ matrix.entry.place }}"]
     timeout-minutes: ${{ inputs.timeout_minutes }}
     concurrency:
       # concurrency.group: doesn't support the env context — inline the
