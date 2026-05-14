@@ -213,7 +213,7 @@ jobs:
           labgrid_client: ${{ inputs.venv_dir }}/bin/labgrid-client
           wait_minutes: ${{ inputs.place_wait_minutes }}
 
-      - name: Boot place to shell state
+      - name: Power-cycle place
         shell: bash --noprofile --norc -eo pipefail {0}
         env:
           LG_COORDINATOR: ${{ env.COORDINATOR }}
@@ -222,12 +222,14 @@ jobs:
         run: |
           VENV_DIR_EXPANDED=$(eval echo "${{ inputs.venv_dir }}")
           LG="$VENV_DIR_EXPANDED/bin/labgrid-client"
-          # `-s shell` triggers the strategy's transition('shell') BEFORE the
-          # subcommand runs. `power get` is a read-only target operation —
-          # the lightest subcommand that triggers _get_target, so the boot
-          # actually fires. After this step the board is up; we leave the
-          # place acquired so pytest can run against it.
-          "$LG" -x "$LG_COORDINATOR" -c "$LG_ENV" -p "$LG_PLACE" -s shell power get
+          # Just power-cycle. We deliberately do NOT invoke a labgrid Boot*
+          # strategy here — those expect specific banners on the serial
+          # console within tight timeouts, and the SSH-flavoured ones SSH to
+          # the exporter-advertised IP which has been stale in practice
+          # (the board's real IP comes from DHCP). For smoke tests we just
+          # need the board up, IIOD listening, and we'll discover the real
+          # IP from serial in the next step.
+          "$LG" -x "$LG_COORDINATOR" -c "$LG_ENV" -p "$LG_PLACE" power cycle
 
       - name: Resolve board IP from serial + wait for IIOD
         shell: bash --noprofile --norc -eo pipefail {0}
@@ -236,26 +238,30 @@ jobs:
           LG_PLACE: ${{ matrix.entry.place }}
           LG_ENV: ${{ steps.render.outputs.env_path }}
         run: |
-          # The exporter's NetworkService.address is statically configured in
-          # the exporter yaml and goes stale whenever DHCP renews the board's
-          # lease to a different IP — pyadi-iio#749 found mini2 advertised as
-          # 10.0.0.23 while DHCP had actually given the board 10.0.0.211.
-          #
-          # Trust the running board, not the coordinator: drop into the serial
-          # console for a few seconds, ask it for eth0's address, and export
-          # IIO_URI_OVERRIDE so the caller's conftest uses the real IP.
+          # Board was just power-cycled. Wait long enough for ZC706 / ZCU102
+          # to come up (~60-120s from cold), then ask the live board what IP
+          # DHCP gave it. Login credentials match the Kuiper image defaults;
+          # if the board is already at a logged-in shell (warm-boot) the
+          # "root" + "analog" inputs become bad commands at the shell prompt
+          # — harmless because we parse only the sentinel-delimited block.
           VENV_DIR_EXPANDED=$(eval echo "${{ inputs.venv_dir }}")
           LG="$VENV_DIR_EXPANDED/bin/labgrid-client"
           LOG="${{ runner.temp }}/serial-${LG_PLACE}.log"
 
-          # Sentinel-delimited so we don't have to parse shell-prompt noise.
           (
+              # Wake the console up, then wait for boot to complete.
               echo ""
+              sleep 90
+              # Send credentials in case we're at the "analog login:" prompt.
+              echo "root"
               sleep 2
+              echo "analog"
+              sleep 5
+              # Sentinel-delimited so a shell-prompt-noisy log is unambiguous.
               echo "echo HWCI_IP_START && ip -4 -o addr show eth0 | awk '{print \$4}' | cut -d/ -f1 && echo HWCI_IP_END"
-              sleep 3
-          ) | timeout 20 "$LG" -x "$LG_COORDINATOR" -c "$LG_ENV" -p "$LG_PLACE" \
-              console --logfile "$LOG" 2>&1 | tail -5 || true
+              sleep 5
+          ) | timeout 180 "$LG" -x "$LG_COORDINATOR" -c "$LG_ENV" -p "$LG_PLACE" \
+              console --logfile "$LOG" 2>&1 | tail -10 || true
 
           REAL_IP=""
           if [[ -f "$LOG" ]]; then
