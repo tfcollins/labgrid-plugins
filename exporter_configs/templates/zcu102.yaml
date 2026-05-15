@@ -1,5 +1,14 @@
 # Exporter template: ZCU102 SoC
 # Group naming convention: <BOARD>_<CHIP>
+#
+# Place tags (required for the hw-matrix dynamic_mode allocator):
+# After creating the matching place on the coordinator, set its tags:
+#   labgrid-client -x <coordinator>:20408 -p <place_name> set-tags \
+#       board=<chip_lower> carrier=zcu102
+# Substitute <chip_lower> with the lowercased chip name (e.g. ad9081).
+# Optional `runner` tag overrides the GH Actions runner label:
+#   labgrid-client -x <coordinator>:20408 -p <place_name> set-tags runner=hw-zcu102
+# See exporter_configs/scripts/seed-place-tags.sh for a one-shot helper.
 
 {{ exporter_name | default("lab-host-01") }}:
   ZCU102_{{ chip | default("AD9081") }}:
