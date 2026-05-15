@@ -1,4 +1,5 @@
 import enum
+import ipaddress
 import os
 import time
 
@@ -144,7 +145,20 @@ class BootFPGASoCSSH(Strategy):
             self.target.activate(self.shell)
             addresses = self.shell.get_ip_addresses("eth0")
             assert addresses, "No IP address found on eth0"
-            ip = str(addresses[0].ip)
+            # Require IPv4. SSHDriver passes the resource address to ssh as a
+            # plain string and uses it (unquoted) in the control-socket path:
+            # a raw IPv6 ends up parsed as host:port (first colon wins),
+            # truncating the address and breaking scp uploads. Until the
+            # underlying driver brackets IPv6 properly, pick the first IPv4
+            # address; bail with a clear message if there isn't one.
+            ipv4 = [a for a in addresses if isinstance(a.ip, ipaddress.IPv4Address)]
+            if not ipv4:
+                raise StrategyError(
+                    "No IPv4 address found on eth0; only IPv6 addresses were "
+                    f"returned ({[str(a.ip) for a in addresses]}). The SSH "
+                    "file-transfer step does not currently support IPv6."
+                )
+            ip = str(ipv4[0].ip)
             self.target.deactivate(self.shell)
 
             if self.ssh.networkservice.address != ip:
