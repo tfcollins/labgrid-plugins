@@ -131,6 +131,16 @@ on:
           Default matches the existing lab convention where each place is
           tagged with its daughter-board (chip identity, e.g. ad9081)
           alongside a separate `carrier` tag for the FPGA board.
+      dynamic_env_tier:
+        type: string
+        required: false
+        default: "boot"
+        description: >-
+          `tier` query param passed to /api/places/<name>/env-yaml in the
+          dynamic-mode leg. One of `shell` (drivers for shell access only),
+          `drivers` (adds extra drivers), or `boot` (also includes a
+          Strategy driver). Default `boot` lets consumers transition the
+          board to shell state from any power state.
 
     secrets:
       PYADI_BUILD_TOKEN:
@@ -588,11 +598,12 @@ jobs:
         env:
           API_URL: ${{ needs.preflight.outputs.coordinator_api_url }}
           PLACE: ${{ matrix.node.place }}
+          TIER: ${{ inputs.dynamic_env_tier }}
         run: |
           set -euo pipefail
           ENV_PATH="${RUNNER_TEMP}/lg-env-${PLACE}.yaml"
-          if ! curl -fsSL --max-time 30 "$API_URL/api/places/${PLACE}/env-yaml" -o "$ENV_PATH"; then
-            echo "::error::Failed to fetch env-yaml for place '$PLACE' from $API_URL" >&2
+          if ! curl -fsSL --max-time 30 "$API_URL/api/places/${PLACE}/env-yaml?tier=${TIER}" -o "$ENV_PATH"; then
+            echo "::error::Failed to fetch env-yaml for place '$PLACE' (tier=$TIER) from $API_URL" >&2
             exit 1
           fi
           echo "Generated LG_ENV for $PLACE:" >&2
