@@ -18,6 +18,7 @@ DriverConfigFactory = Callable[[ResourceModel], dict[str, Any]]
 # config_factory(resource) returns the driver's yaml dict, or {} for no config.
 RESOURCE_DRIVER_MAP: dict[str, list[tuple[str, DriverConfigFactory]]] = {
     "NetworkSerialPort": [("SerialDriver", lambda _r: {})],
+    "NetworkService": [("SSHDriver", lambda _r: {})],
     "VesyncOutlet": [("VesyncPowerDriver", lambda _r: {})],
     "HomeAssistantOutlet": [("HomeAssistantPowerDriver", lambda _r: {})],
     "NetworkUSBSDMuxDevice": [("USBSDMuxDriver", lambda _r: {})],
@@ -35,6 +36,12 @@ RESOURCE_DRIVER_MAP: dict[str, list[tuple[str, DriverConfigFactory]]] = {
 
 SHELL_DEFAULTS: dict[str, dict[str, str]] = {
     "BootFPGASoC": {
+        "prompt": "root@.*",
+        "login_prompt": "analog login: ",
+        "username": "root",
+        "password": "analog",
+    },
+    "BootFPGASoCSSH": {
         "prompt": "root@.*",
         "login_prompt": "analog login: ",
         "username": "root",
@@ -59,6 +66,10 @@ STRATEGY_CONFIGS: dict[str, dict[str, Any]] = {
         "reached_linux_marker": "analog",
         "wait_for_linux_prompt_timeout": 180,
     },
+    "BootFPGASoCSSH": {
+        "reached_linux_marker": "analog",
+        "wait_for_linux_prompt_timeout": 180,
+    },
     "BootFabric": {
         "reached_boot_marker": "login:",
         "trigger_dhcp_reset": True,
@@ -71,15 +82,24 @@ STRATEGY_CONFIGS: dict[str, dict[str, Any]] = {
 def infer_strategy(resource_classes: set[str]) -> str | None:
     """Return a labgrid strategy class name inferred from the set of resource
     classes a place has live, or None if the heuristic doesn't match any
-    known pattern. Supported: "BootFPGASoC", "BootFabric"."""
+    known pattern. Supported: "BootFPGASoC", "BootFPGASoCSSH", "BootFabric"."""
     has_kuiper = "KuiperRelease" in resource_classes
     has_mass = "NetworkUSBMassStorage" in resource_classes
     has_sdmux = "NetworkUSBSDMuxDevice" in resource_classes
     has_jtag = "XilinxDeviceJTAG" in resource_classes
     has_vivado = "XilinxVivadoTool" in resource_classes
+    has_net = "NetworkService" in resource_classes
+    has_power = (
+        "HomeAssistantOutlet" in resource_classes
+        or "VesyncOutlet" in resource_classes
+    )
 
     if has_kuiper and has_mass and has_sdmux:
         return "BootFPGASoC"
+    # SSH-based variant: no SD-mux/mass-storage, but Kuiper + a power outlet
+    # let the strategy power-cycle the board and push boot files over SSH.
+    if has_kuiper and has_net and has_power and not has_mass and not has_sdmux:
+        return "BootFPGASoCSSH"
     if has_jtag and has_vivado:
         return "BootFabric"
     return None
