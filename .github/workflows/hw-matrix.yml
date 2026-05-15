@@ -122,6 +122,15 @@ on:
         description: >-
           Fallback self-hosted runner label for dynamic-mode legs when
           the place has no `runner` tag on the coordinator.
+      board_tag_key:
+        type: string
+        required: false
+        default: "daughter-board"
+        description: >-
+          Place-tag key whose value is matched against supported-boards.yml.
+          Default matches the existing lab convention where each place is
+          tagged with its daughter-board (chip identity, e.g. ad9081)
+          alongside a separate `carrier` tag for the FPGA board.
 
     secrets:
       PYADI_BUILD_TOKEN:
@@ -242,6 +251,7 @@ jobs:
           API_URL_INPUT: ${{ inputs.coordinator_api_url }}
           SUPPORTED_BOARDS_PATH: ${{ inputs.supported_boards_path }}
           RUNNER_LABEL_DEFAULT: ${{ inputs.dynamic_runner_label_default }}
+          BOARD_TAG_KEY: ${{ inputs.board_tag_key }}
         run: |
           set -euo pipefail
           HOST="${COORDINATOR%%:*}"
@@ -269,17 +279,18 @@ jobs:
             exit 0
           fi
 
-          python3 - "$PLACES_JSON_FILE" "$SUPPORTED_BOARDS_PATH" "$RUNNER_LABEL_DEFAULT" \
+          python3 - "$PLACES_JSON_FILE" "$SUPPORTED_BOARDS_PATH" "$RUNNER_LABEL_DEFAULT" "$BOARD_TAG_KEY" \
             >> "$GITHUB_OUTPUT" <<'PY'
           import json, sys, yaml
           places = json.load(open(sys.argv[1]))
           supported_doc = yaml.safe_load(open(sys.argv[2])) or {}
           supported = set(supported_doc.get("boards", []))
           runner_default = sys.argv[3]
+          board_tag_key = sys.argv[4]
           matrix = []
           for p in places:
               tags = p.get("tags") or {}
-              board = tags.get("board")
+              board = tags.get(board_tag_key)
               if not board or board not in supported:
                   continue
               runner_label = tags.get("runner") or runner_default

@@ -164,22 +164,25 @@ In dynamic mode, ``manifest_path``, ``legs``, ``hw-direct`` and
      - adrv9002
 
 The strings here are matched against each coordinator place's
-``board`` tag. Anything not in the list is ignored, anything not
-registered on the coordinator at preflight time is skipped without
-failing the workflow.
+``daughter-board`` tag (override with ``board_tag_key`` if your lab
+uses a different key). Anything not in the list is ignored, anything
+not registered on the coordinator at preflight time is skipped
+without failing the workflow.
 
-Coordinator-side requirement: ``board=`` tag on each place
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Coordinator-side requirement: ``daughter-board=`` tag on each place
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Dynamic mode relies on the coordinator answering ``GET /api/places``
 with each place's ``tags`` populated. Labgrid exporters register
 *resources* (groups), not place tags — tags are set on the place
-itself via labgrid-client:
+itself via labgrid-client. The existing lab convention is
+``daughter-board=<chip>`` for the IC under test and ``carrier=<fpga>``
+for the FPGA carrier board:
 
 .. code-block:: bash
 
-   labgrid-client -x 10.0.0.41:20408 -p vcu118_lab01 set-tags \
-       board=ad9081 carrier=vcu118
+   labgrid-client -x 10.0.0.41:20408 -p mini2 set-tags \
+       daughter-board=ad9081 carrier=zcu102
 
 The optional ``runner`` tag overrides the GH Actions runner label
 that the matrix leg targets; without it the leg falls back to
@@ -191,10 +194,10 @@ A one-shot helper applies tags from a yaml manifest:
 
    # exporter_configs/scripts/place-tags.example.yaml
    places:
-     vcu118_lab01:
-       board: ad9081
-       carrier: vcu118
-       runner: hw-vcu118
+     mini2:
+       daughter-board: ad9081
+       carrier: zcu102
+       runner: hw-mini2
 
    exporter_configs/scripts/seed-place-tags.sh \
        --coordinator 10.0.0.41:20408 \
@@ -208,9 +211,11 @@ How a dynamic leg runs
 
 1. **Preflight** hits ``GET <coordinator_api_url>/api/places``
    (default ``http://<coord_host>:8000``; override with
-   ``coordinator_api_url``). Places whose ``tags.board`` is in
-   ``supported-boards.yml`` become matrix entries
-   ``{place, board, runner_label}``.
+   ``coordinator_api_url``). Places whose ``tags.<board_tag_key>`` is
+   in ``supported-boards.yml`` become matrix entries
+   ``{place, board, runner_label}``. The key defaults to
+   ``daughter-board`` to match the existing lab convention; override
+   via the ``board_tag_key`` input.
 2. Each matrix leg fetches the LG_ENV yaml on demand from
    ``GET <coordinator_api_url>/api/places/<place>/env-yaml``. The
    coordinator generates it from the place's matched resources, so

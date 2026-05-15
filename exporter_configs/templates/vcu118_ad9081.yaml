@@ -7,9 +7,10 @@
 #
 # Place tags (required for the hw-matrix dynamic_mode allocator):
 # After the matching place has been created on the coordinator, set its tags so
-# the dynamic-mode preflight in hw-matrix.yml can discover it by board:
+# the dynamic-mode preflight in hw-matrix.yml can discover it. Existing lab
+# convention is `daughter-board=<chip>` (the IC) plus `carrier=<fpga>`:
 #   labgrid-client -x <coordinator>:20408 -p <place_name> set-tags \
-#       board=ad9081 carrier=vcu118
+#       daughter-board=ad9081 carrier=vcu118
 # The optional `runner` tag overrides the default GH Actions runner label for
 # the matrix leg:
 #   labgrid-client -x <coordinator>:20408 -p <place_name> set-tags runner=hw-vcu118
