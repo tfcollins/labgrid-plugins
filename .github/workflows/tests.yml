@@ -80,4 +80,5 @@ jobs:
           tests/test_zynq7000_recovery_strat.py \
           tests/test_recovery_module.py \
           tests/test_recovery_busybox_http.py \
-          tests/test_discover_places.py
+          tests/test_discover_places.py \
+          tests/test_bootfpgasocssh_helpers.py
