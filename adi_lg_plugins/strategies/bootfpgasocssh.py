@@ -149,7 +149,7 @@ class BootFPGASoCSSH(Strategy):
 
             if self.ssh.networkservice.address != ip:
                 self.logger.info(f"Updating SSHDriver IP address to {ip}")
-                self.ssh.networkservice.address = ip  # Update
+                self._override_networkservice_address(self.ssh.networkservice, ip)
 
             self.target.activate(self.ssh)
 
@@ -235,3 +235,22 @@ class BootFPGASoCSSH(Strategy):
         else:
             raise StrategyError(f"no transition found from {self.status} to {status}")
         self.status = status
+
+    @staticmethod
+    def _override_networkservice_address(networkservice, ip: str) -> None:
+        """Point a (possibly remote) NetworkService at a new IP.
+
+        Setting ``networkservice.address`` alone is not enough when the
+        resource came in via a RemotePlace: labgrid's RemotePlaceManager
+        polls the coordinator every ``ManagedResource.timeout`` seconds and
+        rewrites every attribute from ``_remote_entry.args`` back onto the
+        live resource (see labgrid/resource/remote.py:RemotePlaceManager.poll).
+        Without also updating the cached entry, the next poll reverts the
+        address back to the exporter's stale record before SSHDriver's
+        on_activate reads it — and the control socket ends up wired to the
+        wrong IP.
+        """
+        networkservice.address = ip
+        remote_entry = getattr(networkservice, "_remote_entry", None)
+        if remote_entry is not None and hasattr(remote_entry, "args"):
+            remote_entry.args["address"] = ip
