@@ -298,10 +298,20 @@ jobs:
           runner_default = sys.argv[3]
           board_tag_key = sys.argv[4]
           matrix = []
+          skipped = []
           for p in places:
               tags = p.get("tags") or {}
               board = tags.get(board_tag_key)
               if not board or board not in supported:
+                  continue
+              # An operator can quarantine a known-broken place by setting
+              # `disabled=<reason>` (any non-empty value) as a tag on the
+              # coordinator. The place stays in the manifest / coverage list,
+              # but the dynamic matrix drops it so its red leg doesn't mask
+              # the rest of the run. Untag the place to re-enable.
+              disabled = tags.get("disabled")
+              if disabled:
+                  skipped.append({"place": p["name"], "reason": str(disabled)})
                   continue
               runner_label = tags.get("runner") or runner_default
               if not runner_label:
@@ -313,6 +323,10 @@ jobs:
                   "runner_label": runner_label,
               })
           print("available_nodes_dynamic=" + json.dumps(matrix))
+          if skipped:
+              import sys as _s
+              for sk in skipped:
+                  print(f"::warning::skipping {sk['place']!r}: disabled={sk['reason']!r}", file=_s.stderr)
           PY
 
           echo "--- dynamic matrix ---" >&2
