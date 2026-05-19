@@ -164,9 +164,7 @@ class BootFPGASoCSSH(Strategy):
                 if ipv4:
                     break
                 seen = [str(a.ip) for a in addresses] if addresses else []
-                self.logger.info(
-                    f"eth0 has no IPv4 yet (got {seen}); polling..."
-                )
+                self.logger.info(f"eth0 has no IPv4 yet (got {seen}); polling...")
                 time.sleep(self.ipv4_poll_interval)
             # Require IPv4. SSHDriver passes the resource address to ssh as a
             # plain string and uses it (unquoted) in the control-socket path:
