@@ -814,6 +814,17 @@ class BootZynq7000JTAGRecovery(Strategy):
             self.shell._check_prompt_uboot()
 
             self._drive_uboot_to_sd_linux()
+            # _drive_uboot_to_sd_linux leaves self.shell.prompt set to the
+            # U-Boot value (Zynq>) and bypass_login=True from the U-Boot
+            # work. Subsequent shell.run() calls would then time out
+            # waiting for Zynq> while the board sits at the Linux prompt
+            # (root@analog:~#). Mirror linux_recovery's cleanup so the
+            # ADIShellDriver does a fresh login + prompt match.
+            if hasattr(self, "_original_prompt"):
+                self.shell.prompt = self._original_prompt
+            self.shell.bypass_login = False
+            self.target.deactivate(self.shell)
+            self.target.activate(self.shell)
             self.logger.info("Linux up via JTAG-bootstrap + SD-boot")
 
         else:
