@@ -208,14 +208,29 @@ class BootFPGASoCSSH(Strategy):
 
         elif status == Status.reboot:
             self.transition(Status.update_boot_files)
-            self.target.activate(self.shell)
-            self.logger.info("Triggering device reboot...")
-            try:
-                self.shell.run("reboot")
-            except Exception as e:
-                self.logger.debug(f"Reboot command exception (expected): {e}")
             self.target.deactivate(self.shell)
-            self.logger.info("Reboot command sent")
+            # Prefer a hard power-cycle when a PowerProtocol is bound: a
+            # soft `shell.run("reboot")` resets the Zynq PS but leaves FPGA
+            # fabric + clock-fanout chips (e.g. AD9528) + transceiver state
+            # intact, which then leaves JESD204 wedged (FSM error, PLL1
+            # never locks) on adrv9009-class boards. Falls back to soft
+            # reboot when no power driver is available.
+            if self.power:
+                self.logger.info("Triggering device reboot via hard power cycle...")
+                self.target.activate(self.power)
+                self.power.off()
+                time.sleep(3)
+                self.power.on()
+                self.logger.info("Power cycled (off+on)")
+            else:
+                self.logger.info("Triggering device reboot via shell `reboot`...")
+                self.target.activate(self.shell)
+                try:
+                    self.shell.run("reboot")
+                except Exception as e:
+                    self.logger.debug(f"Reboot command exception (expected): {e}")
+                self.target.deactivate(self.shell)
+                self.logger.info("Reboot command sent")
 
         elif status == Status.booting_new:
             self.transition(Status.reboot)
