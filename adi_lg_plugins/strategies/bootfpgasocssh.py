@@ -63,6 +63,13 @@ class BootFPGASoCSSH(Strategy):
 
     debug_write_boot_log = attr.ib(default=False)
 
+    # update_boot_files polls the DUT's shell for an IPv4 address on eth0
+    # before initiating the SSH upload. DHCPv4 typically lands within a
+    # few seconds after the shell login prompt but can be slower on cold
+    # boots / Kuiper kernels where IPv6 SLAAC completes first.
+    ipv4_poll_timeout = attr.ib(default=60.0)
+    ipv4_poll_interval = attr.ib(default=3.0)
+
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
         self.logger.info("BootFPGASoCSSH strategy initialized")
@@ -141,22 +148,37 @@ class BootFPGASoCSSH(Strategy):
             self.transition(Status.booted)
 
             self.logger.info("Identifying device IP for SSH file transfer...")
-            # Get IP address from shell
+            # Get IP address from shell. DHCPv4 often lags the shell login
+            # prompt by several seconds (kernel brings eth0 up before
+            # udhcpc / NM gets a v4 lease, and IPv6 SLAAC lands first), so
+            # poll up to ipv4_poll_timeout seconds before giving up.
+            # Without this poll we'd reliably fail on cold boots where the
+            # first read after login sees only the link-local IPv6.
             self.target.activate(self.shell)
-            addresses = self.shell.get_ip_addresses("eth0")
-            assert addresses, "No IP address found on eth0"
+            addresses = []
+            ipv4 = []
+            deadline = time.time() + self.ipv4_poll_timeout
+            while time.time() < deadline:
+                addresses = self.shell.get_ip_addresses("eth0") or []
+                ipv4 = [a for a in addresses if isinstance(a.ip, ipaddress.IPv4Address)]
+                if ipv4:
+                    break
+                seen = [str(a.ip) for a in addresses] if addresses else []
+                self.logger.info(
+                    f"eth0 has no IPv4 yet (got {seen}); polling..."
+                )
+                time.sleep(self.ipv4_poll_interval)
             # Require IPv4. SSHDriver passes the resource address to ssh as a
             # plain string and uses it (unquoted) in the control-socket path:
             # a raw IPv6 ends up parsed as host:port (first colon wins),
             # truncating the address and breaking scp uploads. Until the
             # underlying driver brackets IPv6 properly, pick the first IPv4
             # address; bail with a clear message if there isn't one.
-            ipv4 = [a for a in addresses if isinstance(a.ip, ipaddress.IPv4Address)]
             if not ipv4:
                 raise StrategyError(
-                    "No IPv4 address found on eth0; only IPv6 addresses were "
-                    f"returned ({[str(a.ip) for a in addresses]}). The SSH "
-                    "file-transfer step does not currently support IPv6."
+                    f"No IPv4 address found on eth0 after {self.ipv4_poll_timeout:.0f}s; "
+                    f"only IPv6 addresses were returned ({[str(a.ip) for a in addresses]}). "
+                    "The SSH file-transfer step does not currently support IPv6."
                 )
             ip = str(ipv4[0].ip)
             self.target.deactivate(self.shell)
