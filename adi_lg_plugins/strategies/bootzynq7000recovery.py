@@ -795,16 +795,22 @@ class BootZynq7000JTAGRecovery(Strategy):
 
             self.shell.bypass_login = True
             self.target.activate(self.shell)
-            self.logger.info("Waiting for U-Boot autoboot prompt...")
-            self.shell.console.expect(
-                "Hit any key to stop autoboot",
-                timeout=self.wait_for_uboot_prompt_timeout,
-            )
+            # Race-tolerant prompt grab: xsdb may return after U-Boot has
+            # already passed its autoboot countdown (especially when the
+            # board's saved bootcmd is a quick-fail like a TFTP boot with
+            # an unreachable server). Send space+CR immediately to break
+            # autoboot if still counting, then wait for the U-Boot prompt
+            # regardless of whether we caught autoboot or arrived post-fail.
+            self.logger.info("Sending break + waiting for U-Boot prompt...")
             self.shell.console.sendline(" ")
-            time.sleep(2)
+            time.sleep(0.5)
+            self.shell.console.sendline("")
             self._original_prompt = self.shell.prompt
             self.shell.prompt = self.uboot_prompt
-            self.shell.console.sendline("\n")
+            self.shell.console.expect(
+                self.uboot_prompt,
+                timeout=self.wait_for_uboot_prompt_timeout,
+            )
             self.shell._check_prompt_uboot()
 
             self._drive_uboot_to_sd_linux()
