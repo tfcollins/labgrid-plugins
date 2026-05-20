@@ -40,6 +40,14 @@ FABRIC_RESOURCES = [
     _res("XilinxVivadoTool"),
 ]
 
+# SSH-boot variant: NetworkService + power outlet + Kuiper, no SD-mux/mass-storage.
+SOC_SSH_RESOURCES = [
+    _res("NetworkSerialPort"),
+    _res("NetworkService", params={"address": "10.0.0.50", "username": "root"}),
+    _res("HomeAssistantOutlet"),
+    _res("KuiperRelease"),
+]
+
 SERIAL_ONLY = [_res("NetworkSerialPort")]
 
 
@@ -97,6 +105,34 @@ class TestBootTierSoC:
 
     def test_shell_defaults_for_soc(self):
         out = generate_env_yaml(_place(), SOC_RESOURCES, "boot")
+        doc = yaml.safe_load(out)
+        shell = doc["targets"]["main"]["drivers"]["ADIShellDriver"]
+        assert shell["login_prompt"] == "analog login: "
+        assert shell["prompt"] == "root@.*"
+
+
+class TestBootTierSoCSSH:
+    def test_infers_boot_fpga_soc_ssh(self):
+        out = generate_env_yaml(_place(), SOC_SSH_RESOURCES, "boot")
+        doc = yaml.safe_load(out)
+        drivers = doc["targets"]["main"]["drivers"]
+        assert "BootFPGASoCSSH" in drivers
+        assert "BootFPGASoC" not in drivers
+        assert drivers["BootFPGASoCSSH"]["reached_linux_marker"] == "analog"
+
+    def test_includes_ssh_and_power_drivers(self):
+        out = generate_env_yaml(_place(), SOC_SSH_RESOURCES, "boot")
+        doc = yaml.safe_load(out)
+        drivers = doc["targets"]["main"]["drivers"]
+        # Strategy bindings: power (PowerProtocol), shell (ADIShellDriver),
+        # ssh (SSHDriver), kuiper (KuiperDLDriver).
+        assert "SSHDriver" in drivers
+        assert "HomeAssistantPowerDriver" in drivers
+        assert "KuiperDLDriver" in drivers
+        assert "ADIShellDriver" in drivers
+
+    def test_shell_defaults_for_soc_ssh(self):
+        out = generate_env_yaml(_place(), SOC_SSH_RESOURCES, "boot")
         doc = yaml.safe_load(out)
         shell = doc["targets"]["main"]["drivers"]["ADIShellDriver"]
         assert shell["login_prompt"] == "analog login: "

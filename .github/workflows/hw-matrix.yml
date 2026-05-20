@@ -87,6 +87,60 @@ on:
         required: false
         default: ""
         description: Prism project slug. Required when prism_upload is true.
+      dynamic_mode:
+        type: boolean
+        required: false
+        default: false
+        description: >-
+          Opt in to dynamic test allocation: discover places from the
+          coordinator at preflight, filter by board tag against
+          supported_boards_path, and run one matrix leg per match. When
+          true, the static hw-nodes.json manifest is not used; the
+          hw-direct and hw-coord legs are skipped.
+      supported_boards_path:
+        type: string
+        required: false
+        default: ".github/supported-boards.yml"
+        description: >-
+          Repo-relative path to a yaml listing board tags this consumer
+          supports. Only used when dynamic_mode is true. The file must
+          contain a top-level `boards:` list of strings, e.g.
+          `boards: [ad9081, ad9084]`.
+      coordinator_api_url:
+        type: string
+        required: false
+        default: ""
+        description: >-
+          Base URL of the coordinator FastAPI bridge (e.g.
+          http://coord-host:8000). When empty, derived from `coordinator`
+          by substituting port 8000 onto the gRPC host. Only used when
+          dynamic_mode is true.
+      dynamic_runner_label_default:
+        type: string
+        required: false
+        default: "hw-coordinator"
+        description: >-
+          Fallback self-hosted runner label for dynamic-mode legs when
+          the place has no `runner` tag on the coordinator.
+      board_tag_key:
+        type: string
+        required: false
+        default: "daughter-board"
+        description: >-
+          Place-tag key whose value is matched against supported-boards.yml.
+          Default matches the existing lab convention where each place is
+          tagged with its daughter-board (chip identity, e.g. ad9081)
+          alongside a separate `carrier` tag for the FPGA board.
+      dynamic_env_tier:
+        type: string
+        required: false
+        default: "boot"
+        description: >-
+          `tier` query param passed to /api/places/<name>/env-yaml in the
+          dynamic-mode leg. One of `shell` (drivers for shell access only),
+          `drivers` (adds extra drivers), or `boot` (also includes a
+          Strategy driver). Default `boot` lets consumers transition the
+          board to shell state from any power state.
 
     secrets:
       PYADI_BUILD_TOKEN:
@@ -107,10 +161,13 @@ jobs:
     outputs:
       available_nodes_direct: ${{ steps.probe.outputs.available_nodes_direct }}
       available_nodes_coord: ${{ steps.probe.outputs.available_nodes_coord }}
+      available_nodes_dynamic: ${{ steps.probe_dynamic.outputs.available_nodes_dynamic }}
+      coordinator_api_url: ${{ steps.probe_dynamic.outputs.coordinator_api_url }}
     steps:
       - uses: actions/checkout@v4
 
       - name: Validate manifest against schema
+        if: ${{ !inputs.dynamic_mode }}
         run: |
           set -euo pipefail
           # Modern Debian/Ubuntu Python is externally-managed (PEP 668);
@@ -136,7 +193,7 @@ jobs:
           python3 "$VALIDATE" --hw-nodes "${{ inputs.manifest_path }}"
 
       - uses: ./.github/actions/setup-uv-venv
-        if: hashFiles('.github/actions/setup-uv-venv/action.yml') != ''
+        if: ${{ !inputs.dynamic_mode && hashFiles('.github/actions/setup-uv-venv/action.yml') != '' }}
         with:
           venv_dir: $HOME/.cache/hw-ci/preflight-venv
           install_cmd: >-
@@ -144,7 +201,7 @@ jobs:
             "labgrid @ git+https://github.com/tfcollins/labgrid.git@81c35eda6436af63d3acf7f8b98893abae0bbbca"
 
       - name: Bootstrap uv (fallback when caller has no local action copy)
-        if: hashFiles('.github/actions/setup-uv-venv/action.yml') == ''
+        if: ${{ !inputs.dynamic_mode && hashFiles('.github/actions/setup-uv-venv/action.yml') == '' }}
         run: |
           set -euo pipefail
           if [[ ! -x "$HOME/.local/bin/uv" ]]; then
@@ -160,6 +217,7 @@ jobs:
           echo "$VENV/bin" >> "$GITHUB_PATH"
 
       - id: probe
+        if: ${{ !inputs.dynamic_mode }}
         timeout-minutes: 2
         env:
           LEGS_FILTER: ${{ inputs.legs }}
@@ -196,9 +254,87 @@ jobs:
           print("available_nodes_coord=" + json.dumps([n for n in avail if keep(n, "coord")]))
           PY
 
+      - id: probe_dynamic
+        if: ${{ inputs.dynamic_mode }}
+        timeout-minutes: 2
+        env:
+          API_URL_INPUT: ${{ inputs.coordinator_api_url }}
+          SUPPORTED_BOARDS_PATH: ${{ inputs.supported_boards_path }}
+          RUNNER_LABEL_DEFAULT: ${{ inputs.dynamic_runner_label_default }}
+          BOARD_TAG_KEY: ${{ inputs.board_tag_key }}
+        run: |
+          set -euo pipefail
+          HOST="${COORDINATOR%%:*}"
+          if [[ -n "$API_URL_INPUT" ]]; then
+            API_URL="$API_URL_INPUT"
+          else
+            API_URL="http://${HOST}:8000"
+          fi
+          echo "coordinator_api_url=$API_URL" >> "$GITHUB_OUTPUT"
+          echo "Coordinator API: $API_URL" >&2
+
+          if [[ ! -f "$SUPPORTED_BOARDS_PATH" ]]; then
+            echo "::error::supported_boards_path '$SUPPORTED_BOARDS_PATH' not found" >&2
+            exit 1
+          fi
+
+          # The hw-coordinator runner already has python3 + pip; PyYAML may not be
+          # installed system-wide so install --user before parsing the supported list.
+          python3 -m pip install --quiet --user --break-system-packages PyYAML
+
+          PLACES_JSON_FILE="$(mktemp)"
+          if ! curl -fsSL --max-time 30 "$API_URL/api/places" -o "$PLACES_JSON_FILE"; then
+            echo "::error::Failed to GET $API_URL/api/places — coordinator API unreachable." >&2
+            echo 'available_nodes_dynamic=[]' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          python3 - "$PLACES_JSON_FILE" "$SUPPORTED_BOARDS_PATH" "$RUNNER_LABEL_DEFAULT" "$BOARD_TAG_KEY" \
+            >> "$GITHUB_OUTPUT" <<'PY'
+          import json, sys, yaml
+          places = json.load(open(sys.argv[1]))
+          supported_doc = yaml.safe_load(open(sys.argv[2])) or {}
+          supported = set(supported_doc.get("boards", []))
+          runner_default = sys.argv[3]
+          board_tag_key = sys.argv[4]
+          matrix = []
+          skipped = []
+          for p in places:
+              tags = p.get("tags") or {}
+              board = tags.get(board_tag_key)
+              if not board or board not in supported:
+                  continue
+              # An operator can quarantine a known-broken place by setting
+              # `disabled=<reason>` (any non-empty value) as a tag on the
+              # coordinator. The place stays in the manifest / coverage list,
+              # but the dynamic matrix drops it so its red leg doesn't mask
+              # the rest of the run. Untag the place to re-enable.
+              disabled = tags.get("disabled")
+              if disabled:
+                  skipped.append({"place": p["name"], "reason": str(disabled)})
+                  continue
+              runner_label = tags.get("runner") or runner_default
+              if not runner_label:
+                  # Skip places we have no runner for rather than failing the whole leg.
+                  continue
+              matrix.append({
+                  "place": p["name"],
+                  "board": board,
+                  "runner_label": runner_label,
+              })
+          print("available_nodes_dynamic=" + json.dumps(matrix))
+          if skipped:
+              import sys as _s
+              for sk in skipped:
+                  print(f"::warning::skipping {sk['place']!r}: disabled={sk['reason']!r}", file=_s.stderr)
+          PY
+
+          echo "--- dynamic matrix ---" >&2
+          grep '^available_nodes_dynamic=' "$GITHUB_OUTPUT" | sed 's/^available_nodes_dynamic=//' >&2
+
   hw-direct:
     needs: preflight
-    if: needs.preflight.outputs.available_nodes_direct != '[]'
+    if: ${{ !inputs.dynamic_mode && needs.preflight.outputs.available_nodes_direct != '[]' }}
     strategy:
       fail-fast: false
       matrix:
@@ -320,7 +456,7 @@ jobs:
 
   hw-coord:
     needs: preflight
-    if: needs.preflight.outputs.available_nodes_coord != '[]'
+    if: ${{ !inputs.dynamic_mode && needs.preflight.outputs.available_nodes_coord != '[]' }}
     strategy:
       fail-fast: false
       matrix:
@@ -440,9 +576,151 @@ jobs:
           if-no-files-found: ignore
           retention-days: 14
 
+  hw-dynamic:
+    needs: preflight
+    if: ${{ inputs.dynamic_mode && needs.preflight.outputs.available_nodes_dynamic != '[]' && needs.preflight.outputs.available_nodes_dynamic != '' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ${{ fromJSON(needs.preflight.outputs.available_nodes_dynamic) }}
+    name: hw-dynamic (${{ matrix.node.place }})
+    runs-on: [self-hosted, "${{ matrix.node.runner_label }}"]
+    timeout-minutes: ${{ inputs.timeout_minutes }}
+    concurrency:
+      group: hw-place-${{ inputs.coordinator }}-${{ matrix.node.place }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup uv venv
+        uses: tfcollins/labgrid-plugins/.github/actions/setup-uv-venv@main
+        env:
+          PYADI_BUILD_TOKEN: ${{ secrets.PYADI_BUILD_TOKEN }}
+        with:
+          venv_dir: ${{ inputs.venv_dir }}
+          install_cmd: |
+            set -euo pipefail
+            if [[ -n "${PYADI_BUILD_TOKEN:-}" ]]; then
+              export GIT_CONFIG_COUNT=1
+              export GIT_CONFIG_KEY_0="url.https://x-access-token:${PYADI_BUILD_TOKEN}@github.com/.insteadOf"
+              export GIT_CONFIG_VALUE_0="https://github.com/"
+            fi
+            ${{ inputs.venv_install_cmd }}
+
+      - name: Fetch coordinator-generated LG_ENV
+        id: fetch_env
+        env:
+          API_URL: ${{ needs.preflight.outputs.coordinator_api_url }}
+          PLACE: ${{ matrix.node.place }}
+          TIER: ${{ inputs.dynamic_env_tier }}
+        run: |
+          set -euo pipefail
+          ENV_PATH="${RUNNER_TEMP}/lg-env-${PLACE}.yaml"
+          if ! curl -fsSL --max-time 30 "$API_URL/api/places/${PLACE}/env-yaml?tier=${TIER}" -o "$ENV_PATH"; then
+            echo "::error::Failed to fetch env-yaml for place '$PLACE' (tier=$TIER) from $API_URL" >&2
+            exit 1
+          fi
+          echo "Generated LG_ENV for $PLACE:" >&2
+          echo "--- $ENV_PATH ---" >&2
+          cat "$ENV_PATH" >&2
+          echo "--- end ---" >&2
+          echo "lg_env=$ENV_PATH" >> "$GITHUB_OUTPUT"
+
+      - name: Acquire coordinator place
+        uses: tfcollins/labgrid-plugins/.github/actions/acquire-place@main
+        with:
+          coordinator: ${{ env.COORDINATOR }}
+          place: ${{ matrix.node.place }}
+          labgrid_client: ${{ inputs.venv_dir }}/bin/labgrid-client
+          wait_minutes: ${{ inputs.place_wait_minutes }}
+
+      - name: Pre-pytest hook
+        if: inputs.pre_pytest_cmd != ''
+        run: |
+          set -euo pipefail
+          ${{ inputs.pre_pytest_cmd }}
+
+      - name: Run dynamic-mode tests
+        env:
+          LG_COORDINATOR: ${{ env.COORDINATOR }}
+          LG_PLACE: ${{ matrix.node.place }}
+          LG_ENV: ${{ steps.fetch_env.outputs.lg_env }}
+          BOARD: ${{ matrix.node.board }}
+          TESTS: ""
+          JUNIT: junit-hw-dynamic-${{ matrix.node.place }}.xml
+        run: |
+          set -euo pipefail
+          if [ -f "${{ inputs.vivado_settings }}" ]; then
+            set +u
+            # shellcheck disable=SC1090
+            source "${{ inputs.vivado_settings }}"
+            set -u
+          fi
+          ${{ inputs.pytest_cmd_template }}
+
+      - name: Release coordinator place
+        if: always()
+        env:
+          LG_COORDINATOR: ${{ env.COORDINATOR }}
+        run: |
+          set -euo pipefail
+          LGCLIENT="$VENV_DIR/bin/labgrid-client"
+          if [[ -x "$LGCLIENT" ]]; then
+            "$LGCLIENT" -x "$LG_COORDINATOR" -p "${{ matrix.node.place }}" release || true
+            "$LGCLIENT" -x "$LG_COORDINATOR" cancel-reservation --all 2>/dev/null || true
+          fi
+
+      - name: Upload to Prism
+        if: always() && inputs.prism_upload
+        continue-on-error: true
+        env:
+          PRISM_URL: ${{ env.PRISM_URL_RESOLVED }}
+          PRISM_API_TOKEN: ${{ secrets.PRISM_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          "$VENV_DIR/bin/pip" install --quiet \
+            "prism-uploader @ git+https://github.com/analogdevicesinc/prism.git#subdirectory=scripts" \
+            || true
+          "$VENV_DIR/bin/python" -m prism_client.upload_run \
+            --url "$PRISM_URL" \
+            --project "${{ inputs.prism_project }}" \
+            --junit "junit-hw-dynamic-${{ matrix.node.place }}.xml" \
+            --artifacts-glob "${{ inputs.artifact_glob }}" \
+            --labgrid-place "${{ matrix.node.place }}" \
+            --runner-label "${{ matrix.node.runner_label }}" \
+            --leg dynamic \
+            --git-sha "$GITHUB_SHA"
+
+      - name: Publish hw-dynamic test results to PR
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: Tests (hw-dynamic ${{ matrix.node.place }})
+          path: junit-hw-dynamic-${{ matrix.node.place }}.xml
+          reporter: java-junit
+          fail-on-error: false
+
+      - name: Upload JUnit XML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-hw-dynamic-${{ matrix.node.place }}
+          path: junit-hw-dynamic-${{ matrix.node.place }}.xml
+          retention-days: 14
+          if-no-files-found: warn
+
+      - name: Upload test output artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hw-dynamic-${{ matrix.node.place }}-output
+          path: ${{ inputs.artifact_glob }}
+          if-no-files-found: ignore
+          retention-days: 14
+
   publish-pr-test-summary:
     name: PR Test Summary
-    needs: [hw-direct, hw-coord]
+    needs: [hw-direct, hw-coord, hw-dynamic]
     if: always() && github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     steps:

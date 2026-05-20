@@ -124,6 +124,114 @@ load-bearing ones:
     defaults to ``vars.PRISM_URL``; ``prism_upload`` to
     ``vars.PRISM_UPLOAD_ENABLED``.
 
+Dynamic mode (tag-driven matrix allocation)
+-------------------------------------------
+
+The default (static) flow requires each consumer to pre-declare every
+labgrid place in ``hw-nodes.json`` and commit a per-place LG_ENV yaml.
+**Dynamic mode** flips that around: the consumer publishes the set of
+boards it *supports* and the workflow queries the coordinator at
+preflight to discover which of those boards are currently registered.
+A matrix leg is generated for each match.
+
+Enable it from the caller:
+
+.. code-block:: yaml
+
+   jobs:
+     hw:
+       uses: tfcollins/labgrid-plugins/.github/workflows/hw-matrix.yml@v<tag>
+       with:
+         dynamic_mode: true
+         supported_boards_path: .github/supported-boards.yml
+         venv_install_cmd: 'uv pip install --python "$VENV_DIR/bin/python" -e ".[dev]"'
+         # $BOARD is substituted with the matched tag for each leg.
+         pytest_cmd_template: '"$VENV_DIR/bin/pytest" -v --board="$BOARD" --junitxml="$JUNIT" test/'
+         prism_project: my-project
+       secrets: inherit
+
+In dynamic mode, ``manifest_path``, ``legs``, ``hw-direct`` and
+``hw-coord`` are not used.
+
+``supported-boards.yml`` shape
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: yaml
+
+   boards:
+     - ad9081
+     - ad9084
+     - adrv9002
+
+The strings here are matched against each coordinator place's
+``daughter-board`` tag (override with ``board_tag_key`` if your lab
+uses a different key). Anything not in the list is ignored, anything
+not registered on the coordinator at preflight time is skipped
+without failing the workflow.
+
+Coordinator-side requirement: ``daughter-board=`` tag on each place
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Dynamic mode relies on the coordinator answering ``GET /api/places``
+with each place's ``tags`` populated. Labgrid exporters register
+*resources* (groups), not place tags — tags are set on the place
+itself via labgrid-client. The existing lab convention is
+``daughter-board=<chip>`` for the IC under test and ``carrier=<fpga>``
+for the FPGA carrier board:
+
+.. code-block:: bash
+
+   labgrid-client -x 10.0.0.41:20408 -p mini2 set-tags \
+       daughter-board=ad9081 carrier=zcu102
+
+The optional ``runner`` tag overrides the GH Actions runner label
+that the matrix leg targets; without it the leg falls back to
+``inputs.dynamic_runner_label_default`` (default ``hw-coordinator``).
+
+A one-shot helper applies tags from a yaml manifest:
+
+.. code-block:: bash
+
+   # exporter_configs/scripts/place-tags.example.yaml
+   places:
+     mini2:
+       daughter-board: ad9081
+       carrier: zcu102
+       runner: hw-mini2
+
+   exporter_configs/scripts/seed-place-tags.sh \
+       --coordinator 10.0.0.41:20408 \
+       --manifest exporter_configs/scripts/place-tags.example.yaml
+
+Each board-specific template under ``exporter_configs/templates/``
+documents the expected ``set-tags`` invocation in its header.
+
+How a dynamic leg runs
+~~~~~~~~~~~~~~~~~~~~~~
+
+1. **Preflight** hits ``GET <coordinator_api_url>/api/places``
+   (default ``http://<coord_host>:8000``; override with
+   ``coordinator_api_url``). Places whose ``tags.<board_tag_key>`` is
+   in ``supported-boards.yml`` become matrix entries
+   ``{place, board, runner_label}``. The key defaults to
+   ``daughter-board`` to match the existing lab convention; override
+   via the ``board_tag_key`` input.
+2. Each matrix leg fetches the LG_ENV yaml on demand from
+   ``GET <coordinator_api_url>/api/places/<place>/env-yaml``. The
+   coordinator generates it from the place's matched resources, so
+   IP, UART and any other resources registered by the exporter flow
+   through automatically. No env yaml is committed to the consumer
+   repo.
+3. The leg acquires the place through the same ``acquire-place``
+   composite (reservation queue, ``place_wait_minutes`` wait).
+4. ``pytest_cmd_template`` runs with ``$BOARD`` set to the matched
+   tag. Consumers should pass this as a pytest argument and have
+   their conftest filter tests accordingly (pyadi-iio: ``--board=$BOARD``
+   deselects tests whose ``@pytest.mark.iio_hardware`` arg list
+   does not contain the board).
+5. JUnit XML + artifacts upload the same way as the static legs.
+   ``publish-pr-test-summary`` aggregates all three legs.
+
 The smoke job in this repo
 --------------------------
 

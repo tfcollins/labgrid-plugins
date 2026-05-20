@@ -1,5 +1,14 @@
 # Exporter template: Raspberry Pi
 # Group naming convention: <BOARD>_<VARIANT>
+#
+# Place tags (required for the hw-matrix dynamic_mode allocator):
+# After creating the matching place on the coordinator, set its tags using the
+# existing convention `daughter-board=<chip>` plus `carrier=rpi`:
+#   labgrid-client -x <coordinator>:20408 -p <place_name> set-tags \
+#       daughter-board=rpi_<variant_lower> carrier=rpi
+# Optional `runner` tag overrides the GH Actions runner label:
+#   labgrid-client -x <coordinator>:20408 -p <place_name> set-tags runner=hw-rpi
+# See exporter_configs/scripts/seed-place-tags.sh for a one-shot helper.
 
 {{ exporter_name | default("lab-host-01") }}:
   RPI_{{ variant | default("CM4") }}:
