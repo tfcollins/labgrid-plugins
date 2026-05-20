@@ -89,10 +89,7 @@ def infer_strategy(resource_classes: set[str]) -> str | None:
     has_jtag = "XilinxDeviceJTAG" in resource_classes
     has_vivado = "XilinxVivadoTool" in resource_classes
     has_net = "NetworkService" in resource_classes
-    has_power = (
-        "HomeAssistantOutlet" in resource_classes
-        or "VesyncOutlet" in resource_classes
-    )
+    has_power = "HomeAssistantOutlet" in resource_classes or "VesyncOutlet" in resource_classes
 
     if has_kuiper and has_mass and has_sdmux:
         return "BootFPGASoC"
