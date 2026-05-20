@@ -53,6 +53,12 @@ SHELL_DEFAULTS: dict[str, dict[str, str]] = {
         "username": "root",
         "password": "analog",
     },
+    "BootZynq7000JTAGRecovery": {
+        "prompt": "root@.*",
+        "login_prompt": "analog login: ",
+        "username": "root",
+        "password": "analog",
+    },
     "_default": {
         "prompt": "root@.*",
         "login_prompt": "login: ",
@@ -76,13 +82,48 @@ STRATEGY_CONFIGS: dict[str, dict[str, Any]] = {
         "wait_for_boot_timeout": 700,
         "power_off_delay": 30,
     },
+    # NOTE: BootZynq7000JTAGRecovery needs board-specific path params
+    # (ps7_init_tcl, uboot_elf, bitstream_path, etc.) that env_gen can't
+    # infer. Operator must extend the generated env yaml or stage the
+    # paths at the strategy's defaults. Defaults here cover the
+    # conventional bq/zc706 layout; override per-place via additional
+    # tags or in the consumer's pytest fixture if they differ.
+    "BootZynq7000JTAGRecovery": {
+        "ps7_init_tcl": "/srv/recovery/zc706/ps7_init.tcl",
+        "uboot_elf": "/srv/recovery/zc706/u-boot.elf",
+        "bitstream_path": "/srv/recovery/zc706/system_top.bit",
+        "a9_target_name": "*Cortex-A9 MPCore #0",
+        "recovery_kernel": "uImage",
+        "recovery_dtb": "devicetree.dtb",
+        "recovery_initramfs": "uInitrd.recovery",
+        "recovery_login_marker": "recovery login:",
+        "uboot_prompt": "Zynq>.*",
+        "kernel_addr": "0x3000000",
+        "dtb_addr": "0x2A00000",
+        "initramfs_addr": "0x10000000",
+        "jtag_bootstrap_retries": 1,
+        "wait_for_uboot_prompt_timeout": 90,
+        "wait_for_recovery_linux_timeout": 240,
+        "wait_for_sd_flash_timeout": 1800,
+    },
 }
+
+# Strategy class names recognized as explicit boot-strategy tag overrides.
+_KNOWN_STRATEGIES = frozenset(
+    {
+        "BootFPGASoC",
+        "BootFabric",
+        "BootFPGASoCSSH",
+        "BootZynq7000JTAGRecovery",
+    }
+)
 
 
 def infer_strategy(resource_classes: set[str]) -> str | None:
     """Return a labgrid strategy class name inferred from the set of resource
     classes a place has live, or None if the heuristic doesn't match any
-    known pattern. Supported: "BootFPGASoC", "BootFPGASoCSSH", "BootFabric"."""
+    known pattern. Supported: "BootFPGASoC", "BootFPGASoCSSH", "BootFabric",
+    "BootZynq7000JTAGRecovery"."""
     has_kuiper = "KuiperRelease" in resource_classes
     has_mass = "NetworkUSBMassStorage" in resource_classes
     has_sdmux = "NetworkUSBSDMuxDevice" in resource_classes
@@ -90,7 +131,13 @@ def infer_strategy(resource_classes: set[str]) -> str | None:
     has_vivado = "XilinxVivadoTool" in resource_classes
     has_net = "NetworkService" in resource_classes
     has_power = "HomeAssistantOutlet" in resource_classes or "VesyncOutlet" in resource_classes
+    has_tftp = "TFTPServerResource" in resource_classes
 
+    # Zynq-7000 boards staged for JTAG-bootstrap + SD-boot have all of
+    # JTAG, Vivado, TFTP, and KuiperRelease — match before plain JTAG
+    # below so we don't mistakenly classify them as BootFabric.
+    if has_kuiper and has_jtag and has_vivado and has_tftp:
+        return "BootZynq7000JTAGRecovery"
     if has_kuiper and has_mass and has_sdmux:
         return "BootFPGASoC"
     # SSH-based variant: no SD-mux/mass-storage, but Kuiper + a power outlet
@@ -100,6 +147,19 @@ def infer_strategy(resource_classes: set[str]) -> str | None:
     if has_jtag and has_vivado:
         return "BootFabric"
     return None
+
+
+def resolve_strategy(place_tags: dict[str, str], resource_classes: set[str]) -> str | None:
+    """Pick a strategy: explicit place tag wins, else fall back to inference.
+
+    The `boot-strategy` tag on a place lets operators pin a specific
+    strategy without depending on the resource-shape heuristic. Unknown
+    tag values are ignored (defensive — never emit a typoed strategy
+    class into the env yaml)."""
+    tagged = place_tags.get("boot-strategy")
+    if tagged and tagged in _KNOWN_STRATEGIES:
+        return tagged
+    return infer_strategy(resource_classes)
 
 
 def generate_env_yaml(
@@ -121,7 +181,7 @@ def generate_env_yaml(
         raise ValueError(f"Invalid tier '{tier}'; expected one of {VALID_TIERS}")
 
     resource_classes = {r.cls for r in resources}
-    strategy = infer_strategy(resource_classes) if tier == "boot" else None
+    strategy = resolve_strategy(place.tags, resource_classes) if tier == "boot" else None
     shell_key = strategy or "_default"
     shell_cfg = dict(SHELL_DEFAULTS.get(shell_key, SHELL_DEFAULTS["_default"]))
 
@@ -139,7 +199,7 @@ def generate_env_yaml(
                     drivers[driver_name] = config_fn(r) or {}
 
         if strategy:
-            drivers[strategy] = dict(STRATEGY_CONFIGS[strategy])
+            drivers[strategy] = dict(STRATEGY_CONFIGS.get(strategy, {}))
 
     doc = {
         "targets": {

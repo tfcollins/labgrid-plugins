@@ -84,6 +84,13 @@ class Status(enum.Enum):
     # Optional post-flash check: cold-cycle, let BootROM read the
     # freshly-flashed SD, wait for the normal Kuiper login prompt.
     sd_boot_verified = 9
+    # Normal-CI boot path for boards whose MIO boot-mode strap is set to
+    # JTAG: cold-cycle, JTAG-bootstrap U-Boot, drive U-Boot to fatload
+    # kernel+dtb from SD, bootm. No recovery cascade — assumes the SD is
+    # already populated (caller has run sd_flash_done previously, or the
+    # board has a known-good image). Reuses the retry-wrapped JTAG load
+    # and the SD-boot drive-out logic from sd_boot_verified.
+    shell = 10
 
 
 @target_factory.reg_driver
@@ -440,6 +447,89 @@ class BootZynq7000JTAGRecovery(Strategy):
         time.sleep(5)
         self.power.on()
 
+    def _jtag_load_uboot_with_retry(self) -> None:
+        """JTAG-bootstrap U-Boot, retrying with a cold-cycle on failure.
+
+        FT232H / Digilent JTAG enumeration is intermittent right after
+        a fresh power-on (the cable's USB descriptor occasionally fails
+        to refresh before xsdb queries targets, giving "no targets
+        found"). Match the retry behavior of the jtag_bootstrap state
+        so callers that drive ``sd_boot_verified`` or ``shell`` survive
+        the same transient.
+        """
+        self.target.activate(self.jtag)
+        attempts = int(self.jtag_bootstrap_retries) + 1
+        last_error: Exception | None = None
+        for attempt in range(1, attempts + 1):
+            try:
+                self.logger.info(f"JTAG bootstrap attempt {attempt}/{attempts}...")
+                self.jtag.load_zynq_uboot(
+                    ps7_init_tcl=self._require("ps7_init_tcl"),
+                    uboot_elf=self._require("uboot_elf"),
+                    a9_target_name=self.a9_target_name,
+                    bitstream_path=self.bitstream_path,
+                    fsbl_elf=self.fsbl_elf,
+                )
+                return
+            except Exception as e:
+                last_error = e
+                self.logger.error(f"JTAG bootstrap attempt {attempt}/{attempts} failed: {e}")
+                if attempt >= attempts:
+                    raise StrategyError(f"JTAG bootstrap exhausted retries: {e}") from e
+                self.logger.info("Cold-cycling power before retry...")
+                self._cold_cycle()
+        # Should be unreachable; loop always returns or raises.
+        raise StrategyError(f"JTAG bootstrap exhausted retries: {last_error}")
+
+    def _drive_uboot_to_sd_linux(self) -> None:
+        """At a JTAG-loaded U-Boot prompt, fatload kernel+dtb from SD and bootm.
+
+        Assumes self.shell is already active and at the U-Boot prompt.
+        Waits for ``verify_boot_login_marker`` (Linux login) on success;
+        raises StrategyError on timeout.
+        """
+        partition = f"0:{self.sd_boot_partition}"
+        commands = [
+            "mmc rescan",
+            f"fatload mmc {partition} {self.kernel_addr} {self.verify_kernel_name}",
+            f"fatload mmc {partition} {self.dtb_addr} {self.verify_dtb_name}",
+            f"setenv bootargs {self.verify_bootargs}",
+        ]
+        self.logger.info("Driving U-Boot to load kernel/dtb from SD...")
+        for cmd in commands:
+            self.logger.info(f"U-Boot: {cmd}")
+            self.shell.run_uboot(f"{cmd}\n", timeout=60)
+            self.shell._check_prompt_uboot()
+
+        bootm = f"bootm {self.kernel_addr} - {self.dtb_addr}"
+        self.logger.info(f"Booting from SD: {bootm}")
+        self.shell.console.sendline(bootm)
+        self.logger.info(
+            f"Waiting for SD-boot login marker '{self.verify_boot_login_marker}' "
+            f"(timeout {self.wait_for_verify_boot_timeout}s)..."
+        )
+        try:
+            self.shell.console.expect(
+                self.verify_boot_login_marker,
+                timeout=self.wait_for_verify_boot_timeout,
+            )
+        except Exception as e:
+            captured = b""
+            try:
+                captured = self.shell.console._expect.before or b""
+            except Exception:
+                pass
+            self.logger.error(
+                "SD-boot did not reach the expected login (%d bytes captured).",
+                len(captured),
+            )
+            if captured:
+                self.logger.error("UART tail: %r", captured[-1000:])
+            raise StrategyError(
+                f"SD did not reach the expected login prompt within "
+                f"{self.wait_for_verify_boot_timeout}s"
+            ) from e
+
     def _build_sd_flash_cmd(self) -> str:
         """Compose the streaming download | dd one-liner for the recovery shell."""
         sd_image_url = self._require("sd_image_url")
@@ -670,14 +760,7 @@ class BootZynq7000JTAGRecovery(Strategy):
             # produces zero UART output even with a perfect SD. By
             # using JTAG we always reach a known U-Boot state, and
             # the actual boot below still depends on the SD content.
-            self.target.activate(self.jtag)
-            self.jtag.load_zynq_uboot(
-                ps7_init_tcl=self._require("ps7_init_tcl"),
-                uboot_elf=self._require("uboot_elf"),
-                a9_target_name=self.a9_target_name,
-                bitstream_path=self.bitstream_path,
-                fsbl_elf=self.fsbl_elf,
-            )
+            self._jtag_load_uboot_with_retry()
 
             self.shell.bypass_login = True
             self.target.activate(self.shell)
@@ -693,52 +776,56 @@ class BootZynq7000JTAGRecovery(Strategy):
             self.shell.console.sendline("\n")
             self.shell._check_prompt_uboot()
 
-            # Drive U-Boot to fatload from the SD and bootm. This is
-            # what proves the freshly-flashed SD content is correct:
-            # the kernel + dtb come from the SD, and root= points at
-            # /dev/mmcblk0p2 so the rootfs comes from there too.
-            partition = f"0:{self.sd_boot_partition}"
-            commands = [
-                "mmc rescan",
-                f"fatload mmc {partition} {self.kernel_addr} {self.verify_kernel_name}",
-                f"fatload mmc {partition} {self.dtb_addr} {self.verify_dtb_name}",
-                f"setenv bootargs {self.verify_bootargs}",
-            ]
-            self.logger.info("Configuring U-Boot for SD-boot verification...")
-            for cmd in commands:
-                self.logger.info(f"U-Boot: {cmd}")
-                self.shell.run_uboot(f"{cmd}\n", timeout=60)
-                self.shell._check_prompt_uboot()
-
-            bootm = f"bootm {self.kernel_addr} - {self.dtb_addr}"
-            self.logger.info(f"Booting from SD: {bootm}")
-            self.shell.console.sendline(bootm)
-            self.logger.info(
-                f"Waiting for SD-boot login marker '{self.verify_boot_login_marker}' "
-                f"(timeout {self.wait_for_verify_boot_timeout}s)..."
-            )
-            try:
-                self.shell.console.expect(
-                    self.verify_boot_login_marker,
-                    timeout=self.wait_for_verify_boot_timeout,
-                )
-            except Exception as e:
-                captured = b""
-                try:
-                    captured = self.shell.console._expect.before or b""
-                except Exception:
-                    pass
-                self.logger.error(
-                    "SD-boot verification timed out (%d bytes captured).",
-                    len(captured),
-                )
-                if captured:
-                    self.logger.error("UART tail: %r", captured[-1000:])
-                raise StrategyError(
-                    "Freshly-flashed SD did not reach the expected login "
-                    f"prompt within {self.wait_for_verify_boot_timeout}s"
-                ) from e
+            # Drive U-Boot to fatload from the SD and bootm. This proves
+            # the freshly-flashed SD content is correct: the kernel +
+            # dtb come from the SD, and root= points at /dev/mmcblk0p2
+            # so the rootfs comes from there too.
+            self._drive_uboot_to_sd_linux()
             self.logger.info("SD card boots normally — recovery verified")
+
+        elif status == Status.shell:
+            # Normal CI boot path for JTAG-only-strap boards. Cold-cycle,
+            # JTAG-bootstrap U-Boot, drive U-Boot to SD-boot Linux, wait
+            # for login. Assumes a previously-flashed SD; does NOT cascade
+            # through the recovery flow.
+            self.transition(Status.powered_off)
+            self.logger.info("Cold-cycling power for shell boot...")
+            self._cold_cycle()
+            self._jtag_load_uboot_with_retry()
+
+            self.shell.bypass_login = True
+            self.target.activate(self.shell)
+            # Race-tolerant prompt grab: xsdb may return after U-Boot has
+            # already passed its autoboot countdown (especially when the
+            # board's saved bootcmd is a quick-fail like a TFTP boot with
+            # an unreachable server). Send space+CR immediately to break
+            # autoboot if still counting, then wait for the U-Boot prompt
+            # regardless of whether we caught autoboot or arrived post-fail.
+            self.logger.info("Sending break + waiting for U-Boot prompt...")
+            self.shell.console.sendline(" ")
+            time.sleep(0.5)
+            self.shell.console.sendline("")
+            self._original_prompt = self.shell.prompt
+            self.shell.prompt = self.uboot_prompt
+            self.shell.console.expect(
+                self.uboot_prompt,
+                timeout=self.wait_for_uboot_prompt_timeout,
+            )
+            self.shell._check_prompt_uboot()
+
+            self._drive_uboot_to_sd_linux()
+            # _drive_uboot_to_sd_linux leaves self.shell.prompt set to the
+            # U-Boot value (Zynq>) and bypass_login=True from the U-Boot
+            # work. Subsequent shell.run() calls would then time out
+            # waiting for Zynq> while the board sits at the Linux prompt
+            # (root@analog:~#). Mirror linux_recovery's cleanup so the
+            # ADIShellDriver does a fresh login + prompt match.
+            if hasattr(self, "_original_prompt"):
+                self.shell.prompt = self._original_prompt
+            self.shell.bypass_login = False
+            self.target.deactivate(self.shell)
+            self.target.activate(self.shell)
+            self.logger.info("Linux up via JTAG-bootstrap + SD-boot")
 
         else:
             raise StrategyError(f"no transition found from {self.status} to {status}")

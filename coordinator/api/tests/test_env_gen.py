@@ -200,7 +200,95 @@ class TestInferStrategy:
 
         assert infer_strategy({"XilinxDeviceJTAG", "XilinxVivadoTool"}) == "BootFabric"
 
+    def test_zynq7000_jtag_recovery_when_kuiper_jtag_vivado_tftp(self):
+        """bq-style: Zynq-7000 boards staged for JTAG-bootstrap + SD-boot
+        must take precedence over the bare JTAG+Vivado → BootFabric rule."""
+        from app.env_gen import infer_strategy
+
+        classes = {
+            "KuiperRelease",
+            "XilinxDeviceJTAG",
+            "XilinxVivadoTool",
+            "TFTPServerResource",
+        }
+        assert infer_strategy(classes) == "BootZynq7000JTAGRecovery"
+
     def test_none_when_no_pattern_matches(self):
         from app.env_gen import infer_strategy
 
         assert infer_strategy({"NetworkSerialPort", "VesyncOutlet"}) is None
+
+
+class TestResolveStrategy:
+    def test_tag_wins_over_inference(self):
+        """An explicit `boot-strategy` place tag must override the
+        resource-shape heuristic — operators need a way to pin a
+        strategy for boards where inference is wrong or ambiguous."""
+        from app.env_gen import resolve_strategy
+
+        # Resources alone would infer BootFabric (jtag+vivado).
+        classes = {"XilinxDeviceJTAG", "XilinxVivadoTool"}
+        assert (
+            resolve_strategy({"boot-strategy": "BootZynq7000JTAGRecovery"}, classes)
+            == "BootZynq7000JTAGRecovery"
+        )
+
+    def test_unknown_tag_falls_through_to_inference(self):
+        """A typoed/unknown strategy name must not leak into the env yaml."""
+        from app.env_gen import resolve_strategy
+
+        classes = {"XilinxDeviceJTAG", "XilinxVivadoTool"}
+        assert resolve_strategy({"boot-strategy": "NopeNotReal"}, classes) == "BootFabric"
+
+    def test_missing_tag_uses_inference(self):
+        from app.env_gen import resolve_strategy
+
+        assert (
+            resolve_strategy(
+                {},
+                {"KuiperRelease", "NetworkUSBMassStorage", "NetworkUSBSDMuxDevice"},
+            )
+            == "BootFPGASoC"
+        )
+
+
+class TestBootTierZynq7000Recovery:
+    """End-to-end: bq-style place generates a BootZynq7000JTAGRecovery boot
+    yaml that ships with the conventional path defaults so the consumer can
+    transition('shell') without further patching for the canonical layout."""
+
+    _BQ_RESOURCES = [
+        _res("NetworkSerialPort"),
+        _res("HomeAssistantOutlet"),
+        _res("KuiperRelease"),
+        _res("XilinxDeviceJTAG"),
+        _res("XilinxVivadoTool"),
+        _res("TFTPServerResource"),
+    ]
+
+    def test_tag_pins_strategy(self):
+        place = PlaceModel(
+            name="bq",
+            tags={"boot-strategy": "BootZynq7000JTAGRecovery"},
+            matches=[ResourceMatchModel(exporter="lab", group="tlab", cls="*")],
+        )
+        out = generate_env_yaml(place, self._BQ_RESOURCES, "boot")
+        doc = yaml.safe_load(out)
+        drivers = doc["targets"]["main"]["drivers"]
+        assert "BootZynq7000JTAGRecovery" in drivers
+        # Strategy block carries the conventional zc706 path defaults.
+        cfg = drivers["BootZynq7000JTAGRecovery"]
+        assert cfg["uboot_prompt"] == "Zynq>.*"
+        assert cfg["recovery_kernel"] == "uImage"
+        assert cfg["jtag_bootstrap_retries"] == 1
+
+    def test_inferred_when_tag_absent(self):
+        place = PlaceModel(
+            name="bq",
+            matches=[ResourceMatchModel(exporter="lab", group="tlab", cls="*")],
+        )
+        out = generate_env_yaml(place, self._BQ_RESOURCES, "boot")
+        doc = yaml.safe_load(out)
+        drivers = doc["targets"]["main"]["drivers"]
+        assert "BootZynq7000JTAGRecovery" in drivers
+        assert "BootFabric" not in drivers
