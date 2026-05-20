@@ -795,22 +795,31 @@ class BootZynq7000JTAGRecovery(Strategy):
 
             self.shell.bypass_login = True
             self.target.activate(self.shell)
-            # Race-tolerant prompt grab: xsdb may return after U-Boot has
-            # already passed its autoboot countdown (especially when the
-            # board's saved bootcmd is a quick-fail like a TFTP boot with
-            # an unreachable server). Send space+CR immediately to break
-            # autoboot if still counting, then wait for the U-Boot prompt
-            # regardless of whether we caught autoboot or arrived post-fail.
+            # Race-tolerant prompt grab: xsdb returns control around the time
+            # U-Boot starts its autoboot countdown, and a single keypress can
+            # miss the (often 1-3s) interrupt window — sometimes autoboot then
+            # proceeds and the Zynq> prompt never appears, wedging the boot.
+            # Hammer Enter on a tight cadence for the whole window: each send
+            # both breaks an in-progress countdown and re-prints an already
+            # reached prompt, so we reliably land on Zynq> regardless of timing.
             self.logger.info("Sending break + waiting for U-Boot prompt...")
-            self.shell.console.sendline(" ")
-            time.sleep(0.5)
-            self.shell.console.sendline("")
             self._original_prompt = self.shell.prompt
             self.shell.prompt = self.uboot_prompt
-            self.shell.console.expect(
-                self.uboot_prompt,
-                timeout=self.wait_for_uboot_prompt_timeout,
-            )
+            deadline = time.time() + self.wait_for_uboot_prompt_timeout
+            caught = False
+            while time.time() < deadline:
+                self.shell.console.sendline("")
+                try:
+                    self.shell.console.expect(self.uboot_prompt, timeout=1)
+                    caught = True
+                    break
+                except Exception:
+                    continue
+            if not caught:
+                raise StrategyError(
+                    f"U-Boot prompt {self.uboot_prompt!r} not seen within "
+                    f"{self.wait_for_uboot_prompt_timeout}s of JTAG bootstrap"
+                )
             self.shell._check_prompt_uboot()
 
             self._drive_uboot_to_sd_linux()
