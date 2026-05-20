@@ -791,18 +791,26 @@ class BootZynq7000JTAGRecovery(Strategy):
             self.transition(Status.powered_off)
             self.logger.info("Cold-cycling power for shell boot...")
             self._cold_cycle()
-            self._jtag_load_uboot_with_retry()
 
+            # Open the serial console BEFORE the JTAG bootstrap. Activating the
+            # console pays a ~2-3s rfc2217/ssh connect cost; doing it after the
+            # CPU resumes used to race that connect against U-Boot's autoboot
+            # countdown, so a short (1-2s) countdown elapsed before the first
+            # keypress could be sent and the board autobooted past Zynq>. With
+            # the console already up, the interrupt hammer starts the instant
+            # xsdb resumes the CPU. bypass_login keeps on_activate from waiting
+            # for a prompt on a board that hasn't booted yet.
             self.shell.bypass_login = True
             self.target.activate(self.shell)
-            # Race-tolerant prompt grab: xsdb returns control around the time
-            # U-Boot starts its autoboot countdown, and a single keypress can
-            # miss the (often 1-3s) interrupt window — sometimes autoboot then
-            # proceeds and the Zynq> prompt never appears, wedging the boot.
-            # Hammer Enter on a tight cadence for the whole window: each send
-            # both breaks an in-progress countdown and re-prints an already
-            # reached prompt, so we reliably land on Zynq> regardless of timing.
-            self.logger.info("Sending break + waiting for U-Boot prompt...")
+
+            self._jtag_load_uboot_with_retry()
+
+            # Spam CR on a tight (~0.1s) cadence across the whole window so a
+            # keypress always lands inside U-Boot's "Hit any key" countdown,
+            # however short; each send also re-prints an already-reached prompt,
+            # so we converge on Zynq> whether we interrupted autoboot or arrived
+            # just after it stopped.
+            self.logger.info("Interrupting U-Boot autoboot...")
             self._original_prompt = self.shell.prompt
             self.shell.prompt = self.uboot_prompt
             deadline = time.time() + self.wait_for_uboot_prompt_timeout
@@ -810,7 +818,7 @@ class BootZynq7000JTAGRecovery(Strategy):
             while time.time() < deadline:
                 self.shell.console.sendline("")
                 try:
-                    self.shell.console.expect(self.uboot_prompt, timeout=1)
+                    self.shell.console.expect(self.uboot_prompt, timeout=0.1)
                     caught = True
                     break
                 except Exception:
