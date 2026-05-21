@@ -664,6 +664,7 @@ jobs:
           LG_PLACE: ${{ matrix.node.place }}
           LG_ENV: ${{ steps.fetch_env.outputs.lg_env }}
           BOARD: ${{ matrix.node.board }}
+          CARRIER: ${{ matrix.node.carrier }}
           TESTS: ""
           JUNIT: junit-hw-dynamic-${{ matrix.node.place }}.xml
         run: |
