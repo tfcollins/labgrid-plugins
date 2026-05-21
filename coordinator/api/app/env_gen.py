@@ -201,16 +201,22 @@ def generate_env_yaml(
         if strategy:
             drivers[strategy] = dict(STRATEGY_CONFIGS.get(strategy, {}))
 
-    doc = {
-        "targets": {
-            "main": {
-                "resources": {
-                    "RemotePlace": {"name": place.name},
-                },
-                "drivers": drivers,
-            },
+    # Expose the place's identity as labgrid `features` so consumers that
+    # gate tests with `@pytest.mark.lg_feature(...)` (e.g. pyadi-dt's
+    # per-board HW tests) are selected rather than skipped. Derived from the
+    # daughter-board (chip) + carrier (FPGA board) tags, e.g. [ad9081, zcu102].
+    features = [v for v in (place.tags.get("daughter-board"), place.tags.get("carrier")) if v]
+
+    target: dict[str, Any] = {
+        "resources": {
+            "RemotePlace": {"name": place.name},
         },
+        "drivers": drivers,
     }
+    if features:
+        target["features"] = features
+
+    doc = {"targets": {"main": target}}
 
     buf = StringIO()
     buf.write(f"## Generated labgrid env yaml for place '{place.name}'\n")
