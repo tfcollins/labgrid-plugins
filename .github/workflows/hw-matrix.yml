@@ -320,6 +320,7 @@ jobs:
               matrix.append({
                   "place": p["name"],
                   "board": board,
+                  "carrier": tags.get("carrier") or "unknown",
                   "runner_label": runner_label,
               })
           print("available_nodes_dynamic=" + json.dumps(matrix))
@@ -583,7 +584,7 @@ jobs:
       fail-fast: false
       matrix:
         node: ${{ fromJSON(needs.preflight.outputs.available_nodes_dynamic) }}
-    name: hw-dynamic (${{ matrix.node.place }})
+    name: hw-dynamic (${{ matrix.node.board }} / ${{ matrix.node.carrier }})
     runs-on: [self-hosted, "${{ matrix.node.runner_label }}"]
     timeout-minutes: ${{ inputs.timeout_minutes }}
     concurrency:
