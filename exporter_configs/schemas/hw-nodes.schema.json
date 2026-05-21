@@ -43,6 +43,14 @@
         "enum": ["zynq", "zynqmp", "versal", "microblaze", null],
         "description": "Optional FPGA family hint; consumers may use it to gate Vivado sourcing"
       },
+      "board": {
+        "type": "string",
+        "description": "Optional daughter-board / chip identity (e.g. ad9081). Used to label the matrix leg; falls back to `place` when unset."
+      },
+      "carrier": {
+        "type": "string",
+        "description": "Optional FPGA carrier name (e.g. zcu102). Paired with `board` in the matrix leg label."
+      },
       "legs": {
         "type": "array",
         "items": {"enum": ["direct", "coord"]},

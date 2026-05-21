@@ -340,7 +340,7 @@ jobs:
       fail-fast: false
       matrix:
         node: ${{ fromJSON(needs.preflight.outputs.available_nodes_direct) }}
-    name: hw-direct (${{ matrix.node.place }})
+    name: hw-direct (${{ matrix.node.board && format('{0} / {1}', matrix.node.board, matrix.node.carrier) || matrix.node.place }})
     runs-on: [self-hosted, "${{ matrix.node.runner_label }}"]
     timeout-minutes: ${{ inputs.timeout_minutes }}
     concurrency:
@@ -462,7 +462,7 @@ jobs:
       fail-fast: false
       matrix:
         node: ${{ fromJSON(needs.preflight.outputs.available_nodes_coord) }}
-    name: hw-coord (${{ matrix.node.place }})
+    name: hw-coord (${{ matrix.node.board && format('{0} / {1}', matrix.node.board, matrix.node.carrier) || matrix.node.place }})
     runs-on: [self-hosted, "${{ matrix.node.runner_label }}"]
     timeout-minutes: ${{ inputs.timeout_minutes }}
     concurrency:
