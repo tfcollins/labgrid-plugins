@@ -87,6 +87,17 @@ on:
         required: false
         default: ""
         description: Prism project slug. Required when prism_upload is true.
+      prism_upload_cmd:
+        type: string
+        required: false
+        default: ""
+        description: >-
+          Consumer-supplied shell command that uploads results to Prism.
+          Lets a repo vendor its own uploader (e.g. for a private Prism
+          repo) instead of the workflow fetching one. Runs only when
+          prism_upload is true and this is non-empty. The step exports
+          PRISM_URL, PRISM_EMAIL, PRISM_PASSWORD, PRISM_PROJECT, PRISM_JUNIT,
+          PRISM_RUN_NAME, PRISM_BOARD, PRISM_CARRIER, PRISM_PLACE for it.
       dynamic_mode:
         type: boolean
         required: false
@@ -672,25 +683,20 @@ jobs:
           fi
 
       - name: Upload to Prism
-        if: always() && inputs.prism_upload
+        if: always() && inputs.prism_upload && inputs.prism_upload_cmd != ''
         continue-on-error: true
         env:
           PRISM_URL: ${{ env.PRISM_URL_RESOLVED }}
-          PRISM_API_TOKEN: ${{ secrets.PRISM_API_TOKEN }}
-        run: |
-          set -euo pipefail
-          "$VENV_DIR/bin/pip" install --quiet \
-            "prism-uploader @ git+https://github.com/analogdevicesinc/prism.git#subdirectory=scripts" \
-            || true
-          "$VENV_DIR/bin/python" -m prism_client.upload_run \
-            --url "$PRISM_URL" \
-            --project "${{ inputs.prism_project }}" \
-            --junit "junit-hw-dynamic-${{ matrix.node.place }}.xml" \
-            --artifacts-glob "${{ inputs.artifact_glob }}" \
-            --labgrid-place "${{ matrix.node.place }}" \
-            --runner-label "${{ matrix.node.runner_label }}" \
-            --leg dynamic \
-            --git-sha "$GITHUB_SHA"
+          PRISM_EMAIL: ${{ secrets.PRISM_EMAIL }}
+          PRISM_PASSWORD: ${{ secrets.PRISM_PASSWORD }}
+          PRISM_PROJECT: ${{ inputs.prism_project }}
+          PRISM_JUNIT: junit-hw-dynamic-${{ matrix.node.place }}.xml
+          PRISM_RUN_NAME: ${{ inputs.prism_project }} ${{ matrix.node.board }} / ${{ matrix.node.carrier }} #${{ github.run_number }}
+          PRISM_BOARD: ${{ matrix.node.board }}
+          PRISM_CARRIER: ${{ matrix.node.carrier }}
+          PRISM_PLACE: ${{ matrix.node.place }}
+          VENV_DIR: ${{ inputs.venv_dir }}
+        run: ${{ inputs.prism_upload_cmd }}
 
       - name: Publish hw-dynamic test results to PR
         if: always()
