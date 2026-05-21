@@ -160,6 +160,12 @@ on:
       PRISM_API_TOKEN:
         required: false
         description: API token used by the Prism upload step.
+      PRISM_EMAIL:
+        required: false
+        description: Login email for the Prism upload step (login-auth uploaders).
+      PRISM_PASSWORD:
+        required: false
+        description: Login password for the Prism upload step (login-auth uploaders).
 
 env:
   COORDINATOR: ${{ inputs.coordinator != '' && inputs.coordinator || vars.ADI_LG_COORDINATOR }}
@@ -695,7 +701,6 @@ jobs:
           PRISM_BOARD: ${{ matrix.node.board }}
           PRISM_CARRIER: ${{ matrix.node.carrier }}
           PRISM_PLACE: ${{ matrix.node.place }}
-          VENV_DIR: ${{ inputs.venv_dir }}
         run: ${{ inputs.prism_upload_cmd }}
 
       - name: Publish hw-dynamic test results to PR
