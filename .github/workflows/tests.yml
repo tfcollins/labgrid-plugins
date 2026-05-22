@@ -81,4 +81,5 @@ jobs:
           tests/test_recovery_module.py \
           tests/test_recovery_busybox_http.py \
           tests/test_discover_places.py \
-          tests/test_bootfpgasocssh_helpers.py
+          tests/test_bootfpgasocssh_helpers.py \
+          tests/matlab_ci/
