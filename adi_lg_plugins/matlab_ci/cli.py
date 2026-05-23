@@ -169,6 +169,7 @@ def _cmd_run(args: argparse.Namespace) -> int:
                 reached_state=args.reached_state,
                 network_resource=args.network_resource,
                 junit_dest=args.junit,
+                skip_boot=args.skip_boot,
             )
         finally:
             if acquire:
@@ -221,6 +222,12 @@ def main(argv: list[str] | None = None) -> int:
     pr.add_argument("--reached-state", default="shell", help="strategy state to reach")
     pr.add_argument("--network-resource", default="NetworkService", help="resource holding the IP")
     pr.add_argument("--junit", default=None, help="copy MATLAB JUnit output here")
+    pr.add_argument(
+        "--skip-boot",
+        action="store_true",
+        help="skip the strategy boot transition (board is already up); "
+        "still resolves NetworkService URI",
+    )
     pr.set_defaults(func=_cmd_run)
 
     ns = p.parse_args(argv)

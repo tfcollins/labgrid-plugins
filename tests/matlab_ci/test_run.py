@@ -176,6 +176,28 @@ def test_run_missing_junit_source_is_not_fatal(tmp_path):
     assert not dest.exists()
 
 
+def test_run_skip_boot_does_not_transition(tmp_path):
+    """With skip_boot=True the strategy is never touched (used when the
+    board is already up / acquired out-of-band)."""
+    captured = {}
+    env = _FakeEnv("x")
+    result = run_matlab_tests(
+        config=tmp_path / "env.yaml",
+        matlab_board="b",
+        boot_strategy="BootFPGASoC",
+        repo_dir=tmp_path,
+        env_factory=lambda c: env,
+        runner=_runner_ok(captured),
+        skip_boot=True,
+    )
+    # no driver lookup, no transition
+    assert env.target.driver_requested is None
+    assert env.target.strategy.transitions == []
+    # URI was still resolved from NetworkService
+    assert result.uri == "ip:10.0.0.57"
+    assert captured["kwargs"]["env"]["IIO_URI"] == "ip:10.0.0.57"
+
+
 def test_run_resolves_custom_network_resource(tmp_path):
     captured = {}
     env = _FakeEnv("x")
