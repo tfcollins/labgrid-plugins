@@ -91,12 +91,18 @@ def run_matlab_tests(
     env_factory: Callable[[str], Any] = None,  # type: ignore[assignment]
     runner: Callable[..., subprocess.CompletedProcess] = subprocess.run,
     base_env: Mapping[str, str] | None = None,
+    skip_boot: bool = False,
 ) -> MatlabRunResult:
     """Boot the place, resolve its URI, and run MATLAB HW tests.
 
     ``env_factory`` defaults to :class:`labgrid.Environment` (imported
     lazily so importing this module never requires labgrid). ``runner``
     defaults to :func:`subprocess.run`. Both are injected in tests.
+
+    With ``skip_boot=True`` the strategy is never looked up or
+    transitioned — use this when the board is already up (e.g. acquired
+    out-of-band, or for iterative testing against a stable lab board).
+    The URI is still resolved from the place's NetworkService resource.
 
     Returns a :class:`MatlabRunResult`; the caller maps ``returncode``
     to its own exit status. Releasing the place is the caller's job.
@@ -110,8 +116,9 @@ def run_matlab_tests(
 
     env = env_factory(str(config))
     target = env.get_target(target_name)
-    strategy = target.get_driver(boot_strategy)
-    strategy.transition(reached_state)
+    if not skip_boot:
+        strategy = target.get_driver(boot_strategy)
+        strategy.transition(reached_state)
 
     uri = resolve_uri(target, network_resource=network_resource)
 

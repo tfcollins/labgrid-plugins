@@ -14,8 +14,14 @@ targets:
       ${power_driver}: {}
       XilinxJTAGDriver: {}
       SerialDriver: {}
+      # Strategy's `tftp_driver` binding (it TFTPs the recovery kernel).
+      TFTPServerDriver: {}
       ADIShellDriver:
         prompt: '/ # '
         login_prompt: ''
+        # The recovery initramfs has no login prompt, but ADIShellDriver
+        # requires username as an init arg (no default).
+        username: 'root'
+        password: 'analog'
       BootZynq7000JTAGRecovery:
         wait_for_recovery_prompt_timeout: 240
