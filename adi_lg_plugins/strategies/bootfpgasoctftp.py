@@ -16,9 +16,14 @@ class Status(enum.Enum):
     powered_off = 1
     update_boot_files = 2
     booting = 3
-    booted = 4
-    shell = 5
-    soft_off = 6
+    # Optional JTAG-bootstrap step (xsdb-loads ps7_init + bitstream +
+    # FSBL + U-Boot ELF into DDR) so the strategy works on SDs that
+    # don't carry a working FSBL/U-Boot. Falls through to booting when
+    # the JTAG bindings/inputs aren't supplied — backwards-compatible.
+    jtag_bootstrap = 4
+    booted = 5
+    shell = 6
+    soft_off = 7
 
 
 @target_factory.reg_driver
@@ -38,6 +43,11 @@ class BootFPGASoCTFTP(Strategy):
         "shell": "ADIShellDriver",
         "ssh": {"SSHDriver", None},
         "kuiper": {"KuiperDLDriver", None},
+        # Optional JTAG bootstrap. When provided AND ps7_init_tcl /
+        # uboot_elf are set, the strategy xsdb-loads U-Boot into DDR
+        # before waiting for the autoboot banner. Useful when the
+        # board's SD doesn't carry a working FSBL/U-Boot.
+        "jtag": {"XilinxJTAGDriver", None},
         "tftp_server": "TFTPServerResource",
         "tftp_driver": "TFTPServerDriver",
     }
@@ -75,6 +85,32 @@ class BootFPGASoCTFTP(Strategy):
     # ``<boot_cmd> <kernel_addr> - <dtb_addr>`` unless overridden.
     boot_cmd = attr.ib(default="booti")
 
+    # ---------- Optional JTAG bootstrap inputs ----------------------
+    # All paths are on the host that runs xsdb (the lab host bound to
+    # the XilinxVivadoTool resource). Bootstrap is enabled only when
+    # the ``jtag`` driver is bound AND both ``ps7_init_tcl`` and
+    # ``uboot_elf`` are set; otherwise the strategy falls through to
+    # the legacy "SD-bootable" path.
+    ps7_init_tcl = attr.ib(default=None)
+    uboot_elf = attr.ib(default=None)
+    fsbl_elf = attr.ib(default=None)
+    bitstream_path = attr.ib(default=None)
+    a9_target_name = attr.ib(default="*Cortex-A9 MPCore #0")
+    jtag_bootstrap_retries = attr.ib(default=2)
+
+    def _require(self, name: str) -> str:
+        """Fetch a required attr or raise StrategyError naming the field."""
+        value = getattr(self, name)
+        if not value:
+            raise StrategyError(f"BootFPGASoCTFTP requires '{name}' to be configured")
+        return value
+
+    def _jtag_bootstrap_enabled(self) -> bool:
+        """JTAG bootstrap is opt-in: needs both the driver and the minimal
+        bootstrap inputs (PS7 init TCL + U-Boot ELF). Bitstream and FSBL
+        are optional refinements that ``load_zynq_uboot`` handles."""
+        return bool(self.jtag) and bool(self.ps7_init_tcl) and bool(self.uboot_elf)
+
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
         self.logger.info("BootFPGASoCTFTP strategy initialized")
@@ -108,6 +144,11 @@ class BootFPGASoCTFTP(Strategy):
             self.target.deactivate(self.shell)
             if self.tftp_driver:
                 self.target.deactivate(self.tftp_driver)
+            if self.jtag:
+                try:
+                    self.target.deactivate(self.jtag)
+                except Exception:  # noqa: BLE001 — best-effort cleanup
+                    pass
             if self.power:
                 self.target.activate(self.power)
                 self.power.off()
@@ -147,8 +188,51 @@ class BootFPGASoCTFTP(Strategy):
                 self.power.on()
             self.logger.info("Device powered on, booting...")
 
-        elif status == Status.booted:
+        elif status == Status.jtag_bootstrap:
+            # Pull the board to "powered on", then (when configured)
+            # xsdb-load U-Boot into DDR before the autoboot wait.
             self.transition(Status.booting)
+            if not self._jtag_bootstrap_enabled():
+                self.logger.info(
+                    "JTAG bootstrap not configured (no `jtag` driver or "
+                    "missing ps7_init_tcl/uboot_elf) — relying on the SD's "
+                    "own FSBL/U-Boot"
+                )
+            else:
+                self.target.activate(self.jtag)
+                ps7 = self._require("ps7_init_tcl")
+                uboot = self._require("uboot_elf")
+                attempts = int(self.jtag_bootstrap_retries) + 1
+                last_error: Exception | None = None
+                for attempt in range(1, attempts + 1):
+                    try:
+                        self.logger.info(f"JTAG bootstrap attempt {attempt}/{attempts}...")
+                        self.jtag.load_zynq_uboot(
+                            ps7_init_tcl=ps7,
+                            uboot_elf=uboot,
+                            a9_target_name=self.a9_target_name,
+                            bitstream_path=self.bitstream_path,
+                            fsbl_elf=self.fsbl_elf,
+                        )
+                        break
+                    except Exception as e:
+                        last_error = e
+                        self.logger.error(
+                            f"JTAG bootstrap attempt {attempt}/{attempts} failed: {e}"
+                        )
+                        if attempt >= attempts:
+                            raise StrategyError(f"JTAG bootstrap exhausted retries: {e}") from e
+                        self.logger.info("Cold-cycling power before retry...")
+                        self.target.activate(self.power)
+                        self.power.off()
+                        time.sleep(5)
+                        self.power.on()
+                else:  # pragma: no cover - loop always breaks or raises
+                    raise StrategyError(f"JTAG bootstrap exhausted retries: {last_error}")
+                self.logger.info("U-Boot bootstrapped via JTAG")
+
+        elif status == Status.booted:
+            self.transition(Status.jtag_bootstrap)
             self.shell.bypass_login = True
             self.target.activate(self.shell)
 
