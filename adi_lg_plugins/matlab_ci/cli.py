@@ -137,6 +137,17 @@ def _resolve_run_target(args: argparse.Namespace, tmpdir: str) -> tuple[Path, st
             f"has no entry in board map {args.board_map}"
         )
 
+    # --boot-strategy in place mode overrides the place's tag (useful when
+    # the lab tagged a place with a strategy that doesn't drive a real boot
+    # for our purposes — e.g. BootZynq7000JTAGRecovery — and the consumer
+    # wants to render a different template like BootFPGASoCTFTP without the
+    # lab admin retagging). The override is propagated both into the
+    # rendered env yaml AND the run kwarg via dataclasses.replace.
+    if args.boot_strategy:
+        from dataclasses import replace
+
+        match = replace(match, boot_strategy=args.boot_strategy)
+
     config = Path(tmpdir) / f"env-{match.name}.yaml"
     render_mod.render_env_to(match, config)
     return config, matlab_board, match.boot_strategy, match.name
@@ -214,7 +225,12 @@ def main(argv: list[str] | None = None) -> int:
     # config mode
     pr.add_argument("--config", default=None, help="labgrid env yaml (config mode)")
     pr.add_argument("--matlab-board", default=None, help="MATLAB board name (config mode)")
-    pr.add_argument("--boot-strategy", default=None, help="boot strategy class (config mode)")
+    pr.add_argument(
+        "--boot-strategy",
+        default=None,
+        help="boot strategy class (config mode: required; place mode: optional, "
+        "overrides the place's boot-strategy tag)",
+    )
     # shared
     pr.add_argument("--repo-dir", required=True, help="toolbox checkout dir (cwd for MATLAB)")
     pr.add_argument("--matlab", default="matlab", help="MATLAB binary path (default: matlab)")
