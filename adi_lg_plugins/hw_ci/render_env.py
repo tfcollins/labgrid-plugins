@@ -83,6 +83,10 @@ def render_env(
     # `VesyncPowerDriver` for back-compat with the first generation of
     # ADI lab places.
     power_driver = place.extra_tags.get("power-driver", "VesyncPowerDriver")
+    # Per-place local TFTP root used by templates that need a writable
+    # root for KuiperDLDriver (BootFPGASoCTFTP). Per-place to avoid two
+    # parallel runs colliding; overridable via extra_subs / a tag.
+    tftp_root = place.extra_tags.get("tftp-root", f"/tmp/labgrid-tftp-{place.name}")
     subs: dict[str, str] = {
         "place_name": place.name,
         "carrier": place.carrier,
@@ -90,6 +94,7 @@ def render_env(
         "hdl_config": place.hdl_config or "",
         "board_location": place.board_location or "",
         "power_driver": power_driver,
+        "tftp_root": tftp_root,
     }
     if extra_subs:
         subs.update({str(k): str(v) for k, v in extra_subs.items()})

@@ -142,6 +142,49 @@ def test_run_place_mode_resolves_board_and_strategy(tmp_path, monkeypatch):
     assert captured["boot_strategy"] == "BootFPGASoC"
 
 
+def test_run_place_mode_boot_strategy_override(tmp_path, monkeypatch):
+    """--boot-strategy in place mode overrides the place's tag.
+
+    Used when the lab tagged a place with one strategy (e.g.
+    BootZynq7000JTAGRecovery) but the consumer wants to drive a
+    different one (e.g. BootFPGASoCTFTP) without retagging."""
+    monkeypatch.setattr(cli.coord_mod, "list_live_places", lambda *a, **k: ([_place()], []))
+    rendered = {}
+
+    def fake_render(place, out, **k):
+        rendered["boot_strategy"] = place.boot_strategy
+        return out
+
+    monkeypatch.setattr(cli.render_mod, "render_env_to", fake_render)
+    captured = {}
+
+    def fake_run(**kwargs):
+        captured.update(kwargs)
+        return MatlabRunResult(uri="ip:1", matlab_board=kwargs["matlab_board"], returncode=0)
+
+    monkeypatch.setattr(cli, "run_matlab_tests", fake_run)
+
+    rc = cli.main(
+        [
+            "run",
+            "--coord",
+            "c:1",
+            "--place",
+            "mini2",
+            "--board-map",
+            str(_board_map_file(tmp_path)),
+            "--repo-dir",
+            str(tmp_path),
+            "--boot-strategy",
+            "BootFPGASoCTFTP",
+        ]
+    )
+    assert rc == 0
+    # override wins for both the rendered template and the run kwarg
+    assert rendered["boot_strategy"] == "BootFPGASoCTFTP"
+    assert captured["boot_strategy"] == "BootFPGASoCTFTP"
+
+
 def test_run_place_mode_unknown_board_errors(tmp_path, monkeypatch):
     monkeypatch.setattr(
         cli.coord_mod,
