@@ -243,12 +243,23 @@ class BootFPGASoCTFTP(Strategy):
             # to clear it.
             attempt = 0
             max_attempts = int(self.autoboot_banner_retries) + 1
+            # Index of which pattern matched on success. Used below to
+            # decide whether we still need to interrupt autoboot.
+            #   0 -> "Hit any key to stop autoboot" (classic prompting
+            #        U-Boot — send a key to stop autoboot)
+            #   1 -> the U-Boot prompt itself (autoboot ran, failed its
+            #        configured tftpboot, and dropped to the prompt —
+            #        no interrupt needed; we're already there)
+            autoboot_idx = -1
             while True:
                 attempt += 1
                 try:
-                    self.logger.info("Waiting for U-Boot autoboot prompt...")
-                    self.shell.console.expect(
-                        "Hit any key to stop autoboot",
+                    self.logger.info(
+                        "Waiting for U-Boot autoboot prompt or '%s' prompt...",
+                        self.uboot_prompt,
+                    )
+                    autoboot_idx = self.shell.console.expect(
+                        ["Hit any key to stop autoboot", self.uboot_prompt],
                         timeout=self.wait_for_autoboot_prompt_timeout,
                     )
                     break
@@ -280,9 +291,19 @@ class BootFPGASoCTFTP(Strategy):
                     self.logger.info("Device re-powered, booting...")
                     self.shell.bypass_login = True
                     self.target.activate(self.shell)
-            self.logger.info("Stopping autoboot...")
-            self.shell.console.sendline(" ")
-            time.sleep(2)
+            if autoboot_idx == 0:
+                self.logger.info("Stopping autoboot...")
+                self.shell.console.sendline(" ")
+                time.sleep(2)
+            else:
+                # U-Boots that autoboot silently and drop back to the
+                # prompt on a failed bootcmd (e.g. when their stale env
+                # points DHCP/TFTP at a different network) skip the
+                # "Hit any key" banner entirely. We're already at the
+                # prompt — no key to send.
+                self.logger.info(
+                    "Reached U-Boot prompt directly (no autoboot banner); skipping interrupt"
+                )
 
             org_prompt = self.shell.prompt
             # Temporarily set prompt to U-Boot prompt match
