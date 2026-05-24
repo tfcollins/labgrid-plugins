@@ -10,6 +10,13 @@
 # `multiple resources matching TFTPServerResource` errors when the
 # coordinator's exporter ALSO publishes a TFTPServerResource on the
 # place (we want our local writable root, not the remote one).
+#
+# JTAG bootstrap is opt-in: set the place tags `ps7-init-tcl` and
+# `uboot-elf` (and optionally `fsbl-elf` / `bitstream-path`) and the
+# strategy will xsdb-load U-Boot into DDR before waiting for the
+# autoboot banner. Useful when the board's SD doesn't carry a working
+# FSBL/U-Boot. When the tags aren't set the substitutions resolve to
+# empty strings and the strategy falls through to the SD-bootable path.
 
 targets:
   main:
@@ -24,6 +31,7 @@ targets:
     drivers:
       ${power_driver}: {}
       SerialDriver: {}
+      XilinxJTAGDriver: {}
       ADIShellDriver:
         prompt: 'root@.*'
         login_prompt: 'analog login: '
@@ -34,10 +42,11 @@ targets:
         bindings:
           resource: local-tftp
       BootFPGASoCTFTP:
-        # The strategy itself also class-binds tftp_server: TFTPServerResource
-        # — pin it to the named local resource for the same reason as
-        # TFTPServerDriver above.
         bindings:
           tftp_server: local-tftp
         reached_linux_marker: 'analog'
         wait_for_linux_prompt_timeout: 240
+        ps7_init_tcl: '${ps7_init_tcl}'
+        uboot_elf: '${uboot_elf}'
+        fsbl_elf: '${fsbl_elf}'
+        bitstream_path: '${bitstream_path}'
