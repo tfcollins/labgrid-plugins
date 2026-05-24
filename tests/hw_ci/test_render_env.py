@@ -123,6 +123,38 @@ def test_bootfpgasoctftp_tftp_root_default_is_per_place():
     assert "root: /tmp/labgrid-tftp-mini2" in out
 
 
+def test_bootfpgasoctftp_jtag_bootstrap_tags_render_into_strategy():
+    """JTAG bootstrap tags on the place flow through the template."""
+    p = Place(
+        name="nemo",
+        carrier="zc706",
+        daughter_board="adrv9009",
+        boot_strategy="BootFPGASoCTFTP",
+        extra_tags={
+            "ps7-init-tcl": "/srv/recovery/zc706/ps7_init.tcl",
+            "uboot-elf": "/srv/recovery/zc706/u-boot.elf",
+            "fsbl-elf": "/srv/recovery/zc706/fsbl.elf",
+            "bitstream-path": "/srv/recovery/zc706/system_top.bit",
+        },
+    )
+    out = render_env(p)
+    assert "ps7_init_tcl: '/srv/recovery/zc706/ps7_init.tcl'" in out
+    assert "uboot_elf: '/srv/recovery/zc706/u-boot.elf'" in out
+    assert "fsbl_elf: '/srv/recovery/zc706/fsbl.elf'" in out
+    assert "bitstream_path: '/srv/recovery/zc706/system_top.bit'" in out
+    # JTAG driver always present in this template
+    assert "XilinxJTAGDriver:" in out
+
+
+def test_bootfpgasoctftp_no_bootstrap_tags_renders_empty_strings():
+    """Without the tags the JTAG bootstrap attrs render as empty
+    strings; the strategy's _jtag_bootstrap_enabled() treats those as
+    falsy and falls through to the SD-bootable path."""
+    out = render_env(_place("BootFPGASoCTFTP"))
+    assert "ps7_init_tcl: ''" in out
+    assert "uboot_elf: ''" in out
+
+
 def test_bootfpgasoctftp_tftp_root_overridable_via_tag():
     """A `tftp-root=...` tag on the place overrides the default."""
     p = Place(

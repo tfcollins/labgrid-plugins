@@ -87,6 +87,16 @@ def render_env(
     # root for KuiperDLDriver (BootFPGASoCTFTP). Per-place to avoid two
     # parallel runs colliding; overridable via extra_subs / a tag.
     tftp_root = place.extra_tags.get("tftp-root", f"/tmp/labgrid-tftp-{place.name}")
+    # Optional JTAG-bootstrap inputs for BootFPGASoCTFTP (paths on the
+    # host that runs xsdb — typically the lab host bound to the place).
+    # Each defaults to empty; the strategy treats empty/None as "no
+    # bootstrap" and falls through to the legacy SD-bootable path.
+    # Lab admin opts a place in by setting the tags, e.g.:
+    #   labgrid-client -p nemo set-tags \
+    #       ps7-init-tcl=/srv/recovery/zc706/ps7_init.tcl \
+    #       uboot-elf=/srv/recovery/zc706/u-boot.elf \
+    #       fsbl-elf=/srv/recovery/zc706/fsbl.elf \
+    #       bitstream-path=/srv/recovery/zc706/system_top.bit
     subs: dict[str, str] = {
         "place_name": place.name,
         "carrier": place.carrier,
@@ -95,6 +105,10 @@ def render_env(
         "board_location": place.board_location or "",
         "power_driver": power_driver,
         "tftp_root": tftp_root,
+        "ps7_init_tcl": place.extra_tags.get("ps7-init-tcl", ""),
+        "uboot_elf": place.extra_tags.get("uboot-elf", ""),
+        "fsbl_elf": place.extra_tags.get("fsbl-elf", ""),
+        "bitstream_path": place.extra_tags.get("bitstream-path", ""),
     }
     if extra_subs:
         subs.update({str(k): str(v) for k, v in extra_subs.items()})
