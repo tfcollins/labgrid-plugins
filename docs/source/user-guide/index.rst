@@ -18,5 +18,4 @@ Comprehensive guides for using adi-labgrid-plugins.
    exporter-deployment
    hardware-ci
    hw-ci-v2
-   matlab-hw-ci
    examples
