@@ -123,6 +123,54 @@ def test_bootfpgasoctftp_tftp_root_default_is_per_place():
     assert "root: /tmp/labgrid-tftp-mini2" in out
 
 
+def test_bootfpgasoctftp_zynq7000_carrier_defaults():
+    """Zynq-7000 carriers get ARM32 boot defaults (`bootm`/`uImage`/`Zynq>`)."""
+    for carrier in ("zc706", "zc702", "zed"):
+        p = Place(
+            name="x",
+            carrier=carrier,
+            daughter_board="adrv9009",
+            boot_strategy="BootFPGASoCTFTP",
+        )
+        out = render_env(p)
+        assert "uboot_prompt: 'Zynq>.*'" in out, carrier
+        assert "kernel_image_name: 'uImage'" in out, carrier
+        assert "dtb_image_name: 'devicetree.dtb'" in out, carrier
+        assert "boot_cmd: 'bootm'" in out, carrier
+
+
+def test_bootfpgasoctftp_zynqmp_carrier_defaults():
+    """ZynqMP carriers keep ARM64 defaults (`booti`/`Image`/`ZynqMP>`)."""
+    p = Place(
+        name="x",
+        carrier="zcu102",
+        daughter_board="ad9081",
+        boot_strategy="BootFPGASoCTFTP",
+    )
+    out = render_env(p)
+    assert "uboot_prompt: 'ZynqMP>.*'" in out
+    assert "kernel_image_name: 'Image'" in out
+    assert "boot_cmd: 'booti'" in out
+
+
+def test_bootfpgasoctftp_uboot_attrs_overridable_via_tags():
+    p = Place(
+        name="x",
+        carrier="zc706",
+        daughter_board="adrv9371",
+        boot_strategy="BootFPGASoCTFTP",
+        extra_tags={
+            "uboot-prompt": "MyBoot>.*",
+            "kernel-image-name": "fitImage",
+            "boot-cmd": "bootz",
+        },
+    )
+    out = render_env(p)
+    assert "uboot_prompt: 'MyBoot>.*'" in out
+    assert "kernel_image_name: 'fitImage'" in out
+    assert "boot_cmd: 'bootz'" in out
+
+
 def test_bootfpgasoctftp_jtag_bootstrap_tags_render_into_strategy():
     """JTAG bootstrap tags on the place flow through the template."""
     p = Place(

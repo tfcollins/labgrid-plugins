@@ -97,6 +97,29 @@ def render_env(
     #       uboot-elf=/srv/recovery/zc706/u-boot.elf \
     #       fsbl-elf=/srv/recovery/zc706/fsbl.elf \
     #       bitstream-path=/srv/recovery/zc706/system_top.bit
+    # Carrier-aware U-Boot/Linux defaults for BootFPGASoCTFTP. Zynq-7000
+    # carriers (zc706, zc702, zed, …) need ARM32 boot commands and the
+    # `Zynq>` prompt; ZynqMP carriers (zcu102, zcu106, …) need ARM64
+    # `booti`+`Image`+`system.dtb` and `ZynqMP>`. Override per-place via
+    # the `uboot-prompt`, `kernel-image-name`, `dtb-image-name`,
+    # `boot-cmd`, `kernel-addr`, `dtb-addr` tags.
+    _ZYNQ7000_CARRIERS = {"zc702", "zc706", "zed", "zybo", "adrv9361z7035", "adrv9364z7020"}
+    is_zynq7000 = place.carrier.lower() in _ZYNQ7000_CARRIERS
+    if is_zynq7000:
+        d_uboot_prompt = "Zynq>.*"
+        d_kernel_image = "uImage"
+        d_dtb_image = "devicetree.dtb"
+        d_boot_cmd = "bootm"
+        d_kernel_addr = "0x3000000"
+        d_dtb_addr = "0x2A00000"
+    else:
+        d_uboot_prompt = "ZynqMP>.*"
+        d_kernel_image = "Image"
+        d_dtb_image = "system.dtb"
+        d_boot_cmd = "booti"
+        d_kernel_addr = "0x30000000"
+        d_dtb_addr = "0x2A000000"
+
     subs: dict[str, str] = {
         "place_name": place.name,
         "carrier": place.carrier,
@@ -109,6 +132,12 @@ def render_env(
         "uboot_elf": place.extra_tags.get("uboot-elf", ""),
         "fsbl_elf": place.extra_tags.get("fsbl-elf", ""),
         "bitstream_path": place.extra_tags.get("bitstream-path", ""),
+        "uboot_prompt": place.extra_tags.get("uboot-prompt", d_uboot_prompt),
+        "kernel_image_name": place.extra_tags.get("kernel-image-name", d_kernel_image),
+        "dtb_image_name": place.extra_tags.get("dtb-image-name", d_dtb_image),
+        "boot_cmd": place.extra_tags.get("boot-cmd", d_boot_cmd),
+        "kernel_addr": place.extra_tags.get("kernel-addr", d_kernel_addr),
+        "dtb_addr": place.extra_tags.get("dtb-addr", d_dtb_addr),
     }
     if extra_subs:
         subs.update({str(k): str(v) for k, v in extra_subs.items()})

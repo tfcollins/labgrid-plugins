@@ -46,7 +46,16 @@ targets:
           tftp_server: local-tftp
         reached_linux_marker: 'analog'
         wait_for_linux_prompt_timeout: 240
+        # JTAG bootstrap (optional)
         ps7_init_tcl: '${ps7_init_tcl}'
         uboot_elf: '${uboot_elf}'
         fsbl_elf: '${fsbl_elf}'
         bitstream_path: '${bitstream_path}'
+        # Carrier-aware U-Boot/Linux config (render_env supplies
+        # Zynq-7000 vs ZynqMP defaults; override via place tags).
+        uboot_prompt: '${uboot_prompt}'
+        kernel_image_name: '${kernel_image_name}'
+        dtb_image_name: '${dtb_image_name}'
+        boot_cmd: '${boot_cmd}'
+        kernel_addr: '${kernel_addr}'
+        dtb_addr: '${dtb_addr}'
