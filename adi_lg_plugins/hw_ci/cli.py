@@ -1,17 +1,21 @@
 """``adi-lg-hw-ci`` command line entry point.
 
-Two subcommands consumed by the v2 reusable workflow:
+Subcommands consumed by the v2 reusable workflow:
 
-* ``discover``    — query coordinator + harvest pytest markers + emit
-                    the matrix include list as JSON (stdout) plus a
-                    human-readable summary (stderr).
-* ``render-env``  — render the labgrid env yaml for a single place to
-                    a file. Run inside each matrix shard before the
-                    shard's pytest invocation.
+* ``discover``           — query coordinator + harvest pytest markers +
+                           emit the matrix include list as JSON (stdout)
+                           plus a human-readable summary (stderr).
+* ``render-env``         — render the labgrid env yaml for a single place
+                           to a file. Run inside each matrix shard before
+                           the shard's pytest invocation.
+* ``resolve-resources``  — read UART + JTAG facts off a booted place and
+                           emit ``KEY=VALUE`` lines for a bash / non-Python
+                           test driver to consume (see
+                           :doc:`/user-guide/hw-ci-bash`).
 
-Both subcommands wrap the typed surface in
-:mod:`adi_lg_plugins.hw_ci.{coordinator,intersect,render_env}` so the
-same logic is unit-tested without a process boundary.
+The subcommands wrap the typed surface in
+:mod:`adi_lg_plugins.hw_ci.{coordinator,intersect,render_env,resolve}` so
+the same logic is unit-tested without a process boundary.
 """
 
 from __future__ import annotations
@@ -116,6 +120,28 @@ def _cmd_render_env(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_resolve_resources(args: argparse.Namespace) -> int:
+    from . import resolve as resolve_mod
+
+    resolved = resolve_mod.resolve_from_env(args.config, target_name=args.target)
+    out_text = resolve_mod.render_github_output(resolved)
+
+    if args.out == "github":
+        gh_out = os.environ.get("GITHUB_OUTPUT")
+        if not gh_out:
+            print(
+                "warning: --out github given but $GITHUB_OUTPUT is unset",
+                file=sys.stderr,
+            )
+        else:
+            with open(gh_out, "a", encoding="utf-8") as f:
+                f.write(out_text)
+
+    # stdout: always emit the KEY=VALUE lines (so the CLI works outside GHA)
+    print(out_text, end="")
+    return 0
+
+
 def _cmd_list_strategies(_args: argparse.Namespace) -> int:
     strats = sorted(KNOWN_STRATEGIES)
     templates = render_mod.list_strategy_templates()
@@ -170,6 +196,20 @@ def main(argv: list[str] | None = None) -> int:
     pr.add_argument("--out", required=True)
     pr.add_argument("--force-cli", action="store_true")
     pr.set_defaults(func=_cmd_render_env)
+
+    prr = sub.add_parser(
+        "resolve-resources",
+        help="print UART/JTAG resource facts for a booted place",
+    )
+    prr.add_argument("--config", required=True, help="rendered env yaml (from render-env)")
+    prr.add_argument("--target", default="main", help="target name in the env yaml")
+    prr.add_argument(
+        "--out",
+        choices=["stdout", "github"],
+        default="stdout",
+        help="github = also append KEY=VALUE lines to $GITHUB_OUTPUT",
+    )
+    prr.set_defaults(func=_cmd_resolve_resources)
 
     pl = sub.add_parser(
         "list-strategies", help="dump known boot-strategy class names + which have render templates"
