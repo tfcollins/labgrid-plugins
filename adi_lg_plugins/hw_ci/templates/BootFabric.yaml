@@ -6,6 +6,9 @@
 # AXI bridge over JTAG (XilinxJTAGDriver) and optionally a UART
 # console. Power control is optional.
 
+imports:
+  - adi_lg_plugins
+
 targets:
   main:
     resources:

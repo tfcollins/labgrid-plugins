@@ -5,6 +5,9 @@
 # via JTAG. The DUT is brought up with a custom initramfs + recovery
 # shell over JTAG; useful for re-flashing broken SD cards.
 
+imports:
+  - adi_lg_plugins
+
 targets:
   main:
     resources:

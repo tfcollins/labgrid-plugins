@@ -2,11 +2,14 @@
 
 Two things happen at every Python startup inside the API container:
 
-1. Discover labgrid plugins via the entry-point registry, so plugin
-   resource classes (KuiperRelease, VesyncOutlet, CyberPowerOutlet,
-   HomeAssistantOutlet, ...) are registered with target_factory.
+1. Register the ADI labgrid plugins, so plugin resource classes
+   (KuiperRelease, VesyncOutlet, CyberPowerOutlet, HomeAssistantOutlet,
+   ...) are known to target_factory. Importing ``adi_lg_plugins`` runs
+   the ``@reg_driver``/``@reg_resource`` decorators for every plugin.
    Without this step, labgrid-client fails with 'unknown resource
-   class' before any command runs.
+   class' before any command runs. (Upstream labgrid has no
+   entry-point plugin auto-discovery, so this explicit import is the
+   registration trigger.)
 
 2. Monkey-patch labgrid-client's `power` subcommand with a plugin-aware
    fallback. Upstream labgrid-client only knows how to bind
@@ -17,11 +20,9 @@ Two things happen at every Python startup inside the API container:
    plugin driver based on the resource class name.
 """
 
-# (1) Plugin discovery
+# (1) Register the ADI plugins (import side effect registers all classes).
 try:
-    from labgrid.factory import target_factory
-
-    target_factory.discover_plugins()
+    import adi_lg_plugins  # noqa: F401
 except Exception:
     pass
 

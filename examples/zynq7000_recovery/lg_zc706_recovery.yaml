@@ -20,6 +20,9 @@
 # Secrets (HA token, etc.) are NEVER committed; keep them in a gitignored
 # env file and reference via ${VAR} or substitute at deploy time.
 
+imports:
+  - adi_lg_plugins
+
 targets:
   main:
     features:

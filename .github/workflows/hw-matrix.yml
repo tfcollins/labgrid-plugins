@@ -223,7 +223,7 @@ jobs:
           venv_dir: $HOME/.cache/hw-ci/preflight-venv
           install_cmd: >-
             uv pip install --quiet --python "$VENV_DIR/bin/python"
-            "labgrid @ git+https://github.com/tfcollins/labgrid.git@81c35eda6436af63d3acf7f8b98893abae0bbbca"
+            "labgrid>=25.0"
 
       - name: Bootstrap uv (fallback when caller has no local action copy)
         if: ${{ !inputs.dynamic_mode && hashFiles('.github/actions/setup-uv-venv/action.yml') == '' }}
@@ -237,7 +237,7 @@ jobs:
           if [[ ! -x "$VENV/bin/labgrid-client" ]]; then
             uv venv --quiet "$VENV"
             uv pip install --quiet --python "$VENV/bin/python" \
-              "labgrid @ git+https://github.com/tfcollins/labgrid.git@81c35eda6436af63d3acf7f8b98893abae0bbbca"
+              "labgrid>=25.0"
           fi
           echo "$VENV/bin" >> "$GITHUB_PATH"
 

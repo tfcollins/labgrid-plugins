@@ -5,6 +5,9 @@
 # reach it primarily via SSH. Power control via Vesync outlet keeps the
 # board cleanly resettable. Serial is optional but recommended.
 
+imports:
+  - adi_lg_plugins
+
 targets:
   main:
     resources:

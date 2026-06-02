@@ -8,6 +8,9 @@
 ##   pytest tests/coordinator/test_fabric_strat_coordinator.py -v \
 ##       --run-hardware --lg-config tests/coordinator/env_remote_nuc.yaml
 
+imports:
+  - adi_lg_plugins
+
 targets:
   main:
     resources:

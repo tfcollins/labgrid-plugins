@@ -5,6 +5,9 @@
 # with serial-driven u-boot + Linux boot, similar to BootFPGASoC but
 # specific to the VPK180's BOOT.BIN layout.
 
+imports:
+  - adi_lg_plugins
+
 targets:
   main:
     resources:

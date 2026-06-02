@@ -9,6 +9,9 @@
 ##   pytest tests/coordinator/test_soc_strat_coordinator.py -v \
 ##       --run-hardware --lg-config tests/coordinator/env_remote_mini2.yaml
 
+imports:
+  - adi_lg_plugins
+
 targets:
   main:
     resources:

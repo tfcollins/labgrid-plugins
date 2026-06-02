@@ -11,6 +11,9 @@
 ## physically wired to the board (use examples/zynq7000_recovery/
 ## lg_zc706_recovery.yaml for that).
 
+imports:
+  - adi_lg_plugins
+
 targets:
   main:
     resources:

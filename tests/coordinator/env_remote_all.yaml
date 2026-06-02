@@ -9,6 +9,9 @@
 ##   pytest tests/coordinator \
 ##       --run-hardware --lg-config tests/coordinator/env_remote_all.yaml
 
+imports:
+  - adi_lg_plugins
+
 targets:
   mini2:
     resources:

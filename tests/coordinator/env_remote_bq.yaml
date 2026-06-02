@@ -10,6 +10,9 @@
 ##   LG_CROSSBAR=10.0.0.41:20408 pytest tests/test_coordinator_integration.py \
 ##       -v --run-hardware --lg-config tests/env_remote_bq.yaml
 
+imports:
+  - adi_lg_plugins
+
 targets:
   main:
     resources:

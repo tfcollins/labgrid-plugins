@@ -61,7 +61,9 @@ import time
 import attr
 from labgrid.factory import target_factory
 from labgrid.step import step
-from labgrid.strategy import Strategy, StrategyError, never_retry
+from labgrid.strategy import Strategy, StrategyError
+
+from ._compat import never_retry
 
 # Pulled in lazily inside the auto-build path to keep import cost low.
 # Re-exported here as a module-level constant only because the strategy

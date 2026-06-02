@@ -216,7 +216,9 @@ def generate_env_yaml(
     if features:
         target["features"] = features
 
-    doc = {"targets": {"main": target}}
+    # `imports` registers the ADI plugin drivers/resources/strategies with
+    # labgrid by name (upstream labgrid has no entry-point auto-discovery).
+    doc = {"imports": ["adi_lg_plugins"], "targets": {"main": target}}
 
     buf = StringIO()
     buf.write(f"## Generated labgrid env yaml for place '{place.name}'\n")
