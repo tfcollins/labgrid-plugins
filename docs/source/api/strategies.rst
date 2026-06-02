@@ -3,6 +3,10 @@ Strategies API
 
 Strategies are high-level state machines managing complex workflows.
 
+.. contents:: On this page
+   :local:
+   :depth: 2
+
 BootFPGASoC
 -----------
 
