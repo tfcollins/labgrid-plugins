@@ -171,3 +171,36 @@ Provision software on a target system using the ``SoftwareProvisioningStrategy``
 * ``--test <cmd,dir>``: Test command to run in a specific directory. Format: command, directory. Can be specified multiple times.
 * ``-t, --target <name>``: Target name in the configuration (default: ``main``).
 * ``--state <name>``: Target state to transition to (default: ``tested``).
+
+Standalone download tools
+-------------------------
+
+In addition to ``adi-lg``, the package installs small standalone
+download utilities as console scripts.
+
+cloudsmithdl
+~~~~~~~~~~~~
+
+Resolve and download a boot artifact (e.g. ``BOOT.BIN``) from a
+Cloudsmith package repository. By default it resolves the *latest*
+package matching the carrier + daughter card; pass ``--version`` to pin
+an exact one. Requires ``CLOUDSMITH_API_TOKEN`` in the environment.
+
+.. code-block:: bash
+
+    CLOUDSMITH_API_TOKEN=<token> cloudsmithdl \
+        --fpga-carrier zcu102 --daughter-card adrv9009
+
+**Options:**
+
+* ``--fpga-carrier <name>``: (Required) FPGA carrier, e.g. ``zcu102``.
+* ``--daughter-card <name>``: (Required) Daughter card, e.g. ``adrv9009``.
+* ``--filename <name>``: Artifact filename (default: ``BOOT.BIN``).
+* ``--owner <name>``: Cloudsmith owner/org (default: ``adi``).
+* ``--repo <name>``: Cloudsmith repo (default: ``sdg-boot-partition``).
+* ``--version <str>``: Pin an exact package version (default: latest).
+* ``--cache-path <path>``: Download cache (default: ``/tmp/cloudsmith_cache``).
+
+The downloaded file's SHA256 is verified against the Cloudsmith API
+checksum. See :doc:`drivers` → CloudsmithDLDriver for using the same
+resolution from a boot strategy.

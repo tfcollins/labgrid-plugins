@@ -43,6 +43,14 @@ KuiperRelease
    :undoc-members:
    :show-inheritance:
 
+CloudsmithRelease
+-----------------
+
+.. autoclass:: adi_lg_plugins.resources.cloudsmithrelease.CloudsmithRelease
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 TFTPServerResource
 ------------------
 

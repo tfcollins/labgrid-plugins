@@ -41,6 +41,10 @@ Schema
      - —
      - —
      - :ref:`user-guide/resources:KuiperRelease`
+   * - :ref:`user-guide/drivers:CloudsmithDLDriver`
+     - —
+     - —
+     - :ref:`user-guide/resources:CloudsmithRelease`
    * - :ref:`user-guide/drivers:TFTPServerDriver`
      - —
      - —
@@ -87,6 +91,7 @@ Storage & Images
     drivers:
       MassStorageDriver: {}    # requires MassStorageDevice
       KuiperDLDriver: {}       # requires KuiperRelease
+      CloudsmithDLDriver: {}   # requires CloudsmithRelease (+ $CLOUDSMITH_API_TOKEN)
 
 Boot / Network Services
 ~~~~~~~~~~~~~~~~~~~~~~~

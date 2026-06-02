@@ -66,7 +66,8 @@ The strategy manages 9 states:
 - SD card mux (USBSDMuxDriver) to switch SD card between host and device
 - Mass storage access (MassStorageDriver) for copying files to SD card
 - Serial console access (ADIShellDriver) for boot monitoring and shell interaction
-- Kuiper release files (KuiperDLDriver) for boot artifacts
+- Boot artifacts via ``KuiperDLDriver`` or ``CloudsmithDLDriver`` (the
+  ``kuiper`` binding accepts either)
 - Optional: USB storage writer (USBStorageDriver) for full image flashing
 
 **Configuration Example**:
@@ -361,7 +362,7 @@ The strategy manages 7 states:
 - ``PowerProtocol`` (any power driver, optional — skipped if absent)
 - ``ADIShellDriver`` (serial console)
 - ``TFTPServerResource`` + ``TFTPServerDriver`` (host-side TFTP server)
-- ``KuiperDLDriver`` (optional — source of boot files)
+- ``KuiperDLDriver`` or ``CloudsmithDLDriver`` (optional — source of boot files)
 - ``SSHDriver`` (optional — not used by this strategy itself, accepted for composition)
 
 **Configuration Example**
