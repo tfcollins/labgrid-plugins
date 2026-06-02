@@ -326,7 +326,7 @@ The operator running this needs ``admin:org`` on the org scope and
 so direct-mode legs find their config.
 
 Reusable workflow visibility — public for a reason
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 ``tfcollins/labgrid-plugins`` is public, which is what lets
 ``analogdevicesinc/pyadi-dt`` (for example) call
