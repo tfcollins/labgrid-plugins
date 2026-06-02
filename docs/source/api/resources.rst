@@ -3,9 +3,17 @@ Resources API
 
 Resources are configuration descriptors for hardware and network components.
 
-.. contents:: On this page
-   :local:
-   :depth: 2
+**On this page:**
+
+- `VesyncOutlet`_
+- `CyberPowerOutlet`_
+- `HomeAssistantOutlet`_
+- `MassStorageDevice`_
+- `KuiperRelease`_
+- `CloudsmithRelease`_
+- `TFTPServerResource`_
+- `XilinxDeviceJTAG`_
+- `XilinxVivadoTool`_
 
 VesyncOutlet
 ------------

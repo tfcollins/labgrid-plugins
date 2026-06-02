@@ -3,9 +3,16 @@ Drivers API
 
 Drivers provide low-level hardware control and protocol implementations.
 
-.. contents:: On this page
-   :local:
-   :depth: 2
+**On this page:**
+
+- `Power Drivers`_ — `VesyncPowerDriver`_, `CyberPowerDriver`_, `CyberPowerPdu`_, `HomeAssistantPowerDriver`_, `HomeAssistantClient`_
+- `Shell and File Transfer`_ — `ADIShellDriver`_
+- `Storage Drivers`_ — `MassStorageDriver`_
+- `Kuiper Drivers`_ — `KuiperDLDriver`_
+- `Cloudsmith Drivers`_ — `CloudsmithDLDriver`_
+- `FPGA/JTAG Drivers`_ — `XilinxJTAGDriver`_
+- `Network Drivers`_ — `TFTPServerDriver`_, `Utility Classes`_
+- `Software Installer`_ — `SoftwareInstallerDriver`_
 
 Power Drivers
 -------------

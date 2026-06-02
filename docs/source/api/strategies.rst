@@ -3,9 +3,16 @@ Strategies API
 
 Strategies are high-level state machines managing complex workflows.
 
-.. contents:: On this page
-   :local:
-   :depth: 2
+**On this page:**
+
+- `BootFPGASoC`_
+- `BootFPGASoCSSH`_
+- `BootFPGASoCTFTP`_
+- `BootZynq7000JTAGRecovery`_
+- `BootSelMap`_
+- `BootFabric`_
+- `BootRPI`_
+- `SoftwareProvisioningStrategy`_
 
 BootFPGASoC
 -----------
