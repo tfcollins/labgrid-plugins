@@ -10,7 +10,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - Package name: `adi-labgrid-plugins`
 - Plugin system: Entry-point based discovery for labgrid framework integration
 - License: `pyproject.toml` declares LGPL-2.1-or-later but `LICENSE`/`README.md` are Apache 2.0 — treat as unresolved; ask before adding license headers.
-- Core dependency: labgrid fork at `https://github.com/tfcollins/labgrid.git@tfcollins/plugin-support`
+- Core dependency: upstream `labgrid>=25.0` (PyPI). Plugins register via package self-import (`adi_lg_plugins/__init__.py` imports all driver/resource/strategy submodules so their `@reg_driver`/`@reg_resource` decorators run) **and** labgrid's native `imports: [adi_lg_plugins]` config key. Upstream labgrid has no entry-point plugin auto-discovery, so any labgrid env YAML that names ADI drivers/resources/strategies must include `imports: [adi_lg_plugins]` (or the consuming process must `import adi_lg_plugins`). The fork-only `never_retry` strategy decorator is shimmed in `adi_lg_plugins/strategies/_compat.py`.
 
 ## Common Development Commands
 
@@ -109,7 +109,7 @@ For any new driver, resource, or strategy:
 
 The repo is not just the `adi_lg_plugins` package — two sibling subprojects live alongside it and have their own toolchains:
 
-- **`coordinator/`** — Docker-compose stack: a labgrid coordinator, a FastAPI REST/WebSocket bridge in `coordinator/api/` (its own `pyproject.toml`, ruff config, and ~30 pytest files under `coordinator/api/tests/`), and a React/Vite/TypeScript dashboard in `coordinator/web/`. Brought up with `docker compose up -d` from `coordinator/`. Ports: coordinator `:20408`, API `:8000`, web `:3000`. The API package depends on the same labgrid fork. Run its tests from `coordinator/api/` — they are *not* picked up by the top-level `nox -s tests`.
+- **`coordinator/`** — Docker-compose stack: a labgrid coordinator, a FastAPI REST/WebSocket bridge in `coordinator/api/` (its own `pyproject.toml`, ruff config, and ~30 pytest files under `coordinator/api/tests/`), and a React/Vite/TypeScript dashboard in `coordinator/web/`. Brought up with `docker compose up -d` from `coordinator/`. Ports: coordinator `:20408`, API `:8000`, web `:3000`. The API package depends on the same upstream `labgrid>=25.0`. Run its tests from `coordinator/api/` — they are *not* picked up by the top-level `nox -s tests`.
 - **`exporter_configs/`** — YAML templates (`templates/*.yaml`) for deploying labgrid exporters on RPi / VCU118 / ZCU102 hosts, plus `validate.py` and JSON schemas under `schemas/`. Use these when wiring up a new exporter host.
 
 When a task touches a coordinator concern (places, recordings, OIDC auth, env-gen, gRPC bridge, web UI), work inside `coordinator/` — its conventions and dependency set are independent of the top-level package.
@@ -124,13 +124,10 @@ This repo also hosts the **reusable GitHub Actions workflow** that sibling repos
 
 Consumer repos pin via `uses: tfcollins/labgrid-plugins/.github/workflows/hw-matrix.yml@v<tag>`. This repo must stay **public** for cross-org callers to skip the allowlist gate.
 
-### labgrid fork pin
+### labgrid dependency
 
-Both `pyproject.toml:15` and `coordinator/api/pyproject.toml:21` pin `tfcollins/labgrid` to the **same 40-char SHA**. The `lint-labgrid-pin` job in `.github/workflows/tests.yml` enforces this; it fails on drift or any non-SHA pin (branch/tag refs are rejected to keep CI reproducible).
+Both `pyproject.toml` and `coordinator/api/pyproject.toml` depend on upstream `labgrid>=25.0` (PyPI). There is **no** fork pin and no `lint-labgrid-pin` CI job anymore.
 
-To bump:
-```bash
-scripts/bump-labgrid.sh <new-sha>     # or --tip to resolve current branch head
-git diff pyproject.toml coordinator/api/pyproject.toml
-```
-The script repins both files and re-runs `uv lock` if uv is available. Always submit as a single PR; never bump one file without the other.
+Plugin registration no longer relies on entry-point auto-discovery (a fork-only feature). Instead:
+- `import adi_lg_plugins` registers everything (the package `__init__` imports all driver/resource/strategy submodules; missing optional deps log a warning and skip rather than failing the import).
+- Every committed labgrid env YAML and the `adi_lg_plugins/hw_ci/templates/*.yaml` render templates carry `imports: [adi_lg_plugins]`; the coordinator env-gen (`coordinator/api/app/env_gen.py`) emits it too. **Downstream configs must include this key** to resolve ADI drivers/resources/strategies by name.

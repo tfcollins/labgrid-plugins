@@ -18,6 +18,9 @@
 # FSBL/U-Boot. When the tags aren't set the substitutions resolve to
 # empty strings and the strategy falls through to the SD-bootable path.
 
+imports:
+  - adi_lg_plugins
+
 targets:
   main:
     resources:

@@ -19,6 +19,9 @@
 ## zc706-appropriate uImage/devicetree.dtb. Places using a different
 ## power driver need a per-place env or a power override.
 
+imports:
+  - adi_lg_plugins
+
 targets:
   main:
     resources:

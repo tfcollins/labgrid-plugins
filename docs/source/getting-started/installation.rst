@@ -7,7 +7,23 @@ Prerequisites
 **Required**:
 
 - Python >= 3.10
-- labgrid (custom fork with plugin support)
+- labgrid >= 25.0 (upstream, from PyPI)
+
+.. note::
+
+   Upstream labgrid does not auto-discover plugins. To use ADI drivers,
+   resources, and strategies **by name in a labgrid env YAML**, add the
+   ``imports`` key so labgrid imports (and thus registers) this package::
+
+      imports:
+        - adi_lg_plugins
+
+      targets:
+        main:
+          ...
+
+   Code that constructs an :class:`~labgrid.Environment` directly can
+   instead ``import adi_lg_plugins`` once at startup to register everything.
 
 **Optional Dependencies**:
 

@@ -6,6 +6,9 @@
 #
 # Lists only the resources the smoke test actually touches: NetworkService
 # (so the test can ping the booted target) and a SerialDriver for completeness.
+imports:
+  - adi_lg_plugins
+
 targets:
   main:
     resources:

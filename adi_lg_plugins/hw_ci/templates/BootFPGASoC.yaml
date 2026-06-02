@@ -5,6 +5,9 @@
 # publishes RemotePlace resources; drivers run client-side and reach
 # the board through the SD mux + serial + Vesync wrappers.
 
+imports:
+  - adi_lg_plugins
+
 targets:
   main:
     resources:

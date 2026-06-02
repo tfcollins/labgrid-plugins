@@ -1,6 +1,9 @@
 # Test environment configuration for VCU118+AD9081 platform
 # Update paths and network addresses to match your lab setup
 
+imports:
+  - adi_lg_plugins
+
 targets:
   main:
     # Serial console connection for boot messages and shell access

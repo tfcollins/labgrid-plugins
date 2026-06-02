@@ -1,3 +1,6 @@
+imports:
+  - adi_lg_plugins
+
 targets:
   main:
     features:

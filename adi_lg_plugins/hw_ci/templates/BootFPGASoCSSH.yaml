@@ -5,6 +5,9 @@
 # (no SD mux involved). For lab setups where the boot media stays in
 # the DUT and only the rootfs partition is updated.
 
+imports:
+  - adi_lg_plugins
+
 targets:
   main:
     resources:

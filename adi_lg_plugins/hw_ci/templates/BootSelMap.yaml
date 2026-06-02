@@ -5,6 +5,9 @@
 # over the SelectMAP interface by a separate microcontroller wired
 # into the runner. Falls back to a serial console if available.
 
+imports:
+  - adi_lg_plugins
+
 targets:
   main:
     resources:

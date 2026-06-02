@@ -7,38 +7,6 @@ on:
     branches: [ main ]
 
 jobs:
-  lint-labgrid-pin:
-    name: labgrid fork pin drift check
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Verify pins are SHA-pinned and agree
-        run: |
-          set -euo pipefail
-          extract() { grep -oP 'tfcollins/labgrid\.git@\K[^"]+' "$1" || true; }
-          TOP=$(extract pyproject.toml)
-          SUB=$(extract coordinator/api/pyproject.toml)
-          if [ -z "$TOP" ] || [ -z "$SUB" ]; then
-            echo "::error::Could not find labgrid pin in one or both pyproject.toml files"
-            echo "  top=$TOP"
-            echo "  sub=$SUB"
-            exit 1
-          fi
-          if [ "$TOP" != "$SUB" ]; then
-            echo "::error::labgrid pin drift between pyproject.toml and coordinator/api/pyproject.toml"
-            echo "  top=$TOP"
-            echo "  sub=$SUB"
-            echo "Run scripts/bump-labgrid.sh <sha> to realign."
-            exit 1
-          fi
-          if ! echo "$TOP" | grep -Eq '^[a-f0-9]{40}$'; then
-            echo "::error::labgrid pin must be a 40-char SHA, not a branch or tag ref"
-            echo "  got: $TOP"
-            echo "Run scripts/bump-labgrid.sh <sha> to repin."
-            exit 1
-          fi
-          echo "labgrid pin OK: $TOP"
-
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -84,4 +52,5 @@ jobs:
           tests/test_discover_places.py \
           tests/test_bootfpgasocssh_helpers.py \
           tests/hw_ci/test_resolve.py \
-          tests/test_cloudsmith_dl.py
+          tests/test_cloudsmith_dl.py \
+          tests/test_plugin_registration.py
