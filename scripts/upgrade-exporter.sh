@@ -42,46 +42,55 @@ PY="$(pgrep -af 'labgrid-exporter' | grep -oE '[^ ]*/python[0-9.]*' | head -1 ||
 echo "exporter python : $PY"
 echo "current labgrid : $("$PY" -c 'import labgrid;print(labgrid.__version__)' 2>/dev/null || echo '?')"
 
+# Locate uv (not always on a non-interactive ssh PATH).
+UV="$(command -v uv 2>/dev/null || true)"
+[ -z "$UV" ] && [ -x "$HOME/.local/bin/uv" ] && UV="$HOME/.local/bin/uv"
+
 # 2. Install upstream labgrid + adi plugins into that env, by env type.
 if echo "$PY" | grep -q '/uv/tools/'; then
   echo "env type        : uv tool"
-  run uv tool install "labgrid==25.0.1" --with "${PKG_SPEC}" --force
+  [ -z "$UV" ] && { echo "ERROR: uv not found (needed for uv-tool env)." >&2; exit 1; }
+  run "$UV" tool install "labgrid==25.0.1" --with "${PKG_SPEC}" --force
 elif [ "$("$PY" -c 'import sys;print(sys.prefix!=sys.base_prefix)')" = "True" ]; then
   echo "env type        : venv ($("$PY" -c 'import sys;print(sys.prefix)'))"
-  run "$PY" -m pip install -U "${LABGRID_SPEC}" "${PKG_SPEC}"
+  # The venv may lack pip, so install via uv targeting that interpreter.
+  [ -z "$UV" ] && { echo "ERROR: uv not found (needed for venv without pip)." >&2; exit 1; }
+  run "$UV" pip install --python "$PY" -U "${LABGRID_SPEC}" "${PKG_SPEC}"
 else
   echo "env type        : system python (user-site, PEP668 override)"
   run "$PY" -m pip install --user --break-system-packages -U "${LABGRID_SPEC}" "${PKG_SPEC}"
 fi
 
 # 3. Drop the registration hook into the env's own site-packages (no root).
-#    usercustomize for user-site; sitecustomize for venv/tool. Both are
-#    auto-imported at interpreter startup.
+#    Use a .pth file, NOT sitecustomize/usercustomize: a system
+#    /usr/lib/pythonX/sitecustomize.py shadows any env-level sitecustomize,
+#    whereas site.py executes the `import` line of EVERY .pth in every site
+#    dir — so it can't be shadowed.
 if [ "$("$PY" -c 'import sys;print(sys.prefix==sys.base_prefix)')" = "True" ]; then
-  HOOK_DIR="$("$PY" -c 'import site;print(site.getusersitepackages())')"; HOOK="usercustomize.py"
+  HOOK_DIR="$("$PY" -c 'import site;print(site.getusersitepackages())')"
 else
-  HOOK_DIR="$("$PY" -c 'import site;print(site.getsitepackages()[0])')"; HOOK="sitecustomize.py"
+  HOOK_DIR="$("$PY" -c 'import site;print(site.getsitepackages()[0])')"
 fi
-echo "registration hook: $HOOK_DIR/$HOOK"
+HOOK="$HOOK_DIR/adi_lg_plugins_register.pth"
+echo "registration hook: $HOOK (.pth)"
 if [ "$DRY" != 1 ]; then
   mkdir -p "$HOOK_DIR"
-  cat > "$HOOK_DIR/$HOOK" <<'PYHOOK'
-# Register ADI labgrid plugins (upstream labgrid has no entry-point discovery).
-try:
-    import adi_lg_plugins  # noqa: F401
-except Exception:
-    pass
-PYHOOK
+  # .pth: a line beginning with `import` is executed at interpreter startup.
+  echo 'import adi_lg_plugins' > "$HOOK"
 fi
 
 # 4. Verify upstream + registration in the exporter python BEFORE restart.
+#    Run from /tmp so a checkout on the current dir can't mask the result.
 echo "== verify (pre-restart) =="
-"$PY" -c "import labgrid;print('labgrid =>', labgrid.__version__)"
-"$PY" - <<'PYV'
-from labgrid.factory import target_factory   # startup hook already imported adi_lg_plugins
+( cd /tmp && "$PY" -c "import labgrid;print('labgrid =>', labgrid.__version__)" )
+( cd /tmp && "$PY" - <<'PYV'
+import sys
+from labgrid.factory import target_factory   # .pth hook already imported adi_lg_plugins
+assert "adi_lg_plugins" in sys.modules, "registration .pth did not run"
 names = ("KuiperRelease","XilinxDeviceJTAG","VesyncOutlet","TFTPServerResource","MassStorageDevice","CloudsmithRelease")
 print("registered =>", {n: (n in target_factory.resources) for n in names})
 PYV
+)
 
 # 5. Restart the service (needs root).
 echo "== restart $SVC (sudo) =="
