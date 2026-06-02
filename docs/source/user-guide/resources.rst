@@ -15,13 +15,14 @@ Resources in labgrid and adi-labgrid-plugins:
 - Are bound to drivers which provide the actual functionality
 - Contain validation logic to ensure configuration correctness
 
-The plugin provides eight resources for different hardware scenarios:
+The plugin provides nine resources for different hardware scenarios:
 
 - **VesyncOutlet** — WiFi smart outlet for power control
 - **CyberPowerOutlet** — Network PDU outlet for power control
 - **HomeAssistantOutlet** — Switch/outlet controlled via Home Assistant REST API
 - **MassStorageDevice** — USB mass storage (typically SD card via mux)
 - **KuiperRelease** — ADI Kuiper Linux release descriptor
+- **CloudsmithRelease** — Cloudsmith boot-artifact descriptor (e.g. ``BOOT.BIN``)
 - **TFTPServerResource** — TFTP server address/port/root configuration
 - **XilinxVivadoTool** — Xilinx Vivado/Vitis install paths
 - **XilinxDeviceJTAG** — Xilinx FPGA JTAG target IDs and firmware paths
@@ -240,6 +241,59 @@ KuiperRelease
 - Cache directory must be writable
 - Subsequent accesses use cached version (fast)
 - Checksums are verified automatically
+
+CloudsmithRelease
+~~~~~~~~~~~~~~~~~
+
+**Purpose**: Describes a boot artifact (e.g. ``BOOT.BIN``) hosted in a
+Cloudsmith package repository, resolved by FPGA carrier + daughter card.
+
+**Use With**: CloudsmithDLDriver
+
+**Required Parameters**
+
+- **fpga_carrier** (str): Short FPGA carrier name, e.g. ``zcu102``.
+- **daughter_card** (str): Daughter card / chip, e.g. ``adrv9009``.
+
+**Optional Parameters**
+
+- **owner** (str, default ``adi``): Cloudsmith owner/org.
+- **repo** (str, default ``sdg-boot-partition``): Cloudsmith repository.
+- **filename** (str, default ``BOOT.BIN``): Artifact filename to resolve.
+- **version** (str, default ``None``): Exact package version to pin. When
+  unset, the *latest* matching package is resolved.
+- **api_token** (str, default from ``$CLOUDSMITH_API_TOKEN``): Cloudsmith
+  API token. Configurable in YAML but falls back to the environment so
+  CI runs stay headless.
+- **cache_path** (str, default ``~/.labgrid/cloudsmith_releases/``):
+  Directory for cached downloads.
+
+**Basic Example**
+
+.. code-block:: yaml
+
+    resources:
+      CloudsmithRelease:
+        fpga_carrier: 'zcu102'
+        daughter_card: 'adrv9009'
+
+**Pinned Version Example**
+
+.. code-block:: yaml
+
+    resources:
+      CloudsmithRelease:
+        fpga_carrier: 'zcu102'
+        daughter_card: 'adrv9009'
+        # Reproducible: resolve this exact package instead of latest.
+        version: 'boot_partition/main/2025_06_14-07_18_12/zynqmp-zcu102-rev10-adrv9009/'
+
+**Notes**
+
+- The ``CLOUDSMITH_API_TOKEN`` environment variable must be set (or
+  ``api_token`` provided) — Cloudsmith authenticates via a bearer token.
+- The driver verifies the downloaded file's SHA256 against the checksum
+  reported by the Cloudsmith API.
 
 HomeAssistantOutlet
 ~~~~~~~~~~~~~~~~~~~

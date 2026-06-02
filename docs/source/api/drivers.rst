@@ -80,6 +80,17 @@ KuiperDLDriver
    :undoc-members:
    :show-inheritance:
 
+Cloudsmith Drivers
+------------------
+
+CloudsmithDLDriver
+~~~~~~~~~~~~~~~~~~
+
+.. autoclass:: adi_lg_plugins.drivers.cloudsmithdldriver.CloudsmithDLDriver
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 FPGA/JTAG Drivers
 -----------------
 
@@ -112,6 +123,14 @@ Utility Classes
 .. autoclass:: adi_lg_plugins.drivers.imageextractor.IMGFileExtractor
    :members:
    :undoc-members:
+
+.. autoclass:: adi_lg_plugins.drivers.cloudsmithdldriver.Downloader
+   :members:
+   :undoc-members:
+
+.. autofunction:: adi_lg_plugins.drivers.cloudsmithdldriver.get_latest_bootfiles
+
+.. autofunction:: adi_lg_plugins.drivers.cloudsmithdldriver.parse_version_info
 
 Software Installer
 ------------------

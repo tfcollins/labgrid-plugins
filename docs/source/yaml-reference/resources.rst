@@ -36,6 +36,10 @@ Schema
      - ``release``, ``cache_dir``
      - —
      - :ref:`user-guide/drivers:KuiperDLDriver`
+   * - :ref:`user-guide/resources:CloudsmithRelease`
+     - ``fpga_carrier``, ``daughter_card``
+     - ``owner`` (``adi``), ``repo`` (``sdg-boot-partition``), ``filename`` (``BOOT.BIN``), ``version`` (latest), ``api_token`` (``$CLOUDSMITH_API_TOKEN``), ``cache_path``
+     - :ref:`user-guide/drivers:CloudsmithDLDriver`
    * - :ref:`user-guide/resources:TFTPServerResource`
      - —
      - ``address`` (``'auto'``), ``port`` (3069), ``root`` (``/var/lib/tftpboot``)
@@ -93,6 +97,12 @@ Storage & Images
       KuiperRelease:
         release: '2023_R2_P1'
         cache_dir: '/var/cache/kuiper'
+
+    # CloudsmithRelease (latest BOOT.BIN for the carrier + daughter card)
+    resources:
+      CloudsmithRelease:
+        fpga_carrier: 'zcu102'
+        daughter_card: 'adrv9009'
 
 Boot / Network Services
 ~~~~~~~~~~~~~~~~~~~~~~~

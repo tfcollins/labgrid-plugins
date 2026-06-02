@@ -218,3 +218,13 @@ the bash test driver, and release the place unconditionally.
    ``post:`` cleanup, so the unconditional ``Release place`` step is
    required — without it a killed runner leaves the place held. This
    mirrors the release idiom in ``hw-matrix.yml``.
+
+See also
+--------
+
+* :doc:`hw-ci-v2` — the pytest-driven discovery flow (use that when your
+  tests are Python, not bash).
+* :doc:`drivers` → CloudsmithDLDriver and :doc:`cli` → ``cloudsmithdl`` —
+  if the ``adi-lg boot-*`` step needs boot artifacts (e.g. ``BOOT.BIN``)
+  fetched from a Cloudsmith repo, the ``kuiper`` binding on the SoC boot
+  strategies accepts ``CloudsmithDLDriver`` in place of ``KuiperDLDriver``.

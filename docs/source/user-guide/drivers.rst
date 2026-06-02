@@ -20,6 +20,7 @@ The plugin provides six drivers for different hardware control scenarios:
 - **Shell Driver**: Execute commands and transfer files via serial console or SSH
 - **Storage Drivers**: Mount and manage SD card filesystems
 - **Kuiper Driver**: Download and extract ADI Kuiper Linux releases
+- **Cloudsmith Driver**: Download boot artifacts from a Cloudsmith repo
 
 Driver Lifecycle
 ----------------
@@ -717,6 +718,66 @@ Downloading Kuiper release:
 - Subsequent runs use cached version (fast)
 - Boot files extracted to cache_dir automatically
 - Used by BootFPGASoC strategy for automatic Kuiper boot
+
+Cloudsmith Download Driver
+--------------------------
+
+CloudsmithDLDriver
+~~~~~~~~~~~~~~~~~~
+
+**Purpose**: Resolve and download boot artifacts (e.g. ``BOOT.BIN``) from
+a Cloudsmith package repository, mirroring KuiperDLDriver but for
+individual files served over a CDN.
+
+**Required Resource**: CloudsmithRelease
+
+**Configuration**
+
+.. code-block:: yaml
+
+    resources:
+      CloudsmithRelease:
+        fpga_carrier: 'zcu102'
+        daughter_card: 'adrv9009'
+        # version: '...'   # optional pin; omit for latest
+
+    drivers:
+      CloudsmithDLDriver: {}
+
+Set ``CLOUDSMITH_API_TOKEN`` in the environment (or ``api_token`` on the
+resource) before activating the driver.
+
+**Methods**
+
+.. code-block:: python
+
+    cloudsmith = target.get_driver("CloudsmithDLDriver")
+    target.activate(cloudsmith)
+
+    # Resolve (latest or pinned), download, verify sha256, cache.
+    path = cloudsmith.get_boot_file_path()
+
+    # Strategy-facing contract (same shape as KuiperDLDriver):
+    boot_files = cloudsmith.get_boot_files_from_release()  # -> [path]
+
+    target.deactivate(cloudsmith)
+
+**Features**
+
+- Resolves the latest matching package by ``(carrier, daughter-card,
+  filename)``, or an exact ``version`` pin for reproducibility
+- Streaming download with retry/backoff and tqdm progress
+- SHA256 verification against the checksum reported by the Cloudsmith API
+- Caches resolved artifacts in ``cache_path`` (``cache_info.json``)
+- Drop-in for the ``kuiper`` binding on BootFPGASoC / BootFPGASoCSSH /
+  BootFPGASoCTFTP — exposes ``get_boot_files_from_release()`` /
+  ``_boot_files``
+
+**Notes**
+
+- Unlike Kuiper, no disk-image mount is involved (the artifact is an
+  individual file), so ``pytsk3`` is not required.
+- See :doc:`resources` → CloudsmithRelease for the full parameter set.
 
 FPGA JTAG Driver
 ----------------
