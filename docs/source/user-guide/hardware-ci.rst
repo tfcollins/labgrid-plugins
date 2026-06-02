@@ -273,9 +273,9 @@ tagged place on the coordinator:
          - tests/coordinator/test_soc_strat_coordinator.py
        runner_labels: [self-hosted, lab, zcu102]
      zc706:
-       lg_env: tests/coordinator/env_remote_zc706_tftp.yaml
+       lg_env: tests/coordinator/env_remote_zc706.yaml
        tests:
-         - tests/coordinator/test_zc706_tftp_coordinator.py
+         - tests/coordinator/test_zc706_recovery_coordinator.py
        runner_labels: [self-hosted, lab, zc706]
 
 Because ``discover_places.py`` iterates over *places* (not carriers),
@@ -285,16 +285,18 @@ into ``lg_env`` (so one committed env covers all places of that
 carrier) and the ``hw_targets`` fixture in ``tests/coordinator/`` does
 the coordinator acquire/release.
 
-``zc706`` coverage is a non-destructive **boot-to-shell** check
-(``tests/coordinator/test_zc706_tftp_coordinator.py``): it drives the
-``BootFPGASoCTFTP`` strategy to a Linux shell over the coordinator leg
-and runs ``uname``. The committed env
-(``tests/coordinator/env_remote_zc706_tftp.yaml``) carries the
-Zynq-7000 U-Boot overrides (``Zynq>`` prompt, ``bootm``,
-``uImage``/``devicetree.dtb``); it assumes each ``zc706`` exporter
-publishes a Vesync power resource, a serial console, and a
-``KuiperRelease`` serving a carrier-appropriate ``uImage``/DTB. Places
-with a different power driver need a per-place env override.
+``zc706`` coverage is intentionally a **lightweight, non-destructive
+smoke** (``tests/coordinator/test_zc706_recovery_coordinator.py``): it
+acquires the place over the coordinator and confirms its
+``SerialDriver`` resolves. The lab's zc706 boards are tagged
+``boot-strategy=BootZynq7000JTAGRecovery`` — a **destructive** flow
+(it reflashes the SD over JTAG) that is JTAG/serial-local, so it is
+**not** driven over the coordinator in nightly CI. The committed env
+(``tests/coordinator/env_remote_zc706.yaml``) therefore binds only a
+``RemotePlace`` + ``SerialDriver`` (no power/boot bindings, so it can't
+fail on a power-driver mismatch). The full recovery flow is exercised
+separately by ``tests/test_zynq7000_recovery_hw.py`` on a host wired to
+the JTAG cable.
 
 Cross-org runner topology
 -------------------------

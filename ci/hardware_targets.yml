@@ -14,9 +14,16 @@
 #   python_version optional; default 3.12.
 boards:
   zc706:
-    lg_env: tests/coordinator/env_remote_zc706_tftp.yaml
+    # zc706 lab boards (bq, nemo) are tagged boot-strategy=BootZynq7000JTAGRecovery
+    # and powered via HomeAssistant. That recovery strategy is destructive
+    # (reflashes the SD via JTAG) and JTAG/serial-local, so it is NOT run over
+    # the coordinator in nightly CI. This entry runs a lightweight, non-
+    # destructive coordinator smoke (acquire + serial resolves); the full
+    # recovery flow is exercised by tests/test_zynq7000_recovery_hw.py on a
+    # host wired to the JTAG cable.
+    lg_env: tests/coordinator/env_remote_zc706.yaml
     tests:
-      - tests/coordinator/test_zc706_tftp_coordinator.py
+      - tests/coordinator/test_zc706_recovery_coordinator.py
     runner_labels: [self-hosted, lab, zc706]
   zcu102:
     lg_env: examples/lg_ad9081_zcu102_exporter.yaml
