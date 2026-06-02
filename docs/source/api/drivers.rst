@@ -3,6 +3,10 @@ Drivers API
 
 Drivers provide low-level hardware control and protocol implementations.
 
+.. contents:: On this page
+   :local:
+   :depth: 2
+
 Power Drivers
 -------------
 
