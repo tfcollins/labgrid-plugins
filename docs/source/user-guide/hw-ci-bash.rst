@@ -228,3 +228,8 @@ See also
   if the ``adi-lg boot-*`` step needs boot artifacts (e.g. ``BOOT.BIN``)
   fetched from a Cloudsmith repo, the ``kuiper`` binding on the SoC boot
   strategies accepts ``CloudsmithDLDriver`` in place of ``KuiperDLDriver``.
+* :doc:`hardware-ci` → *Carrier-keyed nightly dispatch* — the
+  coordinator-leg path that fans a single ``ci/hardware_targets.yml``
+  entry out to every place of a carrier (e.g. the zc706 boot-to-shell
+  job). Use that when a pytest boot-to-shell check fits better than a
+  bash UART/JTAG harness.
