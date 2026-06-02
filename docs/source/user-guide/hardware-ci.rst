@@ -250,6 +250,52 @@ boot strategies in ``adi_lg_plugins.strategies``. It runs nightly at
 Extend by adding entries to ``.github/hw-nodes.json`` and new files
 under ``tests/hw/``.
 
+Carrier-keyed nightly dispatch
+------------------------------
+
+Alongside the manifest/dynamic ``hw-matrix.yml`` legs, this repo runs a
+**carrier-keyed** path that dogfoods the boot strategies against the
+lab's own boards: ``.github/workflows/hardware-tests.yml`` →
+``ci/discover_places.py`` → ``ci/hardware_targets.yml``. It queries the
+coordinator's ``/api/places``, and for every live place emits one job
+keyed on the place's ``carrier`` tag.
+
+``ci/hardware_targets.yml`` maps a ``carrier`` value to *how* to test it
+— no code change is needed to cover a new carrier, just an entry plus a
+tagged place on the coordinator:
+
+.. code-block:: yaml
+
+   boards:
+     zcu102:
+       lg_env: examples/lg_ad9081_zcu102_exporter.yaml
+       tests:
+         - tests/coordinator/test_soc_strat_coordinator.py
+       runner_labels: [self-hosted, lab, zcu102]
+     zc706:
+       lg_env: tests/coordinator/env_remote_zc706_tftp.yaml
+       tests:
+         - tests/coordinator/test_zc706_tftp_coordinator.py
+       runner_labels: [self-hosted, lab, zc706]
+
+Because ``discover_places.py`` iterates over *places* (not carriers),
+**every** live place tagged ``carrier=zc706`` gets its own job from the
+single ``zc706`` entry. The per-place job substitutes ``${LG_PLACE}``
+into ``lg_env`` (so one committed env covers all places of that
+carrier) and the ``hw_targets`` fixture in ``tests/coordinator/`` does
+the coordinator acquire/release.
+
+``zc706`` coverage is a non-destructive **boot-to-shell** check
+(``tests/coordinator/test_zc706_tftp_coordinator.py``): it drives the
+``BootFPGASoCTFTP`` strategy to a Linux shell over the coordinator leg
+and runs ``uname``. The committed env
+(``tests/coordinator/env_remote_zc706_tftp.yaml``) carries the
+Zynq-7000 U-Boot overrides (``Zynq>`` prompt, ``bootm``,
+``uImage``/``devicetree.dtb``); it assumes each ``zc706`` exporter
+publishes a Vesync power resource, a serial console, and a
+``KuiperRelease`` serving a carrier-appropriate ``uImage``/DTB. Places
+with a different power driver need a per-place env override.
+
 Cross-org runner topology
 -------------------------
 

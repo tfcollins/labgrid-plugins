@@ -14,9 +14,9 @@
 #   python_version optional; default 3.12.
 boards:
   zc706:
-    lg_env: tests/coordinator/env_remote_zc706.yaml
+    lg_env: tests/coordinator/env_remote_zc706_tftp.yaml
     tests:
-      - tests/coordinator/test_zc706_recovery_coordinator.py
+      - tests/coordinator/test_zc706_tftp_coordinator.py
     runner_labels: [self-hosted, lab, zc706]
   zcu102:
     lg_env: examples/lg_ad9081_zcu102_exporter.yaml

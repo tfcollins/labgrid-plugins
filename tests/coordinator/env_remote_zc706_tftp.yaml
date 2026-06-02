@@ -1,0 +1,55 @@
+## Coordinator-tier env for boot-to-shell testing of zc706-tagged places
+## via the BootFPGASoCTFTP strategy. The CI workflow runs
+## `envsubst '${LG_PLACE}' < env_remote_zc706_tftp.yaml` before pytest, so
+## one file covers every zc706 place. When running locally, set LG_PLACE
+## and pre-substitute, or replace `${LG_PLACE}` with the literal name.
+##
+## A local writable TFTP root runs alongside the runner (KuiperDLDriver
+## stages uImage/devicetree.dtb into it; the DUT pulls them over the
+## serial console). The TFTPServerResource is named `local-tftp` so the
+## TFTPServerDriver / strategy bind ours by name rather than any TFTP
+## resource the exporter may also publish.
+##
+## Zynq-7000 (zc706) overrides are inline: the BootFPGASoCTFTP defaults
+## target ZynqMP (ARM64), so the ARM32 prompt / boot command / image
+## names / load addresses are set explicitly here.
+##
+## Assumptions (per-place, exporter-side): the place publishes a Vesync
+## power resource, a serial console, and a KuiperRelease serving a
+## zc706-appropriate uImage/devicetree.dtb. Places using a different
+## power driver need a per-place env or a power override.
+
+targets:
+  main:
+    resources:
+      RemotePlace:
+        name: ${LG_PLACE}
+      TFTPServerResource:
+        name: local-tftp
+        address: 'auto'
+        port: 3069
+        root: /tmp/labgrid-tftp-${LG_PLACE}
+    drivers:
+      VesyncPowerDriver: {}
+      SerialDriver: {}
+      ADIShellDriver:
+        prompt: 'root@.*'
+        login_prompt: 'analog login: '
+        username: 'root'
+        password: 'analog'
+      KuiperDLDriver: {}
+      TFTPServerDriver:
+        bindings:
+          resource: local-tftp
+      BootFPGASoCTFTP:
+        bindings:
+          tftp_server: local-tftp
+        reached_linux_marker: 'analog'
+        wait_for_linux_prompt_timeout: 240
+        # Zynq-7000 (zc706) ARM32 overrides — defaults target ZynqMP.
+        uboot_prompt: 'Zynq>.*'
+        kernel_image_name: 'uImage'
+        dtb_image_name: 'devicetree.dtb'
+        boot_cmd: 'bootm'
+        kernel_addr: '0x3000000'
+        dtb_addr: '0x2A00000'
