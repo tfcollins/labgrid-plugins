@@ -42,7 +42,7 @@ class BootFPGASoCTFTP(Strategy):
         "power": "PowerProtocol",
         "shell": "ADIShellDriver",
         "ssh": {"SSHDriver", None},
-        "kuiper": {"KuiperDLDriver", None},
+        "kuiper": {"KuiperDLDriver", "CloudsmithDLDriver", None},
         # Optional JTAG bootstrap. When provided AND ps7_init_tcl /
         # uboot_elf are set, the strategy xsdb-loads U-Boot into DDR
         # before waiting for the autoboot banner. Useful when the

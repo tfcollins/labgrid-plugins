@@ -69,7 +69,7 @@ class BootFPGASoC(Strategy):
         "sdmux": "USBSDMuxDriver",
         "mass_storage": "MassStorageDriver",
         "image_writer": {"USBStorageDriver", None},
-        "kuiper": "KuiperDLDriver",
+        "kuiper": {"KuiperDLDriver", "CloudsmithDLDriver"},
     }
 
     status = attr.ib(default=Status.unknown)

@@ -52,7 +52,7 @@ class BootFPGASoCSSH(Strategy):
         "power": {"PowerProtocol", None},
         "shell": "ADIShellDriver",
         "ssh": "SSHDriver",
-        "kuiper": {"KuiperDLDriver", None},
+        "kuiper": {"KuiperDLDriver", "CloudsmithDLDriver", None},
     }
 
     status = attr.ib(default=Status.unknown)
