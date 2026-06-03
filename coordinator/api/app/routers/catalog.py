@@ -7,11 +7,15 @@ router = APIRouter(tags=["catalog"])
 
 
 def _catalog(request: Request) -> BoardCatalog:
-    # Set at startup in main.lifespan; default-empty if loading failed.
+    # Set at startup in main.lifespan. A missing catalog file is non-fatal
+    # (load_catalog returns an empty catalog + warning), so we also default
+    # to an empty catalog here rather than erroring.
     return getattr(request.app.state, "catalog", BoardCatalog())
 
 
-def _client(request: Request):
+def _get_client(request: Request):
+    # No getattr fallback (unlike _catalog): a missing coordinator is a hard
+    # startup failure, not graceful degradation. Matches app/routers/places.py.
     return request.app.state.coordinator
 
 
@@ -27,5 +31,5 @@ async def get_match(
     carrier: str | None = Query(None, description="Optional FPGA carrier, e.g. zcu102"),
     bootfile: str | None = Query(None, description="Optional image/version pin"),
 ) -> MatchResult:
-    places = _client(request).get_places()
+    places = _get_client(request).get_places()
     return match_places(_catalog(request), places, part=part, carrier=carrier, bootfile=bootfile)

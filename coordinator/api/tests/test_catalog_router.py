@@ -66,3 +66,20 @@ def test_match_unknown_part_is_satisfiable_false(catalog_client):
 def test_match_requires_part(catalog_client):
     resp = catalog_client.get("/api/match")
     assert resp.status_code == 422  # FastAPI: missing required query param
+
+
+def test_match_invalid_carrier_is_satisfiable_false(catalog_client):
+    resp = catalog_client.get("/api/match", params={"part": "adrv9002", "carrier": "vcu118"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["satisfiable"] is False
+    assert "carrier" in data["reason"]
+
+
+def test_match_bootfile_pin_flows_through_http(catalog_client):
+    resp = catalog_client.get(
+        "/api/match",
+        params={"part": "adrv9002", "carrier": "zcu102", "bootfile": "2023_R2_P1"},
+    )
+    assert resp.status_code == 200
+    assert resp.json()["image"] == "2023_R2_P1"
