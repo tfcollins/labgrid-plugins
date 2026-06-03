@@ -1,0 +1,103 @@
+name: HW Request (low-config)
+
+# Reusable workflow: a consumer repo (e.g. pyadi-iio) calls this to run its
+# hardware tests by *part*. labgrid selects a free matching board, boots it,
+# runs the tests, and releases it — one independent job per board.
+#
+#   jobs:
+#     hw:
+#       uses: tfcollins/labgrid-plugins/.github/workflows/hw-request.yml@main
+#       with:
+#         coordinator: "10.0.0.41:8000"
+#         test-root: "test"
+on:
+  workflow_call:
+    inputs:
+      coordinator:
+        description: "Coordinator host:port for the REST API (GET /api/match) and reservations."
+        type: string
+        required: true
+      test-root:
+        description: "Path to the test directory to harvest markers from and run."
+        type: string
+        default: "test"
+      marker:
+        description: "Top-level pytest marker gating hardware tests."
+        type: string
+        default: "iio_hardware"
+      wait:
+        description: "Seconds each leg queues for a free matching board (0 = fail fast)."
+        type: number
+        default: 1800
+      runner-label:
+        description: "Self-hosted runner label for the per-board legs (must reach the coordinator + lab)."
+        type: string
+        default: "hw-lab"
+      preflight-runner-label:
+        description: "Runner label for the discovery preflight (must reach the coordinator REST API)."
+        type: string
+        default: "hw-coordinator"
+      pytest-args:
+        description: "Extra args appended to the per-leg pytest command."
+        type: string
+        default: ""
+
+jobs:
+  preflight:
+    runs-on: [self-hosted, "${{ inputs.preflight-runner-label }}"]
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      count: ${{ steps.plan.outputs.count }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/setup-uv-venv
+      - id: plan
+        env:
+          LG_COORDINATOR: ${{ inputs.coordinator }}
+        run: |
+          adi-lg-hw-ci request-matrix \
+            --test-root "${{ inputs.test-root }}" \
+            --marker "${{ inputs.marker }}" \
+            --coord "${{ inputs.coordinator }}" \
+            --github-output
+
+  hw-request:
+    needs: preflight
+    if: ${{ fromJSON(needs.preflight.outputs.count) > 0 }}
+    runs-on: [self-hosted, "${{ inputs.runner-label }}"]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.preflight.outputs.matrix) }}
+    env:
+      LG_COORDINATOR: ${{ inputs.coordinator }}
+      # Reuse the pytest plugin's per-shard narrowing: deselect tests whose
+      # iio_hardware args don't include this board.
+      HW_DAUGHTER: ${{ matrix.part }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: tfcollins/labgrid-plugins/.github/actions/setup-uv-venv@main
+      - name: Request ${{ matrix.part }} and run its tests
+        run: |
+          adi-lg request --part "${{ matrix.part }}" --wait "${{ inputs.wait }}" \
+            --run "pytest ${{ inputs.test-root }} -m ${{ inputs.marker }} --junitxml=results-${{ matrix.part }}.xml ${{ inputs.pytest-args }}"
+      - name: Upload JUnit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-${{ matrix.part }}
+          path: results-${{ matrix.part }}.xml
+          if-no-files-found: ignore
+
+  report:
+    needs: hw-request
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: junit-*
+          merge-multiple: true
+      - name: Publish test results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        with:
+          junit_files: "results-*.xml"
