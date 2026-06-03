@@ -100,6 +100,50 @@ def _cmd_discover(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_request_matrix(args: argparse.Namespace) -> int:
+    """Emit a part-keyed matrix: wanted parts (from markers) that have a live
+    board (per GET /api/match). Missing parts are surfaced as GH annotations."""
+    from adi_lg_plugins.request import match_client
+
+    from .request_matrix import build_request_matrix
+
+    coord = coord_mod.resolve_coordinator(args.coord)
+    markers = markers_mod.harvest_markers(args.test_root, marker=args.marker)
+    wanted = sorted({h for spec in markers.values() for h in spec.iio_hardware})
+
+    def satisfiable(part: str) -> bool:
+        try:
+            return bool(match_client.get_match(coord, part=part).satisfiable)
+        except Exception as e:  # noqa: BLE001 - a probe failure must not crash discovery
+            print(f"# /api/match probe failed for {part!r}: {e}", file=sys.stderr)
+            return False
+
+    result = build_request_matrix(wanted, satisfiable)
+    matrix = {"include": [{"part": p} for p in result.parts]}
+
+    if args.github_output:
+        gh_out = os.environ.get("GITHUB_OUTPUT")
+        if gh_out:
+            with open(gh_out, "a", encoding="utf-8") as f:
+                f.write(f"matrix={json.dumps(matrix)}\n")
+                f.write(f"count={len(result.parts)}\n")
+        else:
+            print("warning: --github-output given but $GITHUB_OUTPUT is unset", file=sys.stderr)
+
+    print(json.dumps(matrix, indent=2))
+    print(
+        f"# request-matrix: {len(wanted)} wanted part(s), {len(result.parts)} available",
+        file=sys.stderr,
+    )
+    for p in result.missing:
+        print(
+            f"::warning::part {p!r} is wanted by tests but no live board is on the "
+            f"coordinator — skipping",
+            file=sys.stderr,
+        )
+    return 0
+
+
 def _cmd_render_env(args: argparse.Namespace) -> int:
     coord = coord_mod.resolve_coordinator(args.coord)
     places, _skipped = coord_mod.list_live_places(
@@ -215,6 +259,21 @@ def main(argv: list[str] | None = None) -> int:
         "list-strategies", help="dump known boot-strategy class names + which have render templates"
     )
     pl.set_defaults(func=_cmd_list_strategies)
+
+    pm = sub.add_parser(
+        "request-matrix", help="emit a part-keyed matrix for the hw-request workflow"
+    )
+    pm.add_argument("--test-root", required=True, help="path to the consumer's test directory")
+    pm.add_argument("--marker", default="iio_hardware", help="hardware-gating marker name")
+    pm.add_argument(
+        "--coord", default=None, help="coordinator host:port (default: $LG_COORDINATOR)"
+    )
+    pm.add_argument(
+        "--github-output",
+        action="store_true",
+        help="also write matrix=/count= to $GITHUB_OUTPUT",
+    )
+    pm.set_defaults(func=_cmd_request_matrix)
 
     ns = p.parse_args(argv)
     return ns.func(ns)
