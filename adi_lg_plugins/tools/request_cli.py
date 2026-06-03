@@ -31,7 +31,7 @@ from adi_lg_plugins.request.errors import (
 
 console = Console()
 
-EXIT_INTERRUPTED = 130  # SIGINT / SIGTERM during the run (128 + SIGINT)
+EXIT_INTERRUPTED = 130  # conventional 128+SIGINT; also used for SIGTERM-triggered interrupt
 
 # Sentinel: SIGTERM handler could not be installed (e.g. not on the main thread).
 _NOT_INSTALLED = object()

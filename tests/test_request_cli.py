@@ -170,3 +170,26 @@ def test_request_interrupt_releases_and_exits_130(monkeypatch):
     monkeypatch.setattr(rc_mod, "_run_child", interrupt)
     result = CliRunner().invoke(cli, ["request", "--part", "adrv9002", "--run", "sleep 100"])
     assert result.exit_code == rc_mod.EXIT_INTERRUPTED
+
+
+def test_request_no_run_prints_place_when_no_uri(monkeypatch):
+    monkeypatch.setattr(rc_mod, "request", _fake_request_yielding(_fake_lease(uri=None)))
+    result = CliRunner().invoke(cli, ["request", "--part", "adrv9002"])
+    assert result.exit_code == 0
+    assert "adrv9002-zcu102" in result.output
+
+
+def test_request_run_omits_iio_uri_when_none(monkeypatch):
+    monkeypatch.setattr(rc_mod, "request", _fake_request_yielding(_fake_lease(uri=None)))
+    captured = {}
+
+    def fake_run_child(run_cmd, env):
+        captured["has_uri"] = "IIO_URI" in env
+        captured["place"] = env.get("LG_PLACE")
+        return 0
+
+    monkeypatch.setattr(rc_mod, "_run_child", fake_run_child)
+    result = CliRunner().invoke(cli, ["request", "--part", "adrv9002", "--run", "true"])
+    assert result.exit_code == 0
+    assert captured["has_uri"] is False
+    assert captured["place"] == "adrv9002-zcu102"
