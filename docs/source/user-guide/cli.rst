@@ -24,6 +24,44 @@ Commands
 
 The CLI provides subcommands for different boot strategies.
 
+request
+~~~~~~~
+
+Request a board **by part** — labgrid selects a free matching board, boots it,
+hands over its libIIO URI, runs your command, and releases the board. No
+strategy/driver/resource config and no place name required.
+
+.. code-block:: bash
+
+    # Boot an ADRV9002 (on any free carrier) and run a pytest selection against it
+    adi-lg request --part adrv9002 --run 'pytest test/ -k adrv9002'
+
+    # Narrow to a carrier and pin an image version
+    adi-lg request --part adrv9002 --carrier zcu102 --bootfile 2023_R2_P1 \
+        --run 'pytest test/ -k adrv9002'
+
+    # Print just the URI (no command) — useful for scripting
+    adi-lg request --part adrv9002
+
+Options:
+
+* ``--part`` (required): part / daughter-board, e.g. ``adrv9002``.
+* ``--carrier``: optional FPGA carrier filter, e.g. ``zcu102``. Omit to match any free carrier.
+* ``--bootfile``: pin an image version. Defaults to the coordinator catalog's default image.
+* ``--wait`` (default ``1800``): seconds to queue for a free matching board. ``0`` fails fast.
+* ``--power-down``: power the board off after release (default: leave it powered for the next user).
+* ``--coord``: coordinator ``host:port`` (default: ``$LG_COORDINATOR``).
+* ``--run '<cmd>'``: run ``<cmd>`` with ``IIO_URI``, ``LG_PLACE`` and ``LG_CARRIER`` exported into
+  its environment. The command's own exit code is propagated.
+
+Exit codes (so CI can tell an infra problem from a real test failure):
+
+* ``0`` / child's code — success, or the ``--run`` command's own exit code.
+* ``10`` — no matching board exists for the part/filters.
+* ``11`` — matching boards exist but none became free within ``--wait``.
+* ``12`` — the board failed to boot (the console tail is printed for triage).
+* ``130`` — interrupted (Ctrl-C or CI job-timeout); the board is still released.
+
 boot-fabric
 ~~~~~~~~~~~
 
