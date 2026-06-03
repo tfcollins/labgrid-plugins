@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import signal
 from contextlib import contextmanager
 from unittest.mock import MagicMock
 
+import pytest
 from click.testing import CliRunner
 
 from adi_lg_plugins.request import BoardUnavailable, NoMatchingBoard, ProvisionError
@@ -117,3 +119,54 @@ def test_request_provision_error_exit_code_and_tail(monkeypatch):
     result = CliRunner().invoke(cli, ["request", "--part", "adrv9002", "--run", "true"])
     assert result.exit_code == EXIT_PROVISION
     assert "kernel panic xyz" in result.output
+
+
+def test_install_term_handler_makes_sigterm_raise(monkeypatch):
+    installed = {}
+
+    def fake_signal(signum, handler):
+        installed[signum] = handler
+        return signal.SIG_DFL  # previous handler
+
+    monkeypatch.setattr(rc_mod.signal, "signal", fake_signal)
+    rc_mod._install_term_handler()
+    handler = installed[signal.SIGTERM]
+    with pytest.raises(KeyboardInterrupt):
+        handler(signal.SIGTERM, None)
+
+
+def test_run_child_terminates_child_on_interrupt(monkeypatch):
+    events = []
+
+    class FakeProc:
+        def __init__(self):
+            self._first = True
+
+        def wait(self, timeout=None):
+            if self._first:
+                self._first = False
+                raise KeyboardInterrupt
+            events.append("waited")
+            return 0
+
+        def terminate(self):
+            events.append("terminated")
+
+        def kill(self):
+            events.append("killed")
+
+    monkeypatch.setattr(rc_mod.subprocess, "Popen", lambda *a, **k: FakeProc())
+    with pytest.raises(KeyboardInterrupt):
+        rc_mod._run_child("sleep 100", {})
+    assert "terminated" in events
+
+
+def test_request_interrupt_releases_and_exits_130(monkeypatch):
+    monkeypatch.setattr(rc_mod, "request", _fake_request_yielding(_fake_lease()))
+
+    def interrupt(run_cmd, env):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(rc_mod, "_run_child", interrupt)
+    result = CliRunner().invoke(cli, ["request", "--part", "adrv9002", "--run", "sleep 100"])
+    assert result.exit_code == rc_mod.EXIT_INTERRUPTED

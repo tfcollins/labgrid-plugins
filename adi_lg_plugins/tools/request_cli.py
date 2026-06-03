@@ -10,6 +10,7 @@ tell an infra problem from a real test failure.
 from __future__ import annotations
 
 import os
+import signal
 import subprocess
 import sys
 
@@ -30,10 +31,55 @@ from adi_lg_plugins.request.errors import (
 
 console = Console()
 
+EXIT_INTERRUPTED = 130  # SIGINT / SIGTERM during the run (128 + SIGINT)
+
+# Sentinel: SIGTERM handler could not be installed (e.g. not on the main thread).
+_NOT_INSTALLED = object()
+
+
+def _install_term_handler():
+    """Make SIGTERM raise KeyboardInterrupt so a CI job-timeout triggers
+    request()'s cleanup (release), exactly as Ctrl-C (SIGINT) already does.
+
+    Returns the previous handler so the caller can restore it, or the
+    ``_NOT_INSTALLED`` sentinel if installation failed (signal handlers can
+    only be set from the main thread).
+    """
+
+    def _raise(signum, frame):
+        raise KeyboardInterrupt(f"received signal {signum}")
+
+    try:
+        return signal.signal(signal.SIGTERM, _raise)
+    except ValueError:
+        return _NOT_INSTALLED
+
+
+def _restore_term_handler(previous) -> None:
+    if previous is _NOT_INSTALLED:
+        return
+    try:
+        signal.signal(signal.SIGTERM, previous)
+    except ValueError:
+        pass
+
 
 def _run_child(run_cmd: str, env: dict) -> int:
-    """Run the user command with the board's interfaces in its environment."""
-    return subprocess.call(run_cmd, shell=True, env=env)  # noqa: S602 - user cmd by design
+    """Run the user command with the board's interfaces in its environment.
+
+    Uses Popen so an interrupt (Ctrl-C / SIGTERM) stops the child before
+    re-raising, letting request()'s context manager release the board.
+    """
+    proc = subprocess.Popen(run_cmd, shell=True, env=env)  # noqa: S602 - user cmd by design
+    try:
+        return proc.wait()
+    except KeyboardInterrupt:
+        proc.terminate()
+        try:
+            proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+        raise
 
 
 @click.command(name="request")
@@ -68,6 +114,7 @@ def request_cmd(part, carrier, mode, bootfile, wait, power_down, coord, run_cmd)
     if mode == "flash":
         raise click.ClickException("flash mode is not available yet (uri mode only)")
 
+    previous = _install_term_handler()
     try:
         with request(
             part=part,
@@ -90,6 +137,9 @@ def request_cmd(part, carrier, mode, bootfile, wait, power_down, coord, run_cmd)
             console.print(f"[green]Booted {board.place} -> {board.uri}[/green]")
             rc = _run_child(run_cmd, env)
             sys.exit(rc)
+    except KeyboardInterrupt:
+        console.print("[bold red]Interrupted — board released[/bold red]")
+        sys.exit(EXIT_INTERRUPTED)
     except NoMatchingBoard as e:
         console.print(f"[bold red]No matching board: {e}[/bold red]")
         sys.exit(EXIT_NO_MATCH)
@@ -101,3 +151,5 @@ def request_cmd(part, carrier, mode, bootfile, wait, power_down, coord, run_cmd)
         if getattr(e, "console_tail", ""):
             console.print(e.console_tail)
         sys.exit(EXIT_PROVISION)
+    finally:
+        _restore_term_handler(previous)
