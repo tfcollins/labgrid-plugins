@@ -11,6 +11,7 @@ from .grpc_client import CoordinatorClient
 from .recorder import Recorder
 from .routers import (
     auth,
+    catalog,
     console,
     health,
     history,
@@ -183,6 +184,7 @@ app.add_middleware(
 
 app.include_router(health.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
+app.include_router(catalog.router, prefix="/api")
 app.include_router(history.router, prefix="/api")
 app.include_router(places.router, prefix="/api")
 app.include_router(resources.router, prefix="/api")
