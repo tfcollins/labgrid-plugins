@@ -94,3 +94,77 @@ def resolve_board(
 
     matlab_boards = {cname: c.matlab_board for cname, c in board.carriers.items() if c.matlab_board}
     return ResolvedBoard(part=part, version=version, matlab_boards=matlab_boards)
+
+
+@dataclass(frozen=True)
+class MatchCandidate:
+    place: str
+    carrier: str
+    acquired: bool
+
+
+@dataclass(frozen=True)
+class MatchData:
+    satisfiable: bool
+    reason: str = ""
+    reservation_filter: dict[str, str] = field(default_factory=dict)
+    version: str | None = None
+    matlab_boards: dict[str, str] = field(default_factory=dict)
+    candidates: list[MatchCandidate] = field(default_factory=list)
+
+
+def match_places(
+    catalog: Catalog,
+    places: list[dict],
+    *,
+    part: str,
+    carrier: str | None = None,
+    bootfile: str | None = None,
+) -> MatchData:
+    """Match a request against live places using catalog + place tags.
+
+    `places` are raw place dicts (name, acquired, tags) as returned by the
+    coordinator client. Returns a MatchData describing satisfiability, the
+    labgrid reservation filter, resolved version, and candidate places.
+    """
+    try:
+        resolved = resolve_board(catalog, part=part, carrier=carrier, bootfile=bootfile)
+    except CatalogError as e:
+        return MatchData(satisfiable=False, reason=str(e))
+
+    reservation_filter = {"daughter-board": part}
+    if carrier:
+        reservation_filter["carrier"] = carrier
+
+    candidates: list[MatchCandidate] = []
+    for p in places:
+        tags = p.get("tags") or {}
+        if tags.get("daughter-board") != part:
+            continue
+        if carrier and tags.get("carrier") != carrier:
+            continue
+        candidates.append(
+            MatchCandidate(
+                place=p.get("name", ""),
+                carrier=tags.get("carrier", ""),
+                acquired=bool(p.get("acquired")),
+            )
+        )
+
+    if not candidates:
+        return MatchData(
+            satisfiable=False,
+            reason=f"no matching place for part '{part}'"
+            + (f" carrier '{carrier}'" if carrier else ""),
+            reservation_filter=reservation_filter,
+            version=resolved.version,
+            matlab_boards=resolved.matlab_boards,
+        )
+
+    return MatchData(
+        satisfiable=True,
+        reservation_filter=reservation_filter,
+        version=resolved.version,
+        matlab_boards=resolved.matlab_boards,
+        candidates=candidates,
+    )
