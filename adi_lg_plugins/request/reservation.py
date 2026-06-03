@@ -82,20 +82,21 @@ def reserve_and_acquire(
     if not token:
         raise BoardUnavailable(f"could not parse reservation token from: {proc.stdout!r}")
 
+    def _cancel():
+        # Best-effort cancel so we don't leak the reservation.
+        subprocess.run([*base, "cancel-reservation", token], capture_output=True, text=True)  # noqa: S603
+
     try:
         res_proc = subprocess.run(  # noqa: S603
             [*base, "reservations"], capture_output=True, text=True, timeout=15
         )
     except subprocess.TimeoutExpired as e:
-        subprocess.run([*base, "cancel-reservation", token], capture_output=True, text=True)  # noqa: S603
+        _cancel()
         raise BoardUnavailable(f"reservations lookup timed out for {token}") from e
     place = _parse_allocated_place(res_proc.stdout, token)
     if not place:
+        _cancel()
         raise BoardUnavailable(f"reservation {token} has no allocated place yet")
-
-    def _cancel():
-        # Best-effort cancel so we don't leak the reservation.
-        subprocess.run([*base, "cancel-reservation", token], capture_output=True, text=True)  # noqa: S603
 
     try:
         acq = subprocess.run(  # noqa: S603

@@ -146,6 +146,9 @@ def request(
     strategy_name = match.strategy or ""
     try:
         place = _concrete_place(coord, res.place)
+        # The live place's boot-strategy tag is the authority for the driver
+        # name the rendered env defines; match.strategy (parsed for metadata)
+        # should equal it.
         strategy_name = place.boot_strategy
         env_path = _render_env(place)
         target = _boot(env_path, strategy_name, image=match.image, target_name=target_name)

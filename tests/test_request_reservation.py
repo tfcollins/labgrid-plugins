@@ -134,3 +134,22 @@ def test_reservations_lookup_timeout_cancels_and_raises(monkeypatch):
     with pytest.raises(BoardUnavailable):
         reservation.reserve_and_acquire("c:8000", {"daughter-board": "adrv9002"}, wait=60)
     assert cancelled
+
+
+def test_unparseable_place_cancels_and_raises(monkeypatch):
+    cancelled = []
+
+    def fake_run(argv, **kw):
+        if "reserve" in argv:
+            return _completed(stdout="LG_TOKEN=tok9\n")
+        if "reservations" in argv:
+            return _completed(stdout="Reservation 'tok9':\n  (no allocations block)\n")
+        if "cancel-reservation" in argv:
+            cancelled.append(argv)
+            return _completed()
+        return _completed()
+
+    monkeypatch.setattr(reservation.subprocess, "run", fake_run)
+    with pytest.raises(BoardUnavailable):
+        reservation.reserve_and_acquire("c:8000", {"daughter-board": "adrv9002"}, wait=60)
+    assert cancelled, "unparseable allocated place must cancel the reservation to avoid a leak"
