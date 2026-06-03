@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from pathlib import Path
 
 from app.catalog import BoardCatalog, load_catalog, resolve_image
@@ -57,3 +59,8 @@ def test_resolve_image_honors_pin(tmp_path):
     cat = load_catalog(_write(tmp_path, FIXTURE))
     entry = cat.boards["adrv9002"]
     assert resolve_image(entry, "2023_R2_P1") == "2023_R2_P1"
+
+
+def test_load_catalog_empty_file_returns_empty(tmp_path):
+    cat = load_catalog(_write(tmp_path, ""))
+    assert cat.boards == {}
