@@ -8,6 +8,7 @@ URI -> yield Lease -> on exit: optional power-down, then release (always).
 from __future__ import annotations
 
 import logging
+import shutil
 import tempfile
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -16,6 +17,7 @@ from typing import Any
 
 from ..hw_ci.coordinator import list_live_places, resolve_coordinator
 from ..hw_ci.render_env import render_env_to
+from ..hw_ci.schema import Place
 from . import match_client, reservation
 from .errors import NoMatchingBoard, ProvisionError
 from .uri import resolve_uri
@@ -27,10 +29,10 @@ logger = logging.getLogger(__name__)
 class Lease:
     """A booted board handle yielded by ``request()``.
 
-    ``target`` is the live labgrid Target; it is only valid inside the
-    ``with`` block and is released when the block exits. ``uri`` is the
-    primary handover for pyadi-iio. ``console`` is reserved for the future
-    flash mode and is always None here.
+    ``target`` is the live labgrid Target; its drivers are deactivated and
+    the coordinator reservation released when the ``with`` block exits.
+    ``uri`` is the primary handover for pyadi-iio. ``console`` is reserved
+    for the future flash mode and is always None here.
     """
 
     place: str
@@ -41,7 +43,7 @@ class Lease:
     target: Any = None
 
 
-def _concrete_place(coord: str, name: str):
+def _concrete_place(coord: str, name: str) -> Place:
     """Return the validated hw_ci Place for `name` from the coordinator."""
     places, _skipped = list_live_places(coord)
     for p in places:
@@ -56,7 +58,9 @@ def _render_env(place) -> str:
     return str(out)
 
 
-def _boot(env_path: str, strategy_name: str, *, image: str | None, target_name: str = "main"):
+def _boot(
+    env_path: str, strategy_name: str, *, image: str | None, target_name: str = "main"
+) -> Any:
     """Boot the board to a Linux shell and return the labgrid target."""
     from labgrid import Environment
 
@@ -87,6 +91,23 @@ def _power_off(target: Any, strategy_name: str) -> None:
         target.get_driver(strategy_name).transition("powered_off")
     except Exception as e:  # noqa: BLE001 - power-down is best-effort
         logger.warning("power_down requested but power-off failed: %s", e)
+
+
+def _cleanup_target(target: Any) -> None:
+    """Best-effort teardown of the in-process labgrid target (deactivate
+    drivers, close console/network). Never raises."""
+    try:
+        target.cleanup()
+    except Exception as e:  # noqa: BLE001 - teardown is best-effort
+        logger.warning("target cleanup failed: %s", e)
+
+
+def _remove_env_dir(env_path: str) -> None:
+    """Remove the temp dir created by _render_env. Guarded by our prefix so a
+    monkeypatched or foreign path is never touched. Never raises."""
+    parent = Path(env_path).parent
+    if parent.name.startswith("adi-lg-req-"):
+        shutil.rmtree(parent, ignore_errors=True)
 
 
 @contextmanager
@@ -121,6 +142,7 @@ def request(
 
     res = reservation.reserve_and_acquire(coord, match.reservation_filter, wait=wait)
     target = None
+    env_path = None
     strategy_name = match.strategy or ""
     try:
         place = _concrete_place(coord, res.place)
@@ -131,6 +153,9 @@ def request(
         yield Lease(
             place=res.place,
             carrier=place.carrier,
+            # tags mirror the labgrid place tags for consumers that iterate tags
+            # generically; `carrier` is duplicated as a first-class field for
+            # convenience — both are intentional, keep them.
             tags={
                 "daughter-board": place.daughter_board,
                 "carrier": place.carrier,
@@ -142,4 +167,8 @@ def request(
     finally:
         if power_down and target is not None:
             _power_off(target, strategy_name)
+        if target is not None:
+            _cleanup_target(target)
         reservation.release(coord, res)
+        if env_path:
+            _remove_env_dir(env_path)

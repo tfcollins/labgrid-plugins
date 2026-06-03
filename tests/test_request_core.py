@@ -35,7 +35,7 @@ def _match(satisfiable=True):
 
 @pytest.fixture
 def patched(monkeypatch):
-    state = {"released": None, "booted_image": None, "powered_off": None}
+    state = {"released": None, "booted_image": None, "powered_off": None, "cleaned": None}
 
     monkeypatch.setattr(core, "resolve_coordinator", lambda c: "coord:8000")
     monkeypatch.setattr(core.match_client, "get_match", lambda *a, **k: _match())
@@ -57,6 +57,7 @@ def patched(monkeypatch):
     monkeypatch.setattr(core, "_boot", fake_boot)
     monkeypatch.setattr(core, "resolve_uri", lambda tg: "ip:10.0.0.57")
     monkeypatch.setattr(core, "_power_off", lambda tg, strat: state.update(powered_off=strat))
+    monkeypatch.setattr(core, "_cleanup_target", lambda tg: state.update(cleaned=True))
     return state
 
 
@@ -70,6 +71,7 @@ def test_request_yields_lease_and_releases(patched):
     assert patched["released"] == "adrv9002-zcu102"
     assert patched["booted_image"] == "2023_R2_P1"
     assert patched["powered_off"] is None  # power_down defaults off
+    assert patched["cleaned"] is True
 
 
 def test_request_releases_on_exception(patched):
@@ -118,6 +120,7 @@ def test_request_unavailable_propagates(patched, monkeypatch):
     with pytest.raises(BoardUnavailable):
         with core.request(part="adrv9002"):
             pass
+    assert patched["released"] is None  # nothing acquired -> nothing released
 
 
 def test_request_flash_mode_not_supported(patched):
@@ -130,3 +133,32 @@ def test_request_unknown_filters_rejected(patched):
     with pytest.raises(NotImplementedError):
         with core.request(part="adrv9002", hdl_config="lvds"):
             pass
+
+
+def test_request_concrete_place_failure_still_releases(patched, monkeypatch):
+    def boom(coord, name):
+        from adi_lg_plugins.request.errors import ProvisionError
+
+        raise ProvisionError("place vanished")
+
+    monkeypatch.setattr(core, "_concrete_place", boom)
+    with pytest.raises(ProvisionError):
+        with core.request(part="adrv9002"):
+            pass
+    assert patched["released"] == "adrv9002-zcu102"
+    assert patched["cleaned"] is None  # no target -> no cleanup
+    assert patched["powered_off"] is None
+
+
+def test_request_resolve_uri_failure_still_cleans_and_releases(patched, monkeypatch):
+    def boom(tg):
+        from adi_lg_plugins.request.errors import ProvisionError
+
+        raise ProvisionError("no NetworkService")
+
+    monkeypatch.setattr(core, "resolve_uri", boom)
+    with pytest.raises(ProvisionError):
+        with core.request(part="adrv9002"):
+            pass
+    assert patched["cleaned"] is True  # boot succeeded -> target exists -> cleaned
+    assert patched["released"] == "adrv9002-zcu102"
