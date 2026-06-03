@@ -39,6 +39,25 @@ def pytest_addoption(parser):
             "PATH. Used by `adi-lg-hw-ci discover`."
         ),
     )
+    adi = parser.getgroup("adi-hardware")
+    adi.addoption(
+        "--adi-part",
+        dest="adi_part",
+        default=None,
+        help="Part to self-request when no URI is provided (e.g. adrv9002).",
+    )
+    adi.addoption(
+        "--adi-carrier",
+        dest="adi_carrier",
+        default=None,
+        help="Optional carrier narrowing for a self-requested board.",
+    )
+    adi.addoption(
+        "--adi-uri",
+        dest="adi_uri",
+        default=None,
+        help="Use a pre-booted board at this libIIO URI (skip self-request).",
+    )
 
 
 def pytest_configure(config):
@@ -139,3 +158,42 @@ def pytest_collection_finish(session):
         }
     Path(path).parent.mkdir(parents=True, exist_ok=True)
     Path(path).write_text(json.dumps(out, sort_keys=True, indent=2))
+
+
+def _board_sources(get_option, environ):
+    """Resolve ``(uri, part, carrier, coord)`` from pytest options then env.
+
+    Pure function of its inputs (a ``get_option(name)`` callable and an
+    ``os.environ``-like mapping) so the precedence is unit-tested without a
+    live pytest config. Options take precedence over environment variables.
+    """
+    uri = get_option("adi_uri") or environ.get("IIO_URI")
+    part = get_option("adi_part") or environ.get("ADI_PART")
+    carrier = get_option("adi_carrier") or environ.get("ADI_CARRIER")
+    coord = environ.get("LG_COORDINATOR") or environ.get("ADI_LG_COORDINATOR")
+    return uri, part, carrier, coord
+
+
+@pytest.fixture(scope="session")
+def adi_board(pytestconfig):
+    """A booted board handle (a request ``Lease``) for hardware tests.
+
+    Dual-mode: reuse a pre-booted board if ``--adi-uri`` / ``$IIO_URI`` is set
+    (release nothing), else self-request one by ``--adi-part`` / ``$ADI_PART``
+    (released at session end). With neither configured the test is skipped.
+    """
+    from adi_lg_plugins.request.errors import NoBoardSource
+    from adi_lg_plugins.request.provision import provision_or_reuse
+
+    uri, part, carrier, coord = _board_sources(pytestconfig.getoption, os.environ)
+    try:
+        with provision_or_reuse(part, carrier, uri=uri, coord=coord) as lease:
+            yield lease
+    except NoBoardSource as e:
+        pytest.skip(str(e))
+
+
+@pytest.fixture(scope="session")
+def adi_uri(adi_board):
+    """Just the libIIO URI string — sugar for ``adi.adrv9002(uri=adi_uri)``."""
+    return adi_board.uri

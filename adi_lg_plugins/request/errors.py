@@ -27,3 +27,11 @@ class ProvisionError(RequestError):
     def __init__(self, message: str, console_tail: str = ""):
         super().__init__(message)
         self.console_tail = console_tail
+
+
+class NoBoardSource(RequestError):
+    """Neither a reusable URI nor a part was given — no board to provision.
+
+    A library-level signal (no dedicated CLI exit code); the pytest fixture
+    maps it to a clean skip.
+    """

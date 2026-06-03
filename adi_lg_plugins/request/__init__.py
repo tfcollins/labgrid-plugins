@@ -13,16 +13,20 @@ See docs/superpowers/specs/2026-06-03-low-config-hardware-request-fresh-design.m
 from .core import Lease, request
 from .errors import (
     BoardUnavailable,
+    NoBoardSource,
     NoMatchingBoard,
     ProvisionError,
     RequestError,
 )
+from .provision import provision_or_reuse
 
 __all__ = [
     "request",
     "Lease",
+    "provision_or_reuse",
     "RequestError",
     "NoMatchingBoard",
     "BoardUnavailable",
     "ProvisionError",
+    "NoBoardSource",
 ]
