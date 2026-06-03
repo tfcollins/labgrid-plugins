@@ -37,15 +37,27 @@ def _is_pytest_mark(node: ast.expr, marker_name: str) -> bool:
     return isinstance(root, ast.Name) and root.id == "pytest"
 
 
-def _literal_str_list(arg: ast.expr) -> list[str] | None:
-    """Coerce an AST node into a list[str] if it's a literal form we accept.
+# Module-level literal bindings: {name: [(lineno, values), ...]}. A name
+# reassigned within a file resolves to the binding in effect at a given line.
+_Bindings = dict
+
+
+def _literal_str_list(
+    arg: ast.expr,
+    *,
+    bindings: _Bindings | None = None,
+    lineno: int | None = None,
+) -> list[str] | None:
+    """Coerce an AST node into a list[str] if it's a form we accept.
 
     Accepts:
     * ``"ad9081"``                  → ``["ad9081"]``
     * ``["ad9081", "ad9081_tdd"]``  → ``["ad9081", "ad9081_tdd"]``
     * ``("ad9081",)``               → ``["ad9081"]``
+    * ``hardware``                  → resolved via module-level literal bindings
+                                      (only when ``bindings``/``lineno`` given)
 
-    Returns None for any non-literal form (variable, f-string, etc.).
+    Returns None for any other form (computed value, f-string, unknown name).
     """
     if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
         return [arg.value]
@@ -57,14 +69,52 @@ def _literal_str_list(arg: ast.expr) -> list[str] | None:
             else:
                 return None
         return out
+    if isinstance(arg, ast.Name) and bindings is not None and lineno is not None:
+        return _resolve_name(arg.id, lineno, bindings)
     return None
 
 
-def _extract_marker_args(decorator: ast.expr, marker_name: str) -> list[str] | None:
+def _module_str_bindings(tree: ast.Module) -> _Bindings:
+    """Top-level ``name = <str | list/tuple of str>`` assignments.
+
+    Returns ``{name: [(lineno, values), ...]}``. pyadi-iio reuses
+    ``hardware = ...`` between test groups in one file, so every binding is
+    kept (with its line) rather than last-wins. Only module-level assignments
+    to string / str-list literals are recorded.
+    """
+    bindings: dict[str, list[tuple[int, list[str]]]] = {}
+    for node in tree.body:
+        if not isinstance(node, ast.Assign):
+            continue
+        values = _literal_str_list(node.value)  # literal-only (no resolver)
+        if values is None:
+            continue
+        for target in node.targets:
+            if isinstance(target, ast.Name):
+                bindings.setdefault(target.id, []).append((node.lineno, values))
+    return bindings
+
+
+def _resolve_name(name: str, lineno: int, bindings: _Bindings) -> list[str] | None:
+    """Value of the latest binding for ``name`` assigned before ``lineno``."""
+    candidates = [(ln, vals) for ln, vals in bindings.get(name, []) if ln < lineno]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda c: c[0])[1]
+
+
+def _extract_marker_args(
+    decorator: ast.expr,
+    marker_name: str,
+    *,
+    bindings: _Bindings | None = None,
+    lineno: int | None = None,
+) -> list[str] | None:
     """If ``decorator`` is ``@pytest.mark.<marker_name>(arg)``, return arg as list[str].
 
-    Returns None when the decorator doesn't match or when its argument
-    isn't a recognised literal form.
+    Returns None when the decorator doesn't match or its first argument isn't a
+    recognised literal (or a module-level literal binding). Extra positional
+    args (e.g. ``iio_hardware(hardware, True)``) are ignored.
     """
     if not isinstance(decorator, ast.Call):
         return None
@@ -72,7 +122,7 @@ def _extract_marker_args(decorator: ast.expr, marker_name: str) -> list[str] | N
         return None
     if not decorator.args:
         return []
-    return _literal_str_list(decorator.args[0])
+    return _literal_str_list(decorator.args[0], bindings=bindings, lineno=lineno)
 
 
 def harvest_markers(
@@ -109,17 +159,20 @@ def harvest_markers(
             tree = ast.parse(py.read_text(encoding="utf-8"))
         except (SyntaxError, UnicodeDecodeError, OSError):
             continue
+        bindings = _module_str_bindings(tree)
         for node in ast.walk(tree):
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
                 continue
             iio_hw: list[str] | None = None
             iio_carr: list[str] = []
             for dec in node.decorator_list:
-                hw_args = _extract_marker_args(dec, marker)
+                hw_args = _extract_marker_args(dec, marker, bindings=bindings, lineno=node.lineno)
                 if hw_args is not None:
                     iio_hw = hw_args
                     continue
-                carr_args = _extract_marker_args(dec, carrier_marker)
+                carr_args = _extract_marker_args(
+                    dec, carrier_marker, bindings=bindings, lineno=node.lineno
+                )
                 if carr_args is not None:
                     iio_carr = carr_args
             if not iio_hw:
