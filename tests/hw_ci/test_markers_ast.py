@@ -125,10 +125,12 @@ def test_unmarked():
 
 
 def test_dynamic_argument_dropped_gracefully(tmp_path):
-    """A computed marker arg can't be statically harvested — silently drop.
+    """A *computed* marker arg can't be statically harvested — silently drop.
 
-    The test still runs under pytest at hw-execution time; it just
-    won't appear in the discovery matrix. Documented in the v2 guide.
+    The test still runs under pytest at hw-execution time; it just won't
+    appear in the discovery matrix. (A module-level literal binding like
+    ``hardware = ["ad9081"]`` IS now resolved — see
+    ``test_markers_resolve_vars.py``; this covers the genuinely dynamic case.)
     """
     _write(
         tmp_path,
@@ -136,9 +138,11 @@ def test_dynamic_argument_dropped_gracefully(tmp_path):
         """
 import pytest
 
-DAUGHTERS = ["ad9081"]
 
-@pytest.mark.iio_hardware(DAUGHTERS)
+def _boards():
+    return ["ad9081"]
+
+@pytest.mark.iio_hardware(_boards())
 def test_x():
     pass
 """,
