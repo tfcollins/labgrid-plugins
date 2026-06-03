@@ -52,8 +52,12 @@ def _parse_allocated_place(stdout: str, token: str) -> str | None:
             in_allocations = False
             continue
         if in_allocations:
-            m = re.search(r":\s*([\w./-]+)\s*$", line)
-            if m and "/" in m.group(1):
+            # labgrid 25.x emits a bare "    main: mini2"; older output used
+            # "exporter/place". Accept both; rsplit makes the exporter prefix
+            # optional. Match a single-token value so multi-token lines like
+            # "created: 2026-... ..." (still inside the block) don't false-match.
+            m = re.match(r"\s+[\w-]+:\s*(\S+)\s*$", line)
+            if m:
                 return m.group(1).rsplit("/", 1)[-1]
     return None
 

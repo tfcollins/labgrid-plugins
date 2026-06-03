@@ -32,6 +32,42 @@ def test_parse_allocated_place_finds_place_in_allocations_block():
     assert reservation._parse_allocated_place(out, "abc123") == "adrv9002-zcu102"
 
 
+def test_parse_allocated_place_bare_place_name_labgrid_25x():
+    """labgrid 25.x emits a bare place name without exporter/ prefix."""
+    out = (
+        "Reservation 'GPFPFQEJXI':\n"
+        "  owner: mini2/tcollins\n"
+        "  state: allocated\n"
+        "  filters:\n"
+        "    main: daughter-board=adrv9002 carrier=zcu102\n"
+        "  allocations:\n"
+        "    main: mini2\n"
+        "  created: 2026-06-03 15:35:51.275361\n"
+        "  timeout: 2026-06-03 15:36:51.277268\n"
+    )
+    assert reservation._parse_allocated_place(out, "GPFPFQEJXI") == "mini2"
+
+
+def test_parse_allocated_place_exporter_slash_form_still_works():
+    """Old exporter/place form still returns the bare place name."""
+    out = "Reservation 'tok42':\n  allocations:\n    main: myexporter/adrv9002-zcu102\n"
+    assert reservation._parse_allocated_place(out, "tok42") == "adrv9002-zcu102"
+
+
+def test_parse_allocated_place_created_line_not_misinterpreted():
+    """created:/timeout: lines inside the allocations block must not match as a place."""
+    out = (
+        "Reservation 'GPFPFQEJXI':\n"
+        "  allocations:\n"
+        "    main: mini2\n"
+        "  created: 2026-06-03 15:35:51.275361\n"
+        "  timeout: 2026-06-03 15:36:51.277268\n"
+    )
+    # The bare-place line comes first and returns; created/timeout are never reached
+    # as allocations context, but even if the parser continued it must not false-match.
+    assert reservation._parse_allocated_place(out, "GPFPFQEJXI") == "mini2"
+
+
 def _completed(returncode=0, stdout="", stderr=""):
     return subprocess.CompletedProcess(args=[], returncode=returncode, stdout=stdout, stderr=stderr)
 
