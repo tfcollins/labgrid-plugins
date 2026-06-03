@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings
 
 
@@ -18,6 +20,8 @@ class Settings(BaseSettings):
     recordings_dir: str = "/data/recordings"
     recording_retention_days: int = 30
     recording_max_bytes_per_place: int = 1024 * 1024 * 1024
+
+    board_catalog_path: str = str(Path(__file__).resolve().parent / "board_catalog.yaml")
 
     model_config = {"env_prefix": "LG_"}
 

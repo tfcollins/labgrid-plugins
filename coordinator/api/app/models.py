@@ -130,3 +130,35 @@ class OverviewStatsModel(BaseModel):
     busiest_hour: int
     most_used_place: str | None = None
     avg_uptime_percent: float
+
+
+# --- Hardware-request catalog/match models ---
+
+
+class CarrierModel(BaseModel):
+    matlab_board: str | None = None
+
+
+class BoardModel(BaseModel):
+    image_channel: str | None = None
+    carriers: dict[str, CarrierModel] = {}
+
+
+class CatalogModel(BaseModel):
+    channels: dict[str, str] = {}
+    boards: dict[str, BoardModel] = {}
+
+
+class MatchCandidateModel(BaseModel):
+    place: str
+    carrier: str
+    acquired: bool
+
+
+class MatchResponse(BaseModel):
+    satisfiable: bool
+    reason: str = ""
+    reservation_filter: dict[str, str] = {}
+    version: str | None = None
+    matlab_boards: dict[str, str] = {}
+    candidates: list[MatchCandidateModel] = []
