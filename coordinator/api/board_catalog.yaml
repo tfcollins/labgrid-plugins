@@ -7,6 +7,7 @@
 # default path). Override the location at runtime via LG_BOARD_CATALOG_PATH.
 boards:
   adrv9002:
-    image: kuiper-2023_R2
+    # KuiperRelease.release_version (see kuiperdldriver valid_releases).
+    image: 2023_R2_P1
     carriers:
       zcu102: {}

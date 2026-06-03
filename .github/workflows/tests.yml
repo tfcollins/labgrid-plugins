@@ -53,4 +53,37 @@ jobs:
           tests/test_bootfpgasocssh_helpers.py \
           tests/hw_ci/test_resolve.py \
           tests/test_cloudsmith_dl.py \
-          tests/test_plugin_registration.py
+          tests/test_plugin_registration.py \
+          tests/test_request_errors.py \
+          tests/test_request_uri.py \
+          tests/test_request_match_client.py \
+          tests/test_request_reservation.py \
+          tests/test_request_core.py \
+          tests/test_request_public_api.py \
+          tests/test_request_cli.py \
+          tests/test_provision.py \
+          tests/test_pytest_fixtures.py \
+          tests/hw_ci/test_request_matrix.py
+
+  coordinator-api:
+    # The coordinator FastAPI subproject has its own pyproject + test suite
+    # (board catalog, /match, /catalog, etc.) and is not picked up by the
+    # top-level nox tests session.
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: coordinator/api
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+        cache: 'pip'
+
+    - name: Install coordinator API + dev deps
+      run: pip install -e ".[dev]"
+
+    - name: Run coordinator API tests
+      run: python -m pytest tests/ -q
