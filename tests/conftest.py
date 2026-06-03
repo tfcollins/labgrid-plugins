@@ -11,6 +11,7 @@ collect_ignore_glob = [
     "test_vpk180_hw.py",
     "test_zynq7000_recovery_hw.py",
     "test_vpk180_reflash_hw.py",
+    "test_request_hw.py",
 ]
 
 
