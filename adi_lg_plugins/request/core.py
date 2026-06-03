@@ -8,6 +8,7 @@ URI -> yield Lease -> on exit: optional power-down, then release (always).
 from __future__ import annotations
 
 import logging
+import os
 import shutil
 import tempfile
 from contextlib import contextmanager
@@ -41,6 +42,21 @@ class Lease:
     uri: str | None = None
     console: Any = None
     target: Any = None
+
+
+def _resolve_api(coord: str) -> str:
+    """REST API base (host:port) for /api/match + /api/places.
+
+    The REST API and the gRPC coordinator are separate services on different
+    ports (8000 vs 20408). Honor an explicit ADI_LG_API / LG_API override;
+    otherwise default to the coordinator host on port 8000.
+    """
+    explicit = os.environ.get("ADI_LG_API") or os.environ.get("LG_API")
+    if explicit:
+        return explicit
+    base = coord.split("://", 1)[-1]
+    host = base.rsplit(":", 1)[0] if ":" in base else base
+    return f"{host}:8000"
 
 
 def _concrete_place(coord: str, name: str) -> Place:
@@ -136,7 +152,8 @@ def request(
         )
 
     coord = resolve_coordinator(coord)
-    match = match_client.get_match(coord, part=part, carrier=carrier, bootfile=bootfile)
+    api = _resolve_api(coord)
+    match = match_client.get_match(api, part=part, carrier=carrier, bootfile=bootfile)
     if not match.satisfiable:
         raise NoMatchingBoard(match.reason or f"no board for part '{part}'")
 
@@ -145,7 +162,7 @@ def request(
     env_path = None
     strategy_name = match.strategy or ""
     try:
-        place = _concrete_place(coord, res.place)
+        place = _concrete_place(api, res.place)
         # The live place's boot-strategy tag is the authority for the driver
         # name the rendered env defines; match.strategy (parsed for metadata)
         # should equal it.

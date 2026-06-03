@@ -11,6 +11,35 @@ from adi_lg_plugins.request.errors import (
 from adi_lg_plugins.request.match_client import MatchResult
 from adi_lg_plugins.request.reservation import Reservation
 
+# ── _resolve_api unit tests ───────────────────────────────────────────────────
+
+
+def test_resolve_api_derives_host_port_8000():
+    """Coordinator at host:20408 → REST API at host:8000."""
+    assert core._resolve_api("10.0.0.41:20408") == "10.0.0.41:8000"
+
+
+def test_resolve_api_no_port_uses_8000():
+    """Coordinator with no port → still host:8000."""
+    assert core._resolve_api("mycoord") == "mycoord:8000"
+
+
+def test_resolve_api_strips_scheme():
+    """Coordinator with grpc:// scheme → still host:8000."""
+    assert core._resolve_api("grpc://10.0.0.41:20408") == "10.0.0.41:8000"
+
+
+def test_resolve_api_honors_adi_lg_api_override(monkeypatch):
+    """ADI_LG_API env var overrides the derived address."""
+    monkeypatch.setenv("ADI_LG_API", "192.168.1.99:9000")
+    assert core._resolve_api("10.0.0.41:20408") == "192.168.1.99:9000"
+
+
+def test_resolve_api_honors_lg_api_override(monkeypatch):
+    """LG_API env var overrides the derived address."""
+    monkeypatch.setenv("LG_API", "staging.example.com:8080")
+    assert core._resolve_api("10.0.0.41:20408") == "staging.example.com:8080"
+
 
 class FakePlace:
     def __init__(self, name="adrv9002-zcu102"):
@@ -35,15 +64,28 @@ def _match(satisfiable=True):
 
 @pytest.fixture
 def patched(monkeypatch):
-    state = {"released": None, "booted_image": None, "powered_off": None, "cleaned": None}
+    state = {
+        "released": None,
+        "booted_image": None,
+        "powered_off": None,
+        "cleaned": None,
+        "get_match_coord": None,
+        "reserve_coord": None,
+    }
 
-    monkeypatch.setattr(core, "resolve_coordinator", lambda c: "coord:8000")
-    monkeypatch.setattr(core.match_client, "get_match", lambda *a, **k: _match())
-    monkeypatch.setattr(
-        core.reservation,
-        "reserve_and_acquire",
-        lambda *a, **k: Reservation(place="adrv9002-zcu102", token="tok"),
-    )
+    monkeypatch.setattr(core, "resolve_coordinator", lambda c: "10.0.0.41:20408")
+
+    def fake_get_match(coord, **k):
+        state["get_match_coord"] = coord
+        return _match()
+
+    monkeypatch.setattr(core.match_client, "get_match", fake_get_match)
+
+    def fake_reserve(coord, *a, **k):
+        state["reserve_coord"] = coord
+        return Reservation(place="adrv9002-zcu102", token="tok")
+
+    monkeypatch.setattr(core.reservation, "reserve_and_acquire", fake_reserve)
     monkeypatch.setattr(
         core.reservation, "release", lambda coord, res, **k: state.update(released=res.place)
     )
@@ -162,3 +204,21 @@ def test_request_resolve_uri_failure_still_cleans_and_releases(patched, monkeypa
             pass
     assert patched["cleaned"] is True  # boot succeeded -> target exists -> cleaned
     assert patched["released"] == "adrv9002-zcu102"
+
+
+# ── REST API vs gRPC coordinator split (Bug 3) ───────────────────────────────
+
+
+def test_request_get_match_uses_rest_api_addr(patched):
+    """get_match must receive the REST API address (host:8000), not the gRPC coord."""
+    with core.request(part="adrv9002"):
+        pass
+    # resolve_coordinator returns "10.0.0.41:20408"; REST API must be "10.0.0.41:8000"
+    assert patched["get_match_coord"] == "10.0.0.41:8000"
+
+
+def test_request_reserve_uses_grpc_coord(patched):
+    """reserve_and_acquire must receive the gRPC coordinator address, not the REST API."""
+    with core.request(part="adrv9002"):
+        pass
+    assert patched["reserve_coord"] == "10.0.0.41:20408"
