@@ -6,7 +6,7 @@ from app.catalog import (
     Catalog,
     ResolvedBoard,
     UnknownPart,
-    UnresolvableVersion,  # noqa: F401
+    UnresolvableVersion,
     load_catalog,
     resolve_board,
 )
@@ -62,3 +62,9 @@ def test_resolve_board_honours_pinned_bootfile(catalog):
 def test_resolve_board_unknown_part_raises(catalog):
     with pytest.raises(UnknownPart):
         resolve_board(catalog, part="nope")
+
+
+def test_resolve_board_raises_when_channel_unresolvable(catalog):
+    bad_catalog = Catalog(channels={}, boards=catalog.boards)
+    with pytest.raises(UnresolvableVersion):
+        resolve_board(bad_catalog, part="ad9081")
