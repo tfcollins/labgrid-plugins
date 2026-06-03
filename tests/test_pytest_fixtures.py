@@ -56,6 +56,7 @@ def test_board_sources_coord_alt_env_name():
 def test_adi_board_reuse_yields_lease(monkeypatch):
     monkeypatch.setenv("IIO_URI", "ip:1.2.3.4")
     monkeypatch.delenv("ADI_PART", raising=False)
+    monkeypatch.delenv("ADI_CARRIER", raising=False)
     gen = _raw(adi_board)(_cfg())
     lease = next(gen)
     assert lease.uri == "ip:1.2.3.4"
