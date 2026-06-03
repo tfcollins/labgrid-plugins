@@ -39,6 +39,7 @@ RUN cp /tmp/sitecustomize.py "$(python -c 'import site; print(site.getsitepackag
 
 # 4. Copy the API application code
 COPY coordinator/api/app/ app/
+COPY coordinator/api/board_catalog.yaml ./board_catalog.yaml
 
 EXPOSE 8000
 

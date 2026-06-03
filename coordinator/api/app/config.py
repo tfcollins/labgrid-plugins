@@ -5,6 +5,7 @@ class Settings(BaseSettings):
     coordinator_address: str = "coordinator:20408"
     api_name: str = "web-dashboard"
     database_path: str = "/data/coordinator_history.db"
+    board_catalog_path: str = "/app/board_catalog.yaml"
 
     session_ttl_hours: int = 24
     session_cookie_name: str = "lg_session"
