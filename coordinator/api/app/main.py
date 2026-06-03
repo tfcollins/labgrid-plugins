@@ -11,6 +11,7 @@ from .grpc_client import CoordinatorClient
 from .recorder import Recorder
 from .routers import (
     auth,
+    catalog,
     console,
     health,
     history,
@@ -106,6 +107,10 @@ async def lifespan(app: FastAPI):
         client_secret=settings.oidc_client_secret,
     )
 
+    from .catalog import load_catalog
+
+    app.state.catalog = load_catalog(settings.board_catalog_path)
+
     client = CoordinatorClient(
         address=settings.coordinator_address,
         name=settings.api_name,
@@ -182,6 +187,7 @@ app.add_middleware(
 )
 
 app.include_router(health.router, prefix="/api")
+app.include_router(catalog.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
 app.include_router(history.router, prefix="/api")
 app.include_router(places.router, prefix="/api")
