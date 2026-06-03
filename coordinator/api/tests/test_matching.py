@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from app.catalog import BoardCatalog
 from app.matching import MatchResult, match_places
 from app.models import PlaceModel
@@ -75,3 +77,36 @@ def test_bootfile_pin_flows_into_image():
     places = [_place("p1", part="adrv9002", carrier="zcu102", strategy="BootFPGASoC")]
     res = match_places(CATALOG, places, part="adrv9002", carrier="zcu102", bootfile="2023_R2_P1")
     assert res.image == "2023_R2_P1"
+
+
+def test_carrier_filter_excludes_wrong_carrier_places():
+    # zcu102 and vcu118 are both valid catalog carriers; only a vcu118 place
+    # is live, but we request zcu102 -> the carrier filter excludes it.
+    catalog = BoardCatalog.model_validate(
+        {
+            "boards": {
+                "adrv9002": {
+                    "image": "kuiper-2023_R2",
+                    "carriers": {"zcu102": {}, "vcu118": {}},
+                }
+            }
+        }
+    )
+    places = [_place("p1", part="adrv9002", carrier="vcu118")]
+    res = match_places(catalog, places, part="adrv9002", carrier="zcu102")
+    assert res.satisfiable is False
+    assert "no live place" in res.reason
+
+
+def test_missing_boot_strategy_tag_yields_strategy_none():
+    places = [_place("p1", part="adrv9002", carrier="zcu102")]  # no strategy kwarg
+    res = match_places(CATALOG, places, part="adrv9002", carrier="zcu102")
+    assert res.satisfiable is True
+    assert res.strategy is None
+
+
+def test_unknown_boot_strategy_tag_yields_strategy_none():
+    places = [_place("p1", part="adrv9002", carrier="zcu102", strategy="BootTypoFoo")]
+    res = match_places(CATALOG, places, part="adrv9002", carrier="zcu102")
+    assert res.satisfiable is True
+    assert res.strategy is None
