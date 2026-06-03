@@ -7,6 +7,7 @@ from rich.console import Console
 from rich.logging import RichHandler
 
 from adi_lg_plugins.tools.config_gen import generate_config
+from adi_lg_plugins.tools.request_cli import request_cmd
 
 console = Console()
 
@@ -28,6 +29,7 @@ def cli(debug):
 
 
 cli.add_command(generate_config)
+cli.add_command(request_cmd)
 
 
 @cli.command()
