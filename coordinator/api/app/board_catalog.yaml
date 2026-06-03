@@ -1,0 +1,20 @@
+# Board catalog for the hardware-request layer.
+# `channels` maps an image channel to its current "latest stable" version.
+# `boards` maps a part (daughter-board tag value) to its image channel and
+# per-carrier metadata. Phase 1 uses: image_channel, carriers.*.matlab_board.
+channels:
+  kuiper-stable: "2023_R2_P1"
+
+boards:
+  ad9361:
+    image_channel: kuiper-stable
+    carriers:
+      zcu102:
+        matlab_board: zynqmp-zcu102-rev10-ad9361-fmcomms2-3
+      zc706:
+        matlab_board: zynq-zc706-adv7511-ad9361-fmcomms2-3
+  ad9081:
+    image_channel: kuiper-stable
+    carriers:
+      zcu102:
+        matlab_board: zynqmp-zcu102-rev10-ad9081
