@@ -32,7 +32,8 @@ def test_load_catalog_missing_file_returns_empty(tmp_path):
 
 
 def test_load_catalog_ignores_unknown_carrier_fields(tmp_path):
-    # Extensibility: future per-carrier metadata must not break parsing.
+    # Extensibility: future per-carrier metadata must not break parsing,
+    # and `extra="allow"` must RETAIN it (default extra="ignore" would drop it).
     extended = """\
 boards:
   adrv9002:
@@ -42,7 +43,8 @@ boards:
         matlab_board: some-future-name
 """
     cat = load_catalog(_write(tmp_path, extended))
-    assert "zcu102" in cat.boards["adrv9002"].carriers
+    carrier = cat.boards["adrv9002"].carriers["zcu102"]
+    assert carrier.model_extra == {"matlab_board": "some-future-name"}
 
 
 def test_resolve_image_defaults_to_catalog(tmp_path):
