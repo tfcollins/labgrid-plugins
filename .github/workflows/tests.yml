@@ -63,7 +63,8 @@ jobs:
           tests/test_request_cli.py \
           tests/test_provision.py \
           tests/test_pytest_fixtures.py \
-          tests/hw_ci/test_request_matrix.py
+          tests/hw_ci/test_request_matrix.py \
+          tests/hw_ci/test_markers_resolve_vars.py
 
   coordinator-api:
     # The coordinator FastAPI subproject has its own pyproject + test suite
