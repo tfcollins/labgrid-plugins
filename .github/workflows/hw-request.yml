@@ -41,6 +41,18 @@ on:
         description: "Extra args appended to the per-leg pytest command."
         type: string
         default: ""
+      venv-dir:
+        description: "Absolute path for the persistent uv venv on the runner."
+        type: string
+        default: "$HOME/.cache/hw-request/venv"
+      install-cmd:
+        description: >-
+          Shell command (run with $VENV_DIR exported) to install the consumer
+          package + adi-labgrid-plugins into the per-leg venv. Override per repo.
+        type: string
+        default: >-
+          uv pip install --quiet --python "$VENV_DIR/bin/python" -e "."
+          "adi-labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins@main"
 
 jobs:
   preflight:
@@ -50,7 +62,12 @@ jobs:
       count: ${{ steps.plan.outputs.count }}
     steps:
       - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-uv-venv
+      - uses: tfcollins/labgrid-plugins/.github/actions/setup-uv-venv@main
+        with:
+          venv_dir: ${{ inputs.venv-dir }}
+          install_cmd: >-
+            uv pip install --quiet --python "$VENV_DIR/bin/python"
+            "adi-labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins@main"
       - id: plan
         env:
           LG_COORDINATOR: ${{ inputs.coordinator }}
@@ -76,6 +93,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: tfcollins/labgrid-plugins/.github/actions/setup-uv-venv@main
+        with:
+          venv_dir: ${{ inputs.venv-dir }}
+          install_cmd: ${{ inputs.install-cmd }}
       - name: Request ${{ matrix.part }} and run its tests
         run: |
           adi-lg request --part "${{ matrix.part }}" --wait "${{ inputs.wait }}" \

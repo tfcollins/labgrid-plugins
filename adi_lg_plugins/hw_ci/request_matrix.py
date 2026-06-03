@@ -12,7 +12,7 @@ from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 
 
-@dataclass(frozen=True)
+@dataclass
 class RequestMatrix:
     parts: list[str]  # available -> one CI leg each
     missing: list[str]  # wanted but no live board -> annotate + skip
