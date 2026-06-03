@@ -94,3 +94,43 @@ def test_release_never_raises(monkeypatch):
 
     monkeypatch.setattr(reservation.subprocess, "run", boom)
     reservation.release("c:8000", Reservation(place="p1", token="tok9"))
+
+
+def test_acquire_timeout_cancels_reservation_and_raises(monkeypatch):
+    cancelled = []
+
+    def fake_run(argv, **kw):
+        if "reserve" in argv:
+            return _completed(stdout="LG_TOKEN=tok9\n")
+        if "reservations" in argv:
+            return _completed(stdout="Reservation 'tok9':\n  allocations:\n    main: h/p1\n")
+        if "acquire" in argv:
+            raise subprocess.TimeoutExpired(cmd=argv, timeout=kw.get("timeout"))
+        if "cancel-reservation" in argv:
+            cancelled.append(argv)
+            return _completed()
+        return _completed()
+
+    monkeypatch.setattr(reservation.subprocess, "run", fake_run)
+    with pytest.raises(BoardUnavailable):
+        reservation.reserve_and_acquire("c:8000", {"daughter-board": "adrv9002"}, wait=60)
+    assert cancelled, "acquire timeout must cancel the reservation to avoid a leak"
+
+
+def test_reservations_lookup_timeout_cancels_and_raises(monkeypatch):
+    cancelled = []
+
+    def fake_run(argv, **kw):
+        if "reserve" in argv:
+            return _completed(stdout="LG_TOKEN=tok9\n")
+        if "reservations" in argv:
+            raise subprocess.TimeoutExpired(cmd=argv, timeout=kw.get("timeout"))
+        if "cancel-reservation" in argv:
+            cancelled.append(argv)
+            return _completed()
+        return _completed()
+
+    monkeypatch.setattr(reservation.subprocess, "run", fake_run)
+    with pytest.raises(BoardUnavailable):
+        reservation.reserve_and_acquire("c:8000", {"daughter-board": "adrv9002"}, wait=60)
+    assert cancelled

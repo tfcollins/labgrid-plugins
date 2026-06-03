@@ -82,19 +82,30 @@ def reserve_and_acquire(
     if not token:
         raise BoardUnavailable(f"could not parse reservation token from: {proc.stdout!r}")
 
-    res_proc = subprocess.run(  # noqa: S603
-        [*base, "reservations"], capture_output=True, text=True, timeout=15
-    )
+    try:
+        res_proc = subprocess.run(  # noqa: S603
+            [*base, "reservations"], capture_output=True, text=True, timeout=15
+        )
+    except subprocess.TimeoutExpired as e:
+        subprocess.run([*base, "cancel-reservation", token], capture_output=True, text=True)  # noqa: S603
+        raise BoardUnavailable(f"reservations lookup timed out for {token}") from e
     place = _parse_allocated_place(res_proc.stdout, token)
     if not place:
         raise BoardUnavailable(f"reservation {token} has no allocated place yet")
 
-    acq = subprocess.run(  # noqa: S603
-        [*base, "-p", f"+{token}", "acquire"], capture_output=True, text=True, timeout=30
-    )
-    if acq.returncode != 0:
+    def _cancel():
         # Best-effort cancel so we don't leak the reservation.
         subprocess.run([*base, "cancel-reservation", token], capture_output=True, text=True)  # noqa: S603
+
+    try:
+        acq = subprocess.run(  # noqa: S603
+            [*base, "-p", f"+{token}", "acquire"], capture_output=True, text=True, timeout=30
+        )
+    except subprocess.TimeoutExpired as e:
+        _cancel()
+        raise BoardUnavailable(f"acquire timed out for place {place}") from e
+    if acq.returncode != 0:
+        _cancel()
         raise BoardUnavailable(f"acquire failed for place {place}: {acq.stderr.strip()}")
 
     return Reservation(place=place, token=token)

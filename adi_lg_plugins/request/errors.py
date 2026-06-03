@@ -1,5 +1,7 @@
 """Exceptions and CLI exit codes for the hardware-request layer."""
 
+from __future__ import annotations
+
 # Infra exit codes sit well above typical test-runner codes (0-5) so a GitHub
 # Actions leg can tell an infra problem from a real test failure.
 EXIT_NO_MATCH = 10  # request can never be satisfied (unknown part / no such board)
