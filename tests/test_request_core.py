@@ -113,3 +113,9 @@ def test_request_unavailable_propagates(patched, monkeypatch):
     with pytest.raises(BoardUnavailable):
         with core.request(part="ad9361"):
             pass
+
+
+def test_request_unknown_filters_rejected(patched):
+    with pytest.raises(NotImplementedError):
+        with core.request(part="ad9361", hdl_config="lvds"):
+            pass

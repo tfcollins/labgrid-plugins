@@ -25,6 +25,12 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class Lease:
+    """A booted board handle yielded by ``request()``.
+
+    ``target`` is the live labgrid Target; it is only valid inside the
+    ``with`` block and is released when the block exits.
+    """
+
     place: str
     carrier: str
     tags: dict[str, str] = field(default_factory=dict)
@@ -88,6 +94,12 @@ def request(
     """
     if mode != "uri":
         raise NotImplementedError(f"mode '{mode}' is not available in Phase 1 (uri only)")
+
+    if filters:
+        raise NotImplementedError(
+            f"extra filters {sorted(filters)} are not supported in Phase 1 "
+            "(only part + carrier narrow the match)"
+        )
 
     coord = resolve_coordinator(coord)
     match = match_client.get_match(coord, part=part, carrier=carrier, mode=mode, bootfile=bootfile)
