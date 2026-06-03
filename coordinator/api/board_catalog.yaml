@@ -1,0 +1,10 @@
+# Board catalog served by GET /api/catalog and consumed by GET /api/match.
+# Keyed by part (daughter-board / chip). `image` is the default boot image
+# when a request omits --bootfile. `carriers` lists the FPGA carriers a part
+# is valid on; per-carrier maps are intentionally empty for now and are
+# extended with per-surface metadata when those surfaces are built.
+boards:
+  adrv9002:
+    image: kuiper-2023_R2
+    carriers:
+      zcu102: {}
