@@ -64,6 +64,9 @@ def match_places(
         reservation_filter["carrier"] = carrier
 
     chosen = next((p for p in candidates if p.acquired is None), candidates[0])
+    # Strategy comes only from the place's explicit `boot-strategy` tag:
+    # we pass an empty resource-class set, so resolve_strategy's shape-based
+    # inference (used by env-yaml generation) intentionally does not fire here.
     strategy = resolve_strategy(chosen.tags, set())
 
     return MatchResult(
