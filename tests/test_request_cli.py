@@ -33,10 +33,38 @@ def test_request_registered_and_help():
     assert "--power-down" in result.output
 
 
-def test_request_flash_mode_rejected():
-    result = CliRunner().invoke(cli, ["request", "--part", "adrv9002", "--mode", "flash"])
+def test_request_flash_mode_without_firmware_errors():
+    # flash mode is supported, but requires --firmware.
+    result = CliRunner().invoke(cli, ["request", "--part", "ad9371", "--mode", "flash"])
     assert result.exit_code != 0
-    assert "flash" in result.output.lower()
+    assert "firmware" in result.output.lower()
+
+
+def test_request_flash_mode_passes_firmware_through(monkeypatch):
+    lease = _fake_lease(uri=None, place="bq", carrier="zc706")
+    fake = _fake_request_yielding(lease)
+    monkeypatch.setattr(rc_mod, "request", fake)
+    result = CliRunner().invoke(
+        cli,
+        [
+            "request",
+            "--part",
+            "ad9371",
+            "--mode",
+            "flash",
+            "--firmware",
+            "/b/ad9371.elf",
+            "--bitstream",
+            "/b/sys.bit",
+            "--validate",
+            "Running IIOD server",
+        ],
+    )
+    assert result.exit_code == 0
+    assert fake.kwargs["mode"] == "flash"
+    assert fake.kwargs["firmware"] == "/b/ad9371.elf"
+    assert fake.kwargs["bitstream"] == "/b/sys.bit"
+    assert fake.kwargs["validate"] == "Running IIOD server"
 
 
 def test_request_no_run_prints_uri(monkeypatch):

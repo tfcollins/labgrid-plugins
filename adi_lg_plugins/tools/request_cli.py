@@ -89,9 +89,19 @@ def _run_child(run_cmd: str, env: dict) -> int:
     "--mode",
     type=click.Choice(["uri", "flash"]),
     default="uri",
-    help="uri: boot Linux and export IIO_URI (default). flash: not yet available.",
+    help="uri: boot Linux and export IIO_URI (default). flash: JTAG-flash a no-os .elf.",
 )
 @click.option("--bootfile", default=None, help="Pin an image version (default: catalog default)")
+@click.option(
+    "--firmware", default=None, help="[flash] no-os firmware .elf to JTAG-load (required)"
+)
+@click.option("--bitstream", default=None, help="[flash] FPGA bitstream to program before the .elf")
+@click.option("--ps7-init", "ps7_init", default=None, help="[flash] ps7_init.tcl for PS init")
+@click.option(
+    "--validate",
+    default=None,
+    help="[flash] serial banner to assert (default: the IIOD server banner)",
+)
 @click.option(
     "--wait", default=1800, type=int, help="Seconds to wait for a free board (0=fail fast)"
 )
@@ -109,11 +119,21 @@ def _run_child(run_cmd: str, env: dict) -> int:
     default=None,
     help="Command to run with IIO_URI / LG_PLACE / LG_CARRIER exported",
 )
-def request_cmd(part, carrier, mode, bootfile, wait, power_down, coord, run_cmd):
-    """Request a board by part, boot it, run a command against it, and release it."""
-    if mode == "flash":
-        raise click.ClickException("flash mode is not available yet (uri mode only)")
-
+def request_cmd(
+    part,
+    carrier,
+    mode,
+    bootfile,
+    firmware,
+    bitstream,
+    ps7_init,
+    validate,
+    wait,
+    power_down,
+    coord,
+    run_cmd,
+):
+    """Request a board by part, provision it, run a command against it, and release it."""
     previous = _install_term_handler()
     try:
         with request(
@@ -121,6 +141,10 @@ def request_cmd(part, carrier, mode, bootfile, wait, power_down, coord, run_cmd)
             carrier=carrier,
             mode=mode,
             bootfile=bootfile,
+            firmware=firmware,
+            bitstream=bitstream,
+            ps7_init=ps7_init,
+            validate=validate,
             wait=wait,
             coord=coord,
             power_down=power_down,
@@ -134,7 +158,10 @@ def request_cmd(part, carrier, mode, bootfile, wait, power_down, coord, run_cmd)
             env["LG_PLACE"] = board.place
             if board.carrier:
                 env["LG_CARRIER"] = board.carrier
-            console.print(f"[green]Booted {board.place} -> {board.uri}[/green]")
+            if mode == "flash":
+                console.print(f"[green]Flashed + validated {board.place} (no-os)[/green]")
+            else:
+                console.print(f"[green]Booted {board.place} -> {board.uri}[/green]")
             rc = _run_child(run_cmd, env)
             sys.exit(rc)
     except KeyboardInterrupt:

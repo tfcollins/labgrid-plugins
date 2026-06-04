@@ -65,15 +65,19 @@ def _load_template(strategy: str) -> str:
 def render_env(
     place: Place,
     *,
+    strategy: str | None = None,
     extra_subs: Mapping[str, str] | None = None,
 ) -> str:
     """Return the env-yaml string for this place.
 
+    ``strategy`` overrides which template is loaded (default: the place's
+    ``boot-strategy`` tag). The hardware-request flash mode uses this to render
+    a ``BootNoOSJTAG`` env on a board whose default tag is a Kuiper strategy.
     ``extra_subs`` lets the caller inject project-specific values; keys
     collide with the built-in substitutions silently in favour of the
     caller's values.
     """
-    template_text = _load_template(place.boot_strategy)
+    template_text = _load_template(strategy or place.boot_strategy)
     # `power-driver` is an optional place tag carrying the labgrid driver
     # class name to use for power control (e.g. `VesyncPowerDriver`,
     # `HomeAssistantDriver`). Different lab setups use different power
@@ -138,6 +142,11 @@ def render_env(
         "boot_cmd": place.extra_tags.get("boot-cmd", d_boot_cmd),
         "kernel_addr": place.extra_tags.get("kernel-addr", d_kernel_addr),
         "dtb_addr": place.extra_tags.get("dtb-addr", d_dtb_addr),
+        # no-os flash mode (BootNoOSJTAG): the built firmware ELF + the serial
+        # banner to assert. Defaults empty / IIOD banner; the request injects
+        # the real per-build values via extra_subs.
+        "firmware_elf": place.extra_tags.get("firmware-elf", ""),
+        "boot_marker": place.extra_tags.get("boot-marker", "Running IIOD server"),
     }
     if extra_subs:
         subs.update({str(k): str(v) for k, v in extra_subs.items()})

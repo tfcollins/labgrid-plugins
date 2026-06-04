@@ -59,6 +59,14 @@ SHELL_DEFAULTS: dict[str, dict[str, str]] = {
         "username": "root",
         "password": "analog",
     },
+    "BootNoOSJTAG": {
+        # no-os bare-metal firmware: no login prompt, no shell — the console
+        # is only read for the validation banner. login is bypassed.
+        "prompt": "",
+        "login_prompt": "",
+        "username": "root",
+        "password": "analog",
+    },
     "_default": {
         "prompt": "root@.*",
         "login_prompt": "login: ",
@@ -106,6 +114,14 @@ STRATEGY_CONFIGS: dict[str, dict[str, Any]] = {
         "wait_for_recovery_linux_timeout": 240,
         "wait_for_sd_flash_timeout": 1800,
     },
+    # no-os firmware flash via JTAG. The per-build path params (firmware_elf,
+    # bitstream_path, ps7_init_tcl) come from the request (the built artifact),
+    # not env_gen; only the static validation defaults live here.
+    "BootNoOSJTAG": {
+        "a9_target_name": "*Cortex-A9 MPCore #0",
+        "boot_marker": "Running IIOD server",
+        "boot_timeout": 60,
+    },
 }
 
 # Strategy class names recognized as explicit boot-strategy tag overrides.
@@ -115,6 +131,7 @@ _KNOWN_STRATEGIES = frozenset(
         "BootFabric",
         "BootFPGASoCSSH",
         "BootZynq7000JTAGRecovery",
+        "BootNoOSJTAG",
     }
 )
 

@@ -32,8 +32,9 @@ class Lease:
 
     ``target`` is the live labgrid Target; its drivers are deactivated and
     the coordinator reservation released when the ``with`` block exits.
-    ``uri`` is the primary handover for pyadi-iio. ``console`` is reserved
-    for the future flash mode and is always None here.
+    ``uri`` is the primary handover for pyadi-iio (uri mode). ``console`` is
+    the serial console handle for flash mode (no-os firmware); exactly one of
+    ``uri`` / ``console`` is set depending on the request mode.
     """
 
     place: str
@@ -68,9 +69,9 @@ def _concrete_place(coord: str, name: str) -> Place:
     raise ProvisionError(f"acquired place '{name}' not found among live places")
 
 
-def _render_env(place) -> str:
+def _render_env(place, **kw) -> str:
     out = Path(tempfile.mkdtemp(prefix="adi-lg-req-")) / "env.yaml"
-    render_env_to(place, out)
+    render_env_to(place, out, **kw)
     return str(out)
 
 
@@ -95,6 +96,19 @@ def _boot(
     except Exception as e:  # noqa: BLE001 - normalise any strategy error
         raise ProvisionError(f"boot failed: {e}") from e
     return tg
+
+
+def _get_console(target: Any) -> Any:
+    """Return the board's serial console driver (flash mode handover), or None.
+
+    no-os firmware has no network URI — the serial console is the handle a
+    consumer reads (e.g. to drive a libiio-over-serial probe). Best-effort.
+    """
+    try:
+        return target.get_driver("ADIShellDriver")
+    except Exception as e:  # noqa: BLE001 - console handle is best-effort
+        logger.warning("could not resolve console driver: %s", e)
+        return None
 
 
 def _power_off(target: Any, strategy_name: str) -> None:
@@ -133,18 +147,27 @@ def request(
     carrier: str | None = None,
     mode: str = "uri",
     bootfile: str | None = None,
+    firmware: str | None = None,
+    bitstream: str | None = None,
+    ps7_init: str | None = None,
+    validate: str | None = None,
     wait: float = 1800.0,
     coord: str | None = None,
     power_down: bool = False,
     target_name: str = "main",
     **filters: str,
 ):
-    """Request a board, boot it, yield a Lease, and release on exit.
+    """Request a board, provision it, yield a Lease, and release on exit.
 
-    Only ``mode='uri'`` is supported in this increment.
+    ``mode='uri'`` boots a Kuiper image and hands over a network libIIO URI.
+    ``mode='flash'`` JTAG-flashes a no-os firmware ``.elf`` (``firmware``,
+    required) onto the board, validates a serial banner (``validate``, default
+    the IIOD banner), and hands over the serial console (``uri`` is None).
     """
-    if mode != "uri":
-        raise NotImplementedError(f"mode '{mode}' is not available yet (uri only)")
+    if mode not in ("uri", "flash"):
+        raise NotImplementedError(f"mode '{mode}' is not available (uri | flash)")
+    if mode == "flash" and not firmware:
+        raise ProvisionError("flash mode requires a firmware .elf (firmware=...)")
     if filters:
         raise NotImplementedError(
             f"extra filters {sorted(filters)} are not supported yet "
@@ -153,7 +176,7 @@ def request(
 
     coord = resolve_coordinator(coord)
     api = _resolve_api(coord)
-    match = match_client.get_match(api, part=part, carrier=carrier, bootfile=bootfile)
+    match = match_client.get_match(api, part=part, carrier=carrier, bootfile=bootfile, mode=mode)
     if not match.satisfiable:
         raise NoMatchingBoard(match.reason or f"no board for part '{part}'")
 
@@ -163,13 +186,31 @@ def request(
     strategy_name = match.strategy or ""
     try:
         place = _concrete_place(api, res.place)
-        # The live place's boot-strategy tag is the authority for the driver
-        # name the rendered env defines; match.strategy (parsed for metadata)
-        # should equal it.
-        strategy_name = place.boot_strategy
-        env_path = _render_env(place)
-        target = _boot(env_path, strategy_name, image=match.image, target_name=target_name)
-        uri = resolve_uri(target)
+        if mode == "flash":
+            # The flash strategy comes from the catalog (BootNoOSJTAG) and
+            # overrides the place's boot-strategy tag; render that template and
+            # inject the per-build artifact paths + validation banner.
+            strategy_name = match.strategy or "BootNoOSJTAG"
+            subs = {"firmware_elf": firmware}
+            if bitstream:
+                subs["bitstream_path"] = bitstream
+            if ps7_init:
+                subs["ps7_init_tcl"] = ps7_init
+            if validate:
+                subs["boot_marker"] = validate
+            env_path = _render_env(place, strategy=strategy_name, extra_subs=subs)
+            target = _boot(env_path, strategy_name, image=None, target_name=target_name)
+            console = _get_console(target)
+            uri = None
+        else:
+            # The live place's boot-strategy tag is the authority for the driver
+            # name the rendered env defines; match.strategy (parsed for metadata)
+            # should equal it.
+            strategy_name = place.boot_strategy
+            env_path = _render_env(place)
+            target = _boot(env_path, strategy_name, image=match.image, target_name=target_name)
+            console = None
+            uri = resolve_uri(target)
         yield Lease(
             place=res.place,
             carrier=place.carrier,
@@ -182,6 +223,7 @@ def request(
                 "boot-strategy": strategy_name,
             },
             uri=uri,
+            console=console,
             target=target,
         )
     finally:

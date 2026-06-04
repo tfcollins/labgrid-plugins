@@ -28,6 +28,15 @@ class BoardCarrier(BaseModel):
     model_config = {"extra": "allow"}
 
 
+class FlashConfig(BaseModel):
+    """no-os "flash" mode support for a board: which strategy loads the
+    firmware and which ``projects/<noos_project>`` builds it. Present only on
+    boards that can run no-os bare-metal firmware (vs. the Kuiper SD boot)."""
+
+    strategy: str
+    noos_project: str
+
+
 class BoardEntry(BaseModel):
     # Default boot image (a KuiperRelease version). None for boards that boot
     # by loading the FPGA fabric via JTAG (BootFabric, e.g. daq3) and so have
@@ -37,6 +46,8 @@ class BoardEntry(BaseModel):
     # chip name like "ad9371" map to its eval-board key "adrv9371" (the place
     # tag), keeping the 1:1 part==daughter-board contract for matching.
     aliases: list[str] = []
+    # no-os firmware "flash" mode capability (None = Kuiper-only board).
+    flash: FlashConfig | None = None
     carriers: dict[str, BoardCarrier] = {}
 
 

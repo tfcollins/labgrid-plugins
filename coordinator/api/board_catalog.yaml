@@ -17,6 +17,11 @@ boards:
     # The recovery flow is deterministic (JTAG bootstrap + TFTP); `image` is
     # the Kuiper generation flashed to the SD, kept uniform with adrv9002.
     image: 2023_R2_P1
+    # no-os firmware "flash" mode: build projects/adrv9009 and JTAG-load the
+    # .elf onto the same board (BootNoOSJTAG), instead of the Kuiper boot.
+    flash:
+      strategy: BootNoOSJTAG
+      noos_project: adrv9009
     carriers:
       zc706: {}
   adrv9371:
@@ -27,6 +32,11 @@ boards:
     aliases:
       - ad9371
     image: 2023_R2_P1
+    # no-os firmware "flash" mode: build projects/ad9371 and JTAG-load the .elf
+    # onto the same board (BootNoOSJTAG), instead of the Kuiper boot.
+    flash:
+      strategy: BootNoOSJTAG
+      noos_project: ad9371
     carriers:
       zc706: {}
   daq3:
