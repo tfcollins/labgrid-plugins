@@ -104,16 +104,20 @@ def _cmd_request_matrix(args: argparse.Namespace) -> int:
     """Emit a part-keyed matrix: wanted parts (from markers) that have a live
     board (per GET /api/match). Missing parts are surfaced as GH annotations."""
     from adi_lg_plugins.request import match_client
+    from adi_lg_plugins.request.core import _resolve_api
 
     from .request_matrix import build_request_matrix
 
     coord = coord_mod.resolve_coordinator(args.coord)
+    # LG_COORDINATOR is the gRPC coordinator (e.g. host:20408); the REST API
+    # /api/match lives on host:8000 — derive it the same way request() does.
+    api = _resolve_api(coord)
     markers = markers_mod.harvest_markers(args.test_root, marker=args.marker)
     wanted = sorted({h for spec in markers.values() for h in spec.iio_hardware})
 
     def probe(part: str):
         try:
-            return match_client.get_match(coord, part=part)
+            return match_client.get_match(api, part=part)
         except Exception as e:  # noqa: BLE001 - a probe failure must not crash discovery
             print(f"# /api/match probe failed for {part!r}: {e}", file=sys.stderr)
             return None
@@ -151,15 +155,18 @@ def _cmd_noos_matrix(args: argparse.Namespace) -> int:
     flash-capable board (per GET /api/match?mode=flash). Each leg carries the
     project to build, the part to request, the carrier, and the runner."""
     from adi_lg_plugins.request import match_client
+    from adi_lg_plugins.request.core import _resolve_api
 
     from .noos_manifest import build_noos_matrix, load_noos_manifest
 
     coord = coord_mod.resolve_coordinator(args.coord)
+    # LG_COORDINATOR is the gRPC coordinator; /api/match is the REST API on :8000.
+    api = _resolve_api(coord)
     projects = load_noos_manifest(args.manifest)
 
     def probe(part: str, carrier: str):
         try:
-            return match_client.get_match(coord, part=part, carrier=carrier, mode="flash")
+            return match_client.get_match(api, part=part, carrier=carrier, mode="flash")
         except Exception as e:  # noqa: BLE001 - a probe failure must not crash discovery
             print(f"# /api/match probe failed for {part!r}/{carrier!r}: {e}", file=sys.stderr)
             return None
