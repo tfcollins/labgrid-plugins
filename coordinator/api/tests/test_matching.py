@@ -156,6 +156,57 @@ def test_match_runner_is_none_when_place_has_no_runner_tag():
     assert res.runner is None
 
 
+# Flash (no-os) mode: the SAME physical place serves Kuiper (mode=uri, its
+# boot-strategy tag) or no-os firmware (mode=flash, the catalog's flash.strategy
+# overriding the tag). A board without a `flash` block is unsatisfiable in flash mode.
+FLASH_CATALOG = BoardCatalog.model_validate(
+    {
+        "boards": {
+            "adrv9371": {
+                "image": "2023_R2_P1",
+                "aliases": ["ad9371"],
+                "flash": {"strategy": "BootNoOSJTAG", "noos_project": "ad9371"},
+                "carriers": {"zc706": {}},
+            },
+            "adrv9002": {"image": "2023_R2_P1", "carriers": {"zcu102": {}}},  # no flash
+        }
+    }
+)
+
+
+def test_match_flash_mode_selects_flash_strategy_overriding_place_tag():
+    places = [
+        _place(
+            "bq",
+            part="adrv9371",
+            carrier="zc706",
+            strategy="BootZynq7000JTAGRecovery",
+            runner="hw-bq",
+        )
+    ]
+    res = match_places(FLASH_CATALOG, places, part="ad9371", carrier="zc706", mode="flash")
+    assert res.satisfiable is True
+    assert res.strategy == "BootNoOSJTAG"  # flash strategy, NOT the place's Kuiper tag
+    assert res.flash is not None and res.flash.noos_project == "ad9371"
+    assert res.reservation_filter == {"daughter-board": "adrv9371", "carrier": "zc706"}
+    assert res.runner == "hw-bq"
+
+
+def test_match_flash_mode_unsupported_board_is_unsatisfiable():
+    places = [_place("mini2", part="adrv9002", carrier="zcu102", strategy="BootFPGASoC")]
+    res = match_places(FLASH_CATALOG, places, part="adrv9002", carrier="zcu102", mode="flash")
+    assert res.satisfiable is False
+    assert "flash" in res.reason
+
+
+def test_match_uri_mode_ignores_flash_block():
+    places = [_place("bq", part="adrv9371", carrier="zc706", strategy="BootZynq7000JTAGRecovery")]
+    res = match_places(FLASH_CATALOG, places, part="adrv9371", carrier="zc706")  # default uri
+    assert res.satisfiable is True
+    assert res.strategy == "BootZynq7000JTAGRecovery"  # place tag wins in uri mode
+    assert res.flash is None
+
+
 def test_match_without_carrier_omits_carrier_from_filter():
     places = [_place("p1", part="adrv9002", carrier="zcu102", strategy="BootFPGASoC")]
     res = match_places(CATALOG, places, part="adrv9002")

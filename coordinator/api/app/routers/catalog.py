@@ -30,6 +30,9 @@ async def get_match(
     part: str = Query(..., description="Part / daughter-board, e.g. adrv9002"),
     carrier: str | None = Query(None, description="Optional FPGA carrier, e.g. zcu102"),
     bootfile: str | None = Query(None, description="Optional image/version pin"),
+    mode: str = Query("uri", description="Provision mode: 'uri' (Kuiper boot) or 'flash' (no-os)"),
 ) -> MatchResult:
     places = _get_client(request).get_places()
-    return match_places(_catalog(request), places, part=part, carrier=carrier, bootfile=bootfile)
+    return match_places(
+        _catalog(request), places, part=part, carrier=carrier, bootfile=bootfile, mode=mode
+    )

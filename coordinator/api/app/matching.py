@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel
 
-from .catalog import BoardCatalog, resolve_image
+from .catalog import BoardCatalog, FlashConfig, resolve_image
 from .env_gen import resolve_strategy
 from .models import PlaceModel
 
@@ -24,6 +24,7 @@ class MatchResult(BaseModel):
     strategy: str | None = None
     place: str | None = None  # informational candidate (a free one if any)
     runner: str | None = None  # the candidate place's `runner` tag (CI runner label)
+    flash: FlashConfig | None = None  # no-os flash metadata (mode="flash" only)
     reason: str | None = None
 
 
@@ -44,6 +45,7 @@ def match_places(
     part: str,
     carrier: str | None = None,
     bootfile: str | None = None,
+    mode: str = "uri",
 ) -> MatchResult:
     resolved = catalog.lookup(part)
     if resolved is None:
@@ -51,6 +53,14 @@ def match_places(
     # `part` may be an alias (e.g. ad9371); `board` is the canonical key, which
     # equals the place's daughter-board tag. Match and reserve on `board`.
     board, entry = resolved
+
+    # mode="flash" runs no-os firmware on the board via a JTAG flash strategy
+    # instead of booting Kuiper; only boards with a `flash` block support it.
+    if mode == "flash" and entry.flash is None:
+        return MatchResult(
+            satisfiable=False,
+            reason=f"part {part!r} has no flash (no-os) support",
+        )
 
     if carrier is not None and carrier not in entry.carriers:
         return MatchResult(
@@ -68,16 +78,27 @@ def match_places(
         reservation_filter["carrier"] = carrier
 
     chosen = next((p for p in candidates if p.acquired is None), candidates[0])
-    # Strategy comes only from the place's explicit `boot-strategy` tag:
-    # we pass an empty resource-class set, so resolve_strategy's shape-based
-    # inference (used by env-yaml generation) intentionally does not fire here.
-    strategy = resolve_strategy(chosen.tags, set())
+    if mode == "flash":
+        # The flash strategy comes from the catalog and OVERRIDES the place's
+        # boot-strategy tag (the same board serves Kuiper or no-os). No Kuiper
+        # image — the firmware is built + passed in by the client.
+        strategy = entry.flash.strategy
+        image = None
+        flash = entry.flash
+    else:
+        # Strategy comes only from the place's explicit `boot-strategy` tag:
+        # we pass an empty resource-class set, so resolve_strategy's shape-based
+        # inference (used by env-yaml generation) intentionally does not fire here.
+        strategy = resolve_strategy(chosen.tags, set())
+        image = resolve_image(entry, bootfile)
+        flash = None
 
     return MatchResult(
         satisfiable=True,
         reservation_filter=reservation_filter,
-        image=resolve_image(entry, bootfile),
+        image=image,
         strategy=strategy,
         place=chosen.name,
         runner=chosen.tags.get("runner"),
+        flash=flash,
     )

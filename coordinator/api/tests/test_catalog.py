@@ -93,6 +93,29 @@ def test_lookup_unknown_returns_none(tmp_path):
     assert cat.lookup("nosuchpart") is None
 
 
+def test_flash_block_parses(tmp_path):
+    text = """\
+boards:
+  adrv9371:
+    image: 2023_R2_P1
+    flash:
+      strategy: BootNoOSJTAG
+      noos_project: ad9371
+    carriers:
+      zc706: {}
+"""
+    cat = load_catalog(_write(tmp_path, text))
+    fl = cat.boards["adrv9371"].flash
+    assert fl is not None
+    assert fl.strategy == "BootNoOSJTAG"
+    assert fl.noos_project == "ad9371"
+
+
+def test_board_without_flash_block_has_none(tmp_path):
+    cat = load_catalog(_write(tmp_path, FIXTURE))
+    assert cat.boards["adrv9002"].flash is None
+
+
 def test_image_is_optional_for_fabric_boards(tmp_path):
     fabric = """\
 boards:
@@ -134,6 +157,17 @@ def test_shipped_catalog_exposes_ad9371_chip_alias():
     key, entry = cat.lookup("ad9371")
     assert key == "adrv9371"
     assert "ad9371" in entry.aliases
+
+
+def test_shipped_catalog_flash_capable_boards():
+    """adrv9009 + adrv9371 advertise no-os flash support (BootNoOSJTAG) and
+    point at their no-os project dir under projects/."""
+    cat = load_catalog(str(SHIPPED_CATALOG))
+    for part, proj in (("adrv9009", "adrv9009"), ("adrv9371", "ad9371")):
+        fl = cat.boards[part].flash
+        assert fl is not None, f"{part} should advertise flash support"
+        assert fl.strategy == "BootNoOSJTAG"
+        assert fl.noos_project == proj
 
 
 def test_shipped_catalog_images_are_pinned_not_placeholders():
