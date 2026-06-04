@@ -20,6 +20,7 @@ class MatchResult:
     strategy: str | None = None
     place: str | None = None
     runner: str | None = None  # the matched place's CI runner label (`runner` tag)
+    flash: dict | None = None  # no-os flash metadata {strategy, noos_project} (mode=flash)
 
 
 def _base_url(coord: str) -> str:
@@ -44,6 +45,7 @@ def get_match(
     part: str,
     carrier: str | None = None,
     bootfile: str | None = None,
+    mode: str = "uri",
     timeout: float = 15.0,
 ) -> MatchResult:
     params = {"part": part}
@@ -51,6 +53,8 @@ def get_match(
         params["carrier"] = carrier
     if bootfile:
         params["bootfile"] = bootfile
+    if mode and mode != "uri":
+        params["mode"] = mode
     url = f"{_base_url(coord)}/api/match?{urlencode(params)}"
     data = _get_json(url, timeout=timeout)
     return MatchResult(
@@ -61,4 +65,5 @@ def get_match(
         strategy=data.get("strategy"),
         place=data.get("place"),
         runner=data.get("runner"),
+        flash=data.get("flash"),
     )

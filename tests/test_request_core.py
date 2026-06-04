@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from unittest.mock import MagicMock
+
 import pytest
 
 from adi_lg_plugins.request import core
@@ -143,6 +145,96 @@ def test_request_no_match_raises_without_reserving(monkeypatch):
             pass
 
 
+# ── flash mode (no-os firmware) ───────────────────────────────────────────────
+
+
+def _flash_match():
+    return MatchResult(
+        satisfiable=True,
+        reservation_filter={"daughter-board": "adrv9371", "carrier": "zc706"},
+        image=None,
+        strategy="BootNoOSJTAG",
+        place="bq",
+        flash={"strategy": "BootNoOSJTAG", "noos_project": "ad9371"},
+    )
+
+
+@pytest.fixture
+def patched_flash(monkeypatch):
+    state = {"released": None, "render_kw": None, "booted": None, "mode": None}
+    monkeypatch.setattr(core, "resolve_coordinator", lambda c: "coord:20408")
+
+    def fake_get_match(coord, **k):
+        state["mode"] = k.get("mode")
+        return _flash_match()
+
+    monkeypatch.setattr(core.match_client, "get_match", fake_get_match)
+    monkeypatch.setattr(
+        core.reservation, "reserve_and_acquire", lambda c, *a, **k: Reservation(place="bq", token="t")
+    )
+    monkeypatch.setattr(
+        core.reservation, "release", lambda c, res, **k: state.update(released=res.place)
+    )
+
+    def fake_place(coord, name):
+        p = FakePlace(name=name)
+        p.carrier = "zc706"
+        p.daughter_board = "adrv9371"
+        p.boot_strategy = "BootZynq7000JTAGRecovery"  # the place's Kuiper tag
+        return p
+
+    monkeypatch.setattr(core, "_concrete_place", fake_place)
+
+    def fake_render(place, **kw):
+        state["render_kw"] = kw
+        return "/tmp/env.yaml"
+
+    monkeypatch.setattr(core, "_render_env", fake_render)
+
+    def fake_boot(env, strat, *, image, target_name="main"):
+        state["booted"] = (strat, image)
+        return MagicMock()
+
+    monkeypatch.setattr(core, "_boot", fake_boot)
+    monkeypatch.setattr(core, "_get_console", lambda tg: "CONSOLE")
+
+    def no_uri(tg):
+        raise AssertionError("flash mode must not resolve a network URI")
+
+    monkeypatch.setattr(core, "resolve_uri", no_uri)
+    monkeypatch.setattr(core, "_cleanup_target", lambda tg: None)
+    return state
+
+
+def test_flash_mode_renders_bootnoosjtag_and_yields_console(patched_flash):
+    with core.request(
+        part="ad9371",
+        mode="flash",
+        firmware="/b/ad9371.elf",
+        bitstream="/b/sys.bit",
+        validate="Running IIOD server",
+    ) as board:
+        assert board.console == "CONSOLE"
+        assert board.uri is None
+        assert board.tags["boot-strategy"] == "BootNoOSJTAG"  # flash strategy, not the tag
+
+    assert patched_flash["mode"] == "flash"
+    assert patched_flash["booted"] == ("BootNoOSJTAG", None)  # no Kuiper image
+    kw = patched_flash["render_kw"]
+    assert kw["strategy"] == "BootNoOSJTAG"
+    assert kw["extra_subs"]["firmware_elf"] == "/b/ad9371.elf"
+    assert kw["extra_subs"]["bitstream_path"] == "/b/sys.bit"
+    assert kw["extra_subs"]["boot_marker"] == "Running IIOD server"
+    assert patched_flash["released"] == "bq"
+
+
+def test_flash_mode_requires_firmware(monkeypatch):
+    monkeypatch.setattr(core, "resolve_coordinator", lambda c: "coord:20408")
+    with pytest.raises(ProvisionError, match="firmware"):
+        with core.request(part="ad9371", mode="flash"):
+            pass
+
+
 def test_request_provision_error_still_releases(patched, monkeypatch):
     def bad_boot(*a, **k):
         raise ProvisionError("boot failed")
@@ -165,9 +257,9 @@ def test_request_unavailable_propagates(patched, monkeypatch):
     assert patched["released"] is None  # nothing acquired -> nothing released
 
 
-def test_request_flash_mode_not_supported(patched):
+def test_request_unknown_mode_rejected(patched):
     with pytest.raises(NotImplementedError):
-        with core.request(part="adrv9002", mode="flash"):
+        with core.request(part="adrv9002", mode="bogus"):
             pass
 
 
