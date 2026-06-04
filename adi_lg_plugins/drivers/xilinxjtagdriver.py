@@ -283,7 +283,16 @@ class XilinxJTAGDriver(Driver):
         optional ``bitstream_path`` programs the PL first (required when the
         firmware touches FPGA-fabric peripherals), and ``ps7_init_tcl`` runs the
         board PS init — both are produced by the no-os build's HDL ``.xsa``.
+
+        Paths are resolved to absolute before being embedded in the xsdb TCL:
+        xsdb runs the script from its own working directory (not the caller's),
+        so a relative ``dow``/``fpga -f`` path would fail to open.
         """
+        elf_path = os.path.abspath(elf_path)
+        if bitstream_path:
+            bitstream_path = os.path.abspath(bitstream_path)
+        if ps7_init_tcl:
+            ps7_init_tcl = os.path.abspath(ps7_init_tcl)
         self.logger.info(f"JTAG-loading bare-metal ELF from {elf_path}")
 
         lines = []

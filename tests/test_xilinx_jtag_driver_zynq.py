@@ -1,6 +1,7 @@
 """Unit tests for XilinxJTAGDriver Zynq-7000 helpers."""
 
 import logging
+import os
 from unittest.mock import MagicMock
 
 import pytest
@@ -153,3 +154,14 @@ def test_load_and_run_elf_raises_on_failure(driver):
     driver._run_xsdb = lambda tcl: ("", "xsdb boom", 1)
     with pytest.raises(ExecutionError, match="ELF"):
         driver.load_and_run_elf("/tmp/fw.elf")
+
+
+def test_load_and_run_elf_absolutizes_relative_paths(driver):
+    # xsdb runs the TCL from its own cwd, so relative dow/fpga/source paths must
+    # be made absolute or they fail to open.
+    driver.load_and_run_elf("build/fw.elf", bitstream_path="hw/sys.bit", ps7_init_tcl="hw/ps7.tcl")
+    tcl = driver._captured[0]
+    assert f"dow {os.path.abspath('build/fw.elf')}" in tcl
+    assert f"fpga -f {os.path.abspath('hw/sys.bit')}" in tcl
+    assert f"source {os.path.abspath('hw/ps7.tcl')}" in tcl
+    assert "dow build/fw.elf" not in tcl  # no leftover relative path
