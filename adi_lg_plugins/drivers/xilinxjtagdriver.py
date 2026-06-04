@@ -268,6 +268,55 @@ class XilinxJTAGDriver(Driver):
 
     @Driver.check_active
     @step()
+    def load_and_run_elf(
+        self,
+        elf_path: str,
+        a9_target_name: str = "*Cortex-A9 MPCore #0",
+        bitstream_path: str | None = None,
+        ps7_init_tcl: str | None = None,
+    ) -> None:
+        """JTAG-load and start an arbitrary bare-metal ELF (e.g. no-os firmware).
+
+        Generalizes :meth:`load_zynq_uboot` to any ELF that runs directly on a
+        Zynq core (no FSBL/U-Boot chain). The same xsdb sequence is used:
+        ``connect → rst -system → [fpga] → [ps7_init] → dow elf → con``. The
+        optional ``bitstream_path`` programs the PL first (required when the
+        firmware touches FPGA-fabric peripherals), and ``ps7_init_tcl`` runs the
+        board PS init — both are produced by the no-os build's HDL ``.xsa``.
+        """
+        self.logger.info(f"JTAG-loading bare-metal ELF from {elf_path}")
+
+        lines = []
+        if bitstream_path:
+            lines.append(f"fpga -f {bitstream_path}")
+            lines.append("after 2000")
+        if ps7_init_tcl:
+            lines.append(f"source {ps7_init_tcl}")
+            lines.append("ps7_init")
+            lines.append("ps7_post_config")
+        lines.append(f"dow {elf_path}")
+        lines.append("con")
+        optional_block = "\n        ".join(lines)
+
+        tcl_script = f"""
+        connect
+        after 1000
+        targets -set -filter {{name =~ "{a9_target_name}"}}
+        after 500
+        rst -system
+        after 2000
+        {optional_block}
+        puts "Bare-metal ELF started via JTAG"
+        """
+        self.logger.debug(f"ELF load TCL:\n{tcl_script}")
+        stdout, stderr, returncode = self._run_xsdb(tcl_script)
+        if returncode != 0:
+            raise ExecutionError(f"Bare-metal ELF load failed: {stderr}")
+        self.logger.info("Bare-metal ELF load completed")
+        self.logger.debug(f"ELF load output: {stdout}")
+
+    @Driver.check_active
+    @step()
     def stop_zynq_cpu(self, a9_target_name: str = "*Cortex-A9 MPCore #0") -> None:
         """Halt the A9 #0 core — used between failed bootstrap attempts."""
         self.logger.info(f"Stopping Zynq A9 CPU ({a9_target_name})")

@@ -108,3 +108,48 @@ def test_stop_zynq_cpu_emits_stop(driver):
     assert "connect" in tcl
     assert 'targets -set -filter {name =~ "*Cortex-A9 MPCore #0"}' in tcl
     assert "stop" in tcl
+
+
+# ---------- load_and_run_elf (no-os firmware flash) -----------------------
+
+
+def test_load_and_run_elf_basic(driver):
+    driver.load_and_run_elf("/tmp/fw.elf")
+    tcl = driver._captured[0]
+    assert "connect" in tcl
+    assert 'targets -set -filter {name =~ "*Cortex-A9 MPCore #0"}' in tcl
+    assert "rst -system" in tcl
+    assert "dow /tmp/fw.elf" in tcl
+    assert "con" in tcl
+
+
+def test_load_and_run_elf_minimal_omits_optional(driver):
+    driver.load_and_run_elf("/tmp/fw.elf")
+    tcl = driver._captured[0]
+    assert "fpga -f" not in tcl
+    assert "source " not in tcl
+    assert tcl.count("dow ") == 1  # only the firmware, no fsbl/uboot
+
+
+def test_load_and_run_elf_with_bitstream_and_ps7(driver):
+    driver.load_and_run_elf(
+        "/tmp/fw.elf", bitstream_path="/tmp/sys.bit", ps7_init_tcl="/tmp/ps7.tcl"
+    )
+    tcl = driver._captured[0]
+    assert "fpga -f /tmp/sys.bit" in tcl
+    assert "source /tmp/ps7.tcl" in tcl
+    assert "ps7_init" in tcl
+    # fabric + PS init must precede the ELF download
+    assert tcl.index("fpga -f /tmp/sys.bit") < tcl.index("dow /tmp/fw.elf")
+    assert tcl.index("ps7_init") < tcl.index("dow /tmp/fw.elf")
+
+
+def test_load_and_run_elf_custom_target(driver):
+    driver.load_and_run_elf("/tmp/fw.elf", a9_target_name="*Cortex-A53 #0")
+    assert '*Cortex-A53 #0' in driver._captured[0]
+
+
+def test_load_and_run_elf_raises_on_failure(driver):
+    driver._run_xsdb = lambda tcl: ("", "xsdb boom", 1)
+    with pytest.raises(ExecutionError, match="ELF"):
+        driver.load_and_run_elf("/tmp/fw.elf")
