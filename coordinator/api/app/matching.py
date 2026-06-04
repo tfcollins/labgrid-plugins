@@ -23,6 +23,7 @@ class MatchResult(BaseModel):
     image: str | None = None
     strategy: str | None = None
     place: str | None = None  # informational candidate (a free one if any)
+    runner: str | None = None  # the candidate place's `runner` tag (CI runner label)
     reason: str | None = None
 
 
@@ -78,4 +79,5 @@ def match_places(
         image=resolve_image(entry, bootfile),
         strategy=strategy,
         place=chosen.name,
+        runner=chosen.tags.get("runner"),
     )

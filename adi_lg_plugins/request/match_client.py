@@ -19,6 +19,7 @@ class MatchResult:
     image: str | None = None
     strategy: str | None = None
     place: str | None = None
+    runner: str | None = None  # the matched place's CI runner label (`runner` tag)
 
 
 def _base_url(coord: str) -> str:
@@ -59,4 +60,5 @@ def get_match(
         image=data.get("image"),
         strategy=data.get("strategy"),
         place=data.get("place"),
+        runner=data.get("runner"),
     )

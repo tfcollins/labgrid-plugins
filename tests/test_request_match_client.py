@@ -30,6 +30,24 @@ def test_get_match_parses_fresh_response(monkeypatch):
     assert "carrier=zcu102" in captured["url"]
 
 
+def test_get_match_parses_runner_tag(monkeypatch):
+    """The per-board self-hosted runner label flows through from /api/match."""
+
+    def fake_get_json(url, timeout=15.0):
+        return {"satisfiable": True, "place": "nemo", "runner": "hw-nemo"}
+
+    monkeypatch.setattr(match_client, "_get_json", fake_get_json)
+    res = match_client.get_match("10.0.0.41:8000", part="adrv9009")
+    assert res.runner == "hw-nemo"
+
+
+def test_get_match_runner_defaults_to_none(monkeypatch):
+    monkeypatch.setattr(
+        match_client, "_get_json", lambda url, timeout=15.0: {"satisfiable": True, "place": "p"}
+    )
+    assert match_client.get_match("c:8000", part="x").runner is None
+
+
 def test_get_match_builds_base_url_from_host_port(monkeypatch):
     captured = {}
 
