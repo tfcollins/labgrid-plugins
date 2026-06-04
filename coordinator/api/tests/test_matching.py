@@ -16,7 +16,7 @@ CATALOG = BoardCatalog.model_validate(
 )
 
 
-def _place(name, *, part=None, carrier=None, strategy=None, acquired=None):
+def _place(name, *, part=None, carrier=None, strategy=None, runner=None, acquired=None):
     tags = {}
     if part:
         tags["daughter-board"] = part
@@ -24,6 +24,8 @@ def _place(name, *, part=None, carrier=None, strategy=None, acquired=None):
         tags["carrier"] = carrier
     if strategy:
         tags["boot-strategy"] = strategy
+    if runner:
+        tags["runner"] = runner
     return PlaceModel(name=name, tags=tags, acquired=acquired)
 
 
@@ -130,6 +132,28 @@ def test_match_daq3_resolves_bootfabric_place_with_no_image():
     assert res.strategy == "BootFabric"
     assert res.image is None
     assert res.place == "nuc"
+
+
+def test_match_exposes_place_runner_tag():
+    # The place's `runner` tag is the self-hosted runner label co-located with
+    # the board; CI uses it to land each leg on the host that can drive it.
+    places = [
+        _place(
+            "nemo",
+            part="adrv9009",
+            carrier="zc706",
+            strategy="BootZynq7000JTAGRecovery",
+            runner="hw-nemo",
+        )
+    ]
+    res = match_places(JTAG_CATALOG, places, part="adrv9009", carrier="zc706")
+    assert res.runner == "hw-nemo"
+
+
+def test_match_runner_is_none_when_place_has_no_runner_tag():
+    places = [_place("p1", part="adrv9002", carrier="zcu102", strategy="BootFPGASoC")]
+    res = match_places(CATALOG, places, part="adrv9002", carrier="zcu102")
+    assert res.runner is None
 
 
 def test_match_without_carrier_omits_carrier_from_filter():

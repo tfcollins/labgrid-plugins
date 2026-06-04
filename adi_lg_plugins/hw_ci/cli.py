@@ -111,15 +111,17 @@ def _cmd_request_matrix(args: argparse.Namespace) -> int:
     markers = markers_mod.harvest_markers(args.test_root, marker=args.marker)
     wanted = sorted({h for spec in markers.values() for h in spec.iio_hardware})
 
-    def satisfiable(part: str) -> bool:
+    def probe(part: str):
         try:
-            return bool(match_client.get_match(coord, part=part).satisfiable)
+            return match_client.get_match(coord, part=part)
         except Exception as e:  # noqa: BLE001 - a probe failure must not crash discovery
             print(f"# /api/match probe failed for {part!r}: {e}", file=sys.stderr)
-            return False
+            return None
 
-    result = build_request_matrix(wanted, satisfiable)
-    matrix = {"include": [{"part": p} for p in result.parts]}
+    result = build_request_matrix(wanted, probe)
+    # Each leg names the runner label its board is co-located with; the
+    # workflow falls back to its default runner-label when this is empty.
+    matrix = {"include": [{"part": leg.part, "runner": leg.runner or ""} for leg in result.parts]}
 
     if args.github_output:
         gh_out = os.environ.get("GITHUB_OUTPUT")

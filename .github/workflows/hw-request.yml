@@ -30,7 +30,12 @@ on:
         type: number
         default: 1800
       runner-label:
-        description: "Self-hosted runner label for the per-board legs (must reach the coordinator + lab)."
+        description: >-
+          Fallback self-hosted runner label for the per-board legs. Each leg
+          prefers the runner its board is wired to (the place's `runner` tag,
+          surfaced per-leg by the preflight); this is used only when a board's
+          place carries no `runner` tag. The chosen runner must reach the
+          coordinator + drive that board.
         type: string
         default: "hw-lab"
       preflight-runner-label:
@@ -81,7 +86,10 @@ jobs:
   hw-request:
     needs: preflight
     if: ${{ fromJSON(needs.preflight.outputs.count) > 0 }}
-    runs-on: [self-hosted, "${{ inputs.runner-label }}"]
+    # Land each leg on the runner co-located with its board (matrix.runner, from
+    # the place's `runner` tag); fall back to the workflow's runner-label when a
+    # board's place carries no runner tag.
+    runs-on: [self-hosted, "${{ matrix.runner || inputs.runner-label }}"]
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.preflight.outputs.matrix) }}
