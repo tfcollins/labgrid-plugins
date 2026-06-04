@@ -146,6 +146,60 @@ def _cmd_request_matrix(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_noos_matrix(args: argparse.Namespace) -> int:
+    """Emit a no-os project matrix: manifest projects that map to a live
+    flash-capable board (per GET /api/match?mode=flash). Each leg carries the
+    project to build, the part to request, the carrier, and the runner."""
+    from adi_lg_plugins.request import match_client
+
+    from .noos_manifest import build_noos_matrix, load_noos_manifest
+
+    coord = coord_mod.resolve_coordinator(args.coord)
+    projects = load_noos_manifest(args.manifest)
+
+    def probe(part: str, carrier: str):
+        try:
+            return match_client.get_match(coord, part=part, carrier=carrier, mode="flash")
+        except Exception as e:  # noqa: BLE001 - a probe failure must not crash discovery
+            print(f"# /api/match probe failed for {part!r}/{carrier!r}: {e}", file=sys.stderr)
+            return None
+
+    legs, missing = build_noos_matrix(projects, probe)
+    matrix = {
+        "include": [
+            {
+                "part": leg.part,
+                "noos_project": leg.noos_project,
+                "carrier": leg.carrier,
+                "runner": leg.runner or "",
+            }
+            for leg in legs
+        ]
+    }
+
+    if args.github_output:
+        gh_out = os.environ.get("GITHUB_OUTPUT")
+        if gh_out:
+            with open(gh_out, "a", encoding="utf-8") as f:
+                f.write(f"matrix={json.dumps(matrix)}\n")
+                f.write(f"count={len(legs)}\n")
+        else:
+            print("warning: --github-output given but $GITHUB_OUTPUT is unset", file=sys.stderr)
+
+    print(json.dumps(matrix, indent=2))
+    print(
+        f"# noos-matrix: {len(projects)} project(s), {len(legs)} buildable on a live board",
+        file=sys.stderr,
+    )
+    for proj in missing:
+        print(
+            f"::warning::no-os project {proj!r} has no live flash-capable board on the "
+            f"coordinator — skipping",
+            file=sys.stderr,
+        )
+    return 0
+
+
 def _cmd_render_env(args: argparse.Namespace) -> int:
     coord = coord_mod.resolve_coordinator(args.coord)
     places, _skipped = coord_mod.list_live_places(
@@ -276,6 +330,21 @@ def main(argv: list[str] | None = None) -> int:
         help="also write matrix=/count= to $GITHUB_OUTPUT",
     )
     pm.set_defaults(func=_cmd_request_matrix)
+
+    pn = sub.add_parser(
+        "noos-matrix",
+        help="emit a no-os project matrix (manifest ∩ live flash-capable boards)",
+    )
+    pn.add_argument("--manifest", required=True, help="path to the no-os hw-ci projects.yaml")
+    pn.add_argument(
+        "--coord", default=None, help="coordinator host:port (default: $LG_COORDINATOR)"
+    )
+    pn.add_argument(
+        "--github-output",
+        action="store_true",
+        help="also write matrix=/count= to $GITHUB_OUTPUT",
+    )
+    pn.set_defaults(func=_cmd_noos_matrix)
 
     ns = p.parse_args(argv)
     return ns.func(ns)
