@@ -92,7 +92,9 @@ def _run_child(run_cmd: str, env: dict) -> int:
     help="uri: boot Linux and export IIO_URI (default). flash: JTAG-flash a no-os .elf.",
 )
 @click.option("--bootfile", default=None, help="Pin an image version (default: catalog default)")
-@click.option("--firmware", default=None, help="[flash] no-os firmware .elf to JTAG-load (required)")
+@click.option(
+    "--firmware", default=None, help="[flash] no-os firmware .elf to JTAG-load (required)"
+)
 @click.option("--bitstream", default=None, help="[flash] FPGA bitstream to program before the .elf")
 @click.option("--ps7-init", "ps7_init", default=None, help="[flash] ps7_init.tcl for PS init")
 @click.option(
@@ -118,7 +120,18 @@ def _run_child(run_cmd: str, env: dict) -> int:
     help="Command to run with IIO_URI / LG_PLACE / LG_CARRIER exported",
 )
 def request_cmd(
-    part, carrier, mode, bootfile, firmware, bitstream, ps7_init, validate, wait, power_down, coord, run_cmd
+    part,
+    carrier,
+    mode,
+    bootfile,
+    firmware,
+    bitstream,
+    ps7_init,
+    validate,
+    wait,
+    power_down,
+    coord,
+    run_cmd,
 ):
     """Request a board by part, provision it, run a command against it, and release it."""
     previous = _install_term_handler()

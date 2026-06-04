@@ -170,7 +170,9 @@ def patched_flash(monkeypatch):
 
     monkeypatch.setattr(core.match_client, "get_match", fake_get_match)
     monkeypatch.setattr(
-        core.reservation, "reserve_and_acquire", lambda c, *a, **k: Reservation(place="bq", token="t")
+        core.reservation,
+        "reserve_and_acquire",
+        lambda c, *a, **k: Reservation(place="bq", token="t"),
     )
     monkeypatch.setattr(
         core.reservation, "release", lambda c, res, **k: state.update(released=res.place)

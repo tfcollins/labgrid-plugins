@@ -146,7 +146,7 @@ def test_load_and_run_elf_with_bitstream_and_ps7(driver):
 
 def test_load_and_run_elf_custom_target(driver):
     driver.load_and_run_elf("/tmp/fw.elf", a9_target_name="*Cortex-A53 #0")
-    assert '*Cortex-A53 #0' in driver._captured[0]
+    assert "*Cortex-A53 #0" in driver._captured[0]
 
 
 def test_load_and_run_elf_raises_on_failure(driver):

@@ -93,13 +93,13 @@ projects:
 
     def fake_get_match(coord, *, part, carrier=None, mode="uri", **k):
         assert mode == "flash"
-        return SimpleNamespace(satisfiable=(part, carrier) in live, runner=live.get((part, carrier)))
+        return SimpleNamespace(
+            satisfiable=(part, carrier) in live, runner=live.get((part, carrier))
+        )
 
     monkeypatch.setattr(match_client, "get_match", fake_get_match)
 
-    rc = hw_cli.main(
-        ["noos-matrix", "--manifest", str(manifest), "--coord", "coord:8000"]
-    )
+    rc = hw_cli.main(["noos-matrix", "--manifest", str(manifest), "--coord", "coord:8000"])
     assert rc == 0
     out = capsys.readouterr()
     assert json.loads(out.out) == {
