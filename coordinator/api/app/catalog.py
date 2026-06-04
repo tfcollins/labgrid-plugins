@@ -29,12 +29,34 @@ class BoardCarrier(BaseModel):
 
 
 class BoardEntry(BaseModel):
-    image: str
+    # Default boot image (a KuiperRelease version). None for boards that boot
+    # by loading the FPGA fabric via JTAG (BootFabric, e.g. daq3) and so have
+    # no downloadable image; a per-request --bootfile can still pin one.
+    image: str | None = None
+    # Alternate request names that resolve to this (canonical) board. Lets a
+    # chip name like "ad9371" map to its eval-board key "adrv9371" (the place
+    # tag), keeping the 1:1 part==daughter-board contract for matching.
+    aliases: list[str] = []
     carriers: dict[str, BoardCarrier] = {}
 
 
 class BoardCatalog(BaseModel):
     boards: dict[str, BoardEntry] = {}
+
+    def lookup(self, part: str) -> tuple[str, BoardEntry] | None:
+        """Resolve a requested part to ``(canonical_key, entry)``.
+
+        Tries a direct board key first, then any entry's ``aliases``. Returns
+        None if nothing matches. The canonical key is what callers must use as
+        the ``daughter-board`` reservation filter (it equals the place tag).
+        """
+        entry = self.boards.get(part)
+        if entry is not None:
+            return part, entry
+        for key, candidate in self.boards.items():
+            if part in candidate.aliases:
+                return key, candidate
+        return None
 
 
 def load_catalog(path: str) -> BoardCatalog:
@@ -48,6 +70,7 @@ def load_catalog(path: str) -> BoardCatalog:
     return BoardCatalog.model_validate(data)
 
 
-def resolve_image(entry: BoardEntry, bootfile: str | None) -> str:
-    """A pinned bootfile wins; otherwise the board's default image."""
+def resolve_image(entry: BoardEntry, bootfile: str | None) -> str | None:
+    """A pinned bootfile wins; otherwise the board's default image (which may
+    be None for fabric-load boards that have no downloadable image)."""
     return bootfile or entry.image

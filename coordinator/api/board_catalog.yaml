@@ -23,6 +23,15 @@ boards:
     # bq = ADRV9371 (the AD9371 eval board; pyadi `adi.ad9371`) on ZC706,
     # JTAG-recovery boot. The place tag and pyadi HW smoke marker are both
     # "adrv9371", so that is the part key (matching is part==daughter-board).
+    # `ad9371` (the chip name) is an alias so `--part ad9371` resolves here.
+    aliases:
+      - ad9371
     image: 2023_R2_P1
     carriers:
       zc706: {}
+  daq3:
+    # nuc = FMCDAQ3 on VCU118 (pyadi `adi.DAQ3` = AD9152 DAC + AD9680 ADC).
+    # Boots by loading the FPGA fabric over JTAG (BootFabric, no Kuiper image),
+    # so `image` is omitted. The nuc place carries boot-strategy=BootFabric.
+    carriers:
+      vcu118: {}

@@ -44,9 +44,12 @@ def match_places(
     carrier: str | None = None,
     bootfile: str | None = None,
 ) -> MatchResult:
-    entry = catalog.boards.get(part)
-    if entry is None:
+    resolved = catalog.lookup(part)
+    if resolved is None:
         return MatchResult(satisfiable=False, reason=f"unknown part: {part!r}")
+    # `part` may be an alias (e.g. ad9371); `board` is the canonical key, which
+    # equals the place's daughter-board tag. Match and reserve on `board`.
+    board, entry = resolved
 
     if carrier is not None and carrier not in entry.carriers:
         return MatchResult(
@@ -54,12 +57,12 @@ def match_places(
             reason=f"carrier {carrier!r} not valid for part {part!r}",
         )
 
-    candidates = _candidates(places, part, carrier)
+    candidates = _candidates(places, board, carrier)
     if not candidates:
-        where = f"{part!r}" + (f" on {carrier!r}" if carrier else "")
+        where = f"{board!r}" + (f" on {carrier!r}" if carrier else "")
         return MatchResult(satisfiable=False, reason=f"no live place for {where}")
 
-    reservation_filter = {"daughter-board": part}
+    reservation_filter = {"daughter-board": board}
     if carrier is not None:
         reservation_filter["carrier"] = carrier
 

@@ -91,6 +91,47 @@ def test_match_adrv9371_resolves_jtag_recovery_place():
     assert res.place == "bq"
 
 
+# An alias lets a chip name (ad9371) resolve to its eval board (adrv9371). The
+# reservation filter must use the CANONICAL daughter-board so it matches the
+# place tag, never the alias the caller happened to type.
+ALIAS_CATALOG = BoardCatalog.model_validate(
+    {
+        "boards": {
+            "adrv9371": {
+                "aliases": ["ad9371"],
+                "image": "2023_R2_P1",
+                "carriers": {"zc706": {}},
+            }
+        }
+    }
+)
+
+
+def test_match_alias_resolves_to_canonical_board():
+    places = [_place("bq", part="adrv9371", carrier="zc706", strategy="BootZynq7000JTAGRecovery")]
+    res = match_places(ALIAS_CATALOG, places, part="ad9371", carrier="zc706")
+    assert res.satisfiable is True
+    # filter targets the real place tag (adrv9371), not the requested alias.
+    assert res.reservation_filter == {"daughter-board": "adrv9371", "carrier": "zc706"}
+    assert res.strategy == "BootZynq7000JTAGRecovery"
+    assert res.place == "bq"
+
+
+# daq3 on vcu118 (nuc) boots by loading the FPGA fabric via JTAG (BootFabric);
+# it has no downloadable Kuiper image, so image resolves to None.
+FABRIC_CATALOG = BoardCatalog.model_validate({"boards": {"daq3": {"carriers": {"vcu118": {}}}}})
+
+
+def test_match_daq3_resolves_bootfabric_place_with_no_image():
+    places = [_place("nuc", part="daq3", carrier="vcu118", strategy="BootFabric")]
+    res = match_places(FABRIC_CATALOG, places, part="daq3", carrier="vcu118")
+    assert res.satisfiable is True
+    assert res.reservation_filter == {"daughter-board": "daq3", "carrier": "vcu118"}
+    assert res.strategy == "BootFabric"
+    assert res.image is None
+    assert res.place == "nuc"
+
+
 def test_match_without_carrier_omits_carrier_from_filter():
     places = [_place("p1", part="adrv9002", carrier="zcu102", strategy="BootFPGASoC")]
     res = match_places(CATALOG, places, part="adrv9002")
