@@ -64,3 +64,33 @@ def test_resolve_image_honors_pin(tmp_path):
 def test_load_catalog_empty_file_returns_empty(tmp_path):
     cat = load_catalog(_write(tmp_path, ""))
     assert cat.boards == {}
+
+
+# The real catalog file shipped into the API image (repo-root copy). A place
+# tagged for a part that has no entry here surfaces to users as "unknown part",
+# so this file must keep pace with the lab's advertised places.
+SHIPPED_CATALOG = Path(__file__).resolve().parent.parent / "board_catalog.yaml"
+
+
+def test_shipped_catalog_declares_every_lab_board():
+    """Each coordinator place's daughter-board must have a catalog entry.
+
+    Lab places (2026-06): mini2=adrv9002/zcu102 (BootFPGASoC),
+    nemo=adrv9009/zc706 and bq=adrv9371/zc706 (BootZynq7000JTAGRecovery).
+    adrv9371 is the AD9371 eval board (pyadi ``adi.ad9371``; the HW smoke
+    test marks ``iio_hardware('adrv9371')``).
+    """
+    cat = load_catalog(str(SHIPPED_CATALOG))
+    assert "adrv9002" in cat.boards and "zcu102" in cat.boards["adrv9002"].carriers
+    assert "adrv9009" in cat.boards and "zc706" in cat.boards["adrv9009"].carriers
+    assert "adrv9371" in cat.boards and "zc706" in cat.boards["adrv9371"].carriers
+
+
+def test_shipped_catalog_images_are_pinned_not_placeholders():
+    """Every shipped entry pins a real KuiperRelease version, never a
+    ``kuiper-...`` placeholder (a placeholder would break a real boot)."""
+    cat = load_catalog(str(SHIPPED_CATALOG))
+    for name, entry in cat.boards.items():
+        assert not entry.image.startswith("kuiper-"), (
+            f"{name!r} image is a placeholder: {entry.image!r}"
+        )

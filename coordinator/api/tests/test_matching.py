@@ -56,6 +56,41 @@ def test_match_returns_filter_image_and_strategy():
     assert res.place == "p1"
 
 
+# The zc706 daughter-boards (nemo=adrv9009, bq=adrv9371) boot via JTAG
+# recovery rather than the adrv9002 SD-mux/Kuiper path. Matching is generic,
+# but lock the part->place/strategy resolution so a regression in either the
+# 1:1 part==daughter-board contract or the boot-strategy passthrough is caught.
+JTAG_CATALOG = BoardCatalog.model_validate(
+    {
+        "boards": {
+            "adrv9009": {"image": "2023_R2_P1", "carriers": {"zc706": {}}},
+            "adrv9371": {"image": "2023_R2_P1", "carriers": {"zc706": {}}},
+        }
+    }
+)
+
+
+def test_match_adrv9009_resolves_jtag_recovery_place():
+    places = [_place("nemo", part="adrv9009", carrier="zc706", strategy="BootZynq7000JTAGRecovery")]
+    res = match_places(JTAG_CATALOG, places, part="adrv9009", carrier="zc706")
+    assert res.satisfiable is True
+    assert res.reservation_filter == {"daughter-board": "adrv9009", "carrier": "zc706"}
+    assert res.image == "2023_R2_P1"
+    assert res.strategy == "BootZynq7000JTAGRecovery"
+    assert res.place == "nemo"
+
+
+def test_match_adrv9371_resolves_jtag_recovery_place():
+    # adrv9371 == the AD9371 eval board (pyadi adi.ad9371); the place tag and
+    # the pyadi HW smoke marker are both "adrv9371", so that is the part key.
+    places = [_place("bq", part="adrv9371", carrier="zc706", strategy="BootZynq7000JTAGRecovery")]
+    res = match_places(JTAG_CATALOG, places, part="adrv9371", carrier="zc706")
+    assert res.satisfiable is True
+    assert res.reservation_filter == {"daughter-board": "adrv9371", "carrier": "zc706"}
+    assert res.strategy == "BootZynq7000JTAGRecovery"
+    assert res.place == "bq"
+
+
 def test_match_without_carrier_omits_carrier_from_filter():
     places = [_place("p1", part="adrv9002", carrier="zcu102", strategy="BootFPGASoC")]
     res = match_places(CATALOG, places, part="adrv9002")
