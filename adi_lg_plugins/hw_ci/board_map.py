@@ -22,6 +22,7 @@ toolbox-specific.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -118,3 +119,43 @@ def load_board_map(path: str | Path) -> BoardMap:
             )
         )
     return BoardMap(entries=tuple(entries))
+
+
+@dataclass(frozen=True)
+class MatlabLeg:
+    """One MATLAB CI leg: which part/carrier to request + the MATLAB board name."""
+
+    part: str  # = the place's daughter-board (what `adi-lg request --part` reserves)
+    carrier: str
+    runner: str | None  # the place's `runner` tag (CI runner label); None -> workflow fallback
+    matlab_board: str  # the runHWTests(<board>) argument
+
+
+def build_matlab_matrix(
+    places: Iterable[Place],
+    board_map: BoardMap,
+) -> tuple[list[MatlabLeg], list[str]]:
+    """Split live places into MATLAB legs + the names of unmapped (skipped) places.
+
+    One leg per FREE place whose tags resolve to a MATLAB board name via
+    ``board_map``. Acquired places are skipped silently (contention, not a config
+    gap). A live, free place with no board-map entry is returned in ``skipped`` so
+    the caller can annotate it (the toolbox has no test entry point for it)."""
+    legs: list[MatlabLeg] = []
+    skipped: list[str] = []
+    for place in places:
+        if place.is_acquired:
+            continue
+        matlab_board = board_map.lookup(place)
+        if matlab_board is None:
+            skipped.append(place.name)
+            continue
+        legs.append(
+            MatlabLeg(
+                part=place.daughter_board,
+                carrier=place.carrier,
+                runner=place.extra_tags.get("runner"),
+                matlab_board=matlab_board,
+            )
+        )
+    return legs, skipped
