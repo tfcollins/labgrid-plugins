@@ -128,6 +128,57 @@ The API server exposes the following endpoints:
 - ``PUT /api/places/{name}/comment`` - Set comment
 - ``POST /api/places/{name}/matches`` - Add resource match
 - ``DELETE /api/places/{name}/matches`` - Remove resource match
+- ``GET /api/places/{name}/env-yaml`` - Render a labgrid client env YAML for the
+  place and return it as a downloadable ``application/x-yaml`` attachment. Query
+  param ``tier`` (one of ``shell`` | ``drivers`` | ``boot``, default ``shell``)
+  selects how much of the stack to emit; the ``boot`` tier resolves the place's
+  boot strategy. Returns ``404`` for an unknown place and ``422`` for an invalid
+  tier. Consumed by the ``hw-matrix-v2`` workflow's env-render step.
+
+**Matching / Catalog**
+
+- ``GET /api/match`` - Decide whether a part can be satisfied by a live board and
+  how to provision it. Query params: ``part`` (required, e.g. ``adrv9002``),
+  ``carrier`` (optional FPGA carrier), ``bootfile`` (optional image/version pin),
+  and ``mode`` (``uri`` | ``flash``, default ``uri``). It only decides
+  satisfiability and returns the provisioning plan; it never acquires or
+  reserves. Consumed by the ``hw-request``, ``noos-hw-request``, and
+  ``hw-matrix-v2`` workflows. Returns a ``MatchResult``:
+
+  .. code-block:: json
+
+     {
+       "satisfiable": true,
+       "reservation_filter": {"daughter-board": "adrv9002"},
+       "image": "2023_R2_P1",
+       "strategy": "BootFPGASoC",
+       "place": "my-zcu102",
+       "runner": "hw-runner-1",
+       "flash": null,
+       "reason": null
+     }
+
+  ``satisfiable`` is ``false`` (with a ``reason``) for an unknown part, a part
+  with no ``flash`` support in ``mode=flash``, an invalid carrier, or no live
+  place. ``place`` / ``runner`` are an informational free candidate; ``flash``
+  carries the no-os flash metadata only when ``mode=flash``.
+
+- ``GET /api/catalog`` - Return the board catalog (``part`` -> default image,
+  aliases, optional ``flash`` block, and valid carriers). Consumed by the
+  ``request-matrix`` discovery step.
+
+  .. code-block:: json
+
+     {
+       "boards": {
+         "adrv9002": {
+           "image": "2023_R2_P1",
+           "aliases": [],
+           "flash": null,
+           "carriers": {"zcu102": {}}
+         }
+       }
+     }
 
 **Resources**
 
