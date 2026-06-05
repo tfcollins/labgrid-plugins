@@ -9,10 +9,10 @@ name: no-os HW Request (low-config flash)
 # coordinator's live FLASH-capable boards (GET /api/match?mode=flash). A project
 # with no live board is annotated + skipped.
 #
-# Per leg: build projects/<noos_project> on the runner (needs Vivado + the HDL
-# .xsa for the carrier), then `adi-lg request --mode flash --firmware <.elf>`
-# which selects the board's BootNoOSJTAG strategy, xsdb-loads the firmware, and
-# asserts the validation banner.
+# Per leg: `adi-lg-hw-ci build-noos` sources the board's .xsa from the Kuiper
+# image (no NOOS_XSA_DIR required), composes the Vivado + libtinfo-shim env,
+# and runs make — the runner only needs Vivado installed. The resulting .elf +
+# bitstream are then flashed via `adi-lg request --mode flash`.
 
 on:
   workflow_call:
@@ -40,27 +40,44 @@ on:
       build-cmd:
         description: >-
           Shell command to build a project (cwd = consumer checkout). Receives
-          $NOOS_PROJECT and $CARRIER. Default builds the Xilinx project (HARDWARE
-          auto-detected from the project's .xsa, which must be provisioned).
+          $NOOS_PROJECT, $CARRIER, $BOARD, $RELEASE, and $VALIDATE_BANNER.
+          Default delegates to `adi-lg-hw-ci build-noos`, which sources Vivado,
+          ensures the libtinfo shim, fetches the board's .xsa from the Kuiper
+          image, and runs make — the runner only needs Vivado installed; no
+          NOOS_XSA_DIR or shim pre-provisioning required. Override this input
+          when a DUT needs extra make vars (build_vars forwarding is a future
+          enhancement).
         type: string
         default: |
-          make -C "projects/$NOOS_PROJECT"
+          adi-lg-hw-ci build-noos \
+            --project "$NOOS_PROJECT" \
+            --carrier "$CARRIER" \
+            --board "$BOARD" \
+            --release "$RELEASE" \
+            --validate "$VALIDATE_BANNER"
       firmware-path:
         description: "Built .elf path template ($NOOS_PROJECT expanded)."
         type: string
         default: "projects/$NOOS_PROJECT/build/$NOOS_PROJECT.elf"
       bitstream-path:
-        description: "Optional FPGA bitstream path to flash before the .elf ($NOOS_PROJECT expanded)."
+        description: >-
+          FPGA bitstream path to flash before the .elf ($NOOS_PROJECT expanded).
+          Defaults to build-noos's bitstream output location.
         type: string
-        default: ""
+        default: "projects/$NOOS_PROJECT/build_hw/system_top.bit"
       ps7-init-path:
-        description: "Optional ps7_init.tcl path for PS init ($NOOS_PROJECT expanded)."
+        description: >-
+          ps7_init.tcl path for PS init ($NOOS_PROJECT expanded).
+          Defaults to build-noos's ps7_init output location.
         type: string
-        default: ""
+        default: "projects/$NOOS_PROJECT/build_hw/ps7_init.tcl"
       validate-banner:
-        description: "Serial banner asserted on-target after flashing."
+        description: >-
+          Fallback serial banner asserted on-target after flashing (used when
+          matrix.validate_banner is empty). Each matrix leg uses its own
+          manifest-declared banner; override this input only as a global default.
         type: string
-        default: "Running IIOD server"
+        default: "Successfully initialized"
       wait:
         description: "Seconds each leg queues for a free matching board (0 = fail fast)."
         type: number
@@ -113,6 +130,9 @@ jobs:
       LG_COORDINATOR: ${{ inputs.coordinator }}
       NOOS_PROJECT: ${{ matrix.noos_project }}
       CARRIER: ${{ matrix.carrier }}
+      BOARD: ${{ matrix.board }}
+      RELEASE: ${{ matrix.release }}
+      VALIDATE_BANNER: ${{ matrix.validate_banner }}
     steps:
       - uses: actions/checkout@v4
       - uses: tfcollins/labgrid-plugins/.github/actions/setup-uv-venv@main
@@ -129,7 +149,7 @@ jobs:
           FW="$(eval echo "${{ inputs.firmware-path }}")"
           ARGS=(--part "${{ matrix.part }}" --carrier "${{ matrix.carrier }}" \
                 --mode flash --firmware "$FW" --wait "${{ inputs.wait }}" \
-                --validate "${{ inputs.validate-banner }}")
+                --validate "${{ matrix.validate_banner }}")
           if [ -n "${{ inputs.bitstream-path }}" ]; then
             ARGS+=(--bitstream "$(eval echo "${{ inputs.bitstream-path }}")")
           fi
