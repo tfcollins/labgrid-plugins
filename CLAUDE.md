@@ -124,6 +124,10 @@ This repo also hosts the **reusable GitHub Actions workflow** that sibling repos
 
 Consumer repos pin via `uses: tfcollins/labgrid-plugins/.github/workflows/hw-matrix.yml@v<tag>`. This repo must stay **public** for cross-org callers to skip the allowlist gate.
 
+### Onboarding a consumer repo
+
+To wire a **new** repo onto this hardware-CI flow (uri/flash/matlab), follow **`AGENTS.md`** at the repo root — the canonical, executable onboarding recipe for AI agents and humans. The human reference + copy-paste templates live in `docs/source/user-guide/onboarding-a-consumer-repo.rst` and `docs/source/onboarding-templates/`. Don't reverse-engineer the wiring from the per-flow reference pages; start there.
+
 ### labgrid dependency
 
 Both `pyproject.toml` and `coordinator/api/pyproject.toml` depend on upstream `labgrid>=25.0` (PyPI). There is **no** fork pin and no `lint-labgrid-pin` CI job anymore.

@@ -1,0 +1,29 @@
+# Reference — these entries live in the COORDINATOR, not your consumer repo. A lab admin
+# adds them to coordinator/api/board_catalog.yaml and redeploys the API. You need one
+# entry per `part` your tests/manifest reference, plus a live `place` tagged for it.
+#
+# Schema (source of truth): coordinator/api/app/catalog.py (BoardEntry / FlashConfig).
+# A live place must also carry tags: daughter-board=<part>, carrier=<carrier>,
+# boot-strategy=<Strategy>, and optionally runner=<gh-runner-label>. Set via:
+#   labgrid-client -x <coordinator>:20408 -p <place> set-tags \
+#       daughter-board=<part> carrier=<carrier> boot-strategy=BootFPGASoC runner=hw-<host>
+
+# --- uri-mode board (Kuiper boot; pyadi-style) ---------------------------------------
+<part>:                       # canonical key == the place's daughter-board tag
+  image: 2023_R2_P1           # Kuiper release to boot by default
+  aliases: [<chip-name>]      # optional: alt names that resolve here (e.g. ad9371 -> adrv9371)
+  carriers:
+    <carrier>: {}             # e.g. zcu102, zc706
+
+# --- flash-mode board (no-os firmware) -----------------------------------------------
+<part>:
+  image: 2023_R2_P1           # Kuiper release the board's .xsa is sourced from
+  aliases: [<chip-name>]
+  flash:
+    strategy: BootNoOSJTAG
+    noos_project: <project>   # projects/<noos_project> the consumer builds
+    # Add ONLY when the board's Kuiper boot folder is named for a FAMILY that the
+    # *<carrier>*<board>* search misses (e.g. adrv9371 lives in ...-adrv937x):
+    # kuiper_xsa_dir: zynq-zc706-adv7511-adrv937x
+  carriers:
+    <carrier>: {}

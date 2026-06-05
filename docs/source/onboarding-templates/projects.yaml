@@ -1,0 +1,22 @@
+# Template — copy into <consumer-repo>/tools/hw_ci/projects.yaml; replace <PLACEHOLDERS>.
+#
+# The flash-mode manifest: maps each buildable project to the coordinator `part` it
+# flashes onto and the FPGA carriers it supports. `adi-lg-hw-ci noos-matrix` intersects
+# this with live flash-capable boards -> one build + JTAG-flash + validate leg per
+# buildable project that has a live board; the rest are annotated as skipped.
+#
+# Schema (source of truth): adi_lg_plugins/hw_ci/noos_manifest.py (NoOSProject).
+projects:
+  - noos_project: <PROJECT>        # projects/<noos_project> to build
+    part: <PART>                   # coordinator part to flash onto (may be a catalog alias)
+    carriers: [<CARRIER>]          # FPGA carriers, preference order (>= 1 required)
+    validate_banner: "Successfully initialized"  # optional; serial success marker (default shown)
+    build_vars: {}                 # optional extra `make` vars, e.g. {EXAMPLE: iio_example}
+
+  # Repeat per project. Example (the proven first cut):
+  # - noos_project: adrv9009
+  #   part: adrv9009
+  #   carriers: [zc706]
+  # - noos_project: ad9371
+  #   part: ad9371                  # alias -> adrv9371 in the coordinator catalog
+  #   carriers: [zc706]
