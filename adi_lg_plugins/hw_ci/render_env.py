@@ -147,6 +147,7 @@ def render_env(
         # request injects the real per-build values via extra_subs.
         "firmware_elf": place.extra_tags.get("firmware-elf", ""),
         "boot_marker": place.extra_tags.get("boot-marker", "Successfully initialized"),
+        "a9_target_name": place.extra_tags.get("a9-target-name", "*Cortex-A9 MPCore #0"),
     }
     if extra_subs:
         subs.update({str(k): str(v) for k, v in extra_subs.items()})

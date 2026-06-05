@@ -132,7 +132,7 @@ jobs:
       CARRIER: ${{ matrix.carrier }}
       BOARD: ${{ matrix.board }}
       RELEASE: ${{ matrix.release }}
-      VALIDATE_BANNER: ${{ matrix.validate_banner }}
+      VALIDATE_BANNER: ${{ matrix.validate_banner || inputs.validate-banner }}
     steps:
       - uses: actions/checkout@v4
       - uses: tfcollins/labgrid-plugins/.github/actions/setup-uv-venv@main
@@ -149,7 +149,7 @@ jobs:
           FW="$(eval echo "${{ inputs.firmware-path }}")"
           ARGS=(--part "${{ matrix.part }}" --carrier "${{ matrix.carrier }}" \
                 --mode flash --firmware "$FW" --wait "${{ inputs.wait }}" \
-                --validate "${{ matrix.validate_banner }}")
+                --validate "${{ matrix.validate_banner || inputs.validate-banner }}")
           if [ -n "${{ inputs.bitstream-path }}" ]; then
             ARGS+=(--bitstream "$(eval echo "${{ inputs.bitstream-path }}")")
           fi
