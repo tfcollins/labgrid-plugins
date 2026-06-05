@@ -214,7 +214,7 @@ def test_flash_mode_renders_bootnoosjtag_and_yields_console(patched_flash):
         mode="flash",
         firmware="/b/ad9371.elf",
         bitstream="/b/sys.bit",
-        validate="Running IIOD server",
+        validate="CUSTOM BANNER",
     ) as board:
         assert board.console == "CONSOLE"
         assert board.uri is None
@@ -226,7 +226,7 @@ def test_flash_mode_renders_bootnoosjtag_and_yields_console(patched_flash):
     assert kw["strategy"] == "BootNoOSJTAG"
     assert kw["extra_subs"]["firmware_elf"] == "/b/ad9371.elf"
     assert kw["extra_subs"]["bitstream_path"] == "/b/sys.bit"
-    assert kw["extra_subs"]["boot_marker"] == "Running IIOD server"
+    assert kw["extra_subs"]["boot_marker"] == "CUSTOM BANNER"
     assert patched_flash["released"] == "bq"
 
 
