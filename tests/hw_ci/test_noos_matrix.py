@@ -44,9 +44,11 @@ projects:
 
 def test_build_noos_matrix_splits_runnable_and_missing():
     projs = [
-        NoOSProject("adrv9009", "adrv9009", ["zc706"]),
-        NoOSProject("ad9371", "ad9371", ["zc706"]),
-        NoOSProject("ad7768", "ad7768", ["maxim"]),  # no flash-capable board
+        NoOSProject(noos_project="adrv9009", part="adrv9009", carriers=["zc706"]),
+        NoOSProject(noos_project="ad9371", part="ad9371", carriers=["zc706"]),
+        NoOSProject(
+            noos_project="ad7768", part="ad7768", carriers=["maxim"]
+        ),  # no flash-capable board
     ]
     live = {("adrv9009", "zc706"): "hw-nemo", ("ad9371", "zc706"): "hw-bq"}
 
@@ -63,7 +65,7 @@ def test_build_noos_matrix_splits_runnable_and_missing():
 
 
 def test_build_noos_matrix_picks_first_satisfiable_carrier():
-    projs = [NoOSProject("ad9371", "ad9371", ["vcu118", "zc706"])]
+    projs = [NoOSProject(noos_project="ad9371", part="ad9371", carriers=["vcu118", "zc706"])]
 
     def probe(part, carrier):
         return _match(carrier == "zc706", runner="hw-bq")
