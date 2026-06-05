@@ -215,3 +215,30 @@ def test_bootfpgasoctftp_tftp_root_overridable_via_tag():
     out = render_env(p)
     assert "root: /var/lib/labgrid-tftp" in out
     assert "/tmp/labgrid-tftp-bq" not in out
+
+
+def test_bootnoosjtag_boot_marker_defaults_to_successfully_initialized():
+    """Without a boot-marker tag, BootNoOSJTAG renders the unified default banner."""
+    p = Place(
+        name="noos1",
+        carrier="zc706",
+        daughter_board="ad9361",
+        boot_strategy="BootNoOSJTAG",
+    )
+    out = render_env(p)
+    assert "boot_marker: 'Successfully initialized'" in out
+    assert "Running IIOD server" not in out
+
+
+def test_bootnoosjtag_boot_marker_overridable_via_tag():
+    """A boot-marker tag on the place overrides the default banner."""
+    p = Place(
+        name="noos2",
+        carrier="zc706",
+        daughter_board="ad9361",
+        boot_strategy="BootNoOSJTAG",
+        extra_tags={"boot-marker": "custom banner text"},
+    )
+    out = render_env(p)
+    assert "boot_marker: 'custom banner text'" in out
+    assert "Successfully initialized" not in out
