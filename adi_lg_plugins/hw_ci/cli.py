@@ -199,6 +199,10 @@ def _cmd_noos_matrix(args: argparse.Namespace) -> int:
                 "noos_project": leg.noos_project,
                 "carrier": leg.carrier,
                 "runner": leg.runner or "",
+                "board": leg.board or "",
+                "release": leg.release or "",
+                "validate_banner": leg.validate_banner,
+                "build_vars": leg.build_vars,
             }
             for leg in legs
         ]
