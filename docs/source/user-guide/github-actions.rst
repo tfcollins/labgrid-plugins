@@ -703,8 +703,9 @@ Each per-board leg in the reusable workflows pins its runner with:
 The ``matrix.runner`` value comes from the place's ``runner`` tag on the
 coordinator — it is the label of the GitHub Actions runner co-located with
 that board.  When a place carries no ``runner`` tag the workflow falls back
-to ``inputs.runner-label`` (or ``inputs.runner-label`` / ``inputs.dynamic_runner_label_default``
-depending on the workflow).
+to its ``runner-label`` input (the ``hw-request`` / ``noos-hw-request`` /
+``hw-matrix-v2`` workflows), or to ``dynamic_runner_label_default`` in
+``hw-matrix.yml``'s dynamic mode.
 
 **Cross-org consumers** must register the lab runners on their repo or org
 scope using ``register-hw-runners.sh --scopes``.  If no runner carrying the
