@@ -29,3 +29,4 @@ targets:
         bitstream_path: '${bitstream_path}'
         ps7_init_tcl: '${ps7_init_tcl}'
         boot_marker: '${boot_marker}'
+        a9_target_name: '${a9_target_name}'

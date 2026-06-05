@@ -242,3 +242,36 @@ def test_bootnoosjtag_boot_marker_overridable_via_tag():
     out = render_env(p)
     assert "boot_marker: 'custom banner text'" in out
     assert "Successfully initialized" not in out
+
+
+def test_bootnoosjtag_a9_target_name_defaults_in_rendered_yaml():
+    """BootNoOSJTAG renders a9_target_name with the default value when no override
+    is supplied.  Prior to the fix, the placeholder was absent from the template
+    so safe_substitute silently dropped the key and the literal
+    ${a9_target_name} would have leaked."""
+    p = Place(
+        name="noos3",
+        carrier="zc706",
+        daughter_board="ad9361",
+        boot_strategy="BootNoOSJTAG",
+    )
+    out = render_env(p)
+    assert "a9_target_name:" in out
+    assert "*Cortex-A9 MPCore #0" in out
+    assert "${a9_target_name}" not in out
+
+
+def test_bootnoosjtag_a9_target_name_override_via_extra_subs():
+    """Passing extra_subs={"a9_target_name": ...} overrides the default, so a
+    per-board JTAG target selection (e.g. dual-core index #1) reaches the
+    rendered env yaml."""
+    p = Place(
+        name="noos4",
+        carrier="zc706",
+        daughter_board="ad9361",
+        boot_strategy="BootNoOSJTAG",
+    )
+    out = render_env(p, extra_subs={"a9_target_name": "*Cortex-A9 MPCore #1"})
+    assert "*Cortex-A9 MPCore #1" in out
+    assert "*Cortex-A9 MPCore #0" not in out
+    assert "${a9_target_name}" not in out
