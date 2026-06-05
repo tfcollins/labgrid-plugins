@@ -316,3 +316,64 @@ def test_request_reserve_uses_grpc_coord(patched):
     with core.request(part="adrv9002"):
         pass
     assert patched["reserve_coord"] == "10.0.0.41:20408"
+
+
+# ── flash a9_target_name forwarding ──────────────────────────────────────────
+
+
+def _flash_match_with_a9():
+    return MatchResult(
+        satisfiable=True,
+        reservation_filter={"daughter-board": "adrv9371", "carrier": "zc706"},
+        image=None,
+        strategy="BootNoOSJTAG",
+        place="bq",
+        flash={
+            "strategy": "BootNoOSJTAG",
+            "noos_project": "ad9371",
+            "a9_target_name": "*Cortex-A9 MPCore #1",
+        },
+    )
+
+
+def test_flash_request_forwards_a9_target_name(monkeypatch):
+    """When match.flash includes a9_target_name, it must be injected into extra_subs."""
+    state = {"render_kw": None}
+
+    monkeypatch.setattr(core, "resolve_coordinator", lambda c: "coord:20408")
+    monkeypatch.setattr(core.match_client, "get_match", lambda coord, **k: _flash_match_with_a9())
+    monkeypatch.setattr(
+        core.reservation,
+        "reserve_and_acquire",
+        lambda c, *a, **k: Reservation(place="bq", token="t"),
+    )
+    monkeypatch.setattr(core.reservation, "release", lambda c, res, **k: None)
+
+    def fake_place(coord, name):
+        p = FakePlace(name=name)
+        p.carrier = "zc706"
+        p.daughter_board = "adrv9371"
+        p.boot_strategy = "BootZynq7000JTAGRecovery"
+        return p
+
+    monkeypatch.setattr(core, "_concrete_place", fake_place)
+
+    def fake_render(place, **kw):
+        state["render_kw"] = kw
+        return "/tmp/env.yaml"
+
+    monkeypatch.setattr(core, "_render_env", fake_render)
+    monkeypatch.setattr(core, "_boot", lambda env, strat, *, image, target_name="main": MagicMock())
+    monkeypatch.setattr(core, "_get_console", lambda tg: "CONSOLE")
+    monkeypatch.setattr(
+        core,
+        "resolve_uri",
+        lambda tg: (_ for _ in ()).throw(AssertionError("no URI in flash mode")),
+    )
+    monkeypatch.setattr(core, "_cleanup_target", lambda tg: None)
+
+    with core.request(part="ad9371", mode="flash", firmware="/b/ad9371.elf") as board:
+        assert board.console == "CONSOLE"
+
+    kw = state["render_kw"]
+    assert kw["extra_subs"]["a9_target_name"] == "*Cortex-A9 MPCore #1"

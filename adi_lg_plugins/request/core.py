@@ -182,6 +182,8 @@ def request(
                 subs["ps7_init_tcl"] = ps7_init
             if validate:
                 subs["boot_marker"] = validate
+            if match.flash and match.flash.get("a9_target_name"):
+                subs["a9_target_name"] = match.flash["a9_target_name"]
             env_path = _render_env(place, strategy=strategy_name, extra_subs=subs)
             target = _boot(env_path, strategy_name, image=None, target_name=target_name)
             console = _get_console(target)
