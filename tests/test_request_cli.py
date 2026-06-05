@@ -57,14 +57,14 @@ def test_request_flash_mode_passes_firmware_through(monkeypatch):
             "--bitstream",
             "/b/sys.bit",
             "--validate",
-            "Running IIOD server",
+            "CUSTOM BANNER",
         ],
     )
     assert result.exit_code == 0
     assert fake.kwargs["mode"] == "flash"
     assert fake.kwargs["firmware"] == "/b/ad9371.elf"
     assert fake.kwargs["bitstream"] == "/b/sys.bit"
-    assert fake.kwargs["validate"] == "Running IIOD server"
+    assert fake.kwargs["validate"] == "CUSTOM BANNER"
 
 
 def test_request_no_run_prints_uri(monkeypatch):

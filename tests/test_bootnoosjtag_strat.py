@@ -23,7 +23,7 @@ def _make_strategy(**overrides):
 
     cfg = {
         "firmware_elf": "/tmp/fw.elf",
-        "boot_marker": "Running IIOD server",
+        "boot_marker": "CUSTOM BANNER",
         "boot_timeout": 30,
         "power_settle_time": 0,
     }
@@ -89,7 +89,7 @@ def test_shell_flashes_elf_and_validates_banner():
     assert s.shell.bypass_login is True
     s.shell.console.expect.assert_called_once()
     args, kwargs = s.shell.console.expect.call_args
-    assert "Running IIOD server" in (list(args) + list(kwargs.values()))
+    assert "CUSTOM BANNER" in (list(args) + list(kwargs.values()))
     assert s.status == Status.shell
 
 
