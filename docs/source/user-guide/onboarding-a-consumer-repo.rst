@@ -42,14 +42,12 @@ Step 1 — choose a mode
      - a ``tools/hw_ci/projects.yaml`` manifest
    * - runs MATLAB ``runHWTests`` against a URI
      - ``matlab``
-     - (bespoke) ``hw-matlab.yml``
-     - custom + ``board_map.yaml``
+     - ``matlab-hw-request.yml``
+     - ``board_map.yaml``
 
 Reference consumers: **pyadi-iio** (uri), **no-os** (flash), **TransceiverToolbox**
 (matlab). See :doc:`github-actions` for the full when-to-use comparison of every reusable
-workflow. MATLAB is bespoke — copy the pattern from TransceiverToolbox's
-``hw-matlab.yml`` and the ``adi-lg-matlab`` launcher rather than a template. The rest of
-this guide covers **uri** and **flash**.
+workflow. The per-mode sections below cover **uri**, **flash**, and **matlab**.
 
 Step 2 — what you'll touch
 --------------------------
@@ -113,6 +111,33 @@ The reusable workflow's ``build-noos`` step sources each board's HDL ``.xsa`` fr
 Kuiper image and composes the Vivado env — the runner only needs Vivado/Vitis installed.
 See :doc:`hardware-ci-runner-setup` for the runner details.
 
+matlab mode (MATLAB ``runHWTests``)
+-----------------------------------
+
+**Workflow** — copy into ``.github/workflows/hw-matlab.yml``:
+
+.. literalinclude:: ../onboarding-templates/matlab-hw-request.yml
+   :language: yaml
+
+**Board map** — ``test/hw_ci/board_map.yaml`` maps each board's
+``(daughter-board, carrier, hdl-config)`` to the MATLAB board name passed to
+``runHWTests`` (most-specific entry wins):
+
+.. code-block:: yaml
+
+   boards:
+     - {carrier: zcu102, daughter-board: adrv9002, matlab_board: zynqmp-zcu102-rev10-adrv9002-vcmos}
+     - {daughter-board: pluto, matlab_board: pluto}
+
+``runHWTests.m`` reads the URI from ``$IIO_URI`` (exported by ``adi-lg request``) and emits
+``<matlab_board>_HWTestResults.xml`` — no test-side changes are needed. The leg runner must
+have MATLAB installed. Verify discovery with:
+
+.. code-block:: bash
+
+   export LG_COORDINATOR=<host>:20408
+   adi-lg-hw-ci matlab-matrix --board-map test/hw_ci/board_map.yaml --coord "$LG_COORDINATOR"
+
 Step 3 — set the three repo variables
 -------------------------------------
 
@@ -166,6 +191,9 @@ the markers/manifest + catalog + places line up:
 
    # flash mode
    adi-lg-hw-ci noos-matrix --manifest tools/hw_ci/projects.yaml --coord "$LG_COORDINATOR"
+
+   # matlab mode
+   adi-lg-hw-ci matlab-matrix --board-map test/hw_ci/board_map.yaml --coord "$LG_COORDINATOR"
 
 **Success** is one ``matrix.include`` leg per board you expect, each with a non-empty
 ``runner``. A wanted board with no live place is emitted as a ``::warning::`` skip (fix it

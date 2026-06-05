@@ -23,12 +23,12 @@ labgrid drivers/strategies or touches a board directly.
 |---|---|---|---|
 | runs **Python/pytest** against a booted Linux board over libIIO (a URI) | **uri** | `hw-request.yml` | `@pytest.mark.iio_hardware(["<part>"])` markers |
 | builds **bare-metal firmware**, JTAG-flashes it, validates over serial | **flash** | `noos-hw-request.yml` | a `tools/hw_ci/projects.yaml` manifest |
-| runs **MATLAB** `runHWTests` against a URI | **matlab** | (bespoke) `hw-matlab.yml` | custom + `test/hw_ci/board_map.yaml` |
+| runs **MATLAB** `runHWTests` against a URI | **matlab** | `matlab-hw-request.yml` | a `board_map.yaml` |
 
-Reference consumers: pyadi-iio (uri), no-os (flash), TransceiverToolbox (matlab). For
-matlab, copy the pattern from `TransceiverToolbox/.github/workflows/hw-matlab.yml` and the
-`adi-lg-matlab` launcher — it is not a drop-in template. The rest of this file covers
-**uri** and **flash**.
+Reference consumers: pyadi-iio (uri), no-os (flash), TransceiverToolbox (matlab). Matlab
+now has a drop-in template at `onboarding-templates/matlab-hw-request.yml` and the
+reusable `matlab-hw-request.yml` workflow — see Step 2 below. The rest of this file covers
+all three modes.
 
 ## Step 2 — add the files to the consumer repo
 
@@ -47,6 +47,20 @@ Copy the matching template(s) from `docs/source/onboarding-templates/` and repla
 - `tools/hw_ci/projects.yaml` ← `projects.yaml` (one entry per buildable project).
 - Each `projects/<noos_project>/` must `make` an `.elf` (+ the workflow extracts the
   bitstream + ps7_init from the Kuiper `.xsa`).
+
+**matlab mode**
+- `.github/workflows/hw-matlab.yml` ← `matlab-hw-request.yml` (set `coordinator`, `runner-label`,
+  `preflight-runner-label`, `matlab-bin`).
+- `test/hw_ci/board_map.yaml` — maps `(daughter-board, carrier, hdl-config)` to the MATLAB board
+  name passed to `runHWTests`. Most-specific entry wins. Example:
+  ```yaml
+  boards:
+    - {carrier: zcu102, daughter-board: adrv9002, matlab_board: zynqmp-zcu102-rev10-adrv9002-vcmos}
+    - {daughter-board: pluto, matlab_board: pluto}
+  ```
+- `runHWTests.m` reads `$IIO_URI` (exported by `adi-lg request`) and emits
+  `<matlab_board>_HWTestResults.xml` — no test-side changes needed. The leg runner must
+  have MATLAB installed (+ a reachable license).
 
 Drop `docs/source/onboarding-templates/AGENTS-consumer-stub.md` into the consumer repo as
 its own `AGENTS.md` and fill in the wiring.
@@ -96,6 +110,9 @@ adi-lg-hw-ci request-matrix --test-root <test/hw> --coord "$LG_COORDINATOR"
 
 # flash mode: intersect the manifest with live flash-capable boards
 adi-lg-hw-ci noos-matrix --manifest tools/hw_ci/projects.yaml --coord "$LG_COORDINATOR"
+
+# matlab mode
+adi-lg-hw-ci matlab-matrix --board-map test/hw_ci/board_map.yaml --coord "$LG_COORDINATOR"
 ```
 
 **Success** = the printed `matrix.include` has one leg per board you expect, each with a
