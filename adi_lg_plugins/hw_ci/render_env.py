@@ -143,10 +143,10 @@ def render_env(
         "kernel_addr": place.extra_tags.get("kernel-addr", d_kernel_addr),
         "dtb_addr": place.extra_tags.get("dtb-addr", d_dtb_addr),
         # no-os flash mode (BootNoOSJTAG): the built firmware ELF + the serial
-        # banner to assert. Defaults empty / IIOD banner; the request injects
-        # the real per-build values via extra_subs.
+        # banner to assert. Defaults empty / "Successfully initialized"; the
+        # request injects the real per-build values via extra_subs.
         "firmware_elf": place.extra_tags.get("firmware-elf", ""),
-        "boot_marker": place.extra_tags.get("boot-marker", "Running IIOD server"),
+        "boot_marker": place.extra_tags.get("boot-marker", "Successfully initialized"),
     }
     if extra_subs:
         subs.update({str(k): str(v) for k, v in extra_subs.items()})
