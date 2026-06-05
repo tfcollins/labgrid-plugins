@@ -100,6 +100,35 @@ def _cmd_discover(args: argparse.Namespace) -> int:
     return 0
 
 
+def _emit_matrix(
+    matrix: dict,
+    *,
+    count: int,
+    missing: list[str],
+    kind: str,
+    github_output: bool,
+) -> None:
+    """Write the matrix to $GITHUB_OUTPUT (when asked), print it to stdout, and
+    emit a ``::warning::`` annotation per missing item. Shared by request-matrix
+    and noos-matrix so the GH-output + annotation tail lives in one place."""
+    if github_output:
+        gh_out = os.environ.get("GITHUB_OUTPUT")
+        if gh_out:
+            with open(gh_out, "a", encoding="utf-8") as f:
+                f.write(f"matrix={json.dumps(matrix)}\n")
+                f.write(f"count={count}\n")
+        else:
+            print("warning: --github-output given but $GITHUB_OUTPUT is unset", file=sys.stderr)
+
+    print(json.dumps(matrix, indent=2))
+    for item in missing:
+        print(
+            f"::warning::{kind}: {item!r} is wanted but no live board matches on the "
+            f"coordinator — skipping",
+            file=sys.stderr,
+        )
+
+
 def _cmd_request_matrix(args: argparse.Namespace) -> int:
     """Emit a part-keyed matrix: wanted parts (from markers) that have a live
     board (per GET /api/match). Missing parts are surfaced as GH annotations."""
@@ -127,26 +156,17 @@ def _cmd_request_matrix(args: argparse.Namespace) -> int:
     # workflow falls back to its default runner-label when this is empty.
     matrix = {"include": [{"part": leg.part, "runner": leg.runner or ""} for leg in result.parts]}
 
-    if args.github_output:
-        gh_out = os.environ.get("GITHUB_OUTPUT")
-        if gh_out:
-            with open(gh_out, "a", encoding="utf-8") as f:
-                f.write(f"matrix={json.dumps(matrix)}\n")
-                f.write(f"count={len(result.parts)}\n")
-        else:
-            print("warning: --github-output given but $GITHUB_OUTPUT is unset", file=sys.stderr)
-
-    print(json.dumps(matrix, indent=2))
+    _emit_matrix(
+        matrix,
+        count=len(result.parts),
+        missing=result.missing,
+        kind="request-matrix",
+        github_output=args.github_output,
+    )
     print(
         f"# request-matrix: {len(wanted)} wanted part(s), {len(result.parts)} available",
         file=sys.stderr,
     )
-    for p in result.missing:
-        print(
-            f"::warning::part {p!r} is wanted by tests but no live board is on the "
-            f"coordinator — skipping",
-            file=sys.stderr,
-        )
     return 0
 
 
@@ -184,26 +204,17 @@ def _cmd_noos_matrix(args: argparse.Namespace) -> int:
         ]
     }
 
-    if args.github_output:
-        gh_out = os.environ.get("GITHUB_OUTPUT")
-        if gh_out:
-            with open(gh_out, "a", encoding="utf-8") as f:
-                f.write(f"matrix={json.dumps(matrix)}\n")
-                f.write(f"count={len(legs)}\n")
-        else:
-            print("warning: --github-output given but $GITHUB_OUTPUT is unset", file=sys.stderr)
-
-    print(json.dumps(matrix, indent=2))
+    _emit_matrix(
+        matrix,
+        count=len(legs),
+        missing=missing,
+        kind="noos-matrix",
+        github_output=args.github_output,
+    )
     print(
         f"# noos-matrix: {len(projects)} project(s), {len(legs)} buildable on a live board",
         file=sys.stderr,
     )
-    for proj in missing:
-        print(
-            f"::warning::no-os project {proj!r} has no live flash-capable board on the "
-            f"coordinator — skipping",
-            file=sys.stderr,
-        )
     return 0
 
 
