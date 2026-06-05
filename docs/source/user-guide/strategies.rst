@@ -718,6 +718,159 @@ See ``examples/zynq7000_recovery/README.md`` for customization hooks
 
    Then ``sudo udevadm control --reload-rules`` and replug (or power-cycle the board, since the FT232H is bus-powered from it).
 
+BootNoOSJTAG Strategy
+---------------------
+
+**Purpose**: Flash and run a no-OS bare-metal firmware ELF on a Zynq-7000 board via JTAG —
+no Linux, SD card, or network libIIO involved. ``xsdb`` resets the SoC, optionally
+programs the FPGA PL (bitstream + ``ps7_init``), downloads the ``.elf`` with ``dow``,
+and starts it with ``con``. On-target validation is a serial-console banner assertion:
+the firmware prints a known string (e.g. the IIOD server start-up line) which is
+matched on the UART. no-OS has no shell prompt or login, so the bound
+``ADIShellDriver`` is used only to *read* the console (``bypass_login`` is set
+automatically). The terminal state is ``shell`` — firmware running and banner seen.
+
+This strategy is driven by the ``adi-lg request --mode flash`` workflow; see
+:doc:`hw-request` for the no-OS flash flow and :doc:`hardware-ci-runner-setup`
+for host prerequisites. The ``XilinxJTAGDriver`` driver performs the actual JTAG
+loading (see :ref:`xilinxjtagdriver`).
+
+**State Machine**:
+
+.. mermaid::
+
+   stateDiagram-v2
+       [*] --> unknown
+       unknown --> powered_off: Deactivate shell, power off
+       powered_off --> powered_on: Power on + settle
+       powered_on --> shell: JTAG load ELF → activate shell\n→ expect boot_marker
+
+       note right of powered_on
+           XilinxJTAGDriver.load_and_run_elf():
+           connect → rst -system → [fpga -f bit]
+           → [ps7_init] → dow elf → con
+       end note
+
+       note right of shell
+           ADIShellDriver reads console only
+           (bypass_login=True). boot_marker
+           confirms firmware is running.
+       end note
+
+**Bindings**:
+
+- ``power``: ``PowerProtocol`` (any power driver — ``HomeAssistantPowerDriver``,
+  ``VesyncPowerDriver``, ``CyberPowerDriver``, etc.)
+- ``jtag``: ``XilinxJTAGDriver``
+- ``shell``: ``ADIShellDriver``
+
+**Attributes**:
+
+- ``firmware_elf`` (str, **required**): Host path to the no-OS ``.elf`` built by the
+  ``no-os`` project. Injected by ``adi-lg request --mode flash``.
+- ``bitstream_path`` (str, default ``None``): Host path to the FPGA ``.bit`` bitstream.
+  Required when the firmware touches FPGA-fabric peripherals (AXI DMA, transceiver
+  cores, etc.); produced by the no-OS build's HDL ``.xsa``. If ``None``, the PL is
+  not programmed.
+- ``ps7_init_tcl`` (str, default ``None``): Host path to the ``ps7_init.tcl`` script
+  that initialises Zynq-7000 DDR, clocks, and MIO. Produced alongside the ``.xsa``.
+  If ``None``, PS initialisation is skipped (safe when a prior boot already
+  initialised the PS and power was not fully cut).
+- ``a9_target_name`` (str, default ``'*Cortex-A9 MPCore #0'``): ``xsdb``
+  ``targets -set -filter`` name pattern. The default matches Xilinx's generated
+  target name and is stable across Vivado versions.
+- ``boot_marker`` (str, default ``'Successfully initialized'``): Regular expression
+  or literal string waited for on the serial console after ELF start. Override
+  to match your firmware's actual banner.
+- ``boot_timeout`` (int, default ``60``): Seconds to wait for ``boot_marker`` after
+  ``xsdb`` returns.
+- ``power_settle_time`` (int, default ``2``): Seconds to wait between power-on and
+  JTAG attach.
+
+**Configuration Example**:
+
+.. code-block:: yaml
+
+   imports: [adi_lg_plugins]
+
+   targets:
+     zc706_noos:
+       resources:
+         RawSerialPort:
+           port: '/dev/serial/by-id/usb-Silicon_Labs_CP2103_USB_to_UART_Bridge_Controller_0001-if00-port0'
+           speed: 115200
+
+         HomeAssistantOutlet:
+           url: 'http://homeassistant.local:8123'
+           token: '${HA_TOKEN}'
+           entity_id: 'switch.zc706_power'
+
+         XilinxDeviceJTAG:
+           root_target: 1
+
+         XilinxVivadoTool:
+           vivado_path: '/opt/Xilinx/Vivado/2023.2'
+           xsdb_path: '/opt/Xilinx/Vivado/2023.2/bin/xsdb'
+
+       drivers:
+         SerialDriver: {}
+         HomeAssistantPowerDriver: {}
+         XilinxJTAGDriver: {}
+
+         ADIShellDriver:
+           prompt: ''
+           login_prompt: ''
+           username: 'root'
+           password: 'analog'
+
+         BootNoOSJTAG:
+           firmware_elf:    '/tmp/noos-build/ad9361_iio.elf'
+           bitstream_path:  '/tmp/noos-build/system_top.bit'
+           ps7_init_tcl:    '/tmp/noos-build/ps7_init.tcl'
+           boot_marker:     'Successfully initialized'
+           boot_timeout:    90
+
+**Usage Example**:
+
+.. code-block:: python
+
+   from labgrid import Environment
+
+   env = Environment("zc706_noos.yaml")
+   target = env.get_target("zc706_noos")
+   strategy = target.get_driver("BootNoOSJTAG")
+
+   # Power-cycle → JTAG flash → wait for banner
+   strategy.transition("shell")
+
+   # Read the console (no interactive shell — read-only)
+   console = target.get_driver("ADIShellDriver")
+   console.console.expect("IIOD server version", timeout=5)
+
+   # Power off when done
+   strategy.transition("powered_off")
+
+**Troubleshooting**:
+
+*``firmware_elf`` is required for BootNoOSJTAG*:
+   ``firmware_elf`` was not set in the strategy config or injected by
+   ``adi-lg request``. Confirm the attribute is present in the environment YAML
+   or passed by the ``--mode flash`` flow.
+
+*xsdb fails immediately (exit code non-zero)*:
+   Confirm the Digilent JTAG cable is plugged in and ``xsdb_path`` on
+   ``XilinxVivadoTool`` points to a valid binary. Run
+   ``xsdb -interactive`` on the exporter host and issue ``targets`` to verify
+   the cable is visible. See the ``XilinxJTAGDriver`` troubleshooting notes
+   in :doc:`drivers`.
+
+*Banner never arrives (boot_timeout exceeded)*:
+   Increase ``boot_timeout``. Verify ``boot_marker`` matches the actual
+   firmware output by watching the serial console manually. Ensure
+   ``bitstream_path`` and ``ps7_init_tcl`` are set when the firmware
+   accesses FPGA-fabric peripherals — without them, the firmware may hang
+   on the first AXI access.
+
 BootSelMap Strategy
 -------------------
 
