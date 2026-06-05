@@ -8,6 +8,14 @@ Hardware CI (v1, manifest-first)
    supported for projects that haven't migrated their tests to
    ``@pytest.mark.iio_hardware`` markers yet.
 
+   For **bare-metal no-os firmware** (build → JTAG-flash → on-target serial
+   validation), use the ``noos-hw-request.yml`` reusable workflow instead.
+   That flow is implemented end-to-end: ``adi-lg-hw-ci build-noos`` compiles
+   the firmware (sourcing Vivado, fetching the board's ``.xsa`` from the
+   Kuiper image automatically), and ``adi-lg request --mode flash`` programs
+   it via JTAG and asserts the serial banner. See
+   :doc:`hardware-ci-runner-setup` for setup and manifest reference.
+
 This repo ships a **reusable GitHub Actions workflow** that drives
 ``@pytest.mark.hardware`` tests against real boards. Sibling repos
 (pyadi-dt, pyadi-iio, vrt49) consume it via ``uses:`` and ship a small

@@ -20,4 +20,5 @@ Comprehensive guides for using adi-labgrid-plugins.
    hw-ci-v2
    hw-ci-bash
    hw-request
+   hardware-ci-runner-setup
    examples
