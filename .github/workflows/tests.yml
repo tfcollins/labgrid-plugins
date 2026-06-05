@@ -67,6 +67,15 @@ jobs:
           tests/hw_ci/test_markers_resolve_vars.py \
           tests/hw_ci/test_noos_matrix.py \
           tests/test_bootnoosjtag_strat.py \
+          tests/hw_ci/test_render_env.py \
+          tests/hw_ci/test_kuiper_xsa.py \
+          tests/hw_ci/test_build_noos.py \
+          tests/hw_ci/test_noos_manifest.py \
+          tests/hw_ci/test_coordinator_resolve_api.py \
+          tests/hw_ci/test_emit_matrix.py \
+          tests/hw_ci/test_fetch_xsa_cli.py \
+          tests/hw_ci/test_build_noos_cli.py \
+          tests/test_kuiperdl_download_image.py \
           tests/test_xilinx_jtag_driver_zynq.py
 
   coordinator-api:
