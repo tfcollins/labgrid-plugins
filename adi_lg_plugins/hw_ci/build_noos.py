@@ -15,6 +15,7 @@ from __future__ import annotations
 import glob
 import logging
 import os
+import re
 import subprocess
 import zipfile
 from pathlib import Path
@@ -41,7 +42,12 @@ def detect_vivado_settings() -> Path:
     else the newest match under the known install roots."""
     explicit = os.environ.get("VITIS_SETTINGS")
     if explicit:
-        return Path(explicit)
+        p = Path(explicit)
+        if not p.is_file():
+            raise FileNotFoundError(
+                f"VITIS_SETTINGS points to a non-existent settings file: {explicit}"
+            )
+        return p
     found: list[str] = []
     for pat in _VIVADO_GLOBS:
         found.extend(glob.glob(pat))
@@ -49,14 +55,19 @@ def detect_vivado_settings() -> Path:
         raise FileNotFoundError(
             f"no Vivado settings64.sh found under {_VIVADO_GLOBS}; set VITIS_SETTINGS to the path"
         )
-    return Path(sorted(found)[-1])
+
+    def _version_key(path: str) -> tuple[int, int]:
+        m = re.search(r"(\d+)\.(\d+)", path)
+        return (int(m.group(1)), int(m.group(2))) if m else (0, 0)
+
+    return Path(max(found, key=_version_key))
 
 
 def source_env(settings: Path) -> dict[str, str]:
     """Source ``settings`` in a subshell (tolerating unbound vars under set -u)
     and capture the resulting environment as a dict."""
     out = subprocess.check_output(
-        ["bash", "-c", f'set +u; source "{settings}" >/dev/null 2>&1; env -0'],
+        ["bash", "-c", 'set +u; source "$1" >/dev/null 2>&1; env -0', "--", str(settings)],
         text=True,
     )
     env: dict[str, str] = {}
@@ -65,6 +76,11 @@ def source_env(settings: Path) -> dict[str, str]:
             continue
         key, _, value = chunk.partition("=")
         env[key] = value
+    if not any(k in env for k in ("XILINX_VIVADO", "XILINX_VITIS")):
+        raise RuntimeError(
+            f"sourcing {settings} did not set XILINX_VIVADO/XILINX_VITIS — "
+            "the settings file may be wrong or failed to source"
+        )
     return env
 
 
@@ -83,7 +99,9 @@ def ensure_libtinfo_shim(shim_dir: str | None = None) -> Path:
     shim.mkdir(parents=True, exist_ok=True)
     for stem in _SHIM_STEMS:
         link = shim / f"{stem}.so.5"
-        if link.exists() or link.is_symlink():
+        if link.is_symlink() and not link.exists():
+            link.unlink()  # dangling — re-create below
+        elif link.exists():
             continue
         target = _find_so6(stem)
         if target is None:
@@ -137,7 +155,7 @@ def build_noos(
 
     build_hw = proj_dir / "build_hw"
     build_hw.mkdir(exist_ok=True)
-    with zipfile.ZipFile(xsa) as z:
+    with zipfile.ZipFile(proj_xsa) as z:
         for name in ("ps7_init.tcl", "system_top.bit"):
             member = next((n for n in z.namelist() if Path(n).name == name), None)
             if member is None:
