@@ -69,6 +69,19 @@ def test_load_rejects_missing_required_key(tmp_path):
         load_noos_manifest(path)
 
 
+def test_load_rejects_empty_or_missing_carriers(tmp_path):
+    # missing carriers key
+    p1 = tmp_path / "p1.yaml"
+    p1.write_text("projects:\n  - noos_project: ad9371\n    part: ad9371\n")
+    with pytest.raises(ValueError):
+        load_noos_manifest(str(p1))
+    # empty carriers list
+    p2 = tmp_path / "p2.yaml"
+    p2.write_text("projects:\n  - noos_project: ad9371\n    part: ad9371\n    carriers: []\n")
+    with pytest.raises(ValueError):
+        load_noos_manifest(str(p2))
+
+
 def test_matrix_leg_carries_board_release_banner_build_vars():
     projects = [
         NoOSProject(

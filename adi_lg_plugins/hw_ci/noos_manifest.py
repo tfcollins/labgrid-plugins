@@ -17,7 +17,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import yaml
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 DEFAULT_VALIDATE_BANNER = "Successfully initialized"
 
@@ -25,7 +25,7 @@ DEFAULT_VALIDATE_BANNER = "Successfully initialized"
 class NoOSProject(BaseModel):
     noos_project: str  # projects/<noos_project>
     part: str  # coordinator part to request (may be a catalog alias, e.g. ad9371)
-    carriers: list[str] = []  # FPGA carriers this project supports, preference order
+    carriers: list[str] = Field(min_length=1)  # FPGA carriers, preference order; >=1 required
     validate_banner: str = DEFAULT_VALIDATE_BANNER  # on-target serial success marker
     build_vars: dict[str, str] = {}  # extra `make` variables (K=V)
 
