@@ -6,19 +6,32 @@ import pytest
 from adi_lg_plugins.hw_ci import build_noos
 
 
-def test_detect_vivado_prefers_explicit_env(monkeypatch):
-    monkeypatch.setenv("VITIS_SETTINGS", "/custom/settings64.sh")
-    assert build_noos.detect_vivado_settings() == Path("/custom/settings64.sh")
+def test_detect_vivado_prefers_explicit_env(tmp_path, monkeypatch):
+    settings = tmp_path / "settings64.sh"
+    settings.write_text("#!/bin/bash\n")
+    monkeypatch.setenv("VITIS_SETTINGS", str(settings))
+    assert build_noos.detect_vivado_settings() == settings
 
 
 def test_detect_vivado_globs_newest(monkeypatch):
     monkeypatch.delenv("VITIS_SETTINGS", raising=False)
-    found = [
+    opt_found = [
         "/opt/Xilinx/Vivado/2023.2/settings64.sh",
         "/opt/Xilinx/Vivado/2025.1/settings64.sh",
     ]
-    monkeypatch.setattr(build_noos.glob, "glob", lambda p: found if "opt" in p else [])
-    assert build_noos.detect_vivado_settings() == Path(found[-1])
+    monkeypatch.setattr(build_noos.glob, "glob", lambda p: opt_found if "opt" in p else [])
+    assert build_noos.detect_vivado_settings() == Path("/opt/Xilinx/Vivado/2025.1/settings64.sh")
+
+
+def test_detect_vivado_globs_newest_cross_root(monkeypatch):
+    """2025.1 under /opt must beat 2023.2 under /tools despite 't' > 'o'."""
+    monkeypatch.delenv("VITIS_SETTINGS", raising=False)
+    opt_result = ["/opt/Xilinx/Vivado/2025.1/settings64.sh"]
+    tools_result = ["/tools/Xilinx/2023.2/Vivado/settings64.sh"]
+    monkeypatch.setattr(
+        build_noos.glob, "glob", lambda p: opt_result if "opt" in p else tools_result
+    )
+    assert build_noos.detect_vivado_settings() == Path("/opt/Xilinx/Vivado/2025.1/settings64.sh")
 
 
 def test_detect_vivado_errors_when_absent(monkeypatch):
@@ -95,3 +108,46 @@ def test_build_noos_orchestration_order(tmp_path, monkeypatch):
     assert Path(arts["elf"]).name == "ad9371.elf"
     assert Path(arts["bitstream"]).name == "system_top.bit"
     assert Path(arts["ps7_init"]).name == "ps7_init.tcl"
+
+
+def test_detect_vivado_validates_explicit_path(monkeypatch):
+    """VITIS_SETTINGS pointing at a nonexistent file must raise FileNotFoundError."""
+    monkeypatch.setenv("VITIS_SETTINGS", "/nonexistent/does_not_exist/settings64.sh")
+    with pytest.raises(FileNotFoundError, match="VITIS_SETTINGS"):
+        build_noos.detect_vivado_settings()
+
+
+def test_source_env_does_not_execute_path_metacharacters(tmp_path):
+    """Positional-arg invocation correctly sources a real settings file."""
+    settings = tmp_path / "s.sh"
+    settings.write_text("export FOO=bar\nexport XILINX_VIVADO=/x\n")
+    env = build_noos.source_env(settings)
+    assert env.get("FOO") == "bar"
+    assert env.get("XILINX_VIVADO") == "/x"
+
+
+def test_source_env_raises_on_non_vivado_settings(tmp_path):
+    """A settings file that doesn't set XILINX_VIVADO/XILINX_VITIS must raise RuntimeError."""
+    settings = tmp_path / "not_vivado.sh"
+    settings.write_text("export FOO=bar\n")
+    with pytest.raises(RuntimeError, match="XILINX_VIVADO"):
+        build_noos.source_env(settings)
+
+
+def test_ensure_libtinfo_shim_replaces_dangling_symlink(tmp_path, monkeypatch):
+    """A dangling .so.5 symlink must be replaced, not skipped."""
+    so6 = tmp_path / "libtinfo.so.6"
+    so6.write_bytes(b"")
+    monkeypatch.setattr(build_noos, "_find_so6", lambda stem: so6)
+    shim_dir = tmp_path / "xlnxshim"
+    shim_dir.mkdir()
+    # Pre-create a dangling symlink (target doesn't exist)
+    dangling = shim_dir / "libtinfo.so.5"
+    dangling.symlink_to(tmp_path / "nonexistent.so.6")
+    assert dangling.is_symlink() and not dangling.exists()
+
+    build_noos.ensure_libtinfo_shim(str(shim_dir))
+
+    assert dangling.is_symlink()
+    assert dangling.exists()
+    assert dangling.resolve() == so6
