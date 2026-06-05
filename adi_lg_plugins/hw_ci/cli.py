@@ -203,6 +203,7 @@ def _cmd_noos_matrix(args: argparse.Namespace) -> int:
                 "runner": leg.runner or "",
                 "board": leg.board or "",
                 "release": leg.release or "",
+                "kuiper_xsa_dir": leg.kuiper_xsa_dir or "",
                 "validate_banner": leg.validate_banner,
                 "build_vars": leg.build_vars,
             }

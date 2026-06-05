@@ -54,6 +54,7 @@ on:
             --carrier "$CARRIER" \
             --board "$BOARD" \
             --release "$RELEASE" \
+            --xsa-dir "$XSA_DIR" \
             --validate "$VALIDATE_BANNER"
       firmware-path:
         description: "Built .elf path template ($NOOS_PROJECT expanded)."
@@ -136,6 +137,9 @@ jobs:
       CARRIER: ${{ matrix.carrier }}
       BOARD: ${{ matrix.board }}
       RELEASE: ${{ matrix.release }}
+      # Optional catalog override (flash.kuiper_xsa_dir) pinning the board's
+      # Kuiper boot folder; empty = build-noos searches *<carrier>*<board>*.
+      XSA_DIR: ${{ matrix.kuiper_xsa_dir }}
       VALIDATE_BANNER: ${{ matrix.validate_banner || inputs.validate-banner }}
     steps:
       - uses: actions/checkout@v4

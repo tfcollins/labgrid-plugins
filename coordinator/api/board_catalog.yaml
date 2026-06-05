@@ -37,6 +37,11 @@ boards:
     flash:
       strategy: BootNoOSJTAG
       noos_project: ad9371
+      # The ADRV9371's Kuiper boot-partition folder is named for the adrv937x
+      # FAMILY (zynq-zc706-adv7511-adrv937x), so the default *<carrier>*<board>*
+      # search for "adrv9371" misses it — pin the folder so build-noos can
+      # extract the .xsa from the Kuiper image.
+      kuiper_xsa_dir: zynq-zc706-adv7511-adrv937x
     carriers:
       zc706: {}
   daq3:

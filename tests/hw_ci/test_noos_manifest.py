@@ -16,6 +16,7 @@ class _Match:
     runner: str | None = None
     image: str | None = None
     reservation_filter: dict | None = None
+    flash: dict | None = None
 
 
 def _write(tmp_path, text):
@@ -99,6 +100,11 @@ def test_matrix_leg_carries_board_release_banner_build_vars():
             runner="hw-bq",
             image="2023_R2_P1",
             reservation_filter={"daughter-board": "adrv9371", "carrier": "zc706"},
+            flash={
+                "strategy": "BootNoOSJTAG",
+                "noos_project": "ad9371",
+                "kuiper_xsa_dir": "zynq-zc706-adv7511-adrv937x",
+            },
         )
 
     legs, missing = build_noos_matrix(projects, probe)
@@ -111,7 +117,24 @@ def test_matrix_leg_carries_board_release_banner_build_vars():
             runner="hw-bq",
             board="adrv9371",
             release="2023_R2_P1",
+            kuiper_xsa_dir="zynq-zc706-adv7511-adrv937x",
             validate_banner="Done",
             build_vars={"EXAMPLE": "iio_example"},
         )
     ]
+
+
+def test_matrix_leg_kuiper_xsa_dir_absent_is_none():
+    projects = [NoOSProject(noos_project="adrv9009", part="adrv9009", carriers=["zc706"])]
+
+    def probe(part, carrier):
+        return _Match(
+            satisfiable=True,
+            runner="hw-nemo",
+            image="2023_R2_P1",
+            reservation_filter={"daughter-board": "adrv9009", "carrier": "zc706"},
+            flash={"strategy": "BootNoOSJTAG", "noos_project": "adrv9009"},
+        )
+
+    legs, _ = build_noos_matrix(projects, probe)
+    assert legs[0].kuiper_xsa_dir is None  # no override -> build-noos searches
