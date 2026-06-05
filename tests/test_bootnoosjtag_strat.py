@@ -97,3 +97,10 @@ def test_shell_requires_firmware_elf():
     s = _make_strategy(firmware_elf=None)
     with pytest.raises(StrategyError, match="firmware_elf"):
         s.transition(Status.shell)
+
+
+def test_default_boot_marker_is_successfully_initialized():
+    from adi_lg_plugins.strategies.bootnoosjtag import BootNoOSJTAG
+
+    field = next(f for f in BootNoOSJTAG.__attrs_attrs__ if f.name == "boot_marker")
+    assert field.default == "Successfully initialized"

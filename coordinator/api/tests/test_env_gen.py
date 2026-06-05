@@ -292,3 +292,9 @@ class TestBootTierZynq7000Recovery:
         drivers = doc["targets"]["main"]["drivers"]
         assert "BootZynq7000JTAGRecovery" in drivers
         assert "BootFabric" not in drivers
+
+
+def test_bootnoosjtag_default_banner_is_successfully_initialized():
+    from app.env_gen import STRATEGY_CONFIGS
+
+    assert STRATEGY_CONFIGS["BootNoOSJTAG"]["boot_marker"] == "Successfully initialized"
