@@ -48,6 +48,10 @@ class NoOSLeg:
     runner: str | None = None  # self-hosted runner co-located with the board
     board: str | None = None  # canonical daughter-board (.xsa key), e.g. adrv9371
     release: str | None = None  # Kuiper release the board boots (the .xsa source)
+    # Explicit Kuiper boot-partition folder (catalog flash.kuiper_xsa_dir); pins
+    # the .xsa folder when the board's name doesn't match the *<carrier>*<board>*
+    # search (e.g. adrv9371 lives in the family folder ...-adrv937x).
+    kuiper_xsa_dir: str | None = None
     validate_banner: str = DEFAULT_VALIDATE_BANNER
     build_vars: dict[str, str] = field(default_factory=dict)
 
@@ -69,11 +73,12 @@ def build_noos_matrix(
     """Split projects into runnable legs and missing (no live board) projects.
 
     ``probe(part, carrier)`` returns a match result (truthy ``.satisfiable`` plus
-    ``.runner``, ``.image``, ``.reservation_filter``) for a live flash-capable
-    board, or a falsy/None result otherwise. The first satisfiable carrier (in
-    manifest order) wins. The leg carries the canonical daughter-board (from
-    ``reservation_filter``) + the Kuiper ``image`` release so the build can fetch
-    the board's ``.xsa``."""
+    ``.runner``, ``.image``, ``.reservation_filter``, ``.flash``) for a live
+    flash-capable board, or a falsy/None result otherwise. The first satisfiable
+    carrier (in manifest order) wins. The leg carries the canonical
+    daughter-board (from ``reservation_filter``) + the Kuiper ``image`` release +
+    the optional ``flash.kuiper_xsa_dir`` override so the build can fetch the
+    board's ``.xsa``."""
     legs: list[NoOSLeg] = []
     missing: list[str] = []
     for proj in projects:
@@ -88,6 +93,7 @@ def build_noos_matrix(
             continue
         carrier, res = chosen
         reservation_filter = getattr(res, "reservation_filter", None) or {}
+        flash = getattr(res, "flash", None) or {}
         legs.append(
             NoOSLeg(
                 part=proj.part,
@@ -96,6 +102,7 @@ def build_noos_matrix(
                 runner=getattr(res, "runner", None),
                 board=reservation_filter.get("daughter-board"),
                 release=getattr(res, "image", None),
+                kuiper_xsa_dir=flash.get("kuiper_xsa_dir"),
                 validate_banner=proj.validate_banner,
                 build_vars=dict(proj.build_vars),
             )

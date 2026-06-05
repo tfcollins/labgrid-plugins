@@ -209,6 +209,58 @@ def test_fetch_board_xsa_xsa_dir_bypasses_search(tmp_path, monkeypatch):
     assert extracted_paths == ["/my-pinned-folder/bootgen_sysfiles.tgz"]
 
 
+def test_fetch_board_xsa_empty_xsa_dir_falls_back_to_search(tmp_path, monkeypatch):
+    """An empty xsa_dir ("" — what the workflow passes for boards with no
+    catalog override) must NOT be treated as a folder; it falls back to the
+    *<carrier>*<board>* search."""
+    cache_dir = tmp_path / "xsa"
+    extracted_paths: list[str] = []
+
+    def fake_extract_file(fs, file_path, output_path):
+        extracted_paths.append(file_path)
+        Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+        with tarfile.open(output_path, "w:gz") as tf:
+            data = b"XSA-SEARCHED"
+            info = tarfile.TarInfo("system_top.xsa")
+            info.size = len(data)
+            tf.addfile(info, io.BytesIO(data))
+        return True
+
+    class FakeExtractor:
+        def __init__(self, img_path, logger=None):
+            pass
+
+        def get_partitions(self):
+            return [{"description": "FAT (0x0c)", "start": 12582912}]
+
+        def open_filesystem(self, offset):
+            return object()
+
+        def list_files(self, fs, path="/"):
+            return [
+                {
+                    "path": "/zynq-zc706-adv7511-adrv9009/bootgen_sysfiles.tgz",
+                    "type": "file",
+                    "size": 9,
+                },
+            ]
+
+        extract_file = staticmethod(fake_extract_file)
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(kuiper_xsa, "ensure_kuiper_image", lambda *a, **k: tmp_path / "k.img")
+    monkeypatch.setattr(kuiper_xsa, "IMGFileExtractor", FakeExtractor)
+
+    out = kuiper_xsa.fetch_board_xsa(
+        "2023_R2_P1", "adrv9009", "zc706", cache_dir=str(cache_dir), xsa_dir=""
+    )
+    assert out.read_bytes() == b"XSA-SEARCHED"
+    # Resolved via the search, not the empty override.
+    assert extracted_paths == ["/zynq-zc706-adv7511-adrv9009/bootgen_sysfiles.tgz"]
+
+
 # ---------------------------------------------------------------------------
 # Fix 4b: extract_file returns False → FileNotFoundError
 # ---------------------------------------------------------------------------

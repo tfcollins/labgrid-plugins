@@ -113,6 +113,7 @@ projects:
                 "runner": "hw-bq",
                 "board": "",
                 "release": "",
+                "kuiper_xsa_dir": "",
                 "validate_banner": "Successfully initialized",
                 "build_vars": {},
             }
@@ -148,6 +149,11 @@ projects:
             runner="hw-bq",
             image="2023_R2_P1",
             reservation_filter={"daughter-board": "adrv9371", "carrier": "zc706"},
+            flash={
+                "strategy": "BootNoOSJTAG",
+                "noos_project": "ad9371",
+                "kuiper_xsa_dir": "zynq-zc706-adv7511-adrv937x",
+            },
         )
 
     # _cmd_noos_matrix imports match_client locally -> patch the source module.
@@ -168,6 +174,7 @@ projects:
         "runner": "hw-bq",
         "board": "adrv9371",
         "release": "2023_R2_P1",
+        "kuiper_xsa_dir": "zynq-zc706-adv7511-adrv937x",
         "validate_banner": "Done",
         "build_vars": {"EXAMPLE": "iio_example"},
     }
