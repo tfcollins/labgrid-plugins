@@ -782,12 +782,29 @@ resource) before activating the driver.
 FPGA JTAG Driver
 ----------------
 
+.. _xilinxjtagdriver:
+
 XilinxJTAGDriver
 ~~~~~~~~~~~~~~~~
 
-**Purpose**: Program Xilinx FPGAs (Virtex/Artix/Kintex) and Microblaze soft processors via JTAG using ``xsdb``. Supports both local execution and remote execution (when the test runner has to ``ssh`` into an exporter host that owns the JTAG cable).
+**Purpose**: Drive a Xilinx JTAG cable via ``xsdb`` to program FPGAs
+(Virtex/Artix/Kintex), load a Microblaze kernel, or download and start an
+arbitrary bare-metal ELF on a Zynq-7000 Cortex-A9 core. Supports both local
+execution and remote execution (when the test runner has to ``ssh`` into an
+exporter host that owns the JTAG cable).
 
-**Required Resources**: ``XilinxDeviceJTAG`` (JTAG target IDs and firmware paths), ``XilinxVivadoTool`` (path to the ``xsdb`` binary).
+Used by the ``BootFabric`` strategy (Microblaze no-Linux flow) and the
+``BootNoOSJTAG`` strategy (no-OS bare-metal ELF flow — see :doc:`strategies`).
+Also used by ``BootZynq7000JTAGRecovery`` for the JTAG U-Boot bootstrap step.
+
+Requires Vivado/Vitis (``xsdb``) to be installed on the host that owns the JTAG
+cable; see :doc:`hardware-ci-runner-setup` for host setup.
+
+**Required Resources**
+
+- ``XilinxDeviceJTAG``: JTAG target IDs and on-host firmware paths.
+- ``XilinxVivadoTool``: Path to the ``xsdb`` binary (and optionally the
+  Vivado root from which it is derived).
 
 **Bindings**: ``xilinxdevicejtag``, ``xilinxvivado``
 
@@ -818,9 +835,12 @@ XilinxJTAGDriver
 - **bitstream_path** (optional): Path to ``.bit`` bitstream (required for ``flash_bitstream``)
 - **kernel_path** (optional): Path to Microblaze Linux kernel image (``.strip``), required for ``download_kernel``
 - **vivado_path** (required on ``XilinxVivadoTool``): Root of the Vivado install
-- **xsdb_path** (optional): Absolute path to ``xsdb``. If unset, derived as ``{dirname(vivado_path)}/Vitis/bin/xsdb`` (the standard 2022.2+ layout).
+- **xsdb_path** (optional): Absolute path to ``xsdb``. If unset, derived as
+  ``{dirname(vivado_path)}/Vitis/bin/xsdb`` (the standard 2022.2+ layout).
 
 **Methods**
+
+*Microblaze / fabric methods* (used by ``BootFabric``):
 
 .. code-block:: python
 
@@ -834,15 +854,80 @@ XilinxJTAGDriver
     jtag.load_bitstream_and_kernel_and_start() # all three in one xsdb session
     jtag.disconnect_jtag()                     # xsdb 'disconnect'
 
+*Zynq-7000 bare-metal / ELF method* (used by ``BootNoOSJTAG``):
+
+.. py:method:: load_and_run_elf(elf_path, a9_target_name='*Cortex-A9 MPCore #0', bitstream_path=None, ps7_init_tcl=None)
+
+   JTAG-load and start an arbitrary bare-metal ELF on a Zynq-7000 A9 core.
+
+   Runs the following ``xsdb`` sequence in a single session:
+
+   .. code-block:: none
+
+      connect
+      targets -set -filter {name =~ "<a9_target_name>"}
+      rst -system
+      # if bitstream_path:
+      fpga -f <bitstream_path>
+      # if ps7_init_tcl:
+      source <ps7_init_tcl>
+      ps7_init
+      ps7_post_config
+      dow <elf_path>
+      con
+
+   All three path arguments are resolved to absolute paths before being
+   embedded in the TCL script, because ``xsdb`` runs the script from its
+   own working directory (not the caller's), so a relative ``dow`` or
+   ``fpga -f`` path would fail to open the file.
+
+   :param elf_path: Host path to the ELF to download (required).
+   :param a9_target_name: ``xsdb`` target filter pattern (default ``'*Cortex-A9 MPCore #0'``).
+     Name-pattern matching is used rather than a fixed integer index because
+     Zynq-7000 target ordering shifts when the PL is loaded.
+   :param bitstream_path: Host path to ``.bit`` bitstream; programs the PL
+     before downloading the ELF. ``None`` skips this step.
+   :param ps7_init_tcl: Host path to ``ps7_init.tcl``; runs ``ps7_init`` +
+     ``ps7_post_config``. ``None`` skips PS initialisation.
+   :raises ExecutionError: if ``xsdb`` returns a non-zero exit code.
+
+*Zynq-7000 U-Boot bootstrap method* (used by ``BootZynq7000JTAGRecovery``):
+
+.. py:method:: load_zynq_uboot(ps7_init_tcl, uboot_elf, a9_target_name='*Cortex-A9 MPCore #0', bitstream_path=None, fsbl_elf=None)
+
+   JTAG-bootstrap U-Boot on a Zynq-7000 device. Issues ``rst -system``
+   first to clear residual DDR/PS state, then sources ``ps7_init.tcl``,
+   optionally loads the PL bitstream, optionally downloads + runs an FSBL,
+   downloads ``uboot_elf``, and starts execution with ``con``.
+
+   :param ps7_init_tcl: Required. Host path to ``ps7_init.tcl``.
+   :param uboot_elf: Required. Host path to ``u-boot.elf``.
+   :param a9_target_name: ``xsdb`` target filter (default ``'*Cortex-A9 MPCore #0'``).
+   :param bitstream_path: Optional PL bitstream to flash before U-Boot.
+   :param fsbl_elf: Optional FSBL; downloaded and run briefly before U-Boot.
+
+*CPU halt*:
+
+.. code-block:: python
+
+    jtag.stop_zynq_cpu(a9_target_name='*Cortex-A9 MPCore #0')
+    # halts A9 #0 — used between failed bootstrap attempts
+
 **Remote vs Local Execution**
 
-The driver runs ``xsdb`` locally unless *any* sibling resource on the target exposes a ``host`` attribute (i.e. came from a ``NetworkResource``). In that case, ``xsdb`` is invoked via ``ssh <host> xsdb ...`` and the TCL script is pushed with ``scp``. This matches the coordinator/exporter topology where the JTAG cable lives on the exporter host.
+The driver runs ``xsdb`` locally unless *any* sibling resource on the target
+exposes a ``host`` attribute (i.e. came from a ``NetworkResource``). In that
+case, the TCL script is pushed to the exporter via ``scp`` and ``xsdb`` is
+invoked via ``ssh <host> xsdb <remote_script>``. The temporary script file is
+removed from the exporter after each call. This matches the
+coordinator/exporter topology where the JTAG cable lives on the exporter host.
 
 **Troubleshooting**
 
 - **``xsdb: command not found``**: ``xsdb_path`` is wrong. Override it explicitly on ``XilinxVivadoTool``.
 - **Bitstream flash fails**: Run ``xsdb -interactive`` on the host owning the JTAG cable and issue ``targets`` — confirm ``root_target`` matches.
 - **Remote ssh prompts for password**: Set up passwordless SSH keys to the exporter host; the driver never sends a password.
+- **``load_and_run_elf`` fails with "can't open file"**: Ensure all paths passed to ``load_and_run_elf`` are absolute (the method does this automatically) or exist on the host running ``xsdb``; if using remote execution the paths must exist on the exporter host, not the test-runner host.
 
 Software Provisioning Driver
 ----------------------------
