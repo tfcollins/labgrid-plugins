@@ -104,8 +104,8 @@ def _cmd_request_matrix(args: argparse.Namespace) -> int:
     """Emit a part-keyed matrix: wanted parts (from markers) that have a live
     board (per GET /api/match). Missing parts are surfaced as GH annotations."""
     from adi_lg_plugins.request import match_client
-    from adi_lg_plugins.request.core import _resolve_api
 
+    from .coordinator import _resolve_api
     from .request_matrix import build_request_matrix
 
     coord = coord_mod.resolve_coordinator(args.coord)
@@ -155,8 +155,8 @@ def _cmd_noos_matrix(args: argparse.Namespace) -> int:
     flash-capable board (per GET /api/match?mode=flash). Each leg carries the
     project to build, the part to request, the carrier, and the runner."""
     from adi_lg_plugins.request import match_client
-    from adi_lg_plugins.request.core import _resolve_api
 
+    from .coordinator import _resolve_api
     from .noos_manifest import build_noos_matrix, load_noos_manifest
 
     coord = coord_mod.resolve_coordinator(args.coord)

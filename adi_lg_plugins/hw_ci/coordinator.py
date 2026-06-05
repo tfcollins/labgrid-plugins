@@ -158,3 +158,18 @@ def resolve_coordinator(explicit: str | None = None) -> str:
         "no coordinator URL — pass --coord, or set LG_COORDINATOR / "
         "ADI_LG_COORDINATOR in the environment"
     )
+
+
+def _resolve_api(coord: str) -> str:
+    """REST API base (host:port) for /api/match + /api/places.
+
+    The REST API and the gRPC coordinator are separate services on different
+    ports (8000 vs 20408). Honor an explicit ADI_LG_API / LG_API override;
+    otherwise default to the coordinator host on port 8000.
+    """
+    explicit = os.environ.get("ADI_LG_API") or os.environ.get("LG_API")
+    if explicit:
+        return explicit
+    base = coord.split("://", 1)[-1]
+    host = base.rsplit(":", 1)[0] if ":" in base else base
+    return f"{host}:8000"
