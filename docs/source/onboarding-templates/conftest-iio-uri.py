@@ -16,10 +16,8 @@ from __future__ import annotations
 import os
 import time
 
+import iio  # pylibiio — install via your test deps (e.g. `pip install pylibiio`)
 import pytest
-
-# pylibiio. Install via your test deps (e.g. `pip install pylibiio`).
-import iio
 
 
 def pytest_addoption(parser):
