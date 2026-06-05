@@ -35,6 +35,12 @@ class FlashConfig(BaseModel):
 
     strategy: str
     noos_project: str
+    # Per-board JTAG target override; when None the env_gen / strategy default
+    # ("*Cortex-A9 MPCore #0") applies.
+    a9_target_name: str | None = None
+    # Explicit Kuiper boot-partition folder holding bootgen_sysfiles.tgz; when
+    # None, build-noos searches the FAT partition for *<carrier>*<board>*.
+    kuiper_xsa_dir: str | None = None
 
 
 class BoardEntry(BaseModel):

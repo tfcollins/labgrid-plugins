@@ -181,3 +181,24 @@ def test_shipped_catalog_images_are_pinned_not_placeholders():
         assert not entry.image.startswith("kuiper-"), (
             f"{name!r} image is a placeholder: {entry.image!r}"
         )
+
+
+def test_flashconfig_optional_overrides_default_none():
+    from app.catalog import FlashConfig
+
+    fc = FlashConfig(strategy="BootNoOSJTAG", noos_project="ad9371")
+    assert fc.a9_target_name is None
+    assert fc.kuiper_xsa_dir is None
+
+
+def test_flashconfig_accepts_overrides():
+    from app.catalog import FlashConfig
+
+    fc = FlashConfig(
+        strategy="BootNoOSJTAG",
+        noos_project="ad9371",
+        a9_target_name="*Cortex-A9 MPCore #1",
+        kuiper_xsa_dir="zynq-zc706-adv7511-adrv9371",
+    )
+    assert fc.a9_target_name == "*Cortex-A9 MPCore #1"
+    assert fc.kuiper_xsa_dir == "zynq-zc706-adv7511-adrv9371"
