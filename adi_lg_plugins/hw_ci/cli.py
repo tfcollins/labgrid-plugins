@@ -29,6 +29,7 @@ from pathlib import Path
 from . import coordinator as coord_mod
 from . import markers as markers_mod
 from . import render_env as render_mod
+from .board_map import build_matlab_matrix, load_board_map
 from .build_noos import build_noos
 from .intersect import intersect
 from .kuiper_xsa import fetch_board_xsa
@@ -225,6 +226,42 @@ def _cmd_noos_matrix(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_matlab_matrix(args: argparse.Namespace) -> int:
+    """Emit a MATLAB CI matrix: live places that resolve to a MATLAB board (via the
+    consumer's board map). Each leg carries the part/carrier to request + the
+    matlab_board to pass to runHWTests. Live places with no board-map entry are
+    annotated as skipped (the toolbox has no test entry point for them)."""
+    coord = coord_mod.resolve_coordinator(args.coord)
+    board_map = load_board_map(args.board_map)
+    places, _bad = coord_mod.list_live_places(coord)
+
+    legs, skipped = build_matlab_matrix(places, board_map)
+    matrix = {
+        "include": [
+            {
+                "part": leg.part,
+                "carrier": leg.carrier,
+                "runner": leg.runner or "",
+                "matlab_board": leg.matlab_board,
+            }
+            for leg in legs
+        ]
+    }
+    _emit_matrix(
+        matrix,
+        count=len(legs),
+        missing=skipped,
+        kind="matlab-matrix",
+        github_output=args.github_output,
+    )
+    print(
+        f"# matlab-matrix: {len(places)} live place(s), {len(legs)} testable, "
+        f"{len(skipped)} skipped (no board_map entry)",
+        file=sys.stderr,
+    )
+    return 0
+
+
 def _cmd_render_env(args: argparse.Namespace) -> int:
     coord = coord_mod.resolve_coordinator(args.coord)
     places, _skipped = coord_mod.list_live_places(
@@ -407,6 +444,17 @@ def main(argv: list[str] | None = None) -> int:
         help="also write matrix=/count= to $GITHUB_OUTPUT",
     )
     pn.set_defaults(func=_cmd_noos_matrix)
+
+    pmm = sub.add_parser(
+        "matlab-matrix",
+        help="emit a MATLAB CI matrix from a board map + live coordinator places",
+    )
+    pmm.add_argument("--board-map", required=True, help="path to the consumer's board_map.yaml")
+    pmm.add_argument("--coord", default=None)
+    pmm.add_argument(
+        "--github-output", action="store_true", help="also write matrix=/count= to $GITHUB_OUTPUT"
+    )
+    pmm.set_defaults(func=_cmd_matlab_matrix)
 
     pb = sub.add_parser("build-noos", help="build a no-os project for HW CI (env + Kuiper .xsa)")
     pb.add_argument("--project", required=True, help="projects/<project> to build")
