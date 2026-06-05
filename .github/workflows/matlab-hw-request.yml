@@ -1,0 +1,116 @@
+name: MATLAB HW Request
+
+# Reusable workflow: boot a matching board via labgrid, run the MATLAB toolbox's
+# runHWTests(<board>) against the booted board's libIIO URI, collect JUnit, release.
+# Discovery: the preflight runs `adi-lg-hw-ci matlab-matrix`, intersecting the consumer's
+# board_map.yaml with the coordinator's live places. Each leg uses the same `adi-lg request`
+# core as the uri/flash flows (reserve -> boot -> export IIO_URI -> run -> release).
+#
+# The leg runner must have MATLAB installed (+ a reachable license) and the libIIO libs.
+
+on:
+  workflow_call:
+    inputs:
+      coordinator:
+        description: "gRPC coordinator host:port (e.g. host:20408)."
+        required: true
+        type: string
+      board-map:
+        description: "Path (in the consumer checkout) to the MATLAB board_map.yaml."
+        type: string
+        default: "test/hw_ci/board_map.yaml"
+      runner-label:
+        description: "Fallback self-hosted runner label for the per-board legs."
+        type: string
+        default: "hw-lab"
+      preflight-runner-label:
+        description: "Runner label for the discovery preflight (reaches the coordinator)."
+        type: string
+        default: "hw-coordinator"
+      matlab-bin:
+        description: "Path to the MATLAB binary on the leg runner."
+        type: string
+        default: "/opt/MATLAB/R2025b/bin/matlab"
+      wait:
+        description: "Seconds each leg queues for a free matching board (0 = fail fast)."
+        type: number
+        default: 1800
+      venv-dir:
+        description: "Absolute path for the persistent uv venv on the runner."
+        type: string
+        default: "$HOME/.cache/matlab-hw-request/venv"
+      install-cmd:
+        description: "Command (with $VENV_DIR exported) to install adi-labgrid-plugins."
+        type: string
+        default: >-
+          uv pip install --quiet --python "$VENV_DIR/bin/python"
+          "adi-labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins@main"
+
+jobs:
+  preflight:
+    runs-on: [self-hosted, "${{ inputs.preflight-runner-label }}"]
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      count: ${{ steps.plan.outputs.count }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: tfcollins/labgrid-plugins/.github/actions/setup-uv-venv@main
+        with:
+          venv_dir: ${{ inputs.venv-dir }}
+          install_cmd: ${{ inputs.install-cmd }}
+      - id: plan
+        env:
+          LG_COORDINATOR: ${{ inputs.coordinator }}
+        run: |
+          adi-lg-hw-ci matlab-matrix \
+            --board-map "${{ inputs.board-map }}" \
+            --coord "${{ inputs.coordinator }}" \
+            --github-output
+
+  matlab-hw-request:
+    needs: preflight
+    if: ${{ fromJSON(needs.preflight.outputs.count) > 0 }}
+    runs-on: [self-hosted, "${{ matrix.runner || inputs.runner-label }}"]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.preflight.outputs.matrix) }}
+    env:
+      LG_COORDINATOR: ${{ inputs.coordinator }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - uses: tfcollins/labgrid-plugins/.github/actions/setup-uv-venv@main
+        with:
+          venv_dir: ${{ inputs.venv-dir }}
+          install_cmd: ${{ inputs.install-cmd }}
+      - name: Request ${{ matrix.part }} and run runHWTests(${{ matrix.matlab_board }})
+        env:
+          MATLAB_BIN: ${{ inputs.matlab-bin }}
+          MATLAB_BOARD: ${{ matrix.matlab_board }}
+        run: |
+          set -euo pipefail
+          # The MATLAB invocation runs *inside* the booted-board reservation: adi-lg
+          # request exports IIO_URI (+ LG_PLACE/LG_CARRIER) and passes the parent env
+          # (MATLAB_BIN/MATLAB_BOARD/GITHUB_WORKSPACE) to the child. runHWTests reads
+          # IIO_URI itself. The quoted heredoc keeps the MATLAB string literal intact
+          # (avoids nested-quote interpolation). Exit 3 (Incomplete/CheckDevice-skip)
+          # is normalized to success, matching the prior MATLAB CI behavior.
+          cat > run-matlab.sh <<'EOF'
+          set +e
+          "$MATLAB_BIN" -batch "cd('$GITHUB_WORKSPACE'); runHWTests('$MATLAB_BOARD')"
+          rc=$?
+          [ "$rc" -eq 3 ] && rc=0
+          exit $rc
+          EOF
+          adi-lg request --part "${{ matrix.part }}" --carrier "${{ matrix.carrier }}" \
+            --wait "${{ inputs.wait }}" --run "bash run-matlab.sh"
+      - name: Upload JUnit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: matlab-junit-${{ matrix.matlab_board }}
+          path: "*_HWTestResults.xml"
+          if-no-files-found: ignore
