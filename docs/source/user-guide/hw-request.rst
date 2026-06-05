@@ -56,3 +56,44 @@ Requirements
   (``preflight-runner-label``) and a pool that can reach the coordinator and
   actuate the lab (``runner-label``).
 * The coordinator must serve the Plan-1 board catalog (``GET /api/match``).
+
+Flash mode (no-os)
+------------------
+
+``adi-lg request`` supports a ``--mode flash`` path for bare-metal no-os
+firmware. Instead of booting Linux and exporting an IIO URI, the request
+JTAG-loads an ``.elf`` directly onto the target and asserts a serial banner:
+
+.. code-block:: bash
+
+   adi-lg request \
+       --part adrv9009 --carrier zc706 \
+       --mode flash \
+       --firmware projects/adrv9009/build/adrv9009.elf \
+       --bitstream projects/adrv9009/build_hw/system_top.bit \
+       --ps7-init projects/adrv9009/build_hw/ps7_init.tcl \
+       --validate "Successfully initialized" \
+       --wait 1800
+
+``--firmware <elf>`` (required in flash mode)
+    Path to the no-os ``.elf`` to JTAG-load.
+
+``--bitstream <bit>`` (optional)
+    FPGA bitstream to program before loading the ``.elf``.
+
+``--ps7-init <tcl>`` (optional)
+    ``ps7_init.tcl`` for PS initialisation on Zynq-7000 targets.
+
+``--validate <banner>``
+    Serial string to assert on-target after flash. Defaults to the IIOD
+    server banner if omitted; for no-os use ``"Successfully initialized"``
+    or the project's own startup message.
+
+``adi-lg-hw-ci build-noos`` produces the matching artifacts: the ``.elf``
+lands in ``projects/<project>/build/`` and the ``system_top.bit`` plus
+``ps7_init.tcl`` land in ``projects/<project>/build_hw/``.
+
+The full automated flow — manifest → discovery → build → JTAG-flash → serial
+validation — is driven by the ``noos-hw-request.yml`` reusable workflow. See
+:doc:`hardware-ci-runner-setup` for runner requirements, the manifest schema,
+and per-leg troubleshooting.
