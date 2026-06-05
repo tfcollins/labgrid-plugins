@@ -61,6 +61,8 @@ Copy the matching template(s) from `docs/source/onboarding-templates/` and repla
 - `runHWTests.m` reads `$IIO_URI` (exported by `adi-lg request`) and emits
   `<matlab_board>_HWTestResults.xml` — no test-side changes needed. The leg runner must
   have MATLAB installed (+ a reachable license).
+- **One extra repo var beyond the Step-3 three**: `MATLAB_BIN` (path to the `matlab`
+  binary on the runner, e.g. `/opt/MATLAB/R2025b/bin/matlab`).
 
 Drop `docs/source/onboarding-templates/AGENTS-consumer-stub.md` into the consumer repo as
 its own `AGENTS.md` and fill in the wiring.

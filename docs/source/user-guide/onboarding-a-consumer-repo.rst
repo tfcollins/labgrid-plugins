@@ -131,7 +131,9 @@ matlab mode (MATLAB ``runHWTests``)
 
 ``runHWTests.m`` reads the URI from ``$IIO_URI`` (exported by ``adi-lg request``) and emits
 ``<matlab_board>_HWTestResults.xml`` — no test-side changes are needed. The leg runner must
-have MATLAB installed. Verify discovery with:
+have MATLAB installed. matlab mode needs **one extra repo variable beyond the three in Step
+3** — ``MATLAB_BIN`` (the path to the ``matlab`` binary on the runner, e.g.
+``/opt/MATLAB/R2025b/bin/matlab``). Verify discovery with:
 
 .. code-block:: bash
 
