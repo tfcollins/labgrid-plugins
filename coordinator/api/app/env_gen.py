@@ -119,7 +119,7 @@ STRATEGY_CONFIGS: dict[str, dict[str, Any]] = {
     # not env_gen; only the static validation defaults live here.
     "BootNoOSJTAG": {
         "a9_target_name": "*Cortex-A9 MPCore #0",
-        "boot_marker": "Running IIOD server",
+        "boot_marker": "Successfully initialized",
         "boot_timeout": 60,
     },
 }

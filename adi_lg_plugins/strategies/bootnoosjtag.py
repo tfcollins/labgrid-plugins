@@ -56,7 +56,7 @@ class BootNoOSJTAG(Strategy):
     a9_target_name = attr.ib(default="*Cortex-A9 MPCore #0")
 
     # On-target validation: wait for this banner on the serial console.
-    boot_marker = attr.ib(default="Running IIOD server")
+    boot_marker = attr.ib(default="Successfully initialized")
     boot_timeout = attr.ib(default=60)
     power_settle_time = attr.ib(default=2)
 
