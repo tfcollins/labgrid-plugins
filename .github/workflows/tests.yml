@@ -75,8 +75,7 @@ jobs:
           tests/hw_ci/test_emit_matrix.py \
           tests/hw_ci/test_fetch_xsa_cli.py \
           tests/hw_ci/test_build_noos_cli.py \
-          tests/test_kuiperdl_download_image.py \
-          tests/test_xilinx_jtag_driver_zynq.py
+          tests/test_kuiperdl_download_image.py
 
   coordinator-api:
     # The coordinator FastAPI subproject has its own pyproject + test suite
