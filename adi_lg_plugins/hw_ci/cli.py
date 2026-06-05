@@ -29,6 +29,7 @@ from pathlib import Path
 from . import coordinator as coord_mod
 from . import markers as markers_mod
 from . import render_env as render_mod
+from .build_noos import build_noos
 from .intersect import intersect
 from .kuiper_xsa import fetch_board_xsa
 from .schema import KNOWN_STRATEGIES
@@ -279,6 +280,30 @@ def _cmd_list_strategies(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _parse_build_vars(pairs: list[str]) -> dict[str, str]:
+    out: dict[str, str] = {}
+    for pair in pairs or []:
+        if "=" not in pair:
+            raise SystemExit(f"--build-var must be K=V, got {pair!r}")
+        key, _, value = pair.partition("=")
+        out[key] = value
+    return out
+
+
+def _cmd_build_noos(args: argparse.Namespace) -> int:
+    """Build a no-os project for HW CI (Vivado env + Kuiper .xsa + make)."""
+    build_noos(
+        project=args.project,
+        carrier=args.carrier,
+        board=args.board,
+        release=args.release,
+        build_vars=_parse_build_vars(args.build_var),
+        noos_root=args.noos_root,
+        xsa_dir=args.xsa_dir,
+    )
+    return 0
+
+
 def _cmd_fetch_xsa(args: argparse.Namespace) -> int:
     """Fetch a board's system_top.xsa from the Kuiper image; print its path."""
     xsa = fetch_board_xsa(
@@ -381,6 +406,21 @@ def main(argv: list[str] | None = None) -> int:
         help="also write matrix=/count= to $GITHUB_OUTPUT",
     )
     pn.set_defaults(func=_cmd_noos_matrix)
+
+    pb = sub.add_parser("build-noos", help="build a no-os project for HW CI (env + Kuiper .xsa)")
+    pb.add_argument("--project", required=True, help="projects/<project> to build")
+    pb.add_argument("--carrier", required=True, help="FPGA carrier (e.g. zc706)")
+    pb.add_argument("--board", required=True, help="canonical daughter-board (e.g. adrv9371)")
+    pb.add_argument(
+        "--release", required=True, help="Kuiper release for the .xsa (e.g. 2023_R2_P1)"
+    )
+    pb.add_argument("--validate", default=None, help="on-target banner (informational here)")
+    pb.add_argument(
+        "--build-var", action="append", default=[], help="extra make var K=V (repeatable)"
+    )
+    pb.add_argument("--noos-root", default=".", help="no-os checkout root (default cwd)")
+    pb.add_argument("--xsa-dir", default=None, help="pin the Kuiper boot folder, skip FAT search")
+    pb.set_defaults(func=_cmd_build_noos)
 
     px = sub.add_parser("fetch-xsa", help="extract a board's system_top.xsa from the Kuiper image")
     px.add_argument("--release", required=True, help="Kuiper release (e.g. 2023_R2_P1)")
