@@ -2,6 +2,7 @@
 
 import hashlib
 import json
+import logging
 import lzma
 import os
 import pathlib
@@ -145,7 +146,7 @@ class Downloader:
         if h == ref:
             print("MD5 Check: PASSED")
         else:
-            print("MD5 Check: FAILEDZz")
+            print("MD5 Check: FAILED")
             raise Exception("MD5 hash check failed")
 
         return fname
@@ -189,6 +190,71 @@ class Downloader:
             zip_ref.extractall(outdir)
 
 
+def _cache_lookup(cache_path: str, release_version: str) -> str | None:
+    """Return the cached .img path for a release if recorded + on disk, else None."""
+    cache_file = os.path.join(cache_path, "cache_info.json")
+    if not os.path.exists(cache_file):
+        return None
+    with open(cache_file) as f:
+        cache_data = json.load(f)
+    entry = cache_data.get(release_version)
+    if entry and os.path.exists(entry["image_path"]):
+        return entry["image_path"]
+    return None
+
+
+def download_release_image(release_version: str, cache_path: str, *, logger=None) -> str:
+    """Download + verify + extract the Kuiper full image for ``release_version``
+    into ``cache_path`` (idempotent: returns the cached .img if already present).
+
+    Shared by ``KuiperDLDriver.download_release`` (resource-bound) and the CI
+    ``kuiper_xsa`` helper (no target). Returns the cached ``.img`` path."""
+    log = logger or logging.getLogger(__name__)
+    cached = _cache_lookup(cache_path, release_version)
+    if cached is not None:
+        log.info("Kuiper release %s already cached at %s", release_version, cached)
+        return cached
+
+    os.makedirs(cache_path, exist_ok=True)
+    downloader = Downloader()
+    rel_info = downloader.releases(release_version)
+    log.info("Downloading Kuiper release %s from %s", release_version, rel_info["link"])
+
+    name_archive = rel_info["xzname"] if "xzname" in rel_info else rel_info["zipname"]
+    md5_archive = rel_info["xzmd5"] if "xzmd5" in rel_info else rel_info["zipmd5"]
+    tarball_path = os.path.join(cache_path, name_archive)
+    downloader.download(rel_info["link"], name_archive)
+    downloader.check(name_archive, md5_archive)
+    downloader.extract(name_archive, rel_info["imgname"])
+    img_file = downloader.check(rel_info["imgname"], rel_info["imgmd5"], find_img=True)
+
+    img_filename = os.path.basename(img_file)
+    target_path = os.path.join(cache_path, img_filename)
+    shutil.move(img_file, target_path)
+
+    if os.path.exists(tarball_path):
+        os.remove(tarball_path)
+    if os.path.isfile(name_archive):
+        os.remove(name_archive)
+    if os.path.isdir(rel_info["imgname"]):
+        os.rmdir(rel_info["imgname"])
+
+    cache_file = os.path.join(cache_path, "cache_info.json")
+    cache_data = {}
+    if os.path.exists(cache_file):
+        with open(cache_file) as f:
+            cache_data = json.load(f)
+    cache_data[release_version] = {
+        "image_path": target_path,
+        "download_time": time.ctime(),
+        "download_date": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
+    }
+    with open(cache_file, "w") as f:
+        json.dump(cache_data, f, indent=4)
+    log.info("Kuiper release %s cached at %s", release_version, target_path)
+    return target_path
+
+
 @target_factory.reg_driver
 @attr.s(eq=False)
 class KuiperDLDriver(Driver):
@@ -197,8 +263,6 @@ class KuiperDLDriver(Driver):
     """
 
     bindings = {"kuiper_resource": {"KuiperRelease"}}
-
-    sw_downloads_template = "https://swdownloads.analog.com/cse/boot_partition_files/{release}/latest_boot_partition.tar.gz"
 
     cache_datafile = "cache_info.json"
 
@@ -237,93 +301,11 @@ class KuiperDLDriver(Driver):
                     return True
         return False
 
-    def download_release(self, release_version=None, get_boot_files=False):
-        """Download the specified Kuiper release version if not already cached.
-        Args:
-            release_version (str): Version of the Kuiper release to download. If None, uses the version from kuiper_resource.
-        """
+    def download_release(self, release_version=None):
+        """Download the specified Kuiper release version if not already cached."""
         if release_version is None:
             release_version = self.kuiper_resource.release_version
-
-        if self.check_cached(release_version):
-            self.logger.info(f"Kuiper release {release_version} is already cached.")
-            return
-
-        if get_boot_files:
-            url = self.sw_downloads_template.format(release=release_version)
-            self.logger.info(f"Downloading Kuiper boot_files {release_version} from {url}")
-
-            cache_path = self.kuiper_resource.cache_path
-            if not os.path.exists(cache_path):
-                os.makedirs(cache_path)
-
-            tarball_path = os.path.join(cache_path, f"{release_version}_boot_partition.tar.gz")
-            raise NotImplementedError("Boot files download not implemented yet.")
-        else:
-            downloader = Downloader()
-            rel_info = downloader.releases(release_version)
-            url = rel_info["link"]
-            self.logger.info(f"Downloading Kuiper release {release_version} from {url}")
-
-            cache_path = self.kuiper_resource.cache_path
-            if not os.path.exists(cache_path):
-                os.makedirs(cache_path)
-
-            if "xzname" in rel_info:
-                tarball_path = os.path.join(cache_path, rel_info["xzname"])
-            elif "zipname" in rel_info:
-                tarball_path = os.path.join(cache_path, rel_info["zipname"])
-            else:
-                raise Exception("Unknown file name for release " + release_version)
-
-            name_archive = rel_info["xzname"] if "xzname" in rel_info else rel_info["zipname"]
-            md5_archive = rel_info["xzmd5"] if "xzmd5" in rel_info else rel_info["zipmd5"]
-            downloader.download(rel_info["link"], name_archive)
-            downloader.check(name_archive, md5_archive)
-            downloader.extract(name_archive, rel_info["imgname"])
-            img_file = downloader.check(rel_info["imgname"], rel_info["imgmd5"], find_img=True)
-
-            # Move img file to cache path
-            self.logger.info(f"Caching Kuiper release {release_version} files to {cache_path}")
-            img_filename = os.path.basename(img_file)
-            target_path = os.path.join(cache_path, img_filename)
-            shutil.move(img_file, target_path)
-
-            # Cleanup
-            self.logger.info("Cleaning up temporary files")
-            if os.path.exists(tarball_path):
-                os.remove(tarball_path)
-                # shutil.move(tarball_path, cache_path)
-            if os.path.isfile(name_archive):
-                os.remove(name_archive)
-            if os.path.isdir(rel_info["imgname"]):
-                os.rmdir(rel_info["imgname"])
-
-        # Update cache info
-        cache_file_path = os.path.join(cache_path, self.cache_datafile)
-        cache_data = {}
-        if os.path.exists(cache_file_path):
-            with open(cache_file_path) as f:
-                cache_data = json.load(f)
-
-        cache_data[release_version] = {
-            # "tarball_path": tarball_path,
-            "image_path": target_path,
-            "download_time": time.ctime(),
-            "download_date": time.strftime("%Y-%m-%d %H:%M:%S", time.localtime()),
-        }
-
-        with open(cache_file_path, "w") as f:
-            json.dump(cache_data, f, indent=4)
-
-        self.logger.info(f"Kuiper release {release_version} cached successfully.")
-
-    def __del__(self):
-        ...
-        # try:
-        #     self.unmount_partition()
-        # except Exception:
-        #     pass
+        download_release_image(release_version, self.kuiper_resource.cache_path, logger=self.logger)
 
     def get_full_image_path(self, release_version=None):
         """Return the cached full SD image (.img) path for the configured release.
@@ -342,7 +324,7 @@ class KuiperDLDriver(Driver):
 
     def get_boot_files_from_release(self, get_all_files=False):
         if not self.check_cached():
-            self.download_release(get_boot_files=False)
+            self.download_release()
 
         with open(os.path.join(self.kuiper_resource.cache_path, self.cache_datafile)) as f:
             cache_data = json.load(f)
