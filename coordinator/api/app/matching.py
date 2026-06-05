@@ -80,10 +80,11 @@ def match_places(
     chosen = next((p for p in candidates if p.acquired is None), candidates[0])
     if mode == "flash":
         # The flash strategy comes from the catalog and OVERRIDES the place's
-        # boot-strategy tag (the same board serves Kuiper or no-os). No Kuiper
-        # image — the firmware is built + passed in by the client.
+        # boot-strategy tag (the same board serves Kuiper or no-os). The Kuiper
+        # `image` is still returned — build-noos sources the board's .xsa from
+        # that Kuiper release; the firmware itself is built + passed by the client.
         strategy = entry.flash.strategy
-        image = None
+        image = entry.image
         flash = entry.flash
     else:
         # Strategy comes only from the place's explicit `boot-strategy` tag:

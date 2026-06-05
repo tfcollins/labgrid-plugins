@@ -261,3 +261,35 @@ def test_unknown_boot_strategy_tag_yields_strategy_none():
     res = match_places(CATALOG, places, part="adrv9002", carrier="zcu102")
     assert res.satisfiable is True
     assert res.strategy is None
+
+
+def test_flash_mode_returns_board_image_release():
+    from app.catalog import BoardCatalog, BoardEntry, FlashConfig
+    from app.matching import match_places
+    from app.models import PlaceModel
+
+    catalog = BoardCatalog(
+        boards={
+            "adrv9371": BoardEntry(
+                image="2023_R2_P1",
+                aliases=["ad9371"],
+                flash=FlashConfig(strategy="BootNoOSJTAG", noos_project="ad9371"),
+                carriers={"zc706": {}},
+            )
+        }
+    )
+    places = [
+        PlaceModel(
+            name="bq",
+            tags={"daughter-board": "adrv9371", "carrier": "zc706", "runner": "hw-bq"},
+            acquired=None,
+        )
+    ]
+
+    res = match_places(catalog, places, part="ad9371", carrier="zc706", mode="flash")
+
+    assert res.satisfiable
+    assert res.strategy == "BootNoOSJTAG"
+    assert res.image == "2023_R2_P1"  # previously None
+    assert res.reservation_filter["daughter-board"] == "adrv9371"  # alias -> canonical
+    assert res.flash is not None and res.flash.noos_project == "ad9371"
