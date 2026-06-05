@@ -8,7 +8,6 @@ URI -> yield Lease -> on exit: optional power-down, then release (always).
 from __future__ import annotations
 
 import logging
-import os
 import shutil
 import tempfile
 from contextlib import contextmanager
@@ -16,7 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from ..hw_ci.coordinator import list_live_places, resolve_coordinator
+from ..hw_ci.coordinator import _resolve_api, list_live_places, resolve_coordinator
 from ..hw_ci.render_env import render_env_to
 from ..hw_ci.schema import Place
 from . import match_client, reservation
@@ -43,21 +42,6 @@ class Lease:
     uri: str | None = None
     console: Any = None
     target: Any = None
-
-
-def _resolve_api(coord: str) -> str:
-    """REST API base (host:port) for /api/match + /api/places.
-
-    The REST API and the gRPC coordinator are separate services on different
-    ports (8000 vs 20408). Honor an explicit ADI_LG_API / LG_API override;
-    otherwise default to the coordinator host on port 8000.
-    """
-    explicit = os.environ.get("ADI_LG_API") or os.environ.get("LG_API")
-    if explicit:
-        return explicit
-    base = coord.split("://", 1)[-1]
-    host = base.rsplit(":", 1)[0] if ":" in base else base
-    return f"{host}:8000"
 
 
 def _concrete_place(coord: str, name: str) -> Place:
