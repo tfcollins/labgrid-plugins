@@ -16,6 +16,7 @@ Comprehensive guides for using adi-labgrid-plugins.
    web-dashboard
    exporter-setup
    exporter-deployment
+   github-actions
    hardware-ci
    hw-ci-v2
    hw-ci-bash
