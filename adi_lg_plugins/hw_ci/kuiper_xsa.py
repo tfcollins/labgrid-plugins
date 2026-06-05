@@ -41,6 +41,7 @@ def ensure_kuiper_image(release: str, image_cache: str | None = None) -> Path:
 
 
 def _find_fat_partition(ext: IMGFileExtractor) -> dict:
+    """Return the first partition whose description contains "FAT"; raise RuntimeError if none."""
     for part in ext.get_partitions():
         if "FAT" in part.get("description", ""):
             return part
@@ -111,12 +112,18 @@ def fetch_board_xsa(
     finally:
         ext.close()
 
-    with tarfile.open(tgz_path) as tf:
-        member = next((m for m in tf.getmembers() if Path(m.name).name == XSA_NAME), None)
-        if member is None:
-            raise FileNotFoundError(f"{BOOTGEN} for {board}/{carrier} has no {XSA_NAME}")
-        member.name = XSA_NAME  # flatten any internal path
-        tf.extract(member, out_dir)
+    try:
+        with tarfile.open(tgz_path) as tf:
+            member = next((m for m in tf.getmembers() if Path(m.name).name == XSA_NAME), None)
+            if member is None:
+                raise FileNotFoundError(f"{BOOTGEN} for {board}/{carrier} has no {XSA_NAME}")
+            member.name = XSA_NAME  # flatten any internal path
+            try:
+                tf.extract(member, out_dir, filter="data")
+            except TypeError:
+                tf.extract(member, out_dir)  # noqa: S202  (Python <3.10.12 / <3.11.4)
+    finally:
+        tgz_path.unlink(missing_ok=True)
 
     logger.info("extracted .xsa for %s/%s to %s", board, carrier, out_xsa)
     return out_xsa
