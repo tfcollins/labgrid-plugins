@@ -17,6 +17,7 @@ Comprehensive guides for using adi-labgrid-plugins.
    exporter-setup
    exporter-deployment
    github-actions
+   onboarding-a-consumer-repo
    hardware-ci
    hw-ci-v2
    hw-ci-bash
