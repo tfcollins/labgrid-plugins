@@ -106,8 +106,68 @@ projects:
     out = capsys.readouterr()
     assert json.loads(out.out) == {
         "include": [
-            {"part": "ad9371", "noos_project": "ad9371", "carrier": "zc706", "runner": "hw-bq"}
+            {
+                "part": "ad9371",
+                "noos_project": "ad9371",
+                "carrier": "zc706",
+                "runner": "hw-bq",
+                "board": "",
+                "release": "",
+                "validate_banner": "Successfully initialized",
+                "build_vars": {},
+            }
         ]
     }
     assert "::warning::" in out.err
     assert "ad7768" in out.err
+
+
+def test_noos_matrix_emits_enriched_legs(tmp_path, monkeypatch, capsys):
+    import json
+    from types import SimpleNamespace
+
+    from adi_lg_plugins.hw_ci import cli as cli_mod
+
+    manifest = tmp_path / "projects.yaml"
+    manifest.write_text(
+        """
+projects:
+  - noos_project: ad9371
+    part: ad9371
+    carriers: [zc706]
+    validate_banner: "Done"
+    build_vars: {EXAMPLE: iio_example}
+"""
+    )
+
+    monkeypatch.setenv("LG_COORDINATOR", "10.0.0.41:20408")
+
+    def fake_get_match(api, *, part, carrier=None, mode="uri"):
+        return SimpleNamespace(
+            satisfiable=True,
+            runner="hw-bq",
+            image="2023_R2_P1",
+            reservation_filter={"daughter-board": "adrv9371", "carrier": "zc706"},
+        )
+
+    # _cmd_noos_matrix imports match_client locally -> patch the source module.
+    import adi_lg_plugins.request.match_client as mc
+
+    monkeypatch.setattr(mc, "get_match", fake_get_match)
+
+    args = SimpleNamespace(manifest=str(manifest), coord=None, github_output=False)
+    rc = cli_mod._cmd_noos_matrix(args)
+    assert rc == 0
+
+    out = capsys.readouterr().out
+    leg = json.loads(out)["include"][0]
+    assert leg == {
+        "part": "ad9371",
+        "noos_project": "ad9371",
+        "carrier": "zc706",
+        "runner": "hw-bq",
+        "board": "adrv9371",
+        "release": "2023_R2_P1",
+        "validate_banner": "Done",
+        "build_vars": {"EXAMPLE": "iio_example"},
+    }
