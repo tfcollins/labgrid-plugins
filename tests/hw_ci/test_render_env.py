@@ -201,6 +201,27 @@ def test_bootfpgasoctftp_no_bootstrap_tags_renders_empty_strings():
     out = render_env(_place("BootFPGASoCTFTP"))
     assert "ps7_init_tcl: ''" in out
     assert "uboot_elf: ''" in out
+    # sd_autoboot defaults off (empty string -> _as_bool False)
+    assert "sd_autoboot: ''" in out
+
+
+def test_bootfpgasoctftp_sd_autoboot_tag_renders_into_strategy():
+    """A `sd-autoboot=true` place tag flows through into the strategy so
+    JTAG-recovery-class boards skip the TFTP-kernel boot and let the SD
+    autoboot Kuiper."""
+    p = Place(
+        name="nemo",
+        carrier="zc706",
+        daughter_board="adrv9009",
+        boot_strategy="BootFPGASoCTFTP",
+        extra_tags={
+            "ps7-init-tcl": "/srv/recovery/zc706/ps7_init.tcl",
+            "uboot-elf": "/srv/recovery/zc706/u-boot.elf",
+            "sd-autoboot": "true",
+        },
+    )
+    out = render_env(p)
+    assert "sd_autoboot: 'true'" in out
 
 
 def test_bootfpgasoctftp_tftp_root_overridable_via_tag():

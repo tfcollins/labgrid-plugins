@@ -136,6 +136,9 @@ def render_env(
         "uboot_elf": place.extra_tags.get("uboot-elf", ""),
         "fsbl_elf": place.extra_tags.get("fsbl-elf", ""),
         "bitstream_path": place.extra_tags.get("bitstream-path", ""),
+        # Opt-in SD-autoboot for BootFPGASoCTFTP: JTAG-bootstrap U-Boot,
+        # then let the SD's own Kuiper autoboot (no TFTP-kernel step).
+        "sd_autoboot": place.extra_tags.get("sd-autoboot", ""),
         "uboot_prompt": place.extra_tags.get("uboot-prompt", d_uboot_prompt),
         "kernel_image_name": place.extra_tags.get("kernel-image-name", d_kernel_image),
         "dtb_image_name": place.extra_tags.get("dtb-image-name", d_dtb_image),

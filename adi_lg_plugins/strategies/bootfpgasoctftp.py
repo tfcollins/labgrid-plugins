@@ -11,6 +11,21 @@ from labgrid.strategy import Strategy, StrategyError
 from ._compat import never_retry
 
 
+def _as_bool(value):
+    """Coerce a YAML/tag value to bool.
+
+    Place tags render to strings (``''`` when unset), so the ``sd_autoboot``
+    attr must accept ``"true"``/``"1"``/``"yes"``/``"on"`` (any case) as True
+    and empty/``"false"``/``None`` as False, while still honouring a real
+    bool passed programmatically.
+    """
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    return str(value).strip().lower() in ("1", "true", "yes", "on")
+
+
 class Status(enum.Enum):
     """Boot strategy state machine states for TFTP-based boot."""
 
@@ -100,6 +115,15 @@ class BootFPGASoCTFTP(Strategy):
     a9_target_name = attr.ib(default="*Cortex-A9 MPCore #0")
     jtag_bootstrap_retries = attr.ib(default=2)
 
+    # SD-autoboot mode. When True, the JTAG bootstrap loads U-Boot into
+    # DDR and then the board's own SD card (which already carries a
+    # bootable Kuiper kernel+rootfs) is allowed to autoboot straight to
+    # Linux — the TFTP-kernel path is skipped entirely. This serves
+    # JTAG-recovery-class boards (no SD mux, SD already imaged) whose
+    # only missing piece is a working on-SD FSBL/U-Boot. Opt in via the
+    # place tag ``sd-autoboot``; requires the JTAG bootstrap inputs.
+    sd_autoboot = attr.ib(default=False, converter=_as_bool)
+
     def _require(self, name: str) -> str:
         """Fetch a required attr or raise StrategyError naming the field."""
         value = getattr(self, name)
@@ -112,6 +136,28 @@ class BootFPGASoCTFTP(Strategy):
         bootstrap inputs (PS7 init TCL + U-Boot ELF). Bitstream and FSBL
         are optional refinements that ``load_zynq_uboot`` handles."""
         return bool(self.jtag) and bool(self.ps7_init_tcl) and bool(self.uboot_elf)
+
+    def _boot_via_sd_autoboot(self):
+        """Let the JTAG-bootstrapped U-Boot autoboot the SD's own Kuiper.
+
+        On ``sd_autoboot`` boards the SD already carries a bootable
+        kernel+rootfs, so once U-Boot is in DDR it autoboots straight to
+        Linux with no chance to drop to the U-Boot prompt. We therefore
+        skip the autoboot-interrupt + TFTP-kernel sequence and simply
+        wait for the kernel ``Linux`` banner and the Linux login marker.
+        """
+        self.logger.info(
+            "sd_autoboot: U-Boot will autoboot the SD's Kuiper; waiting for "
+            "kernel 'Linux' banner then '%s'...",
+            self.reached_linux_marker,
+        )
+        self.shell.console.expect("Linux", timeout=self.wait_for_linux_prompt_timeout)
+        self.shell.console.expect(
+            self.reached_linux_marker, timeout=self.wait_for_linux_prompt_timeout
+        )
+        self.shell.bypass_login = False
+        self.target.deactivate(self.shell)
+        self.logger.info("Device booted successfully via SD autoboot")
 
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
@@ -237,6 +283,13 @@ class BootFPGASoCTFTP(Strategy):
             self.transition(Status.jtag_bootstrap)
             self.shell.bypass_login = True
             self.target.activate(self.shell)
+
+            if self.sd_autoboot:
+                # SD-autoboot boards skip the TFTP-kernel dance entirely:
+                # the JTAG-loaded U-Boot autoboots the SD's Kuiper.
+                self._boot_via_sd_autoboot()
+                self.status = status
+                return
 
             # Wait for U-Boot's autoboot prompt.  Retry once on a
             # zero-byte silence — the same flake mode that
