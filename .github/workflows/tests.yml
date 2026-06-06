@@ -46,6 +46,8 @@ jobs:
           tests/test_vpk180_strat.py \
           tests/test_vpk180_reflash_strat.py \
           tests/test_xilinx_jtag_driver_zynq.py \
+          tests/test_remote_exec.py \
+          tests/test_massstorage_driver.py \
           tests/test_zynq7000_recovery_strat.py \
           tests/test_recovery_module.py \
           tests/test_recovery_busybox_http.py \
