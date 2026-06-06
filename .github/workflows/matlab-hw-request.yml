@@ -42,9 +42,13 @@ on:
       install-cmd:
         description: "Command (with $VENV_DIR exported) to install adi-labgrid-plugins."
         type: string
+        # The [kuiper] extra (pytsk3) is required to boot Kuiper uri-mode
+        # boards via KuiperDLDriver (BootFPGASoC/BootFPGASoCTFTP). pytsk3
+        # builds from source, so the leg runner needs a C toolchain +
+        # libtsk headers.
         default: >-
           uv pip install --quiet --python "$VENV_DIR/bin/python"
-          "adi-labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins@main"
+          "adi-labgrid-plugins[kuiper] @ git+https://github.com/tfcollins/labgrid-plugins@main"
 
 jobs:
   preflight:
