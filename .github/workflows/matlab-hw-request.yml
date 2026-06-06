@@ -96,14 +96,34 @@ jobs:
           # request exports IIO_URI (+ LG_PLACE/LG_CARRIER) and passes the parent env
           # (MATLAB_BIN/MATLAB_BOARD/GITHUB_WORKSPACE) to the child. runHWTests reads
           # IIO_URI itself. The quoted heredoc keeps the MATLAB string literal intact
-          # (avoids nested-quote interpolation). Exit 3 (Incomplete/CheckDevice-skip)
-          # is normalized to success, matching the prior MATLAB CI behavior.
+          # (avoids nested-quote interpolation).
+          #
+          # Two things proven necessary by a live nemo/adrv9002 run:
+          #   1. The toolbox (hdl/) AND the tests (test/, which defines runHWTests + the
+          #      *Tests classes) must both be on the MATLAB path, else runHWTests is
+          #      "undefined". A bare `cd; runHWTests(...)` is NOT enough.
+          #   2. MATLAB R2025b SEGFAULTS on exit() *after* writing the JUnit (crash in
+          #      ShutdownLxeEngine), so the process exit code is unreliable. We determine
+          #      pass/fail by PARSING the JUnit XML (<board>_HWTestResults.xml) for
+          #      failures+errors, ignoring MATLAB's exit code. An all-skipped run
+          #      (no reachable device, exit-3 equivalent) counts as success.
           cat > run-matlab.sh <<'EOF'
           set +e
-          "$MATLAB_BIN" -batch "cd('$GITHUB_WORKSPACE'); runHWTests('$MATLAB_BOARD')"
-          rc=$?
-          [ "$rc" -eq 3 ] && rc=0
-          exit $rc
+          XML="${MATLAB_BOARD}_HWTestResults.xml"
+          rm -f "$XML"
+          "$MATLAB_BIN" -batch "cd('$GITHUB_WORKSPACE'); addpath(genpath('hdl')); addpath(genpath('test')); runHWTests('$MATLAB_BOARD')"
+          echo "MATLAB exited with $? (ignored; pass/fail is read from the JUnit)"
+          [ -f "$XML" ] || { echo "FATAL: no JUnit produced ($XML)"; exit 1; }
+          python3 - "$XML" <<'PY'
+          import sys, xml.etree.ElementTree as ET
+          root = ET.parse(sys.argv[1]).getroot()
+          cases = root.findall(".//testcase")
+          fails = sum(bool(c.findall("failure") or c.findall("error")) for c in cases)
+          skips = sum(bool(c.findall("skipped")) for c in cases)
+          passes = len(cases) - fails - skips
+          print(f"RESULT: {len(cases)} tests, {passes} passed, {fails} failed/errored, {skips} skipped")
+          sys.exit(2 if fails else 0)
+          PY
           EOF
           adi-lg request --part "${{ matrix.part }}" --carrier "${{ matrix.carrier }}" \
             --wait "${{ inputs.wait }}" --run "bash run-matlab.sh"
