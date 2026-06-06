@@ -1,36 +1,90 @@
-## Environment for hardware tier of test_coordinator_integration.py.
+## Environment for hardware tier of test_coordinator_integration.py against
+## the 'bq' place on the remote coordinator (10.0.0.41:20408).
 ##
-## Binds to the 'bq' place on the remote coordinator (10.0.0.41:20408).
-## The exporter on the lab host publishes the underlying resources; the
-## drivers run client-side (here) and reach hardware via the network
-## wrappers (ser2net, NetworkUSBSDMuxDevice, etc.) or external services
-## (Vesync cloud).
+## bq is a zc706 + adrv9371 board that boots via BootZynq7000JTAGRecovery
+## (JTAG-bootstrap U-Boot -> TFTP recovery initramfs -> SD re-flash). The
+## exporter on the lab host (runner hw-bq) publishes the underlying
+## resources (HomeAssistantOutlet, RawSerialPort, NetworkService,
+## XilinxDeviceJTAG, XilinxVivadoTool, ...); the drivers run client-side
+## here and reach the hardware over the coordinator. XilinxJTAGDriver runs
+## xsdb on the exporter via the shared RemoteExecMixin (no manual SSH).
+##
+## The JTAG host-side paths below come from the live bq place tags
+## (`labgrid-client -v places`): /srv/recovery/zc706/* on the exporter.
 ##
 ## Run:
-##   LG_CROSSBAR=10.0.0.41:20408 pytest tests/test_coordinator_integration.py \
-##       -v --run-hardware --lg-config tests/env_remote_bq.yaml
+##   LG_COORDINATOR=10.0.0.41:20408 \
+##   pytest tests/coordinator/test_zynq7000_recovery_strat.py -v \
+##       --run-hardware --lg-config tests/coordinator/env_remote_bq.yaml
+##
+## See examples/zynq7000_recovery/lg_zc706_recovery.yaml for the
+## local-host (non-coordinator) equivalent and full parameter docs.
 
 imports:
   - adi_lg_plugins
 
 targets:
   main:
+    features:
+      - adrv9371
+      - zc706
+      - jtag-recovery
     resources:
       RemotePlace:
         name: bq
+      ## TFTP server runs locally alongside the test runner (writable root
+      ## for the recovery kernel/dtb/initramfs); named to avoid clashing
+      ## with any TFTPServerResource the exporter also publishes.
+      TFTPServerResource:
+        name: local-tftp
+        address: 'auto'
+        port: 3069
+        root: /var/lib/tftpboot
     drivers:
-      VesyncPowerDriver: {}
-      USBSDMuxDriver: {}
+      HomeAssistantPowerDriver: {}
       SerialDriver: {}
+      XilinxJTAGDriver: {}
+      TFTPServerDriver:
+        bindings:
+          resource: local-tftp
       ADIShellDriver:
-        prompt: 'root@.*'
-        login_prompt: 'analog login: '
+        ## Matches both the recovery initramfs ("recovery login:") and a
+        ## normal Kuiper login after re-flash.
+        prompt: 'root@.*[#$]'
+        login_prompt: '(analog|recovery) login: ?'
         username: 'root'
         password: 'analog'
-      KuiperDLDriver: {}
-      MassStorageDriver:
-        partition: '/dev/disk/by-partuuid/a22286d2-01'
-      BootFPGASoC:
-        reached_linux_marker: 'analog'
-        wait_for_linux_prompt_timeout: 180
-        debug_write_boot_log: true
+      BootZynq7000JTAGRecovery:
+        bindings:
+          tftp_server: local-tftp
+        ## JTAG bootstrap inputs (paths on the exporter host that runs xsdb;
+        ## from the live bq place tags). The FPGA bitstream MUST load before
+        ## the kernel: the adrv9371 DTB references AXI fabric peripherals.
+        ps7_init_tcl: /srv/recovery/zc706/ps7_init.tcl
+        uboot_elf: /srv/recovery/zc706/u-boot.elf
+        fsbl_elf: /srv/recovery/zc706/fsbl.elf
+        bitstream_path: /srv/recovery/zc706/system_top.bit
+        a9_target_name: '*Cortex-A9 MPCore #0'
+        ## Recovery image filenames inside the local TFTP root.
+        recovery_kernel: 'uImage'
+        recovery_dtb: 'devicetree.dtb'
+        recovery_initramfs: 'uInitrd.recovery'
+        recovery_login_marker: 'recovery login:'
+        ## SD-flash inputs (host-local image; auto_serve_http composes the URL).
+        sd_image_path: '/tmp/kuiper_cache/2025-03-18-ADI-Kuiper-full.img'
+        sd_device: '/dev/mmcblk0'
+        download_cmd_template: 'wget -q -O - "{url}"'
+        ## Kuiper-full ships per-board BOOT.BIN/uImage/devicetree under a
+        ## named subdir; promote them to the FAT root after the dd.
+        board_variant: 'zynq-zc706-adv7511-adrv937x'
+        ## U-Boot env (Zynq-7000)
+        uboot_prompt: 'Zynq>.*'
+        kernel_addr: '0x3000000'
+        dtb_addr: '0x2A00000'
+        initramfs_addr: '0x10000000'
+        bootargs: 'console=ttyPS0,115200 earlyprintk loglevel=8 rdinit=/init'
+        ## Robustness
+        jtag_bootstrap_retries: 1
+        wait_for_uboot_prompt_timeout: 90
+        wait_for_recovery_linux_timeout: 240
+        wait_for_sd_flash_timeout: 1800
