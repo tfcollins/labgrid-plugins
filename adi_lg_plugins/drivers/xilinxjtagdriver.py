@@ -1,16 +1,22 @@
 """Driver to program Xilinx FPGAs via JTAG using xsdb.
 
 Supports both local execution (test runner == exporter) and remote
-execution (test runner ssh's to the exporter host to invoke xsdb).
-When any sibling resource on the target is a NetworkResource (has a
-`host` attribute), xsdb is run there via ssh and TCL scripts are
-pushed via scp; otherwise xsdb runs locally.
+execution (a client acquiring the place through a coordinator runs xsdb
+on the exporter host). Remote detection and ssh are unified in
+:class:`~adi_lg_plugins.drivers._remote.RemoteExecMixin`, keyed off the
+bound ``xilinxdevicejtag`` resource: when it carries exporter-host info
+(``host`` or ``extra['proxy']``), the generated TCL script is staged to
+the exporter and xsdb runs there over a single reused ssh connection;
+otherwise xsdb runs locally.
+
+Note: bitstream / kernel / ELF / ps7_init paths embedded in the TCL are
+"as seen by the host that runs xsdb" — they are assumed to already exist
+on the exporter and are NOT auto-staged by this driver.
 """
 
 import os
 import subprocess
 import tempfile
-import time
 
 import attr
 from labgrid.driver.common import Driver
@@ -18,10 +24,12 @@ from labgrid.driver.exception import ExecutionError
 from labgrid.factory import target_factory
 from labgrid.step import step
 
+from ._remote import RemoteExecMixin
+
 
 @target_factory.reg_driver
 @attr.s(eq=False)
-class XilinxJTAGDriver(Driver):
+class XilinxJTAGDriver(RemoteExecMixin, Driver):
     """Program Xilinx FPGAs via JTAG using xsdb.
 
     Bindings:
@@ -35,26 +43,22 @@ class XilinxJTAGDriver(Driver):
         "xilinxvivado": {"XilinxVivadoTool"},
     }
 
+    # RemoteExecMixin: the resource that locates the exporter host.
+    _remote_binding = "xilinxdevicejtag"
+
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
         self.logger.info("XilinxJTAGDriver initialized")
         self.logger.debug(f"xsdb path: {self.xilinxvivado.xsdb_path}")
 
-    def _remote_host(self):
-        """Return exporter host when sibling resources come from a NetworkResource,
-        else None (local execution)."""
-        for r in getattr(self.target, "resources", ()):
-            host = getattr(r, "host", None)
-            if host:
-                return host
-        return None
-
     def _run_xsdb(self, tcl_script: str):
-        """Execute ``tcl_script`` through xsdb, locally or via ssh.
+        """Execute ``tcl_script`` through xsdb, locally or on the exporter.
+
+        The TCL script is staged to the host that runs xsdb (a no-op when
+        local), then xsdb is invoked over the mixin's reused connection.
 
         Returns (stdout, stderr, returncode) as strings.
         """
-        host = self._remote_host()
         xsdb = self.xilinxvivado.xsdb_path
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".tcl", delete=False) as f:
@@ -62,24 +66,14 @@ class XilinxJTAGDriver(Driver):
             local_tcl = f.name
 
         try:
-            if host is None:
-                result = subprocess.run(
-                    [xsdb, local_tcl], capture_output=True, text=True, timeout=300
-                )
-                return result.stdout, result.stderr, result.returncode
-
-            remote_tcl = f"/tmp/lg_xsdb_{os.getpid()}_{int(time.time() * 1000)}.tcl"
-            try:
-                subprocess.check_call(["scp", "-q", local_tcl, f"{host}:{remote_tcl}"], timeout=30)
-                result = subprocess.run(
-                    ["ssh", host, xsdb, remote_tcl],
-                    capture_output=True,
-                    text=True,
-                    timeout=300,
-                )
-                return result.stdout, result.stderr, result.returncode
-            finally:
-                subprocess.call(["ssh", host, "rm", "-f", remote_tcl], timeout=10)
+            remote_tcl = self._stage_file(local_tcl)
+            result = subprocess.run(
+                self._remote_prefix() + [xsdb, remote_tcl],
+                capture_output=True,
+                text=True,
+                timeout=300,
+            )
+            return result.stdout, result.stderr, result.returncode
         finally:
             try:
                 os.unlink(local_tcl)

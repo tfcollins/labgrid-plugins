@@ -104,6 +104,7 @@ For any new driver, resource, or strategy:
 - **MassStorageDriver** requires `pmount`/`pumount` installed on host
 - **CyberPowerDriver** handles both pysnmp v6.x (async) and v7.x (sync) with version detection
 - **KuiperDLDriver** depends on `pytsk3` which needs system-level filesystem libraries (install via the `kuiper` extra)
+- **Host-side remote execution** is unified in `drivers/_remote.py` (`RemoteExecMixin`). Drivers that run work on the exporter host (`XilinxJTAGDriver`, `MassStorageDriver`) set `_remote_binding` to a bound resource and use `_remote_run`/`_remote_check`/`_stage_file`/`_remote_put`. The exporter host is resolved as `resource.host or resource.extra['proxy']` (coordinator-proxied plain `Resource`s carry it only in `extra['proxy']`), and all commands/copies reuse one `sshmanager` ControlMaster — so a client acquiring a `RemotePlace` drives the hardware with no manual SSH. Note: JTAG bitstream/ELF/ps7 artifact paths are still assumed to pre-exist on the exporter (not auto-staged).
 
 ## Sibling Projects in This Repo
 

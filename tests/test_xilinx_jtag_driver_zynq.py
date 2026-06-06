@@ -165,3 +165,50 @@ def test_load_and_run_elf_absolutizes_relative_paths(driver):
     assert f"fpga -f {os.path.abspath('hw/sys.bit')}" in tcl
     assert f"source {os.path.abspath('hw/ps7.tcl')}" in tcl
     assert "dow build/fw.elf" not in tcl  # no leftover relative path
+
+
+# --- _run_xsdb local/remote dispatch (RemoteExecMixin) ----------------------
+
+
+import types  # noqa: E402
+from unittest import mock  # noqa: E402
+
+from adi_lg_plugins.drivers import xilinxjtagdriver as _jtag_mod  # noqa: E402
+
+
+def _dispatch_driver(jtag_resource):
+    """Driver wired for real _run_xsdb dispatch (bypassing binding machinery)."""
+    d = XilinxJTAGDriver.__new__(XilinxJTAGDriver)
+    d.name = "jtag"
+    d.logger = logging.getLogger("test_xilinx_jtag_dispatch")
+    d.xilinxvivado = MagicMock(xsdb_path="xsdb")
+    d.xilinxdevicejtag = jtag_resource
+    d.state = BindingState.active
+    return d
+
+
+def test_run_xsdb_local_runs_without_prefix():
+    # No host/proxy on the bound resource => local execution, staged path == local.
+    d = _dispatch_driver(types.SimpleNamespace(extra={}))
+    with mock.patch.object(_jtag_mod.subprocess, "run") as run:
+        run.return_value = mock.Mock(stdout="ok", stderr="", returncode=0)
+        out, err, rc = d._run_xsdb("connect\n")
+    argv = run.call_args[0][0]
+    assert argv[0] == "xsdb"  # no ssh prefix
+    assert argv[1].endswith(".tcl")
+    assert (out, rc) == ("ok", 0)
+
+
+def test_run_xsdb_remote_stages_and_prefixes():
+    # Proxied resource => TCL staged to exporter and xsdb run over ssh prefix.
+    d = _dispatch_driver(types.SimpleNamespace(extra={"proxy": "exp.host"}))
+    with (
+        mock.patch.object(d, "_stage_file", return_value="/tmp/stage/x.tcl") as stage,
+        mock.patch.object(d, "_remote_prefix", return_value=["ssh", "exp.host", "--"]),
+        mock.patch.object(_jtag_mod.subprocess, "run") as run,
+    ):
+        run.return_value = mock.Mock(stdout="JTAG connected", stderr="", returncode=0)
+        out, err, rc = d._run_xsdb("connect\n")
+    stage.assert_called_once()
+    assert run.call_args[0][0] == ["ssh", "exp.host", "--", "xsdb", "/tmp/stage/x.tcl"]
+    assert out == "JTAG connected"
