@@ -54,6 +54,11 @@ targets:
         uboot_elf: '${uboot_elf}'
         fsbl_elf: '${fsbl_elf}'
         bitstream_path: '${bitstream_path}'
+        # SD-autoboot (optional): when 'true', skip the TFTP-kernel boot
+        # and let the JTAG-bootstrapped U-Boot autoboot the SD's own
+        # Kuiper straight to Linux. Set the place tag `sd-autoboot=true`
+        # for JTAG-recovery-class boards whose SD is already imaged.
+        sd_autoboot: '${sd_autoboot}'
         # Carrier-aware U-Boot/Linux config (render_env supplies
         # Zynq-7000 vs ZynqMP defaults; override via place tags).
         uboot_prompt: '${uboot_prompt}'
