@@ -80,7 +80,8 @@ jobs:
           tests/hw_ci/test_board_map.py \
           tests/hw_ci/test_matlab_matrix.py \
           tests/hw_ci/test_matlab_matrix_cli.py \
-          tests/test_kuiperdl_download_image.py
+          tests/test_kuiperdl_download_image.py \
+          tests/test_pin_release_refs.py
 
   coordinator-api:
     # The coordinator FastAPI subproject has its own pyproject + test suite
