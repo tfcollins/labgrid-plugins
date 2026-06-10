@@ -251,7 +251,9 @@ def parse_version_info(version_str, tags, repo=None):
     }
 
 
-def get_latest_bootfiles(owner, repo, fpga_carrier=None, daughter_card=None, filename=None, token=None, pin=None):
+def get_latest_bootfiles(
+    owner, repo, fpga_carrier=None, daughter_card=None, filename=None, token=None, pin=None
+):
     """Resolve the matching Cloudsmith package, returning the raw package dict.
 
     Without ``pin`` the newest matching package (by ``uploaded_at``) is
