@@ -1,11 +1,13 @@
 import logging
 import os
+import shutil
 
 import click
 from labgrid import Environment
 from rich.console import Console
 from rich.logging import RichHandler
 
+from adi_lg_plugins.tools.cloudsmithdl import download_cloudsmith_boot_file
 from adi_lg_plugins.tools.config_gen import generate_config
 from adi_lg_plugins.tools.request_cli import request_cmd
 
@@ -279,6 +281,58 @@ def provision_software(config, package, repo, build, test, target, state):
         except Exception as e:
             console.print(f"[bold red]Provisioning failed: {e}[/bold red]")
             raise click.ClickException(str(e)) from e
+
+
+@cli.command(name="download-cloudsmith")
+@click.option("--fpga-carrier", required=True, help="FPGA carrier, e.g. zcu102")
+@click.option("--daughter-card", required=True, help="Daughter card, e.g. adrv9009")
+@click.option("--filename", default="BOOT.BIN", show_default=True, help="Artifact filename")
+@click.option("--owner", default="adi", show_default=True, help="Cloudsmith owner/org")
+@click.option(
+    "--repo", default="sdg-boot-partition", show_default=True, help="Cloudsmith repository"
+)
+@click.option("--version", default=None, help="Pin an exact package version (default: latest)")
+@click.option(
+    "--cache-path",
+    default="~/.labgrid/cloudsmith_releases/",
+    show_default=True,
+    help="Cache directory for downloaded artifacts",
+)
+@click.option(
+    "--out",
+    type=click.Path(),
+    default=None,
+    help="Copy the artifact here after download (file path or existing directory)",
+)
+def download_cloudsmith(
+    fpga_carrier, daughter_card, filename, owner, repo, version, cache_path, out
+):
+    """Download a boot artifact from Cloudsmith.
+
+    Resolves the latest (or pinned) package matching the FPGA carrier and
+    daughter card in the Cloudsmith repo, downloads it into the local cache
+    (sha256-verified), and prints the cached path. Requires the
+    CLOUDSMITH_API_TOKEN environment variable.
+    """
+    try:
+        path = download_cloudsmith_boot_file(
+            fpga_carrier=fpga_carrier,
+            daughter_card=daughter_card,
+            filename=filename,
+            owner=owner,
+            repo=repo,
+            version=version,
+            cache_path=cache_path,
+        )
+    except Exception as e:
+        console.print(f"[bold red]Download failed: {e}[/bold red]")
+        raise click.ClickException(str(e)) from e
+
+    console.print(f"[bold green]Downloaded:[/bold green] {path}")
+    if out:
+        dest = os.path.join(out, os.path.basename(path)) if os.path.isdir(out) else out
+        shutil.copy2(path, dest)
+        console.print(f"[bold green]Copied to:[/bold green] {dest}")
 
 
 @cli.command(name="build-recovery-initramfs")
