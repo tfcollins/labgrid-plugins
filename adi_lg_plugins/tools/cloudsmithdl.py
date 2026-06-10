@@ -15,6 +15,7 @@ def download_cloudsmith_boot_file(
     version,
     cache_path,
 ):
+    """Resolve, download, and return the local path of the boot artifact."""
     target = Target("CloudsmithDownloader")
     CloudsmithRelease(
         target,

@@ -130,3 +130,92 @@ def test_boot_fabric_failure(mock_env, runner):
 
         assert result.exit_code != 0
         assert "Transition failed: Hardware timeout" in result.output
+
+
+@patch("adi_lg_plugins.tools.cli.download_cloudsmith_boot_file")
+def test_download_cloudsmith_success(mock_dl, runner):
+    mock_dl.return_value = "/cache/v1/BOOT.BIN"
+
+    result = runner.invoke(
+        cli,
+        ["download-cloudsmith", "--fpga-carrier", "zcu102", "--daughter-card", "adrv9009"],
+    )
+
+    assert result.exit_code == 0
+    assert "/cache/v1/BOOT.BIN" in result.output
+    mock_dl.assert_called_once_with(
+        fpga_carrier="zcu102",
+        daughter_card="adrv9009",
+        filename="BOOT.BIN",
+        owner="adi",
+        repo="sdg-boot-partition",
+        version=None,
+        cache_path="~/.labgrid/cloudsmith_releases/",
+    )
+
+
+@patch("adi_lg_plugins.tools.cli.download_cloudsmith_boot_file")
+def test_download_cloudsmith_out_file(mock_dl, runner):
+    with runner.isolated_filesystem():
+        os.makedirs("cache")
+        with open("cache/BOOT.BIN", "wb") as f:
+            f.write(b"boot-bytes")
+        mock_dl.return_value = os.path.abspath("cache/BOOT.BIN")
+
+        result = runner.invoke(
+            cli,
+            [
+                "download-cloudsmith",
+                "--fpga-carrier",
+                "zcu102",
+                "--daughter-card",
+                "adrv9009",
+                "--out",
+                "copy.bin",
+            ],
+        )
+
+        assert result.exit_code == 0
+        with open("copy.bin", "rb") as f:
+            assert f.read() == b"boot-bytes"
+        assert "copy.bin" in result.output
+
+
+@patch("adi_lg_plugins.tools.cli.download_cloudsmith_boot_file")
+def test_download_cloudsmith_out_directory(mock_dl, runner):
+    with runner.isolated_filesystem():
+        os.makedirs("cache")
+        os.makedirs("dest")
+        with open("cache/BOOT.BIN", "wb") as f:
+            f.write(b"boot-bytes")
+        mock_dl.return_value = os.path.abspath("cache/BOOT.BIN")
+
+        result = runner.invoke(
+            cli,
+            [
+                "download-cloudsmith",
+                "--fpga-carrier",
+                "zcu102",
+                "--daughter-card",
+                "adrv9009",
+                "--out",
+                "dest",
+            ],
+        )
+
+        assert result.exit_code == 0
+        with open(os.path.join("dest", "BOOT.BIN"), "rb") as f:
+            assert f.read() == b"boot-bytes"
+
+
+@patch("adi_lg_plugins.tools.cli.download_cloudsmith_boot_file")
+def test_download_cloudsmith_failure(mock_dl, runner):
+    mock_dl.side_effect = Exception("No Cloudsmith API token")
+
+    result = runner.invoke(
+        cli,
+        ["download-cloudsmith", "--fpga-carrier", "zcu102", "--daughter-card", "adrv9009"],
+    )
+
+    assert result.exit_code != 0
+    assert "No Cloudsmith API token" in result.output
