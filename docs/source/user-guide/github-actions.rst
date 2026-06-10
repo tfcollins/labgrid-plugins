@@ -23,6 +23,13 @@ unreachable.
 Choosing a workflow
 -------------------
 
+.. warning::
+
+   ``hw-matrix.yml`` and ``hw-matrix-v2.yml`` are **deprecated**.  New consumers must
+   use the hw-request family (``hw-request.yml``, ``noos-hw-request.yml``,
+   ``matlab-hw-request.yml``) pinned at ``@v3`` (current release).  Removal of the
+   deprecated workflows is tracked by the HW-CI convergence effort.
+
 .. list-table::
    :widths: 20 25 30 25
    :header-rows: 1
@@ -31,15 +38,14 @@ Choosing a workflow
      - What it runs
      - Discovery mechanism
      - Use when
-   * - ``hw-matrix.yml`` (v1)
+   * - ``hw-matrix.yml`` (v1) — **deprecated**
      - pytest against places from a committed manifest
      - ``labgrid-client places`` filtered by ``hw-nodes.json``
-     - You maintain an explicit place manifest.
-   * - ``hw-matrix-v2.yml`` (v2)
+     - Do not adopt for new consumers; use ``hw-request.yml@v3`` instead.
+   * - ``hw-matrix-v2.yml`` (v2) — **deprecated**
      - pytest against discovered places; renders env.yaml per shard
      - ``/api/places`` ∩ ``@pytest.mark.iio_hardware`` markers
-     - You want zero-manifest discovery driven by test markers + live
-       coordinator.
+     - Do not adopt for new consumers; use ``hw-request.yml@v3`` instead.
    * - ``hw-request.yml``
      - ``adi-lg request --part <p>`` per part; hands a booted board URI
        to pytest via ``IIO_URI``
@@ -335,13 +341,13 @@ See :doc:`hw-request` for the full consumer contract.
    on: [pull_request]
    jobs:
      hw:
-       uses: tfcollins/labgrid-plugins/.github/workflows/hw-request.yml@main
+       uses: tfcollins/labgrid-plugins/.github/workflows/hw-request.yml@v3  # bump when a new release tags
        with:
          coordinator: ${{ vars.ADI_LG_COORDINATOR }}
          test-root: "test"
          install-cmd: >-
            uv pip install --quiet --python "$VENV_DIR/bin/python" -e "."
-           "adi-labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins@main"
+           "adi-labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins@v3"
 
 ``hw-request.yml`` inputs
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -469,7 +475,7 @@ have MATLAB installed (+ a reachable license) and the libIIO libs.
    on: [pull_request]
    jobs:
      hw-matlab:
-       uses: tfcollins/labgrid-plugins/.github/workflows/matlab-hw-request.yml@main
+       uses: tfcollins/labgrid-plugins/.github/workflows/matlab-hw-request.yml@v3  # bump when a new release tags
        with:
          coordinator: ${{ vars.LG_COORDINATOR }}
          board-map: "test/hw_ci/board_map.yaml"
@@ -577,7 +583,7 @@ and the manifest reference.
    on: [pull_request]
    jobs:
      noos-hw:
-       uses: tfcollins/labgrid-plugins/.github/workflows/noos-hw-request.yml@main
+       uses: tfcollins/labgrid-plugins/.github/workflows/noos-hw-request.yml@v3  # bump when a new release tags
        with:
          coordinator: ${{ vars.ADI_LG_COORDINATOR }}
          manifest: "tools/hw_ci/projects.yaml"
@@ -673,7 +679,7 @@ venv's ``bin/`` directory to ``$GITHUB_PATH`` for subsequent steps.
 
 .. code-block:: yaml
 
-   - uses: tfcollins/labgrid-plugins/.github/actions/setup-uv-venv@main
+   - uses: tfcollins/labgrid-plugins/.github/actions/setup-uv-venv@v3  # bump when a new release tags
      with:
        venv_dir: "$HOME/.cache/hw-ci/venv"
        install_cmd: >-
@@ -729,7 +735,7 @@ when available, falling back to a jittered polling loop.
 
 .. code-block:: yaml
 
-   - uses: tfcollins/labgrid-plugins/.github/actions/acquire-place@main
+   - uses: tfcollins/labgrid-plugins/.github/actions/acquire-place@v3  # bump when a new release tags
      with:
        coordinator: ${{ env.COORDINATOR }}
        place: my-zcu102
