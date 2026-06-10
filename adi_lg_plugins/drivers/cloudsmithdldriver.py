@@ -141,6 +141,7 @@ def search_cloudsmith_packages(owner, repo, query, token, page_size=100):
         response = requests.get(url, headers=headers, params=params, timeout=30)
         response.raise_for_status()
         packages = response.json()
+        print(f"Cloudsmith API page {page}: {len(packages)} packages")
         if not packages:
             break
         all_packages.extend(packages)
@@ -151,7 +152,7 @@ def search_cloudsmith_packages(owner, repo, query, token, page_size=100):
     return all_packages
 
 
-def parse_version_info(version_str, tags):
+def parse_version_info(version_str, tags, repo=None):
     """Parse a Cloudsmith version string into structured metadata.
 
     Returns ``None`` (rather than raising) for unparseable strings,
@@ -162,39 +163,62 @@ def parse_version_info(version_str, tags):
     if len(parts) < 2:
         return None
 
-    project = parts[0]
-    branch = parts[1]
+    if repo == "sdg-hdl":
+        # hdl/releases/hdl_2022_r2/hdl_output/2024_02_15-06_47_17/adrv9371x_kcu105/
+        last = parts[-1]
+        pparts = last.split("_")
+        if len(pparts) < 2:
+            return None
+        project = pparts[0]
+        branch = parts[2]
+
+    else:
+        project = parts[0]
+        branch = parts[1]
 
     # kuiper_partition releases have no timestamp segment.
-    if branch.startswith("kuiper_partition"):
-        remaining = parts[2:]
-        timestamp = None
+    if repo == "sdg-hdl":
+        timestamp = parts[4]
+        remaining = ModuleNotFoundError
+
     else:
-        if len(parts) < 3:
-            return None
-        timestamp = parts[2]
-        remaining = parts[3:]
+        if branch.startswith("kuiper_partition"):
+            remaining = parts[2:]
+            timestamp = None
+        else:
+            if len(parts) < 3:
+                return None
+            timestamp = parts[2]
+            remaining = parts[3:]
 
     # Skip a repeated "boot_partition" segment if present.
-    if remaining and remaining[0] == "boot_partition":
-        remaining = remaining[1:]
+    if repo == "sdg-hdl":
+        fpga_carrier = pparts[1]
+        # system = f"{fpga_carrier}-{project}"
+        system = None
+        variant = None
+        carrier = "Xilinx"
+    else:
+        if remaining and remaining[0] == "boot_partition":
+            remaining = remaining[1:]
 
-    # An "adi-" prefixed segment is the carrier family, not the system.
-    carrier = None
-    if remaining and remaining[0].startswith("adi-"):
-        carrier = remaining[0]
-        remaining = remaining[1:]
+        # An "adi-" prefixed segment is the carrier family, not the system.
+        carrier = None
+        if remaining and remaining[0].startswith("adi-"):
+            carrier = remaining[0]
+            remaining = remaining[1:]
 
-    system = remaining[0] if remaining else None
-    remaining = remaining[1:] if remaining else []
-    variant = remaining[0] if remaining else None
+        system = remaining[0] if remaining else None
+        remaining = remaining[1:] if remaining else []
+        variant = remaining[0] if remaining else None
 
-    if system:
-        for ignore in TO_IGNORE:
-            if system.startswith(ignore):
-                return None
+        if system:
+            for ignore in TO_IGNORE:
+                if system.startswith(ignore):
+                    return None
 
-    fpga_carrier = None
+        fpga_carrier = None
+
     if system:
         for prefix, carrier_name in CARRIER_PREFIXES:
             if system.startswith(prefix):
@@ -227,15 +251,21 @@ def parse_version_info(version_str, tags):
     }
 
 
-def get_latest_bootfiles(owner, repo, fpga_carrier, daughter_card, filename, token, pin=None):
+def get_latest_bootfiles(owner, repo, fpga_carrier=None, daughter_card=None, filename=None, token=None, pin=None):
     """Resolve the matching Cloudsmith package, returning the raw package dict.
 
     Without ``pin`` the newest matching package (by ``uploaded_at``) is
     returned; with ``pin`` the package whose ``version`` equals ``pin`` is
-    returned. The returned dict carries ``cdn_url``, ``checksums``,
+    returned. The returned dict carries ``cdn_url``, ``checksums``
     ``version`` and ``uploaded_at`` plus a parsed ``_info`` entry.
     """
-    query = f"filename:{filename} AND version:*{fpga_carrier}* AND version:*{daughter_card}*"
+    # query = f"filename:{filename} AND version:*{fpga_carrier}*{daughter_card}*"
+    # query = f"filename:{filename} AND version:*{daughter_card}*"
+    query = f"filename:{filename}"
+    if fpga_carrier:
+        query += f" AND version:*{fpga_carrier}*"
+    if daughter_card:
+        query += f" AND version:*{daughter_card}*"
     packages = search_cloudsmith_packages(owner, repo, query, token, page_size=1000)
     if not packages:
         return None
@@ -245,8 +275,9 @@ def get_latest_bootfiles(owner, repo, fpga_carrier, daughter_card, filename, tok
         tags = package.get("tags", {})
         if isinstance(tags, dict):
             tags = tags.get("info", [])
-        info = parse_version_info(package.get("version", ""), tags)
+        info = parse_version_info(package.get("version", ""), tags, repo)
         if info is None:
+            print(f"Skipping unparseable or ignored package version: {package.get('version')}")
             continue
         if info["carrier"] == fpga_carrier:
             candidates.append({**package, "_info": info})
