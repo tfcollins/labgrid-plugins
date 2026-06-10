@@ -254,6 +254,11 @@ def request(
             console=console,
             target=target,
         )
+    except ProvisionError as e:
+        # Stamp the failed place so the CLI can emit a machine-readable
+        # boot-failure annotation; boot-success-rate tracking counts these.
+        e.place = e.place or res.place
+        raise
     finally:
         if power_down and target is not None:
             _power_off(target, strategy_name)

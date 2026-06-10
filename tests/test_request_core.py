@@ -468,3 +468,13 @@ def test_request_terminal_boot_failure_still_releases(patched, monkeypatch):
         with core.request(part="adrv9002", coord="c:20408"):
             pass  # pragma: no cover
     assert patched["released"] == "adrv9002-zcu102"
+
+
+def test_request_provision_error_carries_place(patched, monkeypatch):
+    monkeypatch.setattr(
+        core, "_boot_verified", MagicMock(side_effect=ProvisionError("boot failed"))
+    )
+    with pytest.raises(ProvisionError) as exc_info:
+        with core.request(part="adrv9002", coord="c:20408"):
+            pass  # pragma: no cover
+    assert exc_info.value.place == "adrv9002-zcu102"

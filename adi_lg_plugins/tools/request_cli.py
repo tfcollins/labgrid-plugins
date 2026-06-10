@@ -177,6 +177,13 @@ def request_cmd(
         console.print(f"[bold red]Provisioning failed: {e}[/bold red]")
         if getattr(e, "console_tail", ""):
             console.print(e.console_tail)
+        if os.environ.get("GITHUB_ACTIONS") == "true":
+            # Machine-readable: lets CI count boot failures distinctly from
+            # test failures. Reason is collapsed to one line — multi-line
+            # strategy errors (with raw console output) must not spill into
+            # the workflow-command stream.
+            reason = " ".join(str(e).split())
+            click.echo(f"::error title=boot-failure::part={part} place={e.place} reason={reason}")
         sys.exit(EXIT_PROVISION)
     finally:
         _restore_term_handler(previous)
