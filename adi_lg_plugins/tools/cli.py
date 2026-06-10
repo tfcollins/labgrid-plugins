@@ -331,7 +331,11 @@ def download_cloudsmith(
     console.print(f"[bold green]Downloaded:[/bold green] {path}")
     if out:
         dest = os.path.join(out, os.path.basename(path)) if os.path.isdir(out) else out
-        shutil.copy2(path, dest)
+        try:
+            shutil.copy2(path, dest)
+        except OSError as e:
+            console.print(f"[bold red]Copy failed: {e}[/bold red]")
+            raise click.ClickException(str(e)) from e
         console.print(f"[bold green]Copied to:[/bold green] {dest}")
 
 

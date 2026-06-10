@@ -219,3 +219,28 @@ def test_download_cloudsmith_failure(mock_dl, runner):
 
     assert result.exit_code != 0
     assert "No Cloudsmith API token" in result.output
+
+
+@patch("adi_lg_plugins.tools.cli.download_cloudsmith_boot_file")
+def test_download_cloudsmith_out_copy_failure(mock_dl, runner):
+    with runner.isolated_filesystem():
+        os.makedirs("cache")
+        with open("cache/BOOT.BIN", "wb") as f:
+            f.write(b"boot-bytes")
+        mock_dl.return_value = os.path.abspath("cache/BOOT.BIN")
+
+        result = runner.invoke(
+            cli,
+            [
+                "download-cloudsmith",
+                "--fpga-carrier",
+                "zcu102",
+                "--daughter-card",
+                "adrv9009",
+                "--out",
+                "missing_dir/copy.bin",
+            ],
+        )
+
+        assert result.exit_code != 0
+        assert "Copy failed" in result.output
