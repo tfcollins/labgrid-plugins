@@ -58,6 +58,38 @@ on:
         default: >-
           uv pip install --quiet --python "$VENV_DIR/bin/python" -e "."
           "adi-labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins@main"
+      prism-upload:
+        description: "Post each leg's JUnit to Prism."
+        type: boolean
+        default: false
+      prism-url:
+        description: "Prism base URL. Defaults to the caller's vars.PRISM_URL when empty."
+        type: string
+        default: ""
+      prism-project:
+        description: "Prism project slug. Required when prism-upload is true."
+        type: string
+        default: ""
+      prism-upload-cmd:
+        description: >-
+          Consumer-supplied shell command that uploads results to Prism
+          (vendored-uploader escape hatch, e.g. for a private Prism repo).
+          Used instead of the built-in uploader when non-empty. The step
+          exports PRISM_URL, PRISM_API_TOKEN, PRISM_EMAIL, PRISM_PASSWORD,
+          PRISM_PROJECT, PRISM_JUNIT, PRISM_RUN_NAME, PRISM_BOARD,
+          PRISM_CARRIER, PRISM_PLACE.
+        type: string
+        default: ""
+    secrets:
+      PRISM_API_TOKEN:
+        required: false
+        description: API token used by the Prism upload step.
+      PRISM_EMAIL:
+        required: false
+        description: Login email for the Prism upload step (login-auth uploaders).
+      PRISM_PASSWORD:
+        required: false
+        description: Login password for the Prism upload step (login-auth uploaders).
 
 jobs:
   preflight:
@@ -105,9 +137,52 @@ jobs:
           venv_dir: ${{ inputs.venv-dir }}
           install_cmd: ${{ inputs.install-cmd }}
       - name: Request ${{ matrix.part }} and run its tests
+        env:
+          TEST_ROOT: ${{ inputs.test-root }}
+          MARKER: ${{ inputs.marker }}
+          JUNIT: results-${{ matrix.part }}.xml
+          PYTEST_ARGS: ${{ inputs.pytest-args }}
         run: |
+          # The child runs inside the reservation: LG_PLACE/LG_CARRIER are only
+          # known there, so persist them for the Prism step via GITHUB_ENV.
+          cat > run-leg.sh <<'EOF'
+          set -euo pipefail
+          {
+            echo "PRISM_PLACE=${LG_PLACE:-}"
+            echo "PRISM_CARRIER=${LG_CARRIER:-}"
+          } >> "$GITHUB_ENV"
+          pytest $TEST_ROOT -m "$MARKER" --junitxml="$JUNIT" $PYTEST_ARGS
+          EOF
           adi-lg request --part "${{ matrix.part }}" --wait "${{ inputs.wait }}" \
-            --run "pytest ${{ inputs.test-root }} -m ${{ inputs.marker }} --junitxml=results-${{ matrix.part }}.xml ${{ inputs.pytest-args }}"
+            --run "bash run-leg.sh"
+      - name: Upload to Prism
+        if: always() && inputs.prism-upload
+        continue-on-error: true
+        env:
+          PRISM_URL: ${{ inputs.prism-url != '' && inputs.prism-url || vars.PRISM_URL }}
+          PRISM_API_TOKEN: ${{ secrets.PRISM_API_TOKEN }}
+          PRISM_EMAIL: ${{ secrets.PRISM_EMAIL }}
+          PRISM_PASSWORD: ${{ secrets.PRISM_PASSWORD }}
+          PRISM_PROJECT: ${{ inputs.prism-project }}
+          PRISM_JUNIT: results-${{ matrix.part }}.xml
+          PRISM_RUN_NAME: ${{ github.workflow }}-${{ github.run_number }}-${{ matrix.part }}
+          PRISM_BOARD: ${{ matrix.part }}
+        run: |
+          set -euo pipefail
+          [ -f "$PRISM_JUNIT" ] || { echo "::notice::no JUnit produced; skipping Prism upload"; exit 0; }
+          if [ -n "${{ inputs.prism-upload-cmd }}" ]; then
+            ${{ inputs.prism-upload-cmd }}
+          else
+            "$VENV_DIR/bin/pip" install --quiet \
+              "prism-uploader @ git+https://github.com/analogdevicesinc/prism.git#subdirectory=scripts" || true
+            "$VENV_DIR/bin/python" -m prism_client.upload_run \
+              --url "$PRISM_URL" \
+              --project "$PRISM_PROJECT" \
+              --junit "$PRISM_JUNIT" \
+              --labgrid-place "${PRISM_PLACE:-}" \
+              --leg request \
+              --git-sha "$GITHUB_SHA"
+          fi
       - name: Upload JUnit
         if: always()
         uses: actions/upload-artifact@v4
