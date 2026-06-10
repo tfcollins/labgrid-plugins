@@ -403,6 +403,14 @@ See :doc:`hw-request` for the full consumer contract.
      - ``uv pip install --quiet --python "$VENV_DIR/bin/python" -e "." "adi-labgrid-plugins @ git+…"``
      - Shell command (run with ``$VENV_DIR`` exported) to install the
        consumer package + ``adi-labgrid-plugins`` into the per-leg venv.
+   * - ``request-mode``
+     - No
+     - ``uri``
+     - ``adi-lg request`` mode for each leg.  ``uri`` (default) boots the
+       board, verifies iiod, and exports ``IIO_URI``.  ``reserve`` only
+       acquires the place and exports ``LG_ENV``/``LG_COORDINATOR`` — for
+       suites that drive boot themselves via the labgrid pytest plugin
+       (e.g. pyadi-dt).  See :doc:`hw-request` ("Reserve mode").
    * - ``prism-upload``
      - No
      - ``false``
@@ -432,9 +440,10 @@ See :doc:`hw-request` for the full consumer contract.
 ``hw-request.yml`` secrets
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-All Prism secrets are optional and only consulted when ``prism-upload`` is
-``true``.  Cross-org callers must pass them **explicitly** in the caller's
-``secrets:`` block — ``secrets: inherit`` does not cross org boundaries.
+All secrets are optional; the Prism ones are only consulted when
+``prism-upload`` is ``true``.  Cross-org callers must pass them
+**explicitly** in the caller's ``secrets:`` block — ``secrets: inherit``
+does not cross org boundaries.
 
 .. list-table::
    :widths: 26 10 64
@@ -443,6 +452,12 @@ All Prism secrets are optional and only consulted when ``prism-upload`` is
    * - Secret
      - Required
      - Description
+   * - ``INSTALL_GIT_TOKEN``
+     - No
+     - PAT exposed as a ``github.com`` ``insteadOf`` credential during the
+       per-leg venv install, for consumers whose test deps live in private
+       git repos (e.g. pyadi-dt's ``pyadi-build``).  Scoped to the install
+       step only; never persists in the runner's git config.
    * - ``PRISM_API_TOKEN``
      - No
      - API token used by the Prism upload step.

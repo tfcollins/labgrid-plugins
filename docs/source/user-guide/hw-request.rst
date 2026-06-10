@@ -74,6 +74,52 @@ Child environment: ``IIO_URI``, ``LG_PLACE``, ``LG_CARRIER``, plus
 ``HW_DAUGHTER`` / ``HW_CARRIER`` for the pytest plugin's per-shard test
 narrowing.
 
+Reserve mode (consumer-driven boot)
+-----------------------------------
+
+Some suites must drive board boot **themselves** — pyadi-dt's hardware tests,
+for example, use the labgrid pytest plugin to flash and boot a different DTB
+per test, so the boot-then-hand-off contract of uri mode cannot serve them.
+``--mode reserve`` covers this: the request layer acquires a matching place
+and renders its labgrid env yaml, but performs **no boot and no iiod
+verification**, then runs the child with the env contract:
+
+* ``LG_ENV`` — the rendered labgrid env yaml for the acquired place; the
+  labgrid pytest plugin reads it directly.
+* ``LG_COORDINATOR`` — the coordinator address (set by the workflow).
+* ``LG_PLACE`` — the acquired place name.
+* ``HW_DAUGHTER`` / ``HW_CARRIER`` — the pytest plugin's per-shard test
+  narrowing, exactly as in uri mode.
+
+``IIO_URI`` is **not** exported (nothing is booted). There is **no boot
+gate** in this mode: a board that fails to boot is the suite's own failure
+to detect and report — the ``::error title=boot-failure::`` annotation and
+exit code 12 only cover provisioning up to the acquire/render step. The
+place is still always released on exit, and the rendered env directory is
+removed.
+
+In the reusable workflow, select it per caller with the ``request-mode``
+input:
+
+.. code-block:: yaml
+
+   jobs:
+     hw:
+       uses: tfcollins/labgrid-plugins/.github/workflows/hw-request.yml@main
+       with:
+         coordinator: ${{ vars.ADI_LG_COORDINATOR }}
+         test-root: "tests"
+         request-mode: "reserve"
+       secrets:
+         # Only needed when test deps live in private git repos
+         # (e.g. pyadi-dt's pyadi-build):
+         INSTALL_GIT_TOKEN: ${{ secrets.INSTALL_GIT_TOKEN }}
+
+``INSTALL_GIT_TOKEN`` (optional) is exposed as a ``github.com`` ``insteadOf``
+credential only during the per-leg venv install, letting ``uv pip install``
+resolve private git dependencies; it never persists in the runner's git
+config.
+
 Requirements
 ------------
 

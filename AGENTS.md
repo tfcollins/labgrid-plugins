@@ -26,6 +26,7 @@ reachable) before tests run, and boot failures are reported distinctly (exit 12 
 | runs **Python/pytest** against a booted Linux board over libIIO (a URI) | **uri** | `hw-request.yml` | `@pytest.mark.iio_hardware(["<part>"])` markers |
 | builds **bare-metal firmware**, JTAG-flashes it, validates over serial | **flash** | `noos-hw-request.yml` | a `tools/hw_ci/projects.yaml` manifest |
 | runs **MATLAB** `runHWTests` against a URI | **matlab** | `matlab-hw-request.yml` | a `board_map.yaml` |
+| **drives boot itself** via labgrid (pytest plugin + `LG_ENV`, e.g. per-test DTBs) | **uri workflow, `request-mode: reserve`** | `hw-request.yml` with `request-mode: "reserve"` | `@pytest.mark.iio_hardware(["<part>"])` markers |
 
 > **Deprecation notice:** `hw-matrix.yml` and `hw-matrix-v2.yml` are deprecated. New
 > consumers must use the hw-request family (`hw-request.yml`, `noos-hw-request.yml`,
