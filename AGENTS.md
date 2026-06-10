@@ -81,6 +81,13 @@ In the consumer repo: **Settings → Secrets and variables → Actions → Varia
 
 If unset, matrix jobs receive empty values and fail.
 
+**Optional — Prism result reporting** (`hw-request.yml` / `matlab-hw-request.yml`): two
+more repo variables — `PRISM_UPLOAD_ENABLED` (`true` enables the `prism-upload` input)
+and `PRISM_URL` (Prism base URL) — plus three Actions **secrets** passed explicitly in
+the caller's `secrets:` block: `PRISM_API_TOKEN`, `PRISM_EMAIL`, `PRISM_PASSWORD`
+(cross-org `secrets: inherit` does NOT work). See "Uploading results to Prism" in
+`docs/source/user-guide/hw-request.rst`.
+
 ## Step 4 — confirm the prerequisites you do NOT own (ask a lab admin)
 
 These live **coordinator-side** and **lab-side**; an agent cannot create them but MUST
