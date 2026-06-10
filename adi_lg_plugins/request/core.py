@@ -2,7 +2,7 @@
 
 Flow: resolve coordinator -> GET /match -> reserve+acquire (labgrid, queues
 if busy) -> find the concrete place -> render env -> boot to shell -> resolve
-URI -> yield Lease -> on exit: optional power-down, then release (always).
+URI -> verify iiod -> yield Lease -> on exit: optional power-down, then release (always).
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from ..hw_ci.render_env import render_env_to
 from ..hw_ci.schema import Place
 from . import match_client, reservation
 from .errors import NoMatchingBoard, ProvisionError
-from .uri import resolve_uri
+from .uri import resolve_uri, verify_iio_context
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +80,47 @@ def _boot(
     except Exception as e:  # noqa: BLE001 - normalise any strategy error
         raise ProvisionError(f"boot failed: {e}") from e
     return tg
+
+
+def _boot_verified(
+    env_path: str,
+    strategy_name: str,
+    *,
+    image: str | None,
+    target_name: str = "main",
+    retries: int = 1,
+) -> tuple[Any, str]:
+    """Boot to shell, resolve the URI, and verify iiod accepts connections.
+
+    A failed attempt (strategy error, no URI, or iiod never up) gets exactly
+    ``retries`` more cold-boot attempts (power-off + reboot); the final
+    failure propagates. Bounded on purpose — unbounded retries burn lab time.
+    """
+    last: ProvisionError | None = None
+    for attempt in range(retries + 1):
+        target = None
+        try:
+            target = _boot(env_path, strategy_name, image=image, target_name=target_name)
+            uri = resolve_uri(target)
+            verify_iio_context(uri)
+            return target, uri
+        except ProvisionError as e:
+            last = e
+            cycled = ""
+            if target is not None:
+                _power_off(target, strategy_name)
+                _cleanup_target(target)
+                cycled = "power-cycled, "
+            if attempt < retries:
+                logger.warning("boot attempt %d failed (%s); %sretrying", attempt + 1, e, cycled)
+        except BaseException:
+            # Anything else (notably KeyboardInterrupt during the verify poll)
+            # must not leak a live target the outer finally can't see.
+            if target is not None:
+                _cleanup_target(target)
+            raise
+    assert last is not None
+    raise last
 
 
 def _get_console(target: Any) -> Any:
@@ -194,9 +235,10 @@ def request(
             # should equal it.
             strategy_name = place.boot_strategy
             env_path = _render_env(place)
-            target = _boot(env_path, strategy_name, image=match.image, target_name=target_name)
+            target, uri = _boot_verified(
+                env_path, strategy_name, image=match.image, target_name=target_name
+            )
             console = None
-            uri = resolve_uri(target)
         yield Lease(
             place=res.place,
             carrier=place.carrier,
@@ -212,6 +254,11 @@ def request(
             console=console,
             target=target,
         )
+    except ProvisionError as e:
+        # Stamp the failed place so the CLI can emit a machine-readable
+        # boot-failure annotation; boot-success-rate tracking counts these.
+        e.place = e.place or res.place
+        raise
     finally:
         if power_down and target is not None:
             _power_off(target, strategy_name)

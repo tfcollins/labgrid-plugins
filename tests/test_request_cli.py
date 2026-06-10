@@ -221,3 +221,71 @@ def test_request_run_omits_iio_uri_when_none(monkeypatch):
     assert result.exit_code == 0
     assert captured["has_uri"] is False
     assert captured["place"] == "adrv9002-zcu102"
+
+
+def test_provision_error_emits_boot_failure_annotation_on_gha(monkeypatch):
+    err = ProvisionError("boot failed: strategy timeout")
+    err.place = "adrv9002-zcu102"
+
+    @contextmanager
+    def fake_request(**kwargs):
+        raise err
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(rc_mod, "request", fake_request)
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    result = CliRunner().invoke(cli, ["request", "--part", "adrv9002"])
+    assert result.exit_code == EXIT_PROVISION
+    assert "::error title=boot-failure::" in result.output
+    assert "place=adrv9002-zcu102" in result.output
+    assert "part=adrv9002" in result.output
+
+
+def test_boot_failure_annotation_reason_is_single_line(monkeypatch):
+    err = ProvisionError(
+        "boot failed: Timeout exceeded.\nbuffer: ::set-env injection\nbefore: junk"
+    )
+    err.place = "adrv9002-zcu102"
+
+    @contextmanager
+    def fake_request(**kwargs):
+        raise err
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(rc_mod, "request", fake_request)
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    result = CliRunner().invoke(cli, ["request", "--part", "adrv9002"])
+    annotation_lines = [ln for ln in result.output.splitlines() if ln.startswith("::error")]
+    assert len(annotation_lines) == 1
+    assert "Timeout exceeded. buffer: ::set-env injection before: junk" in annotation_lines[0]
+
+
+def test_provision_error_no_annotation_outside_gha(monkeypatch):
+    @contextmanager
+    def fake_request(**kwargs):
+        raise ProvisionError("boot failed")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(rc_mod, "request", fake_request)
+    monkeypatch.delenv("GITHUB_ACTIONS", raising=False)
+    result = CliRunner().invoke(cli, ["request", "--part", "adrv9002"])
+    assert result.exit_code == EXIT_PROVISION
+    assert "::error" not in result.output
+
+
+def test_request_run_exports_pytest_narrowing_env(monkeypatch):
+    lease = _fake_lease(uri="ip:10.0.0.57", place="adrv9002-zcu102", carrier="zcu102")
+    monkeypatch.setattr(rc_mod, "request", _fake_request_yielding(lease))
+    captured = {}
+
+    def fake_run_child(cmd, env):
+        captured.update(env)
+        return 0
+
+    monkeypatch.setattr(rc_mod, "_run_child", fake_run_child)
+    result = CliRunner().invoke(cli, ["request", "--part", "adrv9002", "--run", "true"])
+    assert result.exit_code == 0
+    # the pytest plugin's per-shard narrowing contract (HW_DAUGHTER required,
+    # HW_CARRIER optional) — see adi_lg_plugins/pytest_plugin/__init__.py
+    assert captured["HW_DAUGHTER"] == "adrv9002"
+    assert captured["HW_CARRIER"] == "zcu102"

@@ -53,8 +53,9 @@ Options:
 * ``--wait`` (default ``1800``): seconds to queue for a free matching board. ``0`` fails fast.
 * ``--power-down``: power the board off after release (default: leave it powered for the next user).
 * ``--coord``: coordinator ``host:port`` (default: ``$LG_COORDINATOR``).
-* ``--run '<cmd>'``: run ``<cmd>`` with ``IIO_URI``, ``LG_PLACE`` and ``LG_CARRIER`` exported into
-  its environment. The command's own exit code is propagated.
+* ``--run '<cmd>'``: run ``<cmd>`` with ``IIO_URI``, ``LG_PLACE``, ``LG_CARRIER``,
+  ``HW_DAUGHTER`` and ``HW_CARRIER`` exported into its environment. The command's own
+  exit code is propagated.
 
 Exit codes (so CI can tell an infra problem from a real test failure):
 

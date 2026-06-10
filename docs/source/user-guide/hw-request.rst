@@ -49,6 +49,31 @@ What happens
    ``wait``). ``HW_DAUGHTER=<p>`` narrows the run to that board's tests.
 #. **report** aggregates the per-leg JUnit into a single PR check.
 
+Boot verification and failure semantics
+---------------------------------------
+
+``adi-lg request`` (uri mode) verifies the booted board before handing it to
+the child command: after the boot strategy reaches shell and the URI is
+resolved, the request layer polls a TCP connect to iiod (port 30431) for up
+to 60 s. A board that boots to shell with a dead iiod is a **boot failure**,
+not a test failure.
+
+* One bounded retry: a failed attempt (strategy error or iiod never up) gets
+  exactly one cold-boot retry (power-off, reboot) before failing the leg.
+* Exit codes: ``10`` no matching board, ``11`` none free in the wait window,
+  ``12`` provisioning/boot failed. Test failures pass the child's own exit
+  code through — CI can always tell infra from tests. The full exit-code
+  list lives in :doc:`cli`.
+* On GitHub Actions a boot failure additionally emits
+  ``::error title=boot-failure::part=<part> place=<place> reason=<…>`` —
+  count these annotations to track boot success rate.
+* The place is **always released**, including on Ctrl-C/SIGTERM and after
+  failed retries.
+
+Child environment: ``IIO_URI``, ``LG_PLACE``, ``LG_CARRIER``, plus
+``HW_DAUGHTER`` / ``HW_CARRIER`` for the pytest plugin's per-shard test
+narrowing.
+
 Requirements
 ------------
 
