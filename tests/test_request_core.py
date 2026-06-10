@@ -100,6 +100,7 @@ def patched(monkeypatch):
 
     monkeypatch.setattr(core, "_boot", fake_boot)
     monkeypatch.setattr(core, "resolve_uri", lambda tg: "ip:10.0.0.57")
+    monkeypatch.setattr(core, "verify_iio_context", lambda uri, **kw: None)
     monkeypatch.setattr(core, "_power_off", lambda tg, strat: state.update(powered_off=strat))
     monkeypatch.setattr(core, "_cleanup_target", lambda tg: state.update(cleaned=True))
     return state
@@ -377,3 +378,93 @@ def test_flash_request_forwards_a9_target_name(monkeypatch):
 
     kw = state["render_kw"]
     assert kw["extra_subs"]["a9_target_name"] == "*Cortex-A9 MPCore #1"
+
+
+# ── _boot_verified: boot + iiod verification with one bounded retry ──────────
+
+
+def _stub_verify(monkeypatch, fail_times=0):
+    calls = {"n": 0}
+
+    def fake_verify(uri, **kw):
+        calls["n"] += 1
+        if calls["n"] <= fail_times:
+            raise ProvisionError("boot verification failed: iiod not reachable")
+
+    monkeypatch.setattr(core, "verify_iio_context", fake_verify)
+    return calls
+
+
+def test_boot_verified_happy_path_boots_once(monkeypatch):
+    target = MagicMock()
+    boots = {"n": 0}
+
+    def fake_boot(env, strat, *, image, target_name):
+        boots["n"] += 1
+        return target
+
+    monkeypatch.setattr(core, "_boot", fake_boot)
+    monkeypatch.setattr(core, "resolve_uri", lambda t: "ip:10.0.0.5")
+    _stub_verify(monkeypatch)
+    got_target, uri = core._boot_verified("env.yaml", "BootFPGASoC", image=None, target_name="main")
+    assert got_target is target
+    assert uri == "ip:10.0.0.5"
+    assert boots["n"] == 1
+
+
+def test_boot_verified_retries_once_after_boot_failure(monkeypatch):
+    boots = {"n": 0}
+
+    def fake_boot(env, strat, *, image, target_name):
+        boots["n"] += 1
+        if boots["n"] == 1:
+            raise ProvisionError("boot failed: strategy timeout")
+        return MagicMock()
+
+    monkeypatch.setattr(core, "_boot", fake_boot)
+    monkeypatch.setattr(core, "resolve_uri", lambda t: "ip:10.0.0.5")
+    _stub_verify(monkeypatch)
+    _target, uri = core._boot_verified("env.yaml", "BootFPGASoC", image=None, target_name="main")
+    assert boots["n"] == 2
+    assert uri == "ip:10.0.0.5"
+
+
+def test_boot_verified_verify_failure_triggers_retry_and_cleans_failed_target(monkeypatch):
+    first = MagicMock()
+    second = MagicMock()
+    targets = iter([first, second])
+    powered, cleaned = [], []
+    monkeypatch.setattr(core, "_boot", lambda *a, **k: next(targets))
+    monkeypatch.setattr(core, "resolve_uri", lambda t: "ip:10.0.0.5")
+    _stub_verify(monkeypatch, fail_times=1)
+    monkeypatch.setattr(core, "_power_off", lambda t, s: powered.append(t))
+    monkeypatch.setattr(core, "_cleanup_target", lambda t: cleaned.append(t))
+    got_target, _uri = core._boot_verified(
+        "env.yaml", "BootFPGASoC", image=None, target_name="main"
+    )
+    assert got_target is second
+    assert powered == [first]  # failed attempt's board was power-cycled
+    assert cleaned == [first]
+
+
+def test_boot_verified_second_failure_propagates_exactly_two_attempts(monkeypatch):
+    boots = {"n": 0}
+
+    def fake_boot(env, strat, *, image, target_name):
+        boots["n"] += 1
+        raise ProvisionError("boot failed: strategy timeout")
+
+    monkeypatch.setattr(core, "_boot", fake_boot)
+    with pytest.raises(ProvisionError, match="strategy timeout"):
+        core._boot_verified("env.yaml", "BootFPGASoC", image=None, target_name="main")
+    assert boots["n"] == 2  # bounded: never a third attempt
+
+
+def test_request_terminal_boot_failure_still_releases(patched, monkeypatch):
+    monkeypatch.setattr(
+        core, "_boot", MagicMock(side_effect=ProvisionError("boot failed: strategy timeout"))
+    )
+    with pytest.raises(ProvisionError, match="strategy timeout"):
+        with core.request(part="adrv9002", coord="c:20408"):
+            pass  # pragma: no cover
+    assert patched["released"] == "adrv9002-zcu102"
