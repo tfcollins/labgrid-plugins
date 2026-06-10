@@ -20,7 +20,7 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       contains(github.event.pull_request.labels.*.name, 'hw-test')
-    uses: tfcollins/labgrid-plugins/.github/workflows/matlab-hw-request.yml@v3  # bump when a new release tags
+    uses: tfcollins/labgrid-plugins/.github/workflows/matlab-hw-request.yml@v3.1  # bump when a new release tags
     with:
       coordinator: ${{ vars.LG_COORDINATOR }}    # MUST be the gRPC coordinator host:20408
       board-map: "test/hw_ci/board_map.yaml"
