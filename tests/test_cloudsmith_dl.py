@@ -219,3 +219,26 @@ def test_get_boot_files_from_release_populates_list(tmp_path, monkeypatch):
     out = drv.get_boot_files_from_release()
     assert out == drv._boot_files
     assert len(out) == 1 and out[0].endswith("BOOT.BIN")
+
+
+# --- tools/cloudsmithdl helper ------------------------------------------------
+
+
+def test_download_cloudsmith_boot_file_returns_path(monkeypatch):
+    from adi_lg_plugins.tools import cloudsmithdl
+
+    monkeypatch.setattr(
+        CloudsmithDLDriver,
+        "get_boot_file_path",
+        lambda self, version=None: "/tmp/cache/v1/BOOT.BIN",
+    )
+    path = cloudsmithdl.download_cloudsmith_boot_file(
+        fpga_carrier="zcu102",
+        daughter_card="adrv9009",
+        filename="BOOT.BIN",
+        owner="adi",
+        repo="sdg-boot-partition",
+        version=None,
+        cache_path="/tmp/cloudsmith_cache",
+    )
+    assert path == "/tmp/cache/v1/BOOT.BIN"

@@ -31,9 +31,7 @@ def download_cloudsmith_boot_file(
     dl = CloudsmithDLDriver(target, name=None)
 
     target.activate(dl)
-    path = dl.get_boot_file_path()
-
-    print(f"Downloaded boot file: {path}")
+    return dl.get_boot_file_path()
 
 
 def main():
@@ -56,7 +54,7 @@ def main():
     )
 
     args = parser.parse_args()
-    download_cloudsmith_boot_file(
+    path = download_cloudsmith_boot_file(
         args.fpga_carrier,
         args.daughter_card,
         args.filename,
@@ -65,3 +63,4 @@ def main():
         args.version,
         args.cache_path,
     )
+    print(f"Downloaded boot file: {path}")
