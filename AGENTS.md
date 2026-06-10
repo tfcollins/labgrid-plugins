@@ -15,7 +15,9 @@ A consumer repo's CI calls a **reusable workflow** here. A *preflight* job disco
 of the consumer's wanted boards are live on the lab **coordinator**, then fans out one CI
 leg per board to a **self-hosted runner** co-located with that board. The board is
 reserved, provisioned, exercised, and released automatically — the consumer never defines
-labgrid drivers/strategies or touches a board directly.
+labgrid drivers/strategies or touches a board directly. Boards are boot-verified (iiod
+reachable) before tests run, and boot failures are reported distinctly (exit 12 plus an
+`::error title=boot-failure::` annotation) so they never masquerade as test failures.
 
 ## Step 1 — pick the mode (decision tree)
 
