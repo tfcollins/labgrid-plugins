@@ -60,7 +60,7 @@ on:
         type: string
         default: >-
           uv pip install --quiet --python "$VENV_DIR/bin/python" -e "."
-          "adi-labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins@main"
+          "adi-labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins@v3"
       prism-upload:
         description: "Post each leg's JUnit to Prism."
         type: boolean
@@ -102,12 +102,12 @@ jobs:
       count: ${{ steps.plan.outputs.count }}
     steps:
       - uses: actions/checkout@v4
-      - uses: tfcollins/labgrid-plugins/.github/actions/setup-uv-venv@main
+      - uses: tfcollins/labgrid-plugins/.github/actions/setup-uv-venv@v3
         with:
           venv_dir: ${{ inputs.venv-dir }}
           install_cmd: >-
             uv pip install --quiet --python "$VENV_DIR/bin/python"
-            "adi-labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins@main"
+            "adi-labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins@v3"
       - id: plan
         env:
           LG_COORDINATOR: ${{ inputs.coordinator }}
@@ -135,7 +135,7 @@ jobs:
       HW_DAUGHTER: ${{ matrix.part }}
     steps:
       - uses: actions/checkout@v4
-      - uses: tfcollins/labgrid-plugins/.github/actions/setup-uv-venv@main
+      - uses: tfcollins/labgrid-plugins/.github/actions/setup-uv-venv@v3
         with:
           venv_dir: ${{ inputs.venv-dir }}
           install_cmd: ${{ inputs.install-cmd }}

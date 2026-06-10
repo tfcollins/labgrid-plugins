@@ -98,7 +98,7 @@ on:
         type: string
         default: >-
           uv pip install --quiet --python "$VENV_DIR/bin/python"
-          "adi-labgrid-plugins[kuiper] @ git+https://github.com/tfcollins/labgrid-plugins@main"
+          "adi-labgrid-plugins[kuiper] @ git+https://github.com/tfcollins/labgrid-plugins@v3"
 
 jobs:
   preflight:
@@ -108,12 +108,12 @@ jobs:
       count: ${{ steps.plan.outputs.count }}
     steps:
       - uses: actions/checkout@v4
-      - uses: tfcollins/labgrid-plugins/.github/actions/setup-uv-venv@main
+      - uses: tfcollins/labgrid-plugins/.github/actions/setup-uv-venv@v3
         with:
           venv_dir: ${{ inputs.venv-dir }}
           install_cmd: >-
             uv pip install --quiet --python "$VENV_DIR/bin/python"
-            "adi-labgrid-plugins[kuiper] @ git+https://github.com/tfcollins/labgrid-plugins@main"
+            "adi-labgrid-plugins[kuiper] @ git+https://github.com/tfcollins/labgrid-plugins@v3"
       - id: plan
         env:
           LG_COORDINATOR: ${{ inputs.coordinator }}
@@ -143,7 +143,7 @@ jobs:
       VALIDATE_BANNER: ${{ matrix.validate_banner || inputs.validate-banner }}
     steps:
       - uses: actions/checkout@v4
-      - uses: tfcollins/labgrid-plugins/.github/actions/setup-uv-venv@main
+      - uses: tfcollins/labgrid-plugins/.github/actions/setup-uv-venv@v3
         with:
           venv_dir: ${{ inputs.venv-dir }}
           install_cmd: ${{ inputs.install-cmd }}
