@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import socket
+
 import pytest
 
 from adi_lg_plugins.request.errors import ProvisionError
-from adi_lg_plugins.request.uri import resolve_uri
+from adi_lg_plugins.request.uri import resolve_uri, verify_iio_context
 
 
 class FakeNet:
@@ -100,3 +102,29 @@ def test_resolve_uri_no_address_raises_provision_error():
     tg = FakeTarget(net=FakeNet(""), raise_on_get_driver=True)
     with pytest.raises(ProvisionError):
         resolve_uri(tg)
+
+
+# ── verify_iio_context ────────────────────────────────────────────────────────
+
+
+def test_verify_iio_context_succeeds_when_iiod_listening():
+    with socket.socket() as srv:
+        srv.bind(("127.0.0.1", 0))
+        srv.listen(1)
+        port = srv.getsockname()[1]
+        # returns None on success
+        verify_iio_context("ip:127.0.0.1", port=port, timeout=5.0, interval=0.1)
+
+
+def test_verify_iio_context_times_out_raises_provision_error():
+    # bind-then-close gives us a port that is almost certainly not listening
+    with socket.socket() as srv:
+        srv.bind(("127.0.0.1", 0))
+        port = srv.getsockname()[1]
+    with pytest.raises(ProvisionError, match="boot verification failed"):
+        verify_iio_context("ip:127.0.0.1", port=port, timeout=0.5, interval=0.1)
+
+
+def test_verify_iio_context_non_network_uri_is_noop():
+    # usb/serial URIs cannot be TCP-probed; must not raise, must not block
+    verify_iio_context("usb:1.2.3", timeout=0.1)
