@@ -185,14 +185,15 @@ jobs:
           if [ -n "${{ inputs.prism-upload-cmd }}" ]; then
             ${{ inputs.prism-upload-cmd }}
           else
-            "$VENV_DIR/bin/pip" install --quiet \
-              "prism-uploader @ git+https://github.com/analogdevicesinc/prism.git#subdirectory=scripts" || true
+            uv pip install --quiet --python "$VENV_DIR/bin/python" \
+              "prism-uploader @ git+https://github.com/analogdevicesinc/prism.git#subdirectory=scripts" \
+              || echo "::warning::prism-uploader install failed; upload will be skipped"
             "$VENV_DIR/bin/python" -m prism_client.upload_run \
               --url "$PRISM_URL" \
               --project "$PRISM_PROJECT" \
               --junit "$PRISM_JUNIT" \
               --labgrid-place "${PRISM_PLACE:-}" \
-              --leg request \
+              --leg matlab \
               --git-sha "$GITHUB_SHA"
           fi
       - name: Upload JUnit

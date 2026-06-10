@@ -43,7 +43,10 @@ on:
         type: string
         default: "hw-coordinator"
       pytest-args:
-        description: "Extra args appended to the per-leg pytest command."
+        description: >-
+          Extra args appended to the per-leg pytest command. Whitespace-split
+          verbatim — shell quoting is NOT parsed (no -k "a and b"; use
+          -k 'a_and_b'-style single tokens).
         type: string
         default: ""
       venv-dir:
@@ -173,8 +176,9 @@ jobs:
           if [ -n "${{ inputs.prism-upload-cmd }}" ]; then
             ${{ inputs.prism-upload-cmd }}
           else
-            "$VENV_DIR/bin/pip" install --quiet \
-              "prism-uploader @ git+https://github.com/analogdevicesinc/prism.git#subdirectory=scripts" || true
+            uv pip install --quiet --python "$VENV_DIR/bin/python" \
+              "prism-uploader @ git+https://github.com/analogdevicesinc/prism.git#subdirectory=scripts" \
+              || echo "::warning::prism-uploader install failed; upload will be skipped"
             "$VENV_DIR/bin/python" -m prism_client.upload_run \
               --url "$PRISM_URL" \
               --project "$PRISM_PROJECT" \
