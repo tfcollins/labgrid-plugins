@@ -301,6 +301,42 @@ def test_request_resolve_uri_failure_still_cleans_and_releases(patched, monkeypa
     assert patched["released"] == "adrv9002-zcu102"
 
 
+# ── reserve mode (acquire + render env, no boot) ─────────────────────────────
+
+
+def test_reserve_mode_yields_env_path_without_booting(patched, monkeypatch):
+    boom = MagicMock(side_effect=AssertionError("reserve mode must not boot"))
+    monkeypatch.setattr(core, "_boot", boom)
+    monkeypatch.setattr(core, "_boot_verified", boom)
+    with core.request(part="adrv9009", mode="reserve", coord="c:20408") as lease:
+        assert lease.uri is None
+        assert lease.console is None
+        assert lease.target is None
+        assert lease.env_path
+        assert lease.place == "adrv9002-zcu102"
+    assert patched["released"] == "adrv9002-zcu102"
+
+
+def test_reserve_mode_env_dir_removed_after_exit(patched, monkeypatch):
+    # The `patched` fixture stubs _render_env with a fixed fake path that never
+    # exists on disk; substitute a fake that creates the same on-disk shape the
+    # real _render_env makes (tempdir prefixed adi-lg-req- containing env.yaml)
+    # so the cleanup assertion is meaningful.
+    import tempfile
+    from pathlib import Path
+
+    def fake_render(place, **kw):
+        out = Path(tempfile.mkdtemp(prefix="adi-lg-req-")) / "env.yaml"
+        out.write_text("targets: {}\n", encoding="utf-8")
+        return str(out)
+
+    monkeypatch.setattr(core, "_render_env", fake_render)
+    with core.request(part="adrv9009", mode="reserve", coord="c:20408") as lease:
+        env_path = lease.env_path
+        assert Path(env_path).exists()
+    assert not Path(env_path).exists()
+
+
 # ── REST API vs gRPC coordinator split (Bug 3) ───────────────────────────────
 
 

@@ -14,7 +14,9 @@ from adi_lg_plugins.tools.cli import cli
 
 
 def _fake_lease(uri="ip:10.0.0.57", place="adrv9002-zcu102", carrier="zcu102"):
-    return MagicMock(uri=uri, place=place, carrier=carrier)
+    # env_path is pinned to None (not a truthy auto-MagicMock attribute) so
+    # non-reserve tests never see a spurious LG_ENV in the child env.
+    return MagicMock(uri=uri, place=place, carrier=carrier, env_path=None)
 
 
 def _fake_request_yielding(lease):
@@ -271,6 +273,25 @@ def test_provision_error_no_annotation_outside_gha(monkeypatch):
     result = CliRunner().invoke(cli, ["request", "--part", "adrv9002"])
     assert result.exit_code == EXIT_PROVISION
     assert "::error" not in result.output
+
+
+def test_reserve_mode_exports_lg_env(monkeypatch):
+    lease = _fake_lease(uri=None)
+    lease.env_path = "/tmp/adi-lg-req-x/env.yaml"
+    monkeypatch.setattr(rc_mod, "request", _fake_request_yielding(lease))
+    captured = {}
+
+    def fake_run_child(cmd, env):
+        captured.update(env)
+        return 0
+
+    monkeypatch.setattr(rc_mod, "_run_child", fake_run_child)
+    result = CliRunner().invoke(
+        cli, ["request", "--part", "adrv9009", "--mode", "reserve", "--run", "true"]
+    )
+    assert result.exit_code == 0
+    assert captured["LG_ENV"] == "/tmp/adi-lg-req-x/env.yaml"
+    assert "IIO_URI" not in captured
 
 
 def test_request_run_exports_pytest_narrowing_env(monkeypatch):

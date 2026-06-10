@@ -61,6 +61,14 @@ on:
         default: >-
           uv pip install --quiet --python "$VENV_DIR/bin/python" -e "."
           "adi-labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins@main"
+      request-mode:
+        description: >-
+          adi-lg request mode for each leg. "uri" (default) boots the board,
+          verifies iiod, and exports IIO_URI. "reserve" only acquires the
+          place and exports LG_ENV/LG_COORDINATOR — for suites that drive
+          boot themselves via the labgrid pytest plugin (e.g. pyadi-dt).
+        type: string
+        default: "uri"
       prism-upload:
         description: "Post each leg's JUnit to Prism."
         type: boolean
@@ -84,6 +92,12 @@ on:
         type: string
         default: ""
     secrets:
+      INSTALL_GIT_TOKEN:
+        required: false
+        description: >-
+          PAT exposed as a github.com insteadOf credential during venv
+          install, for consumers whose test deps live in private git repos
+          (e.g. pyadi-dt's pyadi-build).
       PRISM_API_TOKEN:
         required: false
         description: API token used by the Prism upload step.
@@ -136,9 +150,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: tfcollins/labgrid-plugins/.github/actions/setup-uv-venv@main
+        env:
+          INSTALL_GIT_TOKEN: ${{ secrets.INSTALL_GIT_TOKEN }}
         with:
           venv_dir: ${{ inputs.venv-dir }}
-          install_cmd: ${{ inputs.install-cmd }}
+          # Same mechanism as hw-matrix.yml's PYADI_BUILD_TOKEN wiring: when
+          # the secret is set, expose it as a github.com insteadOf credential
+          # via GIT_CONFIG_* env vars — scoped to this install step only, so
+          # nothing persists in the runner's git config afterwards.
+          install_cmd: |
+            set -euo pipefail
+            if [[ -n "${INSTALL_GIT_TOKEN:-}" ]]; then
+              export GIT_CONFIG_COUNT=1
+              export GIT_CONFIG_KEY_0="url.https://x-access-token:${INSTALL_GIT_TOKEN}@github.com/.insteadOf"
+              export GIT_CONFIG_VALUE_0="https://github.com/"
+            fi
+            ${{ inputs.install-cmd }}
       - name: Request ${{ matrix.part }} and run its tests
         env:
           TEST_ROOT: ${{ inputs.test-root }}
@@ -156,7 +183,8 @@ jobs:
           } >> "$GITHUB_ENV"
           pytest $TEST_ROOT -m "$MARKER" --junitxml="$JUNIT" $PYTEST_ARGS
           EOF
-          adi-lg request --part "${{ matrix.part }}" --wait "${{ inputs.wait }}" \
+          adi-lg request --part "${{ matrix.part }}" \
+            --mode "${{ inputs.request-mode }}" --wait "${{ inputs.wait }}" \
             --run "bash run-leg.sh"
       - name: Upload to Prism
         if: always() && inputs.prism-upload

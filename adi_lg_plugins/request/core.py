@@ -34,6 +34,8 @@ class Lease:
     ``uri`` is the primary handover for pyadi-iio (uri mode). ``console`` is
     the serial console handle for flash mode (no-os firmware); exactly one of
     ``uri`` / ``console`` is set depending on the request mode.
+    ``env_path`` is set only in reserve mode — the rendered labgrid env for
+    the acquired place, exported to the child as ``LG_ENV``.
     """
 
     place: str
@@ -42,6 +44,7 @@ class Lease:
     uri: str | None = None
     console: Any = None
     target: Any = None
+    env_path: str | None = None
 
 
 def _concrete_place(coord: str, name: str) -> Place:
@@ -188,9 +191,12 @@ def request(
     ``mode='flash'`` JTAG-flashes a no-os firmware ``.elf`` (``firmware``,
     required) onto the board, validates a serial banner (``validate``, default
     the IIOD banner), and hands over the serial console (``uri`` is None).
+    ``mode='reserve'`` only acquires a matching place and renders its labgrid
+    env (``env_path``) — no boot, no verification; the consumer drives the
+    board itself (e.g. the labgrid pytest plugin via ``LG_ENV``).
     """
-    if mode not in ("uri", "flash"):
-        raise NotImplementedError(f"mode '{mode}' is not available (uri | flash)")
+    if mode not in ("uri", "flash", "reserve"):
+        raise NotImplementedError(f"mode '{mode}' is not available (uri | flash | reserve)")
     if mode == "flash" and not firmware:
         raise ProvisionError("flash mode requires a firmware .elf (firmware=...)")
     if filters:
@@ -229,6 +235,16 @@ def request(
             target = _boot(env_path, strategy_name, image=None, target_name=target_name)
             console = _get_console(target)
             uri = None
+        elif mode == "reserve":
+            # No boot, no verification: the consumer's own tooling (e.g. the
+            # labgrid pytest plugin reading LG_ENV/LG_COORDINATOR) drives the
+            # acquired place — pyadi-dt boots per-test DTBs itself. The boot
+            # gate is the consumer's job in this mode.
+            strategy_name = place.boot_strategy
+            env_path = _render_env(place)
+            target = None
+            console = None
+            uri = None
         else:
             # The live place's boot-strategy tag is the authority for the driver
             # name the rendered env defines; match.strategy (parsed for metadata)
@@ -253,6 +269,7 @@ def request(
             uri=uri,
             console=console,
             target=target,
+            env_path=env_path if mode == "reserve" else None,
         )
     except ProvisionError as e:
         # Stamp the failed place so the CLI can emit a machine-readable

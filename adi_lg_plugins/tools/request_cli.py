@@ -2,8 +2,9 @@
 
 A thin wrapper over :func:`adi_lg_plugins.request.request`: acquire + boot a
 board by part, export its interfaces (``IIO_URI`` / ``LG_PLACE`` /
-``LG_CARRIER`` / ``HW_DAUGHTER`` / ``HW_CARRIER``) into a child command's
-environment, run the command, and release the board. Request-layer exceptions
+``LG_CARRIER`` / ``HW_DAUGHTER`` / ``HW_CARRIER``, plus ``LG_ENV`` in
+reserve mode) into a child command's environment, run the command, and
+release the board. Request-layer exceptions
 map to stable exit codes so CI can tell an infra problem from a real test
 failure.
 """
@@ -88,9 +89,12 @@ def _run_child(run_cmd: str, env: dict) -> int:
 @click.option("--carrier", default=None, help="Optional carrier filter, e.g. zcu102")
 @click.option(
     "--mode",
-    type=click.Choice(["uri", "flash"]),
+    type=click.Choice(["uri", "flash", "reserve"]),
     default="uri",
-    help="uri: boot Linux and export IIO_URI (default). flash: JTAG-flash a no-os .elf.",
+    help=(
+        "uri: boot Linux and export IIO_URI (default). flash: JTAG-flash a no-os .elf. "
+        "reserve: acquire + export LG_ENV, no boot — the child drives the board"
+    ),
 )
 @click.option("--bootfile", default=None, help="Pin an image version (default: catalog default)")
 @click.option(
@@ -156,6 +160,10 @@ def request_cmd(
             env = os.environ.copy()
             if board.uri:
                 env["IIO_URI"] = board.uri
+            # reserve mode: hand the rendered labgrid env to the child so its
+            # own tooling (e.g. the labgrid pytest plugin) drives the board.
+            if getattr(board, "env_path", None):
+                env["LG_ENV"] = board.env_path
             env["LG_PLACE"] = board.place
             # pytest-plugin per-shard narrowing: carrier is only known after
             # reservation, so the CLI (not the workflow) must export it.
@@ -165,6 +173,8 @@ def request_cmd(
                 env["HW_CARRIER"] = board.carrier
             if mode == "flash":
                 console.print(f"[green]Flashed + validated {board.place} (no-os)[/green]")
+            elif mode == "reserve":
+                console.print(f"[green]Reserved {board.place} (no boot — LG_ENV exported)[/green]")
             else:
                 console.print(f"[green]Booted {board.place} -> {board.uri}[/green]")
             rc = _run_child(run_cmd, env)
