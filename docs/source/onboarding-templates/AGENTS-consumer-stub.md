@@ -9,7 +9,8 @@ The canonical, mode-by-mode onboarding recipe lives in the hub — read it first
 ## How this repo is wired (mode: `<uri | flash | matlab>`)
 
 - **Workflow:** `.github/workflows/hw-request.yml` → reusable
-  `tfcollins/labgrid-plugins/.github/workflows/<hw-request | noos-hw-request>.yml@main`
+  `tfcollins/labgrid-plugins/.github/workflows/<hw-request | noos-hw-request>.yml@v3`
+  (current release; bump when a new release tags — never pin to `@main` in production)
 - **Discovery:** `<@pytest.mark.iio_hardware([...]) under <test-root> | manifest tools/hw_ci/projects.yaml>`
 - **Repo variables** (Settings → Secrets and variables → Actions → Variables):
   `LG_COORDINATOR` (gRPC `:20408`), `HW_REQUEST_RUNNER`, `HW_PREFLIGHT_RUNNER`
