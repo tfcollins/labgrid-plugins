@@ -236,37 +236,33 @@ download-cloudsmith
 Download a boot artifact (e.g. ``BOOT.BIN``) from a Cloudsmith package
 repository. Resolves the latest package matching the FPGA carrier and
 daughter card (or an exact pinned version), downloads it into a local
-cache with sha256 verification, and prints the cached path.
+cache with SHA256 verification, and prints the cached path.
 
 Requires the ``CLOUDSMITH_API_TOKEN`` environment variable.
 
 .. code-block:: bash
 
-   adi-lg download-cloudsmith --fpga-carrier zcu102 --daughter-card adrv9009
+    adi-lg download-cloudsmith --fpga-carrier zcu102 --daughter-card adrv9009
 
-   # Pin an exact package version and copy the file next to your project
-   adi-lg download-cloudsmith \
-       --fpga-carrier zcu102 \
-       --daughter-card adrv9009 \
-       --version "boot_partition/main/2025_06_14-07_18_12/zynqmp-zcu102-rev10-adrv9009/" \
-       --out ./BOOT.BIN
+    # Pin an exact package version and copy the file next to your project
+    adi-lg download-cloudsmith \
+        --fpga-carrier zcu102 \
+        --daughter-card adrv9009 \
+        --version "boot_partition/main/2025_06_14-07_18_12/zynqmp-zcu102-rev10-adrv9009/" \
+        --out ./BOOT.BIN
 
 **Options:**
 
-* ``--fpga-carrier`` (required): FPGA carrier, e.g. ``zcu102``.
-* ``--daughter-card`` (required): Daughter card, e.g. ``adrv9009``.
-* ``--filename``: Artifact filename (default ``BOOT.BIN``).
-* ``--owner`` / ``--repo``: Cloudsmith owner and repository
-  (default ``adi`` / ``sdg-boot-partition``).
-* ``--version``: Pin an exact package version (default: latest).
-* ``--cache-path``: Cache directory
-  (default ``~/.labgrid/cloudsmith_releases/``).
-* ``--out``: Copy the artifact here after download. If the path is an
-  existing directory the file is copied into it keeping its filename;
-  otherwise the path is used as the destination file.
+* ``--fpga-carrier <name>``: (Required) FPGA carrier, e.g. ``zcu102``.
+* ``--daughter-card <name>``: (Required) Daughter card, e.g. ``adrv9009``.
+* ``--filename <name>``: Artifact filename (default ``BOOT.BIN``).
+* ``--owner <org>``: Cloudsmith owner/org (default ``adi``).
+* ``--repo <name>``: Cloudsmith repository (default ``sdg-boot-partition``).
+* ``--version <version>``: Pin an exact package version (default: latest).
+* ``--cache-path <path>``: Cache directory (default ``~/.labgrid/cloudsmith_releases/``).
+* ``--out <path>``: Copy the artifact here after download. If the path is an existing directory the file is copied into it keeping its filename; otherwise the path is used as the destination file.
 
-The standalone ``cloudsmithdl`` console script (below) exposes the same
-download with a separate entry point.
+The standalone ``cloudsmithdl`` console script (below) exposes the same resolution and download, with a different default cache path.
 
 Standalone download tools
 -------------------------
