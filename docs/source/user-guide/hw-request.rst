@@ -57,6 +57,52 @@ Requirements
   actuate the lab (``runner-label``).
 * The coordinator must serve the Plan-1 board catalog (``GET /api/match``).
 
+Uploading results to Prism
+--------------------------
+
+Both ``hw-request.yml`` and ``matlab-hw-request.yml`` can post each leg's
+JUnit to a Prism instance, tagged with the leg's place/board/carrier. Enable
+it with ``prism-upload: true`` plus a ``prism-project`` slug, set the Prism
+base URL as a repo variable ``vars.PRISM_URL`` (or pass it via the
+``prism-url`` input), and pass the three Prism secrets **explicitly** in the
+caller — cross-org ``secrets: inherit`` does **not** work:
+
+.. code-block:: yaml
+
+   jobs:
+     hw:
+       uses: tfcollins/labgrid-plugins/.github/workflows/hw-request.yml@main
+       with:
+         coordinator: ${{ vars.LG_COORDINATOR }}
+         test-root: "test"
+         prism-upload: true
+         prism-project: "my-project"
+         # prism-url: "https://prism.example.com"   # default: vars.PRISM_URL
+       secrets:
+         PRISM_API_TOKEN: ${{ secrets.PRISM_API_TOKEN }}
+         PRISM_EMAIL: ${{ secrets.PRISM_EMAIL }}
+         PRISM_PASSWORD: ${{ secrets.PRISM_PASSWORD }}
+
+By default each leg installs the ``prism-uploader`` package into the per-leg
+venv via uv and uploads the leg's JUnit. Consumers with a **vendored
+uploader** (e.g. pyadi-dt's private-Prism-repo uploader script) can replace
+the built-in one with the ``prism-upload-cmd`` escape hatch — a shell
+command run instead of the built-in uploader, with ``PRISM_URL``,
+``PRISM_API_TOKEN``, ``PRISM_EMAIL``, ``PRISM_PASSWORD``, ``PRISM_PROJECT``,
+``PRISM_JUNIT``, ``PRISM_RUN_NAME``, ``PRISM_BOARD``, ``PRISM_CARRIER``, and
+``PRISM_PLACE`` exported:
+
+.. code-block:: yaml
+
+       with:
+         prism-upload: true
+         prism-project: "my-project"
+         prism-upload-cmd: "python tools/upload_to_prism.py"
+
+The upload step runs with ``continue-on-error`` and surfaces failures as
+``::warning::`` annotations — a Prism outage (or a missing uploader) never
+fails a hardware leg.
+
 Flash mode (no-os)
 ------------------
 

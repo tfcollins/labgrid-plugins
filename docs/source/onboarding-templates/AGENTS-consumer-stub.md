@@ -13,6 +13,10 @@ The canonical, mode-by-mode onboarding recipe lives in the hub — read it first
 - **Discovery:** `<@pytest.mark.iio_hardware([...]) under <test-root> | manifest tools/hw_ci/projects.yaml>`
 - **Repo variables** (Settings → Secrets and variables → Actions → Variables):
   `LG_COORDINATOR` (gRPC `:20408`), `HW_REQUEST_RUNNER`, `HW_PREFLIGHT_RUNNER`
+  - Optional Prism reporting also needs `PRISM_UPLOAD_ENABLED` + `PRISM_URL` variables
+    and the `PRISM_API_TOKEN`/`PRISM_EMAIL`/`PRISM_PASSWORD` secrets passed explicitly
+    in the caller's `secrets:` block (cross-org `secrets: inherit` does NOT work); see
+    "Uploading results to Prism" in the hub docs.
 - **Boards covered:** `<list the parts>`
 
 ## To add a board or extend coverage

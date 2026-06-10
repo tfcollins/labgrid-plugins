@@ -27,3 +27,13 @@ jobs:
       runner-label: ${{ vars.HW_REQUEST_RUNNER }}
       preflight-runner-label: ${{ vars.HW_PREFLIGHT_RUNNER }}
       matlab-bin: ${{ vars.MATLAB_BIN }}
+      # Optional: upload each leg's JUnit to Prism (see "Uploading results to Prism"
+      # in the labgrid-plugins docs). Needs vars.PRISM_URL + the three secrets below.
+      # prism-upload: ${{ vars.PRISM_UPLOAD_ENABLED == 'true' }}
+      # prism-project: <PRISM_PROJECT_SLUG>
+    # Uncomment together with the prism-* inputs above. The secrets must be passed
+    # explicitly — cross-org `secrets: inherit` does NOT work.
+    # secrets:
+    #   PRISM_API_TOKEN: ${{ secrets.PRISM_API_TOKEN }}
+    #   PRISM_EMAIL: ${{ secrets.PRISM_EMAIL }}
+    #   PRISM_PASSWORD: ${{ secrets.PRISM_PASSWORD }}
