@@ -2,9 +2,10 @@
 
 A thin wrapper over :func:`adi_lg_plugins.request.request`: acquire + boot a
 board by part, export its interfaces (``IIO_URI`` / ``LG_PLACE`` /
-``LG_CARRIER``) into a child command's environment, run the command, and
-release the board. Request-layer exceptions map to stable exit codes so CI can
-tell an infra problem from a real test failure.
+``LG_CARRIER`` / ``HW_DAUGHTER`` / ``HW_CARRIER``) into a child command's
+environment, run the command, and release the board. Request-layer exceptions
+map to stable exit codes so CI can tell an infra problem from a real test
+failure.
 """
 
 from __future__ import annotations
@@ -117,7 +118,7 @@ def _run_child(run_cmd: str, env: dict) -> int:
     "--run",
     "run_cmd",
     default=None,
-    help="Command to run with IIO_URI / LG_PLACE / LG_CARRIER exported",
+    help="Command to run with IIO_URI / LG_PLACE / LG_CARRIER / HW_DAUGHTER / HW_CARRIER exported",
 )
 def request_cmd(
     part,
@@ -156,8 +157,12 @@ def request_cmd(
             if board.uri:
                 env["IIO_URI"] = board.uri
             env["LG_PLACE"] = board.place
+            # pytest-plugin per-shard narrowing: carrier is only known after
+            # reservation, so the CLI (not the workflow) must export it.
+            env["HW_DAUGHTER"] = part
             if board.carrier:
                 env["LG_CARRIER"] = board.carrier
+                env["HW_CARRIER"] = board.carrier
             if mode == "flash":
                 console.print(f"[green]Flashed + validated {board.place} (no-os)[/green]")
             else:

@@ -271,3 +271,21 @@ def test_provision_error_no_annotation_outside_gha(monkeypatch):
     result = CliRunner().invoke(cli, ["request", "--part", "adrv9002"])
     assert result.exit_code == EXIT_PROVISION
     assert "::error" not in result.output
+
+
+def test_request_run_exports_pytest_narrowing_env(monkeypatch):
+    lease = _fake_lease(uri="ip:10.0.0.57", place="adrv9002-zcu102", carrier="zcu102")
+    monkeypatch.setattr(rc_mod, "request", _fake_request_yielding(lease))
+    captured = {}
+
+    def fake_run_child(cmd, env):
+        captured.update(env)
+        return 0
+
+    monkeypatch.setattr(rc_mod, "_run_child", fake_run_child)
+    result = CliRunner().invoke(cli, ["request", "--part", "adrv9002", "--run", "true"])
+    assert result.exit_code == 0
+    # the pytest plugin's per-shard narrowing contract (HW_DAUGHTER required,
+    # HW_CARRIER optional) — see adi_lg_plugins/pytest_plugin/__init__.py
+    assert captured["HW_DAUGHTER"] == "adrv9002"
+    assert captured["HW_CARRIER"] == "zcu102"
