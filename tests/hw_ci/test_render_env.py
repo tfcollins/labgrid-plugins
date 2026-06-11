@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pytest
+import yaml
 
 from adi_lg_plugins.hw_ci.render_env import (
     RenderError,
@@ -236,6 +237,46 @@ def test_bootfpgasoctftp_tftp_root_overridable_via_tag():
     out = render_env(p)
     assert "root: /var/lib/labgrid-tftp" in out
     assert "/tmp/labgrid-tftp-bq" not in out
+
+
+def test_bootfabric_login_config_matches_env_gen():
+    """BootFabric's rendered env must mirror the proven coordinator env-gen
+    config (coordinator/api/app/env_gen.py LOGIN/STRATEGY entries) that booted
+    daq3/vcu118. ADIShellDriver REQUIRES prompt + login_prompt + username — a
+    bare ``prompt`` raises labgrid InvalidConfigError on a real place (#81)."""
+    p = Place(
+        name="daq3-vcu118",
+        carrier="vcu118",
+        daughter_board="daq3",
+        boot_strategy="BootFabric",
+        # no power-driver tag: the documented default must apply
+    )
+    doc = yaml.safe_load(render_env(p))
+    drivers = doc["targets"]["main"]["drivers"]
+    shell = drivers["ADIShellDriver"]
+    assert shell["prompt"] == "#.*"
+    assert shell["login_prompt"] == "buildroot login: "
+    assert shell["username"] == "root"
+    assert "VesyncPowerDriver" in drivers  # documented default power driver
+    strat = drivers["BootFabric"]
+    assert strat["wait_for_boot_timeout"] == 700
+    assert strat["reached_boot_marker"] == "login:"
+    assert strat["trigger_dhcp_reset"] is True
+    assert strat["power_off_delay"] == 30
+
+
+def test_every_template_renders_parseable_yaml_for_minimal_place():
+    """Drift guard: every shipped template must render to parseable YAML with
+    a targets/main/drivers shape for a tag-minimal place."""
+    for strat in list_strategy_templates():
+        p = Place(
+            name="x",
+            carrier="zcu102",
+            daughter_board="ad9081",
+            boot_strategy=strat,
+        )
+        doc = yaml.safe_load(render_env(p))
+        assert doc["targets"]["main"]["drivers"], strat
 
 
 def test_bootnoosjtag_boot_marker_defaults_to_successfully_initialized():
