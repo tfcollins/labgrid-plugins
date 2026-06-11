@@ -97,17 +97,19 @@ def fetch_raw_places(
 ) -> list[dict]:
     """Try REST first, fall back to CLI on transport failure.
 
-    Set ``force_cli=True`` to skip the REST path entirely (useful when
-    the coordinator hasn't exposed the JSON endpoint yet).
+    ``coord`` is the gRPC coordinator address (``host:20408``); the REST
+    API lives on a different port, so the REST path queries
+    ``_resolve_api(coord)`` (``host:8000``, or the ADI_LG_API / LG_API
+    override). Set ``force_cli=True`` to skip the REST path entirely
+    (useful when the coordinator hasn't exposed the JSON endpoint yet).
     """
     if not force_cli:
         try:
-            return _fetch_places_rest(coord, timeout=timeout)
+            return _fetch_places_rest(_resolve_api(coord), timeout=timeout)
         except (OSError, http.client.HTTPException, json.JSONDecodeError, ValueError) as e:
-            # Stock labgrid coordinator speaks WAMP/crossbar, not HTTP:
-            # hitting :20408/api/places returns garbled binary which surfaces
-            # as http.client.BadStatusLine. Any transport failure (connect
-            # refused, garbage response, timeout, bad JSON) is treated the
+            # Any transport failure (connect refused, timeout, bad JSON, or a
+            # garbled BadStatusLine from a non-HTTP service if someone points
+            # an ADI_LG_API/LG_API override at the wrong port) is treated the
             # same way — fall through to the labgrid-client CLI path,
             # which is the canonical interface.
             logger.warning(
