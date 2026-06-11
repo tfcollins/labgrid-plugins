@@ -110,10 +110,15 @@ def _emit_matrix(
     missing: list[str],
     kind: str,
     github_output: bool,
+    missing_msg: str = "{item!r} is wanted but no live board matches on the coordinator",
 ) -> None:
     """Write the matrix to $GITHUB_OUTPUT (when asked), print it to stdout, and
-    emit a ``::warning::`` annotation per missing item. Shared by request-matrix
-    and noos-matrix so the GH-output + annotation tail lives in one place."""
+    emit a ``::warning::`` annotation per missing item. Shared by request-matrix,
+    noos-matrix, and matlab-matrix so the GH-output + annotation tail lives in
+    one place. ``missing_msg`` is a ``str.format`` template receiving ``item``;
+    the default covers the wanted-part-missing case — callers whose ``missing``
+    items mean something else (e.g. matlab-matrix's live-but-unmapped places)
+    must pass a truthful wording."""
     if github_output:
         gh_out = os.environ.get("GITHUB_OUTPUT")
         if gh_out:
@@ -126,8 +131,7 @@ def _emit_matrix(
     print(json.dumps(matrix, indent=2))
     for item in missing:
         print(
-            f"::warning::{kind}: {item!r} is wanted but no live board matches on the "
-            f"coordinator — skipping",
+            f"::warning::{kind}: {missing_msg.format(item=item)} — skipping",
             file=sys.stderr,
         )
 
@@ -253,6 +257,9 @@ def _cmd_matlab_matrix(args: argparse.Namespace) -> int:
         missing=skipped,
         kind="matlab-matrix",
         github_output=args.github_output,
+        # `skipped` holds *live* places with no board_map entry — the default
+        # "no live board matches" wording would be untrue for them.
+        missing_msg="live place {item!r} has no board_map entry",
     )
     print(
         f"# matlab-matrix: {len(places)} live place(s), {len(legs)} testable, "
