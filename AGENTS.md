@@ -30,7 +30,7 @@ reachable) before tests run, and boot failures are reported distinctly (exit 12 
 
 > **Deprecation notice:** `hw-matrix.yml` and `hw-matrix-v2.yml` are deprecated. New
 > consumers must use the hw-request family (`hw-request.yml`, `noos-hw-request.yml`,
-> `matlab-hw-request.yml`) pinned at `@v3.1` (current release). Removal of the deprecated
+> `matlab-hw-request.yml`) pinned at `@v3.2` (current release). Removal of the deprecated
 > workflows is tracked by the HW-CI convergence effort.
 
 Reference consumers: pyadi-iio (uri), no-os (flash), TransceiverToolbox (matlab). Matlab
@@ -170,6 +170,6 @@ confirm both the preflight and the per-board legs go green.
 - Catalog schema: `coordinator/api/app/catalog.py` (`BoardEntry`, `FlashConfig`).
 - Reusable workflow inputs: `docs/source/user-guide/github-actions.rst`.
 - CLI: `docs/source/user-guide/cli.rst` (`adi-lg-hw-ci`, `adi-lg request`).
-- **Pinning**: consumer `uses:` lines must reference `@v3.1` (current release), e.g.
-  `uses: tfcollins/labgrid-plugins/.github/workflows/hw-request.yml@v3.1`. Bump the pin
+- **Pinning**: consumer `uses:` lines must reference `@v3.2` (current release), e.g.
+  `uses: tfcollins/labgrid-plugins/.github/workflows/hw-request.yml@v3.2`. Bump the pin
   when a new release tags. Never pin to `@main` in production workflows.

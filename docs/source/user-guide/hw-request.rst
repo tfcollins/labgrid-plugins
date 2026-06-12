@@ -26,7 +26,7 @@ Calling it
    on: [pull_request]
    jobs:
      hw:
-       uses: tfcollins/labgrid-plugins/.github/workflows/hw-request.yml@v3.1
+       uses: tfcollins/labgrid-plugins/.github/workflows/hw-request.yml@v3.2
        with:
          coordinator: "10.0.0.41:8000"
          test-root: "test"
@@ -105,7 +105,7 @@ input:
 
    jobs:
      hw:
-       uses: tfcollins/labgrid-plugins/.github/workflows/hw-request.yml@v3.1
+       uses: tfcollins/labgrid-plugins/.github/workflows/hw-request.yml@v3.2
        with:
          coordinator: ${{ vars.ADI_LG_COORDINATOR }}
          test-root: "tests"
@@ -142,7 +142,7 @@ caller — cross-org ``secrets: inherit`` does **not** work:
 
    jobs:
      hw:
-       uses: tfcollins/labgrid-plugins/.github/workflows/hw-request.yml@v3.1
+       uses: tfcollins/labgrid-plugins/.github/workflows/hw-request.yml@v3.2
        with:
          coordinator: ${{ vars.LG_COORDINATOR }}
          test-root: "test"
