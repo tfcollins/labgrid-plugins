@@ -30,7 +30,7 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       contains(github.event.pull_request.labels.*.name, 'hw-request')
-    uses: tfcollins/labgrid-plugins/.github/workflows/hw-request.yml@v3.3  # bump when a new release tags
+    uses: tfcollins/labgrid-plugins/.github/workflows/hw-request.yml@v3.4  # bump when a new release tags
     with:
       coordinator: ${{ vars.LG_COORDINATOR }}
       # Directory holding your @pytest.mark.iio_hardware(["<board>"]) tests.
@@ -44,7 +44,7 @@ jobs:
         set -euo pipefail
         uv pip install --quiet --python "$VENV_DIR/bin/python" <YOUR_INSTALL_ARGS>
         uv pip install --quiet --python "$VENV_DIR/bin/python" \
-          "adi-labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins.git@v3.3"
+          "adi-labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins.git@v3.4"
       # Optional: upload each leg's JUnit to Prism (see "Uploading results to Prism"
       # in the labgrid-plugins docs). Needs vars.PRISM_URL + the three secrets below.
       # prism-upload: ${{ vars.PRISM_UPLOAD_ENABLED == 'true' }}

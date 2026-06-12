@@ -30,7 +30,7 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       contains(github.event.pull_request.labels.*.name, 'hw-request')
-    uses: tfcollins/labgrid-plugins/.github/workflows/noos-hw-request.yml@v3.3  # bump when a new release tags
+    uses: tfcollins/labgrid-plugins/.github/workflows/noos-hw-request.yml@v3.4  # bump when a new release tags
     with:
       coordinator: ${{ vars.LG_COORDINATOR }}
       manifest: "tools/hw_ci/projects.yaml"
