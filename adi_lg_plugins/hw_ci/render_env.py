@@ -37,6 +37,21 @@ class RenderError(RuntimeError):
     """No template available for a place's boot-strategy."""
 
 
+def stable_ethaddr(place_name: str) -> str:
+    """Deterministic locally-administered unicast MAC for a place.
+
+    Stock Kuiper boot files randomize the DUT MAC every boot, so DHCP
+    can never pin a lease. Deriving a stable MAC from the place name
+    (first octet 0x02 = locally administered, unicast) makes leases—and
+    therefore addresses—predictable per board. Overridable via the
+    place tag ``ethaddr``; opt out with ``ethaddr=stock``.
+    """
+    import hashlib
+
+    h = hashlib.sha256(place_name.encode()).digest()
+    return ":".join(f"{b:02x}" for b in (0x02, *h[:5]))
+
+
 def list_strategy_templates() -> list[str]:
     """Names (without ``.yaml`` extension) of known templates."""
     try:
@@ -91,6 +106,14 @@ def render_env(
     # root for KuiperDLDriver (BootFPGASoCTFTP). Per-place to avoid two
     # parallel runs colliding; overridable via extra_subs / a tag.
     tftp_root = place.extra_tags.get("tftp-root", f"/tmp/labgrid-tftp-{place.name}")
+    # Stable per-place MAC for the interactive U-Boot TFTP path (stock
+    # Kuiper randomizes the MAC every boot → new DHCP lease every boot).
+    # Default: derive from the place name. Override with the `ethaddr`
+    # tag; `ethaddr=stock` opts out (renders empty → strategy skips the
+    # setenv and the board keeps its own MAC).
+    ethaddr = place.extra_tags.get("ethaddr", stable_ethaddr(place.name))
+    if ethaddr == "stock":
+        ethaddr = ""
     # Optional JTAG-bootstrap inputs for BootFPGASoCTFTP (paths on the
     # host that runs xsdb — typically the lab host bound to the place).
     # Each defaults to empty; the strategy treats empty/None as "no
@@ -139,6 +162,7 @@ def render_env(
         # Opt-in SD-autoboot for BootFPGASoCTFTP: JTAG-bootstrap U-Boot,
         # then let the SD's own Kuiper autoboot (no TFTP-kernel step).
         "sd_autoboot": place.extra_tags.get("sd-autoboot", ""),
+        "ethaddr": ethaddr,
         "uboot_prompt": place.extra_tags.get("uboot-prompt", d_uboot_prompt),
         "kernel_image_name": place.extra_tags.get("kernel-image-name", d_kernel_image),
         "dtb_image_name": place.extra_tags.get("dtb-image-name", d_dtb_image),

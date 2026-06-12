@@ -140,3 +140,35 @@ def test_default_path_still_uses_tftp_boot():
 
     assert s.status == Status.booted
     assert s.shell.run_uboot.called
+
+
+def _uboot_commands(s):
+    """The U-Boot commands the strategy issued, in order, sans newline."""
+    return [c.args[0].strip() for c in s.shell.run_uboot.call_args_list]
+
+
+def test_ethaddr_set_before_dhcp_when_configured():
+    """A configured ethaddr must be programmed into U-Boot BEFORE dhcp,
+    so the DHCP lease is requested with the stable MAC."""
+    s = _make_strategy(sd_autoboot=False, ethaddr="02:aa:bb:cc:dd:ee")
+    s.shell.console.expect.return_value = 1
+
+    s.transition(Status.booted)
+
+    cmds = _uboot_commands(s)
+    assert "setenv ethaddr 02:aa:bb:cc:dd:ee" in cmds
+    assert "dhcp" in cmds
+    assert cmds.index("setenv ethaddr 02:aa:bb:cc:dd:ee") < cmds.index("dhcp")
+
+
+def test_no_ethaddr_command_when_empty():
+    """An empty ethaddr (opt-out / default) issues no setenv ethaddr at all,
+    leaving the board's own MAC untouched."""
+    s = _make_strategy(sd_autoboot=False, ethaddr="")
+    s.shell.console.expect.return_value = 1
+
+    s.transition(Status.booted)
+
+    cmds = _uboot_commands(s)
+    assert not any(c.startswith("setenv ethaddr") for c in cmds)
+    assert "dhcp" in cmds

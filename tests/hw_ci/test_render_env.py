@@ -10,17 +10,19 @@ from adi_lg_plugins.hw_ci.render_env import (
     list_strategy_templates,
     render_env,
     render_env_to,
+    stable_ethaddr,
 )
 from adi_lg_plugins.hw_ci.schema import KNOWN_STRATEGIES, Place
 
 
-def _place(strat, place="mini2"):
+def _place(strat, place="mini2", extra_tags=None):
     return Place(
         name=place,
         carrier="zcu102",
         daughter_board="ad9081",
         boot_strategy=strat,
         hdl_config="m8_l4",
+        extra_tags=extra_tags or {},
     )
 
 
@@ -237,6 +239,44 @@ def test_bootfpgasoctftp_tftp_root_overridable_via_tag():
     out = render_env(p)
     assert "root: /var/lib/labgrid-tftp" in out
     assert "/tmp/labgrid-tftp-bq" not in out
+
+
+def test_stable_ethaddr_is_deterministic_and_well_formed():
+    """stable_ethaddr derives a locally-administered unicast MAC from the
+    place name: deterministic, 6 octets, first octet 0x02."""
+    mac1 = stable_ethaddr("mini2")
+    mac2 = stable_ethaddr("mini2")
+    assert mac1 == mac2
+    octets = mac1.split(":")
+    assert len(octets) == 6
+    assert octets[0] == "02"
+    for o in octets:
+        assert len(o) == 2
+        int(o, 16)  # every octet is valid hex
+    # Different places get different MACs.
+    assert stable_ethaddr("mini2") != stable_ethaddr("maia")
+
+
+def test_bootfpgasoctftp_ethaddr_derived_for_tagless_place():
+    """Without an `ethaddr` tag the rendered env carries the derived
+    stable MAC (stock Kuiper randomizes the MAC every boot otherwise)."""
+    out = render_env(_place("BootFPGASoCTFTP"))
+    assert "ethaddr: '02:" in out
+    assert f"ethaddr: '{stable_ethaddr('mini2')}'" in out
+
+
+def test_bootfpgasoctftp_ethaddr_tag_overrides():
+    """An explicit `ethaddr` tag wins over the derived MAC."""
+    out = render_env(_place("BootFPGASoCTFTP", extra_tags={"ethaddr": "aa:bb:cc:dd:ee:ff"}))
+    assert "ethaddr: 'aa:bb:cc:dd:ee:ff'" in out
+
+
+def test_bootfpgasoctftp_ethaddr_stock_opts_out():
+    """`ethaddr=stock` opts out: the strategy gets an empty ethaddr and
+    leaves the board's own (random) MAC alone."""
+    out = render_env(_place("BootFPGASoCTFTP", extra_tags={"ethaddr": "stock"}))
+    assert "ethaddr: ''" in out
+    assert "ethaddr: '02:" not in out
 
 
 def test_bootfabric_login_config_matches_env_gen():

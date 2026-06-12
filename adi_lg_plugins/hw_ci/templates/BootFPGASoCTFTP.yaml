@@ -66,6 +66,12 @@ targets:
         # Kuiper straight to Linux. Set the place tag `sd-autoboot=true`
         # for JTAG-recovery-class boards whose SD is already imaged.
         sd_autoboot: '${sd_autoboot}'
+        # Stable per-place MAC: set via `setenv ethaddr` before `dhcp`
+        # on the interactive TFTP path so DHCP leases are predictable
+        # (stock Kuiper randomizes the MAC every boot). render_env
+        # derives this from the place name; override via the `ethaddr`
+        # tag, opt out with `ethaddr=stock` (renders empty → skipped).
+        ethaddr: '${ethaddr}'
         # Carrier-aware U-Boot/Linux config (render_env supplies
         # Zynq-7000 vs ZynqMP defaults; override via place tags).
         uboot_prompt: '${uboot_prompt}'
