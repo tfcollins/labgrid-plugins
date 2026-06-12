@@ -53,10 +53,13 @@ Boot verification and failure semantics
 ---------------------------------------
 
 ``adi-lg request`` (uri mode) verifies the booted board before handing it to
-the child command: after the boot strategy reaches shell and the URI is
-resolved, the request layer polls a TCP connect to iiod (port 30431) for up
-to 60 s. A board that boots to shell with a dead iiod is a **boot failure**,
-not a test failure.
+the child command: after the boot strategy reaches shell, the request layer
+polls the DUT's live ``eth0`` IP for up to 90 s (boards reach the shell prompt
+before the DHCP lease lands), then falls back to the exporter's static
+``NetworkService.address`` with a warning if the lease never arrives. Once the
+URI is resolved, the request layer polls a TCP connect to iiod (port 30431)
+for up to 60 s. A board that boots to shell with a dead iiod is a
+**boot failure**, not a test failure.
 
 * One bounded retry: a failed attempt (strategy error or iiod never up) gets
   exactly one cold-boot retry (power-off, reboot) before failing the leg.
