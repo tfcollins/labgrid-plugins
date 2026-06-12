@@ -31,6 +31,13 @@ targets:
         address: 'auto'
         port: 3069
         root: ${tftp_root}
+    # Expose the place's identity as labgrid features so consumers gating
+    # tests with @pytest.mark.lg_feature (e.g. pyadi-dt) select rather than
+    # skip. Mirrors coordinator env_gen — keep in sync.
+    features:
+      - '${daughter_board}'
+      - '${carrier}'
+
     drivers:
       ${power_driver}: {}
       SerialDriver: {}
