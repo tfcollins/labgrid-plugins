@@ -337,3 +337,20 @@ def test_bootnoosjtag_a9_target_name_override_via_extra_subs():
     assert "*Cortex-A9 MPCore #1" in out
     assert "*Cortex-A9 MPCore #0" not in out
     assert "${a9_target_name}" not in out
+
+
+# ── lg_feature gating: every template must expose place identity as features ──
+
+
+def test_every_template_declares_place_features():
+    """Consumers gating tests with @pytest.mark.lg_feature (pyadi-dt) are
+    silently SKIPPED unless the env declares matching labgrid ``features``.
+    The coordinator env_gen emits [daughter-board, carrier] for exactly this;
+    the render templates must stay in sync (live-found gap: every pyadi-dt
+    test skipped with 'unsupported feature(s): adrv9009, zc706')."""
+    for strat in list_strategy_templates():
+        doc = yaml.safe_load(render_env(_place(strat)))
+        feats = doc["targets"]["main"].get("features")
+        assert feats == ["ad9081", "zcu102"], (
+            f"{strat}: rendered env missing place features (got {feats!r})"
+        )
