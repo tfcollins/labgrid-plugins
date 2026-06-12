@@ -70,11 +70,14 @@ def test_fetch_raw_places_force_cli_skips_rest(monkeypatch, _stub_cli):
 
 
 def test_fetch_raw_places_rest_success_path(monkeypatch, _stub_cli):
-    """When REST returns clean JSON, CLI is never invoked."""
+    """When REST returns clean JSON, CLI is never invoked. The REST call
+    targets the API port (host:8000), not the gRPC coordinator port."""
+    monkeypatch.delenv("ADI_LG_API", raising=False)
+    monkeypatch.delenv("LG_API", raising=False)
     rest_payload = [{"name": "rest-only", "tags": {}, "acquired": None}]
 
     def _ok(coord, timeout=15.0):
-        assert coord == "10.0.0.41:20408"
+        assert coord == "10.0.0.41:8000"
         return rest_payload
 
     monkeypatch.setattr(coord_mod, "_fetch_places_rest", _ok)

@@ -47,7 +47,10 @@ def test_matlab_matrix_emits_legs_for_mapped_places(tmp_path, monkeypatch, capsy
         "matlab_board": "zynqmp-zcu102-rev10-adrv9002-vcmos",
     }
     assert "::warning::" in out.err
-    assert "nuc" in out.err
+    # 'nuc' is live — the annotation must say it's unmapped, not that no
+    # live board matches.
+    assert "live place 'nuc' has no board_map entry — skipping" in out.err
+    assert "is wanted but" not in out.err
 
 
 def test_matlab_matrix_parser_wires_via_main(monkeypatch, tmp_path):

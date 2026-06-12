@@ -65,22 +65,30 @@ def _render_env(place, **kw) -> str:
 def _boot(
     env_path: str, strategy_name: str, *, image: str | None, target_name: str = "main"
 ) -> Any:
-    """Boot the board to a Linux shell and return the labgrid target."""
+    """Boot the board to a Linux shell and return the labgrid target.
+
+    Any failure — Environment construction, get_target/get_driver (e.g. a
+    labgrid InvalidConfigError from a bad env), or the strategy transition —
+    is normalised to ProvisionError so callers classify it as a boot failure
+    (exit 12 + boot-failure annotation) instead of a raw traceback (#82).
+    """
     from labgrid import Environment
 
-    env = Environment(env_path)
-    tg = env.get_target(target_name)
-    if image:
-        try:
-            res = tg.get_resource("KuiperRelease")
-            res.release_version = image
-            logger.info("Using image version %s", image)
-        except Exception:  # noqa: BLE001 - resource may be absent for some boards
-            logger.warning("no KuiperRelease resource to pin image %s", image)
-    strategy = tg.get_driver(strategy_name)
     try:
+        env = Environment(env_path)
+        tg = env.get_target(target_name)
+        if image:
+            try:
+                res = tg.get_resource("KuiperRelease")
+                res.release_version = image
+                logger.info("Using image version %s", image)
+            except Exception:  # noqa: BLE001 - resource may be absent for some boards
+                logger.warning("no KuiperRelease resource to pin image %s", image)
+        strategy = tg.get_driver(strategy_name)
         strategy.transition("shell")
-    except Exception as e:  # noqa: BLE001 - normalise any strategy error
+    except ProvisionError:
+        raise
+    except Exception as e:  # noqa: BLE001 - normalise any env/config/strategy error
         raise ProvisionError(f"boot failed: {e}") from e
     return tg
 

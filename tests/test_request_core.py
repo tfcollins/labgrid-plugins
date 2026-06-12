@@ -416,6 +416,45 @@ def test_flash_request_forwards_a9_target_name(monkeypatch):
     assert kw["extra_subs"]["a9_target_name"] == "*Cortex-A9 MPCore #1"
 
 
+# ── _boot: env construction/config errors classified as boot failures (#82) ──
+
+
+def test_boot_wraps_env_config_errors_as_provision_error(monkeypatch):
+    """Errors before strategy.transition (Environment/get_target/get_driver,
+    e.g. labgrid InvalidConfigError) must surface as ProvisionError so the CLI
+    exits 12 with a boot-failure annotation instead of a raw traceback."""
+
+    class FakeEnv:
+        def __init__(self, path):
+            pass
+
+        def get_target(self, name):
+            raise RuntimeError("failed to create ADIShellDriver for target 'main'")
+
+    import labgrid
+
+    monkeypatch.setattr(labgrid, "Environment", FakeEnv)
+    with pytest.raises(ProvisionError, match="boot failed:.*ADIShellDriver"):
+        core._boot("env.yaml", "BootFabric", image=None)
+
+
+def test_boot_does_not_double_wrap_provision_errors(monkeypatch):
+    """A ProvisionError raised inside the boot body propagates unchanged."""
+
+    class FakeEnv:
+        def __init__(self, path):
+            pass
+
+        def get_target(self, name):
+            raise ProvisionError("boot failed: original message")
+
+    import labgrid
+
+    monkeypatch.setattr(labgrid, "Environment", FakeEnv)
+    with pytest.raises(ProvisionError, match="^boot failed: original message$"):
+        core._boot("env.yaml", "BootFabric", image=None)
+
+
 # ── _boot_verified: boot + iiod verification with one bounded retry ──────────
 
 
