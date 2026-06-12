@@ -48,7 +48,7 @@ on:
         # libtsk headers.
         default: >-
           uv pip install --quiet --python "$VENV_DIR/bin/python"
-          "adi-labgrid-plugins[kuiper] @ git+https://github.com/tfcollins/labgrid-plugins@main"
+          "adi-labgrid-plugins[kuiper] @ git+https://github.com/tfcollins/labgrid-plugins@v3.4"
       prism-upload:
         description: "Post each leg's JUnit to Prism."
         type: boolean
@@ -92,7 +92,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - uses: tfcollins/labgrid-plugins/.github/actions/setup-uv-venv@main
+      - uses: tfcollins/labgrid-plugins/.github/actions/setup-uv-venv@v3.4
         with:
           venv_dir: ${{ inputs.venv-dir }}
           install_cmd: ${{ inputs.install-cmd }}
@@ -118,7 +118,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
-      - uses: tfcollins/labgrid-plugins/.github/actions/setup-uv-venv@main
+      - uses: tfcollins/labgrid-plugins/.github/actions/setup-uv-venv@v3.4
         with:
           venv_dir: ${{ inputs.venv-dir }}
           install_cmd: ${{ inputs.install-cmd }}
