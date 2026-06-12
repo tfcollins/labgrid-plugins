@@ -53,6 +53,7 @@ jobs:
           tests/test_recovery_busybox_http.py \
           tests/test_discover_places.py \
           tests/test_bootfpgasocssh_helpers.py \
+          tests/test_bootfpgasoctftp_sd_autoboot.py \
           tests/hw_ci/test_resolve.py \
           tests/test_cloudsmith_dl.py \
           tests/test_plugin_registration.py \

@@ -61,6 +61,16 @@ URI is resolved, the request layer polls a TCP connect to iiod (port 30431)
 for up to 60 s. A board that boots to shell with a dead iiod is a
 **boot failure**, not a test failure.
 
+Stock Kuiper boot files randomize the DUT's MAC every boot, so each boot takes
+a fresh DHCP lease and the address is never predictable. On the interactive
+U-Boot TFTP path (``BootFPGASoCTFTP``) the strategy therefore programs a
+**stable per-place MAC** — derived from the place name, locally administered
+(first octet ``02``) — via ``setenv ethaddr`` *before* ``dhcp``, pinning the
+lease per board. Override the MAC with the place tag ``ethaddr=<mac>``, or opt
+out with ``ethaddr=stock`` to keep the board's own behaviour. This applies
+only to the interactive TFTP path: ``sd-autoboot`` boards boot with U-Boot's
+own environment, so set ``ethaddr`` in the SD card's ``uEnv.txt`` instead.
+
 * One bounded retry: a failed attempt (strategy error or iiod never up) gets
   exactly one cold-boot retry (power-off, reboot) before failing the leg.
 * Exit codes: ``10`` no matching board, ``11`` none free in the wait window,

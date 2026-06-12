@@ -160,6 +160,11 @@ confirm both the preflight and the per-board legs go green.
   the catalog `flash.kuiper_xsa_dir` override pins the folder.
 - **flash runner**: needs Vivado + the `[kuiper]`/pytsk3 install + ~10 GB disk for the
   Kuiper image.
+- **Random MACs on stock images**: stock Kuiper boot files randomize the DUT MAC every
+  boot → fresh DHCP lease/IP per boot. The interactive TFTP path (`BootFPGASoCTFTP`)
+  auto-derives a stable per-place MAC and runs `setenv ethaddr` before `dhcp`; override
+  with the place tag `ethaddr=<mac>`, opt out with `ethaddr=stock`. `sd-autoboot` boards
+  boot U-Boot's own env — set `ethaddr` in the SD's `uEnv.txt` instead.
 - After editing the coordinator catalog, **redeploy the coordinator host** — it does not
   auto-update.
 
