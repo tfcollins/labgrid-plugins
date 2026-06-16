@@ -31,11 +31,16 @@ dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",
     "pylibiio",
+    "python-kasa>=0.7",
 ]
 ## Installed on hosts that actually need to unpack Kuiper disk images.
 ## Requires a C toolchain (pytsk3 ships only as an sdist).
 kuiper = [
     "pytsk3",
+]
+## Installed on hosts that drive TP-Link Kasa smart plugs / power strips.
+kasa = [
+    "python-kasa>=0.7",
 ]
 docs = [
     "sphinx>=7.0.0",
@@ -86,6 +91,7 @@ xilinxjtagdriver = "adi_lg_plugins.drivers.xilinxjtagdriver:XilinxJTAGDriver"
 tftpserverdriver = "adi_lg_plugins.drivers.tftpserverdriver:TFTPServerDriver"
 softwareinstaller = "adi_lg_plugins.drivers.softwareinstaller:SoftwareInstallerDriver"
 homeassistantdriver = "adi_lg_plugins.drivers.homeassistantdriver:HomeAssistantPowerDriver"
+kasapowerdriver = "adi_lg_plugins.drivers.kasadriver:KasaPowerDriver"
 
 [project.entry-points."labgrid.resources"]
 vesyncresource = "adi_lg_plugins.resources.vesync:VesyncOutlet"
@@ -97,6 +103,7 @@ xilinxdevicejtag = "adi_lg_plugins.resources.xilinxdevice:XilinxDeviceJTAG"
 xilinxvivadotool = "adi_lg_plugins.resources.xilinxtool:XilinxVivadoTool"
 tftpserverresource = "adi_lg_plugins.resources.tftpserver:TFTPServerResource"
 homeassistantresource = "adi_lg_plugins.resources.homeassistant:HomeAssistantOutlet"
+kasaresource = "adi_lg_plugins.resources.kasa:KasaOutlet"
 
 
 [project.entry-points."labgrid.strategies"]
