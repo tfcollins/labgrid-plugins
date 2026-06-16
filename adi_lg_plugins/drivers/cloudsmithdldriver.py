@@ -251,8 +251,30 @@ def parse_version_info(version_str, tags, repo=None):
     }
 
 
+def _as_list(value):
+    """Normalize a filter field to a list of terms.
+
+    ``None`` -> ``[]``, a bare ``str`` -> ``[str]``, any other iterable
+    (list/tuple) -> ``list(value)``. Lets ``vfilter``/``vnot`` accept a
+    single term or several.
+    """
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value]
+    return list(value)
+
+
 def get_latest_bootfiles(
-    owner, repo, fpga_carrier=None, daughter_card=None, filename=None, token=None, pin=None
+    owner,
+    repo,
+    fpga_carrier=None,
+    daughter_card=None,
+    vfilter=None,
+    vnot=None,
+    filename=None,
+    token=None,
+    pin=None,
 ):
     """Resolve the matching Cloudsmith package, returning the raw package dict.
 
@@ -268,9 +290,15 @@ def get_latest_bootfiles(
         query += f" AND version:*{fpga_carrier}*"
     if daughter_card:
         query += f" AND version:*{daughter_card}*"
+    for term in _as_list(vfilter):
+        query += f" AND version:*{term}*"
+    for term in _as_list(vnot):
+        query += f" AND version:~{term}"
+
     packages = search_cloudsmith_packages(owner, repo, query, token, page_size=1000)
     if not packages:
         return None
+    print(f"Found {len(packages)} candidates")
 
     candidates = []
     for package in packages:
@@ -281,10 +309,14 @@ def get_latest_bootfiles(
         if info is None:
             print(f"Skipping unparseable or ignored package version: {package.get('version')}")
             continue
-        if info["carrier"] == fpga_carrier:
+        if fpga_carrier:
+            if fpga_carrier in info["carrier"]:
+                candidates.append({**package, "_info": info})
+        else:
             candidates.append({**package, "_info": info})
 
     if not candidates:
+        print("No candiates found anymore")
         return None
 
     if pin is not None:
@@ -330,6 +362,8 @@ class CloudsmithDLDriver(Driver):
             res.repo,
             res.fpga_carrier,
             res.daughter_card,
+            res.vfilter,
+            res.vnot,
             res.filename,
             token,
             pin=res.version,

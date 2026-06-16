@@ -146,12 +146,41 @@ def test_download_cloudsmith_success(mock_dl, runner):
     mock_dl.assert_called_once_with(
         fpga_carrier="zcu102",
         daughter_card="adrv9009",
+        vfilter=(),
+        vnot=(),
         filename="BOOT.BIN",
         owner="adi",
         repo="sdg-boot-partition",
         version=None,
         cache_path="~/.labgrid/cloudsmith_releases/",
     )
+
+
+@patch("adi_lg_plugins.tools.cli.download_cloudsmith_boot_file")
+def test_download_cloudsmith_repeated_vfilter_vnot(mock_dl, runner):
+    mock_dl.return_value = "/cache/v1/BOOT.BIN"
+
+    result = runner.invoke(
+        cli,
+        [
+            "download-cloudsmith",
+            "--fpga-carrier",
+            "zcu102",
+            "--vfilter",
+            "LVDS",
+            "--vfilter",
+            "boot_bin",
+            "--vnot",
+            "debug",
+            "--vnot",
+            "test",
+        ],
+    )
+
+    assert result.exit_code == 0
+    _, kwargs = mock_dl.call_args
+    assert kwargs["vfilter"] == ("LVDS", "boot_bin")
+    assert kwargs["vnot"] == ("debug", "test")
 
 
 @patch("adi_lg_plugins.tools.cli.download_cloudsmith_boot_file")

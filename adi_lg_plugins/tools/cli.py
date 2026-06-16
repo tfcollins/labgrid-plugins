@@ -284,8 +284,21 @@ def provision_software(config, package, repo, build, test, target, state):
 
 
 @cli.command(name="download-cloudsmith")
-@click.option("--fpga-carrier", required=True, help="FPGA carrier, e.g. zcu102")
-@click.option("--daughter-card", required=True, help="Daughter card, e.g. adrv9009")
+@click.option("--fpga-carrier", required=False, help="FPGA carrier, e.g. zcu102")
+@click.option("--daughter-card", required=False, help="Daughter card, e.g. adrv9009")
+@click.option(
+    "--vfilter",
+    required=False,
+    multiple=True,
+    help="Generic version tag filter. Device info is all in the version flag. "
+    "Repeatable; each value adds an AND-ed match clause.",
+)
+@click.option(
+    "--vnot",
+    multiple=True,
+    help="Exclude packages whose version matches this term. "
+    "Repeatable; each value adds an AND-ed exclusion clause.",
+)
 @click.option("--filename", default="BOOT.BIN", show_default=True, help="Artifact filename")
 @click.option("--owner", default="adi", show_default=True, help="Cloudsmith owner/org")
 @click.option(
@@ -305,7 +318,7 @@ def provision_software(config, package, repo, build, test, target, state):
     help="Copy the artifact here after download (file path or existing directory)",
 )
 def download_cloudsmith(
-    fpga_carrier, daughter_card, filename, owner, repo, version, cache_path, out
+    fpga_carrier, daughter_card, vfilter, vnot, filename, owner, repo, version, cache_path, out
 ):
     """Download a boot artifact from Cloudsmith.
 
@@ -314,10 +327,16 @@ def download_cloudsmith(
     (sha256-verified), and prints the cached path. Requires the
     CLOUDSMITH_API_TOKEN environment variable.
     """
+    if not fpga_carrier and not daughter_card and not vfilter:
+        raise click.ClickException(
+            "Must have at least --fpga-carrier or --daughter-card or --vfilter set"
+        )
     try:
         path = download_cloudsmith_boot_file(
             fpga_carrier=fpga_carrier,
             daughter_card=daughter_card,
+            vfilter=vfilter,
+            vnot=vnot,
             filename=filename,
             owner=owner,
             repo=repo,

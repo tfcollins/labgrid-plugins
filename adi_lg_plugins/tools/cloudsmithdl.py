@@ -14,6 +14,8 @@ def download_cloudsmith_boot_file(
     repo,
     version,
     cache_path,
+    vfilter=None,
+    vnot=None,
 ):
     """Resolve, download, and return the local path of the boot artifact."""
     target = Target("CloudsmithDownloader")
@@ -22,6 +24,8 @@ def download_cloudsmith_boot_file(
         name=None,
         fpga_carrier=fpga_carrier,
         daughter_card=daughter_card,
+        vfilter=vfilter,
+        vnot=vnot,
         filename=filename,
         owner=owner,
         repo=repo,
