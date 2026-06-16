@@ -21,11 +21,18 @@ _DRIVERS = [
     "ADIShellDriver",
     "MassStorageDriver",
     "TFTPServerDriver",
+    "KasaPowerDriver",
     "BootFPGASoC",
     "BootFPGASoCTFTP",
     "BootFabric",
 ]
-_RESOURCES = ["KuiperRelease", "CloudsmithRelease", "TFTPServerResource", "XilinxDeviceJTAG"]
+_RESOURCES = [
+    "KuiperRelease",
+    "CloudsmithRelease",
+    "TFTPServerResource",
+    "XilinxDeviceJTAG",
+    "KasaOutlet",
+]
 
 
 def test_import_registers_all_components():
