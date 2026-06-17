@@ -107,6 +107,67 @@ def test_get_latest_bootfiles_no_match_returns_none(monkeypatch):
     assert pkg is None
 
 
+# --- query construction (vfilter / vnot, single + multiple) -----------------
+
+
+def _capture_query(monkeypatch):
+    """Patch the packages search to record the query string it receives."""
+    captured = {}
+
+    def fake_search(owner, repo, query, token, page_size=100):
+        captured["query"] = query
+        return []
+
+    monkeypatch.setattr(csd, "search_cloudsmith_packages", fake_search)
+    return captured
+
+
+def test_query_no_filters(monkeypatch):
+    captured = _capture_query(monkeypatch)
+    get_latest_bootfiles("adi", "r", filename="BOOT.BIN", token="tok")
+    assert captured["query"] == "filename:BOOT.BIN"
+
+
+def test_query_single_vfilter_and_vnot_strings(monkeypatch):
+    captured = _capture_query(monkeypatch)
+    get_latest_bootfiles("adi", "r", filename="BOOT.BIN", vfilter="x", vnot="a", token="tok")
+    assert captured["query"] == "filename:BOOT.BIN AND version:*x* AND version:~a"
+
+
+def test_query_multiple_vfilter_and_vnot(monkeypatch):
+    captured = _capture_query(monkeypatch)
+    get_latest_bootfiles(
+        "adi", "r", filename="BOOT.BIN", vfilter=["x", "y"], vnot=["a", "b"], token="tok"
+    )
+    assert captured["query"] == (
+        "filename:BOOT.BIN AND version:*x* AND version:*y* AND version:~a AND version:~b"
+    )
+
+
+def test_query_empty_tuples_add_no_clauses(monkeypatch):
+    captured = _capture_query(monkeypatch)
+    get_latest_bootfiles("adi", "r", filename="BOOT.BIN", vfilter=(), vnot=(), token="tok")
+    assert captured["query"] == "filename:BOOT.BIN"
+
+
+# --- CloudsmithRelease resource validators ----------------------------------
+
+
+def test_resource_accepts_str_and_iterable_for_vfilter_vnot():
+    from labgrid import Target
+
+    from adi_lg_plugins.resources.cloudsmithrelease import CloudsmithRelease
+
+    # Single string (back-compat) and a tuple of strings must both validate.
+    str_res = CloudsmithRelease(Target("t-str"), name=None, vfilter="x", vnot="a")
+    assert str_res.vfilter == "x"
+    assert str_res.vnot == "a"
+
+    list_res = CloudsmithRelease(Target("t-list"), name=None, vfilter=["x", "y"], vnot=("a", "b"))
+    assert list(list_res.vfilter) == ["x", "y"]
+    assert list(list_res.vnot) == ["a", "b"]
+
+
 # --- verify_sha256 ----------------------------------------------------------
 
 
@@ -235,6 +296,8 @@ def test_download_cloudsmith_boot_file_returns_path(monkeypatch):
     path = cloudsmithdl.download_cloudsmith_boot_file(
         fpga_carrier="zcu102",
         daughter_card="adrv9009",
+        vfilter=("LVDS", "boot_bin"),
+        vnot=("debug", "test"),
         filename="BOOT.BIN",
         owner="adi",
         repo="sdg-boot-partition",
