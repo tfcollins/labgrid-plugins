@@ -1296,13 +1296,14 @@ git commit -m "test(web): query PlaceWizard group checkbox by aria-label (decoup
 
 - [ ] **Step 1: Find the candidates**
 
-Run: `grep -rn 'color="blue.500"\|colorScheme="blue"' src/ | grep -vE 'pages/(Dashboard|Places|PlaceDetail|Resources|Topology)\.tsx'`
-Expected: a list of link colors and Chakra-blue components on non-hero/shared files (e.g. `RelatedPanel.tsx:51` Footer `color="blue.500"`).
+Run: `grep -rn 'blue\.500\|"blue"' src/ | grep -vE 'pages/(Dashboard|Places|PlaceDetail|Resources|Topology)\.tsx'`
+Expected: a list of link colors and Chakra-blue components on non-hero/shared files (e.g. `RelatedPanel.tsx:51` Footer `color="blue.500"`; `Reservations.tsx` reservation-state `<Badge colorScheme={... "blue" ...}>`).
 
-- [ ] **Step 2: Apply the two rules per hit**
+- [ ] **Step 2: Apply the rules per hit**
 
 - `color="blue.500"` → `color="link"`.
 - `colorScheme="blue"` on a **Button** → delete the prop (inherits the `adi` default). On a **Tag/Badge** → `colorScheme="adi"`.
+- Dynamic `colorScheme={cond ? "blue" : ...}` (e.g. reservation lifecycle, `allocated` state) → replace the `"blue"` arm with `"adi"` (ADI accent, per spec §8). Leave the `yellow`/`green`/`gray` arms.
 
 Example (`src/components/RelatedPanel.tsx:51`):
 
@@ -1453,7 +1454,7 @@ In the same file:
 - The "My places" exporter badges (line ~133) `<Badge colorScheme={e.online ? "green" : "gray"}>` → keep as exporter chips but route color through tokens: change to `<Badge colorScheme={e.online ? "adi" : "gray"}>` (these are exporter identity chips, not place status — keep them as badges, just on-brand).
 - Link colors `color="blue.500"` throughout Dashboard (lines ~70,79,88,105,128,168,224-234,255) → `color="link"`.
 - "Attention needed" heading `color="orange.500"` → `color="status.acquired"`.
-- The My-reservations state `<Badge colorScheme=...>` (line ~173) → leave the lifecycle mapping but on tokens is optional; minimal change: keep as-is (reservation lifecycle, not place health) — only swap its inner link colors.
+- The My-reservations state `<Badge colorScheme={r.state === "waiting" ? "yellow" : r.state === "allocated" ? "blue" : ...}>` (line ~173) → change the `allocated` arm `"blue"` → `"adi"` (ADI accent, per spec §8; removes Chakra blue). Keep `yellow`/`green`/`gray`. Also swap its inner link colors `blue.500` → `link`.
 
 - [ ] **Step 5: Restyle `ConceptGlanceCard` in place**
 
@@ -1670,7 +1671,7 @@ In `src/pages/PlaceDetail.tsx`:
 - Acquire button (line 168) and "+ Add match" button (line 185) and modal "Add match" button (line 312): remove `colorScheme="blue"` (inherit `adi`).
 - Link colors `color="blue.500"` (lines 338, 399) → `color="link"`.
 - Faint text `color="gray.500"` (lines 180, 191, 226, 305, 331, 340, 377, 382, 396, 404) → `color="text.secondary"`.
-- Reservation state badge (line 392): leave the lifecycle mapping as-is (not place health).
+- Reservation state badge (line 392): change the `allocated` arm `"blue"` → `"adi"` (ADI accent, per spec §8; removes Chakra blue). Keep `yellow`/`green`/`gray`.
 
 - [ ] **Step 2: Run suite + build**
 
@@ -1785,8 +1786,8 @@ git commit -m "feat(web): Topology restyle — palette canvas + legend, strings 
 
 - [ ] **Step 1: No residual Chakra-blue or faint-text anywhere**
 
-Run: `grep -rn 'color="blue.500"\|colorScheme="blue"\|gray.400' src/ | grep -v '__tests__'`
-Expected: no output. (If any remain, fix per the Phase 3 rules and re-run.)
+Run: `grep -rn 'blue\.500\|"blue"\|gray\.400' src/ | grep -vE '__tests__|Term\.tsx'`
+Expected: no output. (If any remain, fix per the Phase 3 rules and re-run. `Term.tsx` is out of scope and excluded.)
 
 - [ ] **Step 2: Full test suite**
 
