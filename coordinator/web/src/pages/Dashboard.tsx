@@ -2,8 +2,8 @@
 import { useMemo } from "react";
 import { Link as RouterLink } from "react-router-dom";
 import {
-  Badge, Box, Button, Code, Heading, HStack, Link, Stack, Table, Tag, TagLabel, Tbody, Td, Th, Thead, Tr,
-  Text, VStack, useColorModeValue,
+  Badge, Button, Code, Heading, HStack, Link, SimpleGrid, Stack, Table, Tag, TagLabel, Tbody, Td, Th, Thead, Tr,
+  Text, VStack,
 } from "@chakra-ui/react";
 import { useAuth } from "../auth/AuthContext";
 import { usePlaces, useReleasePlace } from "../hooks/usePlaces";
@@ -14,6 +14,9 @@ import { useWebSocket } from "../api/ws";
 import { useReservationsLive, useCancelReservation } from "../hooks/useReservations";
 import { formatAge } from "../lib/formatAge";
 import ConceptGlanceCard from "../components/ConceptGlanceCard";
+import MetricCard from "../components/ui/MetricCard";
+import UtilizationBar from "../components/ui/UtilizationBar";
+import Panel from "../components/ui/Panel";
 
 const MILLIS_PER_HOUR = 1000 * 60 * 60;
 
@@ -32,7 +35,6 @@ export default function Dashboard() {
   const { placeToMissingMatches, placeToExporters } = useRelationships();
   const release = useReleasePlace();
   const { recent } = useRecentPlaces();
-  const cardBg = useColorModeValue("white", "gray.800");
 
   const myPlaces = useMemo(() => places.filter((p) => p.acquired_username === user?.username), [places, user]);
 
@@ -59,6 +61,22 @@ export default function Dashboard() {
     placesHeldByOthers: places.filter((p) => p.acquired && p.acquired_username !== user?.username).length,
   };
 
+  const placesBreakdown = useMemo(() => {
+    let free = 0, acquired = 0, offline = 0;
+    for (const p of places) {
+      const live = (placeToExporters.get(p.name) ?? []).length > 0;
+      if (!live) offline += 1;
+      else if (p.acquired) acquired += 1;
+      else free += 1;
+    }
+    return { free, acquired, offline, total: places.length };
+  }, [places, placeToExporters]);
+
+  const resourceCount = useMemo(
+    () => exporters.reduce((n, e) => n + Object.values(e.groups).reduce((m, rs) => m + rs.length, 0), 0),
+    [exporters],
+  );
+
   const attention = useMemo(() => {
     const items: Array<{ key: string; message: React.ReactNode }> = [];
     // Exporters offline that any place references.
@@ -67,7 +85,7 @@ export default function Dashboard() {
       if (places.some((p) => p.matches.some((m) => m.exporter === e.name || m.exporter === "*"))) {
         items.push({
           key: `offline:${e.name}`,
-          message: <Text><Link as={RouterLink} to={`/exporters/${e.name}`} color="blue.500">{e.name}</Link> is offline but referenced by a place.</Text>,
+          message: <Text><Link as={RouterLink} to={`/exporters/${e.name}`} color="link">{e.name}</Link> is offline but referenced by a place.</Text>,
         });
       }
     }
@@ -76,7 +94,7 @@ export default function Dashboard() {
       if (missing.length === 0) continue;
       items.push({
         key: `broken:${name}`,
-        message: <Text><Link as={RouterLink} to={`/places/${name}`} color="blue.500">{name}</Link> has {missing.length} match rule(s) with no live resource.</Text>,
+        message: <Text><Link as={RouterLink} to={`/places/${name}`} color="link">{name}</Link> has {missing.length} match rule(s) with no live resource.</Text>,
       });
     }
     // Places I've held > 24h.
@@ -85,7 +103,7 @@ export default function Dashboard() {
       if (now - p.changed > 24 * 60 * 60) {
         items.push({
           key: `stale:${p.name}`,
-          message: <Text>You've been holding <Link as={RouterLink} to={`/places/${p.name}`} color="blue.500">{p.name}</Link> for {elapsed(p.changed)} — release if you're done.</Text>,
+          message: <Text>You've been holding <Link as={RouterLink} to={`/places/${p.name}`} color="link">{p.name}</Link> for {elapsed(p.changed)} — release if you're done.</Text>,
         });
       }
     }
@@ -102,7 +120,7 @@ export default function Dashboard() {
           message: (
             <Text>
               Reservation waiting longer than 10 min —{" "}
-              <Link as={RouterLink} to="/reservations" color="blue.500">{filtSummary}</Link>.
+              <Link as={RouterLink} to="/reservations" color="link">{filtSummary}</Link>.
             </Text>
           ),
         });
@@ -116,7 +134,7 @@ export default function Dashboard() {
       <Heading size="lg">Dashboard</Heading>
 
       {myPlaces.length > 0 && (
-        <Box bg={cardBg} borderRadius="lg" p={4} shadow="sm">
+        <Panel p={4}>
           <Heading size="sm" mb={3}>My places</Heading>
           <Table size="sm">
             <Thead>
@@ -125,12 +143,12 @@ export default function Dashboard() {
             <Tbody>
               {myPlaces.map((p) => (
                 <Tr key={p.name}>
-                  <Td><Link as={RouterLink} to={`/places/${p.name}`} color="blue.500">{p.name}</Link></Td>
+                  <Td><Link as={RouterLink} to={`/places/${p.name}`} color="link">{p.name}</Link></Td>
                   <Td>{elapsed(p.changed)}</Td>
                   <Td>
                     <HStack spacing={1}>
                       {(placeToExporters.get(p.name) ?? []).map((e) => (
-                        <Badge key={e.name} colorScheme={e.online ? "green" : "gray"} fontSize="0.7em">{e.name}</Badge>
+                        <Badge key={e.name} colorScheme={e.online ? "adi" : "gray"} fontSize="0.7em">{e.name}</Badge>
                       ))}
                     </HStack>
                   </Td>
@@ -144,11 +162,11 @@ export default function Dashboard() {
               ))}
             </Tbody>
           </Table>
-        </Box>
+        </Panel>
       )}
 
       {myReservations.length > 0 && (
-        <Box bg={cardBg} borderRadius="lg" p={4} shadow="sm">
+        <Panel p={4}>
           <Heading size="sm" mb={3}>My reservations</Heading>
           <Table size="sm">
             <Thead>
@@ -165,12 +183,12 @@ export default function Dashboard() {
               {myReservations.map((r) => (
                 <Tr key={r.token}>
                   <Td>
-                    <Link as={RouterLink} to="/reservations" color="blue.500">
+                    <Link as={RouterLink} to="/reservations" color="link">
                       <Code fontSize="xs">{r.token.slice(0, 8)}</Code>
                     </Link>
                   </Td>
                   <Td>
-                    <Badge colorScheme={r.state === "waiting" ? "yellow" : r.state === "allocated" ? "blue" : r.state === "acquired" ? "green" : "gray"}>
+                    <Badge colorScheme={r.state === "waiting" ? "yellow" : r.state === "allocated" ? "adi" : r.state === "acquired" ? "green" : "gray"}>
                       {r.state}
                     </Badge>
                   </Td>
@@ -216,48 +234,44 @@ export default function Dashboard() {
               ))}
             </Tbody>
           </Table>
-        </Box>
+        </Panel>
       )}
 
-      <HStack spacing={4}>
-        <Badge colorScheme="green" fontSize="0.85em" px={3} py={1}>
-          <Link as={RouterLink} to="/exporters">{labStatus.exportersOnline} exporters online</Link>
-        </Badge>
-        <Badge colorScheme="blue" fontSize="0.85em" px={3} py={1}>
-          <Link as={RouterLink} to="/places">{labStatus.placesFree} places free</Link>
-        </Badge>
-        <Badge colorScheme="orange" fontSize="0.85em" px={3} py={1}>
-          <Link as={RouterLink} to="/places">{labStatus.placesHeldByOthers} places held by others</Link>
-        </Badge>
-        {waitingCount > 0 && (
-          <Badge colorScheme="yellow" fontSize="0.85em" px={3} py={1}>
-            <Link as={RouterLink} to="/reservations">{waitingCount} waiting reservations</Link>
-          </Badge>
-        )}
-      </HStack>
+      <SimpleGrid columns={{ base: 1, sm: 2, lg: 4 }} spacing={4}>
+        <MetricCard label="Exporters" value={`${labStatus.exportersOnline} of ${exporters.length}`} to="/resources" />
+        <MetricCard label="Places" value={`${placesBreakdown.total} total`} to="/places">
+          <UtilizationBar
+            free={placesBreakdown.free}
+            acquired={placesBreakdown.acquired}
+            offline={placesBreakdown.offline}
+          />
+        </MetricCard>
+        <MetricCard label="Resources" value={`${resourceCount}`} to="/resources" />
+        <MetricCard label="Reservations" value={`${waitingCount} waiting`} to="/reservations" />
+      </SimpleGrid>
 
       {attention.length > 0 && (
-        <Box bg={cardBg} borderRadius="lg" p={4} shadow="sm">
-          <Heading size="sm" mb={3} color="orange.500">Attention needed</Heading>
+        <Panel p={4}>
+          <Heading size="sm" mb={3} color="status.acquired">Attention needed</Heading>
           <Stack spacing={2}>
             {attention.map((a) => (
-              <Box key={a.key}>{a.message}</Box>
+              <div key={a.key}>{a.message}</div>
             ))}
           </Stack>
-        </Box>
+        </Panel>
       )}
 
       {recentExisting.length > 0 && (
-        <Box bg={cardBg} borderRadius="lg" p={4} shadow="sm">
+        <Panel p={4}>
           <Heading size="sm" mb={3}>Recently used places</Heading>
           <HStack spacing={2} flexWrap="wrap">
             {recentExisting.map((name) => (
-              <Link key={name} as={RouterLink} to={`/places/${encodeURIComponent(name)}`} color="blue.500" fontSize="sm">
+              <Link key={name} as={RouterLink} to={`/places/${encodeURIComponent(name)}`} color="link" fontSize="sm">
                 {name}
               </Link>
             ))}
           </HStack>
-        </Box>
+        </Panel>
       )}
 
       <ConceptGlanceCard />
