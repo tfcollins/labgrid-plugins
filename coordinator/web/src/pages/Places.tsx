@@ -5,10 +5,10 @@ import {
   Table,
   Thead,
   Tbody,
+  Tfoot,
   Tr,
   Th,
   Td,
-  Badge,
   Button,
   Heading,
   HStack,
@@ -18,7 +18,6 @@ import {
   Text,
   IconButton,
   VStack,
-  useColorModeValue,
   useToast,
 } from "@chakra-ui/react";
 import { MdExpandMore, MdExpandLess, MdDelete } from "react-icons/md";
@@ -29,12 +28,14 @@ import { useWebSocket } from "../api/ws";
 import ConceptHeading from "../components/ConceptHeading";
 import { useRelationships } from "../hooks/useRelationships";
 import type { ExporterSummary, PlaceHealth } from "../hooks/useRelationships";
+import StatusPill from "../components/ui/StatusPill";
+import Panel from "../components/ui/Panel";
 
 function renderHealthBadge(health: PlaceHealth | undefined, missingCount: number): React.ReactNode {
-  if (health === "held") return <Badge colorScheme="orange">⬤ held</Badge>;
-  if (health === "degraded") return <Badge colorScheme="red">⚠ {missingCount} not live</Badge>;
-  if (health === "ready") return <Badge colorScheme="green">✓ ready</Badge>;
-  return <Badge colorScheme="gray">—</Badge>;
+  if (health === "held") return <StatusPill status="acquired">held</StatusPill>;
+  if (health === "degraded") return <StatusPill status="degraded">{missingCount} not live</StatusPill>;
+  if (health === "ready") return <StatusPill status="free">ready</StatusPill>;
+  return <Text as="span" color="text.secondary">—</Text>;
 }
 
 interface PlacesTableProps {
@@ -47,6 +48,7 @@ interface PlacesTableProps {
   onToggleAcquire: (name: string, isAcquired: boolean) => void;
   onDelete: (name: string) => void;
   emptyMessage: string;
+  density: "comfortable" | "compact";
 }
 
 function PlacesTable({
@@ -59,13 +61,10 @@ function PlacesTable({
   onToggleAcquire,
   onDelete,
   emptyMessage,
+  density,
 }: PlacesTableProps) {
-  const tableBg = useColorModeValue("white", "gray.800");
-  const rowHoverBg = useColorModeValue("gray.50", "gray.700");
-  const expandedBg = useColorModeValue("gray.50", "gray.700");
-
   return (
-    <Box bg={tableBg} borderRadius="lg" overflow="hidden" shadow="sm">
+    <Panel overflow="hidden">
       <Table variant="simple" size="sm">
         <Thead>
           <Tr>
@@ -83,7 +82,7 @@ function PlacesTable({
             const isExpanded = expandedPlace === place.name;
             return (
               <React.Fragment key={place.name}>
-                <Tr cursor="pointer" _hover={{ bg: rowHoverBg }}>
+                <Tr cursor="pointer" _hover={{ bg: "surface.subtle" }}>
                   <Td>
                     <IconButton
                       aria-label="Expand"
@@ -95,8 +94,13 @@ function PlacesTable({
                   </Td>
                   <Td>
                     <RouterLink to={`/places/${encodeURIComponent(place.name)}`}>
-                      <Text color="blue.500" fontWeight="500">{place.name}</Text>
+                      <Text color="link" fontWeight="500">{place.name}</Text>
                     </RouterLink>
+                    {density === "compact" && (
+                      <Text fontSize="xs" color="text.secondary" fontFamily="mono">
+                        {Object.entries(place.tags).map(([k, v]) => `${k}=${v}`).join(" · ") || "—"}
+                      </Text>
+                    )}
                   </Td>
                   <Td>
                     <HStack spacing={1} flexWrap="wrap">
@@ -127,7 +131,7 @@ function PlacesTable({
                   </Td>
                   <Td>
                     {place.acquired ? (
-                      <Badge colorScheme="orange">{place.acquired}</Badge>
+                      <StatusPill status="acquired">{place.acquired}</StatusPill>
                     ) : (
                       <Text fontSize="sm" color="text.secondary">-</Text>
                     )}
@@ -155,7 +159,7 @@ function PlacesTable({
                 </Tr>
                 {isExpanded && (
                   <Tr>
-                    <Td colSpan={7} bg={expandedBg} p={4}>
+                    <Td colSpan={7} bg="surface.subtle" p={4}>
                       <VStack align="stretch" spacing={3}>
                         {place.comment && (
                           <Box>
@@ -207,8 +211,17 @@ function PlacesTable({
             </Tr>
           )}
         </Tbody>
+        <Tfoot>
+          <Tr>
+            <Td colSpan={7} color="text.secondary" fontSize="xs">
+              {places.length} of {places.length} ·{" "}
+              {places.filter((p) => !p.acquired).length} free ·{" "}
+              {places.filter((p) => p.acquired).length} acquired
+            </Td>
+          </Tr>
+        </Tfoot>
       </Table>
-    </Box>
+    </Panel>
   );
 }
 
@@ -224,6 +237,16 @@ export default function Places() {
   const { placeToExporters, placeToMissingMatches, placeHealth } = useRelationships();
   const toast = useToast();
   const nav = useNavigate();
+  const [density, setDensity] = useState<"comfortable" | "compact">(
+    () => (localStorage.getItem("places-density") as "comfortable" | "compact") || "comfortable",
+  );
+  const toggleDensity = () => {
+    setDensity((d) => {
+      const next = d === "comfortable" ? "compact" : "comfortable";
+      localStorage.setItem("places-density", next);
+      return next;
+    });
+  };
 
   const { livePlaces, offlinePlaces } = useMemo(() => {
     const live: Place[] = [];
@@ -295,9 +318,14 @@ export default function Places() {
     <Box>
       <HStack justify="space-between" mb={6} align="flex-start">
         <ConceptHeading name="place" pageKey="/places" size="lg" />
-        <Button onClick={() => nav("/places/new")} size="sm" colorScheme="blue">
-          + New place
-        </Button>
+        <HStack spacing={2}>
+          <Button onClick={toggleDensity} size="sm" variant="outline">
+            {density === "comfortable" ? "Compact" : "Comfortable"}
+          </Button>
+          <Button onClick={() => nav("/places/new")} size="sm">
+            + New place
+          </Button>
+        </HStack>
       </HStack>
 
       <VStack spacing={6} align="stretch">
@@ -323,6 +351,7 @@ export default function Places() {
             onToggleAcquire={handleToggleAcquire}
             onDelete={(name) => deletePlace.mutate(name)}
             emptyMessage="No live places. When an exporter comes online that matches a place, it moves here."
+            density={density}
           />
         </Box>
 
@@ -361,6 +390,7 @@ export default function Places() {
             onToggleAcquire={handleToggleAcquire}
             onDelete={(name) => deletePlace.mutate(name)}
             emptyMessage="No offline places."
+            density={density}
           />
         </Box>
       </VStack>
