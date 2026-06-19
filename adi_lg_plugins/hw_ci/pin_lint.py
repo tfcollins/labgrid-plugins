@@ -40,7 +40,7 @@ def find_consumer_pin_violations(
             continue
         for i, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
             for m in _CONSUMER_REF.finditer(line):
-                ref = m.group(1).rstrip('"').rstrip("'").rstrip("`")
+                ref = m.group(1).rstrip("\"'`).,;:")
                 if ref != recommended:
                     out.append((str(p), i, ref))
     return out

@@ -27,3 +27,12 @@ def test_ignores_other_refs(tmp_path):
     f = tmp_path / "x.yml"
     f.write_text("uses: actions/checkout@v4\n", encoding="utf-8")
     assert find_consumer_pin_violations([f], "v3.5") == []
+
+
+def test_ignores_trailing_prose_punctuation(tmp_path):
+    f = tmp_path / "x.md"
+    f.write_text(
+        "Pin to `tfcollins/labgrid-plugins/.github/workflows/hw-request.yml@v3.5`.\n",
+        encoding="utf-8",
+    )
+    assert find_consumer_pin_violations([f], "v3.5") == []
