@@ -18,5 +18,7 @@ def test_init_refuses_existing_without_force(tmp_path):
 
 def test_init_force_overwrites(tmp_path):
     main(["init", "--mode", "uri", "--dest", str(tmp_path), "--test-root", "test/hw"])
-    rc = main(["init", "--mode", "uri", "--dest", str(tmp_path), "--test-root", "test/hw", "--force"])
+    rc = main(
+        ["init", "--mode", "uri", "--dest", str(tmp_path), "--test-root", "test/hw", "--force"]
+    )
     assert rc == 0

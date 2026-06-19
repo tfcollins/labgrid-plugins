@@ -1,5 +1,3 @@
-from pathlib import Path
-
 import pytest
 
 from adi_lg_plugins.hw_ci import scaffold
