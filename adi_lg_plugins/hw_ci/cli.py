@@ -329,6 +329,12 @@ def _cmd_list_strategies(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_doctor(args: argparse.Namespace) -> int:
+    from .doctor import run_doctor
+
+    return run_doctor(args)
+
+
 def _cmd_lint_markers(args: argparse.Namespace) -> int:
     """Flag iio_hardware/iio_carrier markers whose args are not string literals
     (silently invisible to discovery). Coordinator-free; CI/pre-commit friendly."""
@@ -448,6 +454,18 @@ def main(argv: list[str] | None = None) -> int:
     )
     plm.add_argument("--test-root", required=True, help="path to the consumer's test directory")
     plm.set_defaults(func=_cmd_lint_markers)
+
+    pdoc = sub.add_parser(
+        "doctor", help="validate the whole onboarding chain in one pass"
+    )
+    pdoc.add_argument("--mode", choices=["uri", "flash", "matlab"], required=True)
+    pdoc.add_argument("--coord", default=None, help="coordinator host:port (default: $LG_COORDINATOR)")
+    pdoc.add_argument("--repo", default=None, help="owner/name (default: infer via gh)")
+    pdoc.add_argument("--test-root", default=None, help="[uri] consumer test directory")
+    pdoc.add_argument("--manifest", default=None, help="[flash] projects.yaml path")
+    pdoc.add_argument("--board-map", default=None, help="[matlab] board_map.yaml path")
+    pdoc.add_argument("--runner-label", default=None, help="fallback runner label (vars.HW_REQUEST_RUNNER)")
+    pdoc.set_defaults(func=_cmd_doctor)
 
     pm = sub.add_parser(
         "request-matrix", help="emit a part-keyed matrix for the hw-request workflow"

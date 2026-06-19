@@ -8,7 +8,11 @@ to SKIP when ``gh`` is unavailable.
 
 from __future__ import annotations
 
+import json
 import re
+import shutil
+import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -137,3 +141,83 @@ def check_pin(repo_root: str | Path = ".") -> CheckResult:
     if stale:
         return CheckResult("pin", FAIL, f"pins != {RECOMMENDED_PIN}: {', '.join(stale)}")
     return CheckResult("pin", PASS, f"pinned @{RECOMMENDED_PIN}")
+
+
+REQUIRED_VARS = {
+    "uri": ["LG_COORDINATOR", "HW_REQUEST_RUNNER", "HW_PREFLIGHT_RUNNER"],
+    "flash": ["LG_COORDINATOR", "HW_REQUEST_RUNNER", "HW_PREFLIGHT_RUNNER"],
+    "matlab": ["LG_COORDINATOR", "HW_REQUEST_RUNNER", "HW_PREFLIGHT_RUNNER", "MATLAB_BIN"],
+}
+
+
+def run_gh(args: list[str]) -> tuple[int, str]:
+    """Run ``gh <args>``; return (returncode, stdout). (127, "") if gh is absent."""
+    if shutil.which("gh") is None:
+        return (127, "")
+    try:
+        proc = subprocess.run(
+            ["gh", *args], capture_output=True, text=True, timeout=30, check=False
+        )
+        return (proc.returncode, proc.stdout)
+    except (OSError, subprocess.SubprocessError):
+        return (127, "")
+
+
+def check_repo_vars(repo: str, mode: str, *, gh=run_gh) -> CheckResult:
+    rc, out = gh(["variable", "list", "--repo", repo])
+    if rc != 0:
+        return CheckResult("repo-vars", SKIP, "gh unavailable/unauthenticated")
+    present = {line.split("\t", 1)[0].split()[0] for line in out.splitlines() if line.strip()}
+    missing = [v for v in REQUIRED_VARS[mode] if v not in present]
+    if missing:
+        return CheckResult("repo-vars", FAIL, f"missing: {', '.join(missing)}")
+    return CheckResult("repo-vars", PASS, "all required vars set")
+
+
+def check_runner_scope(repo: str, labels: list[str], *, gh=run_gh) -> CheckResult:
+    rc, out = gh(["api", f"/repos/{repo}/actions/runners"])
+    if rc != 0:
+        return CheckResult("runner-scope", SKIP, "gh unavailable/unauthenticated")
+    try:
+        runners = json.loads(out).get("runners", [])
+    except (ValueError, AttributeError):
+        return CheckResult("runner-scope", SKIP, "could not parse gh runner list")
+    have = {lbl["name"] for r in runners for lbl in r.get("labels", [])}
+    missing = [lbl for lbl in labels if lbl and lbl not in have]
+    if missing:
+        return CheckResult("runner-scope", FAIL, f"no runner labelled: {', '.join(missing)}")
+    return CheckResult("runner-scope", PASS, f"runner(s) for: {', '.join(sorted(have & set(labels)))}")
+
+
+def _infer_repo() -> str | None:
+    rc, out = run_gh(["repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"])
+    return out.strip() if rc == 0 and out.strip() else None
+
+
+def run_doctor(args) -> int:
+    from . import coordinator as coord_mod
+
+    coord = coord_mod.resolve_coordinator(args.coord)
+    coord_mod.warn_if_rest_port(coord)
+    repo = args.repo or _infer_repo()
+    fallback = args.runner_label or ""
+
+    results = [
+        check_discovery(
+            args.mode, coord=coord, test_root=args.test_root, manifest=args.manifest,
+            board_map=args.board_map, fallback_runner=fallback,
+        ),
+        check_pin(),
+    ]
+    if repo:
+        results.append(check_repo_vars(repo, args.mode))
+        results.append(check_runner_scope(repo, ["HW_REQUEST_RUNNER", "HW_PREFLIGHT_RUNNER"]))
+    else:
+        results.append(CheckResult("repo-vars", SKIP, "no --repo and gh could not infer it"))
+        results.append(CheckResult("runner-scope", SKIP, "no --repo and gh could not infer it"))
+
+    print(format_table(results), file=sys.stderr)
+    banner = skipped_banner(results)
+    if banner:
+        print(f"# {banner}", file=sys.stderr)
+    return exit_code(results)
