@@ -351,6 +351,28 @@ def _cmd_lint_markers(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_init(args: argparse.Namespace) -> int:
+    """Scaffold a consumer repo's hw-CI files for a chosen mode."""
+    from . import scaffold
+
+    try:
+        written = scaffold.scaffold(
+            args.mode,
+            args.dest,
+            test_root=args.test_root,
+            install_cmd=args.install_cmd,
+            force=args.force,
+        )
+    except FileExistsError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+    for path in written:
+        print(f"wrote {path}", file=sys.stderr)
+    print("", file=sys.stderr)
+    print(scaffold.next_steps(args.mode), file=sys.stderr)
+    return 0
+
+
 def _parse_build_vars(pairs: list[str]) -> dict[str, str]:
     out: dict[str, str] = {}
     for pair in pairs or []:
@@ -454,6 +476,22 @@ def main(argv: list[str] | None = None) -> int:
     )
     plm.add_argument("--test-root", required=True, help="path to the consumer's test directory")
     plm.set_defaults(func=_cmd_lint_markers)
+
+    pinit = sub.add_parser("init", help="scaffold a consumer repo's hw-CI files for a mode")
+    pinit.add_argument("--mode", choices=["uri", "flash", "matlab"], required=True)
+    pinit.add_argument("--dest", required=True, help="consumer repo root to write into")
+    pinit.add_argument(
+        "--test-root", default=None, help="[uri] value for <TEST_ROOT> (e.g. test/hw)"
+    )
+    pinit.add_argument(
+        "--install-cmd",
+        default=None,
+        help="[uri] value for <YOUR_INSTALL_ARGS> in the install step",
+    )
+    pinit.add_argument(
+        "--force", action="store_true", help="overwrite existing files at the destination"
+    )
+    pinit.set_defaults(func=_cmd_init)
 
     pdoc = sub.add_parser("doctor", help="validate the whole onboarding chain in one pass")
     pdoc.add_argument("--mode", choices=["uri", "flash", "matlab"], required=True)

@@ -68,6 +68,16 @@ Step 2 — what you'll touch
    * - **Lab**
      - runners registered on the consumer's GitHub scope (+ Vivado/JTAG for flash)
 
+.. tip::
+
+   Instead of copying templates by hand, scaffold them with the packaged CLI::
+
+      pip install adi-labgrid-plugins
+      adi-lg-hw-ci init --mode uri --dest . --test-root test/hw
+
+   It writes the mode's files (pinned to the current release), then prints the repo
+   variables to set and the ``doctor``/``lint-markers`` commands to verify with.
+
 uri mode (pytest over libIIO)
 -----------------------------
 
