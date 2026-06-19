@@ -22,7 +22,7 @@ import { formatAge } from "../lib/formatAge";
 
 const stateColors: Record<string, string> = {
   waiting: "yellow",
-  allocated: "blue",
+  allocated: "adi",
   acquired: "green",
   expired: "gray",
   invalid: "red",
@@ -122,7 +122,7 @@ export default function Reservations() {
                             key={group}
                             size="sm"
                             variant="subtle"
-                            colorScheme="blue"
+                            colorScheme="adi"
                             as={RouterLink}
                             to={`/places/${encodeURIComponent(place)}`}
                             cursor="pointer"

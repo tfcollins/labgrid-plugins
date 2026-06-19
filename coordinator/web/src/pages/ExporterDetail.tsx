@@ -249,7 +249,7 @@ export default function ExporterDetail() {
               {placesHere.map((p) => (
                 <HStack key={p.name}>
                   <RLink to={`/places/${encodeURIComponent(p.name)}`}>
-                    <Text color="blue.500">{p.name}</Text>
+                    <Text color="link">{p.name}</Text>
                   </RLink>
                   {p.acquired && (
                     <Text fontSize="xs" color="orange.500">(held by {p.acquired})</Text>

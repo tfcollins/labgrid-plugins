@@ -52,7 +52,7 @@ export default function Login() {
                 {error}
               </Alert>
             )}
-            <Button type="submit" colorScheme="blue" w="full" isLoading={submitting}>
+            <Button type="submit" w="full" isLoading={submitting}>
               Sign in
             </Button>
           </VStack>

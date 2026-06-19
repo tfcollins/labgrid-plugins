@@ -159,7 +159,7 @@ export default function DownloadEnvModal({ isOpen, onClose, placeName, resourceC
               variant="outline"
               onClick={handleCopy}
             />
-            <Button colorScheme="blue" onClick={handleDownload}>
+            <Button onClick={handleDownload}>
               Download {placeName}.yaml
             </Button>
           </HStack>

@@ -83,7 +83,7 @@ export default function Help() {
         </Text>
         <Text>
           Want to see the relationships live?{" "}
-          <Link as={RouterLink} to="/topology" color="blue.500">Open Topology</Link>.
+          <Link as={RouterLink} to="/topology" color="link">Open Topology</Link>.
         </Text>
         <Box>
           <Button size="sm" variant="outline" onClick={resetTermsSeen}>

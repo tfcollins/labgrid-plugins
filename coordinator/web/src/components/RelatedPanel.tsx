@@ -48,7 +48,7 @@ function Section({ title, tone = "default", children }: SectionProps) {
 function Footer({ to, children }: { to: string; children: React.ReactNode }) {
   return (
     <Box pt={2} borderTopWidth="1px">
-      <Link as={RouterLink} to={to} color="blue.500" fontSize="sm" fontWeight={500}>
+      <Link as={RouterLink} to={to} color="link" fontSize="sm" fontWeight={500}>
         {children}
       </Link>
     </Box>

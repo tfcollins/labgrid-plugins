@@ -199,7 +199,7 @@ export default function PlaceWizard() {
     <Box maxW="900px" mx="auto">
       <Heading size="lg" mb={6}>New place</Heading>
 
-      <Stepper index={activeStep} mb={8} colorScheme="blue">
+      <Stepper index={activeStep} mb={8} colorScheme="adi">
         {STEPS.map((s, i) => (
           <Step key={i}>
             <StepIndicator>
@@ -405,9 +405,9 @@ export default function PlaceWizard() {
             <Box>
               <Text fontSize="sm" color="gray.500">Tags</Text>
               <HStack spacing={1} flexWrap="wrap">
-                <Tag size="sm" colorScheme="blue"><TagLabel>board-location={boardLocation.trim()}</TagLabel></Tag>
-                <Tag size="sm" colorScheme="blue"><TagLabel>carrier={carrier.trim()}</TagLabel></Tag>
-                <Tag size="sm" colorScheme="blue"><TagLabel>daughter-board={daughterBoard.trim()}</TagLabel></Tag>
+                <Tag size="sm" colorScheme="adi"><TagLabel>board-location={boardLocation.trim()}</TagLabel></Tag>
+                <Tag size="sm" colorScheme="adi"><TagLabel>carrier={carrier.trim()}</TagLabel></Tag>
+                <Tag size="sm" colorScheme="adi"><TagLabel>daughter-board={daughterBoard.trim()}</TagLabel></Tag>
                 {tags.filter((t) => t.key.trim()).map((t, i) => (
                   <Tag key={i} size="sm"><TagLabel>{t.key.trim()}={t.value}</TagLabel></Tag>
                 ))}
@@ -433,14 +433,13 @@ export default function PlaceWizard() {
           )}
           {activeStep < STEPS.length - 1 ? (
             <Button
-              colorScheme="blue"
               onClick={() => setActiveStep(activeStep + 1)}
               isDisabled={!canNext}
             >
               Next
             </Button>
           ) : (
-            <Button colorScheme="blue" onClick={submit} isLoading={submitting}>
+            <Button onClick={submit} isLoading={submitting}>
               Create place
             </Button>
           )}
