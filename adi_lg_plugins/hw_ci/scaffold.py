@@ -29,24 +29,29 @@ MODE_FILES: dict[str, list[tuple[str, str]]] = {
     ],
 }
 
-# Rewrite any labgrid-plugins pin to RECOMMENDED_PIN. _LG_PIN covers the workflow `uses:`
+# Rewrite a labgrid-plugins pin to RECOMMENDED_PIN. _LG_PIN covers the workflow `uses:`
 # AND the `git+https://...labgrid-plugins.git@v..` install (the `[\w./-]*?` consumes `.git`).
 # _YML_PIN additionally catches the consumer-stub's bracketed `<...>.yml@v..` form, which the
-# first pattern can't (the `<...>` contains spaces/pipes).
+# first pattern can't (the `<...>` contains spaces/pipes). Both are anchored on
+# `labgrid-plugins` so a foreign `.yml@v..` ref (another org's pinned workflow) is left alone.
 _LG_PIN = re.compile(r"(tfcollins/labgrid-plugins[\w./-]*?)@v[\w.]+")
-_YML_PIN = re.compile(r"(\.yml)@v[\w.]+")
+_YML_PIN = re.compile(r"(labgrid-plugins[^@\n]*?\.yml)@v[\w.]+")
 
 
 def _read(name: str) -> str:
     return (resources.files(_ANCHOR) / name).read_text(encoding="utf-8")
 
 
+def _rewrite_pins(text: str) -> str:
+    """Pin every labgrid-plugins workflow/install/stub reference to RECOMMENDED_PIN."""
+    text = _LG_PIN.sub(rf"\1@{RECOMMENDED_PIN}", text)
+    return _YML_PIN.sub(rf"\1@{RECOMMENDED_PIN}", text)
+
+
 def render_template(
     name: str, *, test_root: str | None = None, install_cmd: str | None = None
 ) -> str:
-    text = _read(name)
-    text = _LG_PIN.sub(rf"\1@{RECOMMENDED_PIN}", text)
-    text = _YML_PIN.sub(rf"\1@{RECOMMENDED_PIN}", text)
+    text = _rewrite_pins(_read(name))
     # <TEST_ROOT> appears only in hw-request-uri.yml; conftest is copied verbatim, so these
     # replaces are intentional no-ops for templates that don't carry the placeholder.
     if test_root is not None:
