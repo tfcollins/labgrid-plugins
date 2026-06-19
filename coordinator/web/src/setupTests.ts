@@ -1,5 +1,22 @@
 import "@testing-library/jest-dom";
 
+// Polyfill for window.matchMedia in jsdom environment (needed for Chakra UI)
+if (!window.matchMedia) {
+  Object.defineProperty(window, "matchMedia", {
+    writable: true,
+    value: (query: string) => ({
+      matches: false,
+      media: query,
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      dispatchEvent: () => false,
+    }),
+  });
+}
+
 // Node >= 22 exposes a built-in global `localStorage` (Web Storage API) that,
 // under vitest's jsdom environment, shadows jsdom's window.localStorage and is
 // non-functional (it expects a `--localstorage-file` that vitest does not
