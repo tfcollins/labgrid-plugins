@@ -6,15 +6,15 @@ name: HW Request (low-config)
 #
 #   jobs:
 #     hw:
-#       uses: tfcollins/labgrid-plugins/.github/workflows/hw-request.yml@v3  # bump when a new release tags
+#       uses: tfcollins/labgrid-plugins/.github/workflows/hw-request.yml@v3.5  # bump when a new release tags
 #       with:
-#         coordinator: "10.0.0.41:8000"
+#         coordinator: "10.0.0.41:20408"
 #         test-root: "test"
 on:
   workflow_call:
     inputs:
       coordinator:
-        description: "Coordinator host:port for the REST API (GET /api/match) and reservations."
+        description: "gRPC coordinator host:port (e.g. host:20408); the REST API (:8000) is derived automatically."
         type: string
         required: true
       test-root:

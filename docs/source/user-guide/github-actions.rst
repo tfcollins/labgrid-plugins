@@ -107,7 +107,7 @@ migration notes.
    * - ``coordinator``
      - No
      - ``""``
-     - Coordinator ``host:port``.  Defaults to ``vars.ADI_LG_COORDINATOR``
+     - Coordinator ``host:port``.  Defaults to ``vars.LG_COORDINATOR``
        when empty.
    * - ``manifest_path``
      - No
@@ -256,7 +256,7 @@ rendered per-shard from the place's ``boot-strategy`` tag.  See
    * - ``coordinator``
      - No
      - ``""``
-     - Coordinator ``host:port``.  Defaults to ``vars.ADI_LG_COORDINATOR``
+     - Coordinator ``host:port``.  Defaults to ``vars.LG_COORDINATOR``
        when empty.
    * - ``marker_filter``
      - No
@@ -343,7 +343,7 @@ See :doc:`hw-request` for the full consumer contract.
      hw:
        uses: tfcollins/labgrid-plugins/.github/workflows/hw-request.yml@v3.5  # bump when a new release tags
        with:
-         coordinator: ${{ vars.ADI_LG_COORDINATOR }}
+         coordinator: ${{ vars.LG_COORDINATOR }}
          test-root: "test"
          install-cmd: >-
            uv pip install --quiet --python "$VENV_DIR/bin/python" -e "."
@@ -600,7 +600,7 @@ and the manifest reference.
      noos-hw:
        uses: tfcollins/labgrid-plugins/.github/workflows/noos-hw-request.yml@v3.5  # bump when a new release tags
        with:
-         coordinator: ${{ vars.ADI_LG_COORDINATOR }}
+         coordinator: ${{ vars.LG_COORDINATOR }}
          manifest: "tools/hw_ci/projects.yaml"
 
 ``noos-hw-request.yml`` inputs

@@ -28,7 +28,7 @@ Calling it
      hw:
        uses: tfcollins/labgrid-plugins/.github/workflows/hw-request.yml@v3.5
        with:
-         coordinator: "10.0.0.41:8000"
+         coordinator: "10.0.0.41:20408"
          test-root: "test"
          # marker: iio_hardware        # default
          # wait: 1800                   # seconds to queue for a busy board
