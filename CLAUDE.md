@@ -127,7 +127,7 @@ Consumer repos pin via `uses: tfcollins/labgrid-plugins/.github/workflows/hw-mat
 
 ### Onboarding a consumer repo
 
-To wire a **new** repo onto this hardware-CI flow (uri/flash/matlab), follow **`AGENTS.md`** at the repo root — the canonical, executable onboarding recipe for AI agents and humans. The human reference + copy-paste templates live in `docs/source/user-guide/onboarding-a-consumer-repo.rst` and `docs/source/onboarding-templates/`. Don't reverse-engineer the wiring from the per-flow reference pages; start there.
+To wire a **new** repo onto this hardware-CI flow (uri/flash/matlab), follow **`AGENTS.md`** at the repo root — the canonical, executable onboarding recipe for AI agents and humans. The human reference + copy-paste templates live in `docs/source/user-guide/onboarding-a-consumer-repo.rst` and `adi_lg_plugins/hw_ci/onboarding_templates/`. Don't reverse-engineer the wiring from the per-flow reference pages; start there.
 
 ### labgrid dependency
 

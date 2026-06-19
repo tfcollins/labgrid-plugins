@@ -60,7 +60,7 @@ showing up" cause.
 
 Defines each board the coordinator knows about (schema: `coordinator/api/app/catalog.py`,
 `BoardEntry` / `FlashConfig`). uri-mode boards need an `image:`; flash-mode boards need a
-`flash:` block. The template shape is `docs/source/onboarding-templates/board-catalog-entry.yaml`.
+`flash:` block. The template shape is `adi_lg_plugins/hw_ci/onboarding_templates/board-catalog-entry.yaml`.
 
 **Editing the catalog requires redeploying the coordinator host** — it does not hot-reload.
 
