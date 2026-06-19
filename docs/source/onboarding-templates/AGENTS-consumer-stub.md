@@ -6,7 +6,7 @@ The canonical, mode-by-mode onboarding recipe lives in the hub — read it first
 <https://github.com/tfcollins/labgrid-plugins/blob/main/AGENTS.md>
 (human guide: the *Onboarding a consumer repo* page in the labgrid-plugins docs).
 
-## How this repo is wired (mode: `<uri | flash | matlab>`)
+## How this repo is wired (mode: `<uri | flash | matlab | reserve>`)
 
 - **Workflow:** `.github/workflows/hw-request.yml` → reusable
   `tfcollins/labgrid-plugins/.github/workflows/<hw-request | noos-hw-request | matlab-hw-request>.yml@v3.5`

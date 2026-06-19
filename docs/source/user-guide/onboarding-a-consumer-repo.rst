@@ -93,6 +93,14 @@ arguments must be **string literals**:
 .. literalinclude:: ../onboarding-templates/conftest-iio-uri.py
    :language: python
 
+.. admonition:: Reserve mode (drive boot yourself)
+   :class: tip
+
+   Suites that boot the board themselves via labgrid (the pytest plugin + ``LG_ENV``, e.g.
+   per-test DTBs) use the same uri workflow with ``request-mode: "reserve"`` — the board is
+   reserved but not booted. See :doc:`hw-request` "Reserve mode". For private dependencies,
+   pass an ``INSTALL_GIT_TOKEN`` secret (see :doc:`github-actions`).
+
 flash mode (no-os firmware)
 ---------------------------
 
