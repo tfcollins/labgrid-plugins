@@ -40,6 +40,7 @@ function renderHealthBadge(health: PlaceHealth | undefined, missingCount: number
 
 interface PlacesTableProps {
   places: Place[];
+  totalPlaces: number;
   placeToExporters: Map<string, ExporterSummary[]>;
   placeToMissingMatches: Map<string, import("../api/client").ResourceMatch[]>;
   placeHealth: Map<string, PlaceHealth>;
@@ -53,6 +54,7 @@ interface PlacesTableProps {
 
 function PlacesTable({
   places,
+  totalPlaces,
   placeToExporters,
   placeToMissingMatches,
   placeHealth,
@@ -214,7 +216,7 @@ function PlacesTable({
         <Tfoot>
           <Tr>
             <Td colSpan={7} color="text.secondary" fontSize="xs">
-              {places.length} of {places.length} ·{" "}
+              {places.length} of {totalPlaces} ·{" "}
               {places.filter((p) => !p.acquired).length} free ·{" "}
               {places.filter((p) => p.acquired).length} acquired
             </Td>
@@ -343,6 +345,7 @@ export default function Places() {
           </HStack>
           <PlacesTable
             places={livePlaces}
+            totalPlaces={livePlaces.length + offlinePlaces.length}
             placeToExporters={placeToExporters}
             placeToMissingMatches={placeToMissingMatches}
             placeHealth={placeHealth}
@@ -382,6 +385,7 @@ export default function Places() {
           </HStack>
           <PlacesTable
             places={offlinePlaces}
+            totalPlaces={livePlaces.length + offlinePlaces.length}
             placeToExporters={placeToExporters}
             placeToMissingMatches={placeToMissingMatches}
             placeHealth={placeHealth}

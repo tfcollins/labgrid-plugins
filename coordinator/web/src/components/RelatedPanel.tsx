@@ -28,7 +28,7 @@ interface SectionProps {
 }
 
 function Section({ title, tone = "default", children }: SectionProps) {
-  const color = tone === "warning" ? "orange.500" : "gray.600";
+  const color = tone === "warning" ? "status.acquired" : "text.secondary";
   return (
     <VStack align="stretch" spacing={2}>
       <Heading

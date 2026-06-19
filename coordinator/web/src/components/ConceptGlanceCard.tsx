@@ -1,5 +1,5 @@
 // coordinator/web/src/components/ConceptGlanceCard.tsx
-import { Box, HStack, Text, VStack } from "@chakra-ui/react";
+import { Box, HStack, Icon, Text, VStack } from "@chakra-ui/react";
 import { MdArrowForward } from "react-icons/md";
 import { CONCEPTS, type ConceptName } from "../concepts";
 import Panel from "./ui/Panel";
@@ -21,7 +21,7 @@ export default function ConceptGlanceCard() {
               </Box>
               <Text fontSize="xs" color="text.secondary">{CONCEPTS[s].gloss}</Text>
             </VStack>
-            {i < steps.length - 1 && <MdArrowForward color="#A0AEC0" />}
+            {i < steps.length - 1 && <Icon as={MdArrowForward} color="text.secondary" />}
           </HStack>
         ))}
       </HStack>
