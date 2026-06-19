@@ -33,7 +33,7 @@ function eventBadgeColor(eventType: string): string {
     eventType.includes("resource_acquired") ||
     eventType.includes("resource_released")
   ) {
-    return "blue";
+    return "adi";
   }
   if (eventType.includes("reservation")) {
     return "yellow";

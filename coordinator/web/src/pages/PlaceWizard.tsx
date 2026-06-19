@@ -5,7 +5,7 @@ import {
   HStack, Heading, IconButton, Input, Select, Spinner, Stack, Step,
   StepIcon, StepIndicator, StepNumber, StepSeparator, StepStatus,
   StepTitle, Stepper, Tag, TagLabel, Text, Textarea,
-  useSteps, useToast, useColorModeValue,
+  useSteps, useToast,
 } from "@chakra-ui/react";
 import { MdAdd, MdDelete } from "react-icons/md";
 import { useQuery } from "@tanstack/react-query";
@@ -59,7 +59,7 @@ export default function PlaceWizard() {
   const [comment, setComment] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const subtleBg = useColorModeValue("gray.50", "gray.700");
+  const subtleBg = "surface.subtle";
 
   // ---------- derived data ----------
 
@@ -199,7 +199,7 @@ export default function PlaceWizard() {
     <Box maxW="900px" mx="auto">
       <Heading size="lg" mb={6}>New place</Heading>
 
-      <Stepper index={activeStep} mb={8} colorScheme="blue">
+      <Stepper index={activeStep} mb={8} colorScheme="adi">
         {STEPS.map((s, i) => (
           <Step key={i}>
             <StepIndicator>
@@ -235,7 +235,7 @@ export default function PlaceWizard() {
         {activeStep === 1 && (
           <Stack spacing={3}>
             {groups.length === 0 ? (
-              <Text color="gray.500">No exporter resources are available right now.</Text>
+              <Text color="text.secondary">No exporter resources are available right now.</Text>
             ) : (
               groups.map((g) => {
                 const ticked = isPicked(g.exporter, g.group);
@@ -250,6 +250,7 @@ export default function PlaceWizard() {
                   >
                     <HStack align="start">
                       <Checkbox
+                        aria-label={`Select group ${g.exporter}/${g.group}`}
                         isChecked={ticked}
                         onChange={() => togglePick(g.exporter, g.group, g.classes)}
                         mt={1}
@@ -285,7 +286,7 @@ export default function PlaceWizard() {
               })
             )}
             {picked.length > 0 && (
-              <Text fontSize="sm" color="gray.500">
+              <Text fontSize="sm" color="text.secondary">
                 {picked.length} group{picked.length === 1 ? "" : "s"} selected.
               </Text>
             )}
@@ -347,7 +348,7 @@ export default function PlaceWizard() {
                 </Text>
               )}
               {tags.length === 0 ? (
-                <Text fontSize="sm" color="gray.500">None. Add one if you want an extra label.</Text>
+                <Text fontSize="sm" color="text.secondary">None. Add one if you want an extra label.</Text>
               ) : (
                 <Stack spacing={2}>
                   {tags.map((t, i) => (
@@ -390,11 +391,11 @@ export default function PlaceWizard() {
         {activeStep === 3 && (
           <Stack spacing={4}>
             <Box>
-              <Text fontSize="sm" color="gray.500">Name</Text>
+              <Text fontSize="sm" color="text.secondary">Name</Text>
               <Text fontWeight="600">{name.trim()}</Text>
             </Box>
             <Box>
-              <Text fontSize="sm" color="gray.500">Resource matches ({picked.length})</Text>
+              <Text fontSize="sm" color="text.secondary">Resource matches ({picked.length})</Text>
               {picked.map((p, i) => (
                 <Text key={i} fontFamily="mono" fontSize="sm">
                   {p.exporter}/{p.group}/{p.cls}
@@ -402,18 +403,18 @@ export default function PlaceWizard() {
               ))}
             </Box>
             <Box>
-              <Text fontSize="sm" color="gray.500">Tags</Text>
+              <Text fontSize="sm" color="text.secondary">Tags</Text>
               <HStack spacing={1} flexWrap="wrap">
-                <Tag size="sm" colorScheme="blue"><TagLabel>board-location={boardLocation.trim()}</TagLabel></Tag>
-                <Tag size="sm" colorScheme="blue"><TagLabel>carrier={carrier.trim()}</TagLabel></Tag>
-                <Tag size="sm" colorScheme="blue"><TagLabel>daughter-board={daughterBoard.trim()}</TagLabel></Tag>
+                <Tag size="sm" colorScheme="adi"><TagLabel>board-location={boardLocation.trim()}</TagLabel></Tag>
+                <Tag size="sm" colorScheme="adi"><TagLabel>carrier={carrier.trim()}</TagLabel></Tag>
+                <Tag size="sm" colorScheme="adi"><TagLabel>daughter-board={daughterBoard.trim()}</TagLabel></Tag>
                 {tags.filter((t) => t.key.trim()).map((t, i) => (
                   <Tag key={i} size="sm"><TagLabel>{t.key.trim()}={t.value}</TagLabel></Tag>
                 ))}
               </HStack>
             </Box>
             <Box>
-              <Text fontSize="sm" color="gray.500">Comment</Text>
+              <Text fontSize="sm" color="text.secondary">Comment</Text>
               <Text fontSize="sm">{comment.trim() || <em>none</em>}</Text>
             </Box>
           </Stack>
@@ -432,14 +433,13 @@ export default function PlaceWizard() {
           )}
           {activeStep < STEPS.length - 1 ? (
             <Button
-              colorScheme="blue"
               onClick={() => setActiveStep(activeStep + 1)}
               isDisabled={!canNext}
             >
               Next
             </Button>
           ) : (
-            <Button colorScheme="blue" onClick={submit} isLoading={submitting}>
+            <Button onClick={submit} isLoading={submitting}>
               Create place
             </Button>
           )}

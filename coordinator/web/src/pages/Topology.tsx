@@ -225,9 +225,9 @@ export default function Topology() {
   const { data: places, isLoading: placesLoading } = usePlaces();
   const { data: exporters, isLoading: exportersLoading } = useExporters();
 
-  const bgColor = useColorModeValue("#f7fafc", "#1a202c");
-  const miniMapBg = useColorModeValue("#e2e8f0", "#2d3748");
-  const legendBg = useColorModeValue("gray.50", "gray.700");
+  const bgColor = useColorModeValue("#fafbfc", "#0b0f14");
+  const miniMapBg = useColorModeValue("#e4e8ec", "#161f2a");
+  const legendBg = "surface.subtle";
 
   const filteredPlaces = useMemo(() => {
     let ps = places ?? [];
@@ -304,7 +304,7 @@ export default function Topology() {
             <LegendRow color={CONCEPTS.group.color} label="Groups" gloss={CONCEPTS.group.gloss} />
             <LegendRow color={CONCEPTS.place.color} label="Places (free)" gloss={CONCEPTS.place.gloss} />
             <LegendRow color={CONCEPTS.acquire.color} label="Places (held)" gloss="Someone's currently holding this place." />
-            <Text color="gray.500">
+            <Text color="text.secondary">
               <Text as="span" fontWeight={600}>Match rules</Text> — solid animated edge = live match. Dashed = rule exists but nothing currently matches.
             </Text>
           </VStack>
@@ -332,7 +332,7 @@ export default function Topology() {
       </VStack>
 
       {(filteredPlaces.length === 0 && filteredExporters.length === 0) && (
-        <Box p={8} textAlign="center" color="gray.500">
+        <Box p={8} textAlign="center" color="text.secondary">
           Nothing to show yet. Add an exporter or a place — this view lights up as soon as either appears.
         </Box>
       )}
@@ -342,7 +342,7 @@ export default function Topology() {
         borderRadius="lg"
         overflow="hidden"
         border="1px solid"
-        borderColor={useColorModeValue("gray.200", "gray.600")}
+        borderColor="border.hairline"
       >
         <ReactFlow
           nodes={nodes}
@@ -373,7 +373,7 @@ function LegendRow({ color, label, gloss }: { color: string; label: string; glos
     <HStack>
       <Box w="14px" h="14px" borderRadius="4px" bg={color} />
       <Text fontWeight={600} w="130px">{label}</Text>
-      <Text color="gray.600">{gloss}</Text>
+      <Text color="text.secondary">{gloss}</Text>
     </HStack>
   );
 }

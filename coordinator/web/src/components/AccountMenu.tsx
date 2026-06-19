@@ -18,7 +18,7 @@ export default function AccountMenu() {
         <HStack>
           <Avatar size="xs" name={user.username} />
           <Text>{user.username}</Text>
-          <Text fontSize="xs" color="gray.500">({user.role})</Text>
+          <Text fontSize="xs" color="text.secondary">({user.role})</Text>
         </HStack>
       </MenuButton>
       <MenuList>

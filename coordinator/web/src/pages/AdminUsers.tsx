@@ -58,7 +58,7 @@ export default function AdminUsers() {
     <Box p={4}>
       <HStack mb={4}>
         <Heading size="md">Manage users</Heading>
-        <Button ml="auto" colorScheme="blue" onClick={create.onOpen}>Add user</Button>
+        <Button ml="auto" onClick={create.onOpen}>Add user</Button>
       </HStack>
 
       <Table size="sm">
@@ -136,7 +136,7 @@ export default function AdminUsers() {
           </ModalBody>
           <ModalFooter>
             <Button mr={2} onClick={create.onClose}>Cancel</Button>
-            <Button colorScheme="blue" onClick={() => createM.mutate()} isLoading={createM.isPending}>
+            <Button onClick={() => createM.mutate()} isLoading={createM.isPending}>
               Create
             </Button>
           </ModalFooter>
@@ -177,7 +177,7 @@ export default function AdminUsers() {
           </ModalBody>
           <ModalFooter>
             <Button mr={2} onClick={() => setPwUser(null)}>Cancel</Button>
-            <Button colorScheme="blue" onClick={() => setPwM.mutate()} isLoading={setPwM.isPending}>
+            <Button onClick={() => setPwM.mutate()} isLoading={setPwM.isPending}>
               Save
             </Button>
           </ModalFooter>

@@ -1,0 +1,1032 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>A — Instrument Precision · Labgrid Coordinator Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&family=Public+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  /* ============================================================
+     A — INSTRUMENT PRECISION
+     Swiss / technical minimalism. Hairline grid. Tabular mono.
+     ADI blue as the single structural accent.
+     ============================================================ */
+
+  :root {
+    /* ADI brand blue scale */
+    --adi-50:  #e6f2fa;
+    --adi-100: #b3d9f0;
+    --adi-200: #80bfe6;
+    --adi-300: #4da6dc;
+    --adi-400: #1e9bd7;
+    --adi-500: #0071ba;
+    --adi-600: #005fa0;
+    --adi-700: #004d85;
+    --adi-800: #003d71;
+    --adi-900: #002b50;
+
+    /* Domain semantic colors (fixed across themes) */
+    --c-exporter:    #0071ba;
+    --c-group:       #1e9bd7;
+    --c-resource:    #2b6cb0;
+    --c-free:        #38a169;
+    --c-acquire:     #dd6b20;
+    --c-reservation: #ecc94b;
+    --c-offline:     #718096;
+
+    /* Type */
+    --font-display: "Hanken Grotesk", sans-serif;
+    --font-body: "Public Sans", sans-serif;
+    --font-mono: "IBM Plex Mono", monospace;
+
+    /* Baseline rhythm */
+    --bl: 8px;
+    --radius: 4px;
+    --radius-sm: 3px;
+    --sidebar-w: 240px;
+    --header-h: 56px;
+  }
+
+  /* ---------- LIGHT (hero) ---------- */
+  :root[data-theme="light"] {
+    --bg:          #fafbfc;
+    --surface:     #ffffff;
+    --surface-2:   #f4f6f8;
+    --surface-inset:#f8fafb;
+    --ink:         #10161d;
+    --ink-2:       #3b4754;
+    --ink-3:       #6b7785;
+    --ink-4:       #97a2ad;
+    --hair:        #e4e8ec;
+    --hair-2:      #eef1f4;
+    --hair-strong: #d3d9df;
+    --accent:      var(--adi-500);
+    --accent-soft: var(--adi-50);
+    --accent-ink:  var(--adi-700);
+    --grid-line:   rgba(16, 22, 29, 0.028);
+    --shadow:      0 1px 2px rgba(16,22,29,0.04);
+    --led-glow:    0 0 0 3px;
+    --scrim:       rgba(255,255,255,0.6);
+  }
+
+  /* ---------- DARK (deep cool ink) ---------- */
+  :root[data-theme="dark"] {
+    --bg:          #0b0f14;
+    --surface:     #0e141b;
+    --surface-2:   #121a23;
+    --surface-inset:#0a0e13;
+    --ink:         #e7edf3;
+    --ink-2:       #aeb9c4;
+    --ink-3:       #7d8a98;
+    --ink-4:       #5a6675;
+    --hair:        #1c2630;
+    --hair-2:      #161e27;
+    --hair-strong: #28333f;
+    --accent:      var(--adi-400);
+    --accent-soft: rgba(30,155,215,0.12);
+    --accent-ink:  var(--adi-300);
+    --grid-line:   rgba(231,237,243,0.030);
+    --shadow:      0 1px 2px rgba(0,0,0,0.4);
+    --led-glow:    0 0 0 3px;
+    --scrim:       rgba(11,15,20,0.6);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body { height: 100%; }
+
+  body {
+    font-family: var(--font-body);
+    background: var(--bg);
+    color: var(--ink);
+    font-size: 14px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    /* Hairline baseline grid as page texture */
+    background-image:
+      repeating-linear-gradient(to bottom, transparent 0, transparent calc(var(--bl) - 1px), var(--grid-line) calc(var(--bl) - 1px), var(--grid-line) var(--bl));
+    transition: background-color .35s ease, color .35s ease;
+  }
+
+  ::selection { background: var(--accent-soft); color: var(--accent-ink); }
+
+  /* tighten focus rings to the instrument vibe */
+  a, button { -webkit-tap-highlight-color: transparent; }
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  /* ============================================================
+     LAYOUT SHELL
+     ============================================================ */
+  .app {
+    display: grid;
+    grid-template-columns: var(--sidebar-w) 1fr;
+    min-height: 100vh;
+  }
+
+  /* ---------- SIDEBAR ---------- */
+  .sidebar {
+    position: sticky;
+    top: 0;
+    align-self: start;
+    height: 100vh;
+    background: var(--surface);
+    border-right: 1px solid var(--hair);
+    display: flex;
+    flex-direction: column;
+    z-index: 20;
+  }
+
+  .brand {
+    height: var(--header-h);
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 0 18px;
+    border-bottom: 1px solid var(--hair);
+  }
+  .brand .chip-glyph {
+    width: 28px; height: 28px; flex: none;
+    color: var(--accent);
+  }
+  .brand .wordmark { display: flex; flex-direction: column; line-height: 1; }
+  .brand .wordmark b {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 16px;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+  }
+  .brand .wordmark span {
+    font-size: 9.5px;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin-top: 4px;
+    font-weight: 600;
+  }
+
+  .nav {
+    padding: 14px 12px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    flex: 1;
+  }
+  .nav-label {
+    font-size: 9.5px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--ink-4);
+    font-weight: 700;
+    padding: 6px 10px 8px;
+  }
+  .nav-item {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+    padding: 8px 10px;
+    border-radius: var(--radius-sm);
+    color: var(--ink-2);
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 500;
+    position: relative;
+    transition: background-color .15s ease, color .15s ease;
+  }
+  .nav-item svg { width: 16px; height: 16px; flex: none; color: var(--ink-4); transition: color .15s ease; }
+  .nav-item:hover { background: var(--surface-2); color: var(--ink); }
+  .nav-item:hover svg { color: var(--ink-3); }
+  .nav-item.active {
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+    font-weight: 600;
+  }
+  .nav-item.active svg { color: var(--accent); }
+  .nav-item.active::before {
+    content: "";
+    position: absolute;
+    left: -12px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 18px;
+    background: var(--accent);
+    border-radius: 0 2px 2px 0;
+  }
+
+  .sidebar-foot {
+    border-top: 1px solid var(--hair);
+    padding: 14px 16px;
+  }
+  .docs-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink-3);
+    text-decoration: none;
+    letter-spacing: -0.01em;
+    transition: color .15s ease;
+  }
+  .docs-link:hover { color: var(--accent); }
+  .docs-link svg { width: 11px; height: 11px; }
+
+  /* ---------- MAIN COLUMN ---------- */
+  .main { display: flex; flex-direction: column; min-width: 0; }
+
+  .header {
+    height: var(--header-h);
+    position: sticky;
+    top: 0;
+    z-index: 15;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 26px;
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--hair);
+  }
+  .header .page-title {
+    font-family: var(--font-display);
+    font-weight: 700;
+    font-size: 19px;
+    letter-spacing: -0.015em;
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+  }
+  .header .page-title .crumb {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 500;
+    color: var(--ink-4);
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+  }
+  .header-right { display: flex; align-items: center; gap: 14px; }
+
+  .toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 32px;
+    padding: 0 11px 0 9px;
+    background: var(--surface);
+    border: 1px solid var(--hair-strong);
+    border-radius: var(--radius);
+    color: var(--ink-2);
+    cursor: pointer;
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    transition: border-color .15s ease, color .15s ease, background-color .15s ease;
+  }
+  .toggle:hover { border-color: var(--accent); color: var(--ink); }
+  .toggle svg { width: 15px; height: 15px; color: var(--accent); }
+  .toggle .icon-moon { display: none; }
+  :root[data-theme="dark"] .toggle .icon-sun { display: none; }
+  :root[data-theme="dark"] .toggle .icon-moon { display: inline; }
+
+  .account {
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    padding: 4px 10px 4px 4px;
+    border: 1px solid var(--hair);
+    border-radius: 999px;
+    background: var(--surface);
+    transition: border-color .15s ease;
+    cursor: pointer;
+  }
+  .account:hover { border-color: var(--hair-strong); }
+  .avatar {
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    background: linear-gradient(140deg, var(--adi-500), var(--adi-700));
+    color: #fff;
+    display: grid; place-items: center;
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: 10px;
+    letter-spacing: 0.02em;
+  }
+  .account .who { display: flex; flex-direction: column; line-height: 1.1; }
+  .account .who b { font-size: 12px; font-weight: 600; color: var(--ink); }
+  .account .who span { font-size: 9.5px; color: var(--ink-4); font-family: var(--font-mono); letter-spacing: 0.02em; }
+
+  /* ---------- BODY GRID ---------- */
+  .body {
+    padding: 26px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 320px;
+    gap: 22px;
+    max-width: 1480px;
+    width: 100%;
+  }
+  .col-main { display: flex; flex-direction: column; gap: 22px; min-width: 0; }
+  .col-side { display: flex; flex-direction: column; gap: 22px; }
+
+  /* micro section label */
+  .sec-label {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--ink-4);
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .sec-label::after {
+    content: "";
+    flex: 1;
+    height: 1px;
+    background: var(--hair);
+  }
+
+  /* ============================================================
+     (a) STAT CARDS
+     ============================================================ */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    border: 1px solid var(--hair);
+    border-radius: var(--radius);
+    background: var(--surface);
+    overflow: hidden;
+    box-shadow: var(--shadow);
+  }
+  .stat {
+    padding: 16px 18px 18px;
+    border-right: 1px solid var(--hair);
+    position: relative;
+    min-width: 0;
+  }
+  .stat:last-child { border-right: none; }
+  .stat .k {
+    font-family: var(--font-mono);
+    font-size: 9.5px;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 7px;
+  }
+  .stat .k svg { width: 13px; height: 13px; color: var(--ink-4); }
+  .stat .v {
+    font-family: var(--font-display);
+    font-weight: 800;
+    font-size: 30px;
+    letter-spacing: -0.02em;
+    margin-top: 12px;
+    line-height: 1;
+    color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .stat .v.accent { color: var(--accent); }
+  .stat .v .unit {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink-3);
+    letter-spacing: 0;
+    margin-left: 4px;
+  }
+  .stat .sub {
+    margin-top: 9px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink-3);
+    letter-spacing: -0.01em;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .stat .sub .dot { width: 6px; height: 6px; border-radius: 50%; flex: none; }
+  /* mini sparkline strip on one stat */
+  .spark {
+    position: absolute;
+    right: 16px;
+    bottom: 16px;
+    width: 70px;
+    height: 26px;
+    opacity: .9;
+  }
+
+  /* ============================================================
+     (b) PLACES TABLE
+     ============================================================ */
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--hair);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--hair);
+  }
+  .panel-head h2 {
+    font-family: var(--font-display);
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--ink);
+    display: flex;
+    align-items: center;
+    gap: 9px;
+  }
+  .panel-head h2 .count {
+    font-family: var(--font-mono);
+    font-size: 10.5px;
+    font-weight: 500;
+    color: var(--ink-4);
+    padding: 2px 6px;
+    border: 1px solid var(--hair-strong);
+    border-radius: 3px;
+    letter-spacing: 0.02em;
+  }
+  .panel-head .filterbar { display: flex; gap: 8px; }
+  .pill-btn {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--ink-3);
+    background: transparent;
+    border: 1px solid var(--hair-strong);
+    border-radius: 3px;
+    padding: 4px 9px;
+    cursor: pointer;
+    transition: all .15s ease;
+  }
+  .pill-btn:hover { border-color: var(--accent); color: var(--accent); }
+  .pill-btn.on { background: var(--accent-soft); border-color: transparent; color: var(--accent-ink); font-weight: 600; }
+
+  table.places { width: 100%; border-collapse: collapse; }
+  table.places thead th {
+    text-align: left;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--ink-4);
+    font-weight: 600;
+    padding: 10px 18px;
+    border-bottom: 1px solid var(--hair);
+    background: var(--surface-inset);
+  }
+  table.places thead th.num { text-align: right; }
+  table.places tbody td {
+    padding: 0 18px;
+    height: 52px;
+    border-bottom: 1px solid var(--hair-2);
+    vertical-align: middle;
+    font-size: 13px;
+  }
+  table.places tbody tr:last-child td { border-bottom: none; }
+  table.places tbody tr { transition: background-color .12s ease; }
+  table.places tbody tr:hover { background: var(--surface-inset); }
+
+  .place-name {
+    font-family: var(--font-mono);
+    font-weight: 500;
+    font-size: 12.5px;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+    display: flex;
+    align-items: center;
+    gap: 11px;
+  }
+  .place-name .led {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex: none;
+    position: relative;
+  }
+  .led::after {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border-radius: 50%;
+    border: 1px solid currentColor;
+    opacity: .25;
+  }
+  .led.free    { background: var(--c-free);    color: var(--c-free); }
+  .led.acq     { background: var(--c-acquire); color: var(--c-acquire); }
+  .led.off     { background: var(--c-offline); color: var(--c-offline); }
+  /* gentle pulse on the live/free ones */
+  .led.free, .led.acq { animation: led-pulse 3.4s ease-in-out infinite; }
+  @keyframes led-pulse { 0%,100%{ box-shadow: 0 0 0 0 transparent;} 50%{ box-shadow: 0 0 0 3px color-mix(in srgb, currentColor 18%, transparent);} }
+
+  .group-tag {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--ink-2);
+    letter-spacing: -0.01em;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .group-tag .gswatch { width: 7px; height: 7px; border-radius: 1px; background: var(--c-group); flex: none; }
+
+  .status-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    padding: 4px 9px;
+    border-radius: 3px;
+    border: 1px solid;
+  }
+  .status-pill .sd { width: 6px; height: 6px; border-radius: 50%; }
+  .status-pill.s-free {
+    color: var(--c-free);
+    border-color: color-mix(in srgb, var(--c-free) 38%, transparent);
+    background: color-mix(in srgb, var(--c-free) 9%, transparent);
+  }
+  .status-pill.s-free .sd { background: var(--c-free); }
+  .status-pill.s-acq {
+    color: var(--c-acquire);
+    border-color: color-mix(in srgb, var(--c-acquire) 38%, transparent);
+    background: color-mix(in srgb, var(--c-acquire) 9%, transparent);
+  }
+  .status-pill.s-acq .sd { background: var(--c-acquire); }
+  .status-pill.s-off {
+    color: var(--c-offline);
+    border-color: color-mix(in srgb, var(--c-offline) 38%, transparent);
+    background: color-mix(in srgb, var(--c-offline) 9%, transparent);
+  }
+  .status-pill.s-off .sd { background: var(--c-offline); }
+
+  .holder {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--ink-2);
+    text-align: right;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
+  }
+  .holder .who { color: var(--ink); font-weight: 500; }
+  .holder .dur { color: var(--ink-3); }
+  .holder.muted { color: var(--ink-4); }
+  td.num { text-align: right; }
+
+  /* ============================================================
+     (c) CONCEPTS LEGEND
+     ============================================================ */
+  .concept {
+    display: grid;
+    grid-template-columns: 14px 78px 1fr;
+    align-items: start;
+    gap: 11px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--hair-2);
+  }
+  .concept:last-child { border-bottom: none; }
+  .concept .sw {
+    width: 11px; height: 11px;
+    border-radius: 2px;
+    margin-top: 3px;
+  }
+  .concept .name {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--ink);
+    letter-spacing: -0.01em;
+    margin-top: 1px;
+  }
+  .concept .gloss {
+    font-size: 11.5px;
+    color: var(--ink-3);
+    line-height: 1.4;
+  }
+
+  /* ============================================================
+     (d) RECENT EVENTS
+     ============================================================ */
+  .events { display: flex; flex-direction: column; }
+  .event {
+    display: flex;
+    gap: 12px;
+    padding: 11px 18px;
+    border-bottom: 1px solid var(--hair-2);
+    align-items: flex-start;
+    transition: background-color .12s ease;
+  }
+  .event:last-child { border-bottom: none; }
+  .event:hover { background: var(--surface-inset); }
+  .event .tick {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    margin-top: 6px;
+    flex: none;
+  }
+  .event .etext {
+    font-size: 12.5px;
+    color: var(--ink-2);
+    line-height: 1.4;
+    min-width: 0;
+  }
+  .event .etext code {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    color: var(--ink);
+    font-weight: 500;
+    letter-spacing: -0.01em;
+  }
+  .event .etime {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--ink-4);
+    white-space: nowrap;
+    letter-spacing: 0.01em;
+    padding-top: 1px;
+  }
+
+  /* ============================================================
+     PAGE-LOAD REVEAL (staggered)
+     ============================================================ */
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .reveal {
+    opacity: 0;
+    animation: rise .55s cubic-bezier(.22,.61,.36,1) forwards;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .reveal { animation: none; opacity: 1; }
+    .led.free, .led.acq { animation: none; }
+  }
+
+  /* footer caption under body */
+  .calib {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--ink-4);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding-top: 4px;
+  }
+  .calib .ruler { display: flex; align-items: center; gap: 2px; }
+  .calib .ruler i { width: 1px; height: 7px; background: var(--hair-strong); display: inline-block; }
+  .calib .ruler i:nth-child(5n+1) { height: 11px; background: var(--ink-4); }
+
+  @media (max-width: 1080px) {
+    .body { grid-template-columns: 1fr; }
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .stat:nth-child(2) { border-right: none; }
+    .stat:nth-child(1), .stat:nth-child(2) { border-bottom: 1px solid var(--hair); }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ===================== SIDEBAR ===================== -->
+  <aside class="sidebar">
+    <div class="brand">
+      <svg class="chip-glyph" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+        <rect x="8.5" y="8.5" width="15" height="15" rx="2" stroke="currentColor" stroke-width="1.6"/>
+        <rect x="13" y="13" width="6" height="6" rx="1" fill="currentColor"/>
+        <!-- pins -->
+        <path d="M12 8.5V4.5M16 8.5V4.5M20 8.5V4.5M12 23.5V27.5M16 23.5V27.5M20 23.5V27.5M8.5 12H4.5M8.5 16H4.5M8.5 20H4.5M23.5 12H27.5M23.5 16H27.5M23.5 20H27.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+      </svg>
+      <span class="wordmark">
+        <b>Labgrid</b>
+        <span>Coordinator Dashboard</span>
+      </span>
+    </div>
+
+    <nav class="nav">
+      <div class="nav-label">Navigation</div>
+      <a class="nav-item active" href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        Dashboard
+      </a>
+      <a class="nav-item" href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="5" width="16" height="5" rx="1"/><rect x="4" y="14" width="16" height="5" rx="1"/><circle cx="8" cy="7.5" r="0.9" fill="currentColor" stroke="none"/><circle cx="8" cy="16.5" r="0.9" fill="currentColor" stroke="none"/></svg>
+        Resources
+      </a>
+      <a class="nav-item" href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/><path d="M4 7.5l8 4.5 8-4.5M12 12v9"/></svg>
+        Places
+      </a>
+      <a class="nav-item" href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 11l2 2 4-4"/><path d="M9 16h6"/></svg>
+        Reservations
+      </a>
+      <a class="nav-item" href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="5" r="2.2"/><circle cx="5.5" cy="18" r="2.2"/><circle cx="18.5" cy="18" r="2.2"/><path d="M12 7.2L6.5 16M12 7.2L17.5 16M7.7 18h8.6"/></svg>
+        Topology
+      </a>
+      <a class="nav-item" href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 20V4M4 20h16"/><path d="M8 16v-3M12 16v-7M16 16v-5M20 16v-9" stroke-linecap="round"/></svg>
+        Statistics
+      </a>
+      <a class="nav-item" href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+        Event Log
+      </a>
+      <a class="nav-item" href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.4" fill="currentColor" stroke="none"/></svg>
+        Recordings
+      </a>
+      <a class="nav-item" href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.4a2.5 2.5 0 014.8.9c0 1.7-2.4 2-2.4 3.5"/><circle cx="12" cy="17" r="0.9" fill="currentColor" stroke="none"/></svg>
+        Help
+      </a>
+    </nav>
+
+    <div class="sidebar-foot">
+      <a class="docs-link" href="#">
+        labgrid-plugins docs
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 17L17 7M9 7h8v8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </a>
+    </div>
+  </aside>
+
+  <!-- ===================== MAIN ===================== -->
+  <div class="main">
+
+    <!-- HEADER -->
+    <header class="header">
+      <div class="page-title">
+        Dashboard
+        <span class="crumb">coordinator · :20408</span>
+      </div>
+      <div class="header-right">
+        <button class="toggle" id="themeToggle" aria-label="Toggle color theme">
+          <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" stroke-linecap="round"/></svg>
+          <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.3 6.3 0 0 0 10.5 10.5z"/></svg>
+          <span id="themeLabel">Light</span>
+        </button>
+        <div class="account" tabindex="0">
+          <span class="avatar">TC</span>
+          <span class="who">
+            <b>Travis Collins</b>
+            <span>travis</span>
+          </span>
+        </div>
+      </div>
+    </header>
+
+    <!-- BODY -->
+    <div class="body">
+
+      <!-- ===== MAIN COLUMN ===== -->
+      <div class="col-main">
+
+        <!-- (a) STAT CARDS -->
+        <section class="stats reveal" style="animation-delay:.05s">
+          <div class="stat">
+            <div class="k">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="6" width="16" height="12" rx="2"/><path d="M8 10v4M16 10v4" stroke-linecap="round"/></svg>
+              Exporters
+            </div>
+            <div class="v accent">4<span class="unit">online</span></div>
+            <div class="sub"><span class="dot" style="background:var(--c-free)"></span>of 4 registered · all up</div>
+          </div>
+
+          <div class="stat">
+            <div class="k">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3l8 4.5v9L12 21l-8-4.5v-9L12 3z"/></svg>
+              Places
+            </div>
+            <div class="v">12<span class="unit">total</span></div>
+            <div class="sub"><span class="dot" style="background:var(--c-acquire)"></span>3 acquired · 9 free</div>
+          </div>
+
+          <div class="stat">
+            <div class="k">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="5" width="16" height="5" rx="1"/><rect x="4" y="14" width="16" height="5" rx="1"/></svg>
+              Resources
+            </div>
+            <div class="v">38<span class="unit">published</span></div>
+            <div class="sub"><span class="dot" style="background:var(--c-resource)"></span>across 4 groups</div>
+            <svg class="spark" viewBox="0 0 70 26" preserveAspectRatio="none" fill="none">
+              <polyline points="0,20 8,18 16,21 24,14 32,16 40,9 48,12 56,6 64,8 70,4" stroke="var(--accent)" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              <circle cx="70" cy="4" r="1.8" fill="var(--accent)"/>
+            </svg>
+          </div>
+
+          <div class="stat">
+            <div class="k">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="8"/><path d="M12 8v4l3 2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Active reservations
+            </div>
+            <div class="v">2<span class="unit">queued</span></div>
+            <div class="sub"><span class="dot" style="background:var(--c-reservation)"></span>est. wait 6m · 14m</div>
+          </div>
+        </section>
+
+        <!-- (b) PLACES TABLE -->
+        <section class="panel reveal" style="animation-delay:.13s">
+          <div class="panel-head">
+            <h2>Places <span class="count">6 / 12</span></h2>
+            <div class="filterbar">
+              <button class="pill-btn on">All</button>
+              <button class="pill-btn">Free</button>
+              <button class="pill-btn">Acquired</button>
+            </div>
+          </div>
+          <table class="places">
+            <thead>
+              <tr>
+                <th style="width:34%">Place</th>
+                <th style="width:20%">Exporter / Group</th>
+                <th style="width:20%">Status</th>
+                <th class="num" style="width:26%">Holder / Uptime</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="place-name"><span class="led free"></span>zynqmp-zcu102-01</span></td>
+                <td><span class="group-tag"><span class="gswatch"></span>bq / tlab</span></td>
+                <td><span class="status-pill s-free"><span class="sd"></span>Free</span></td>
+                <td class="num"><span class="holder muted">—</span></td>
+              </tr>
+              <tr>
+                <td><span class="place-name"><span class="led acq"></span>zynq-zed-03</span></td>
+                <td><span class="group-tag"><span class="gswatch"></span>rpi-lab</span></td>
+                <td><span class="status-pill s-acq"><span class="sd"></span>Acquired</span></td>
+                <td class="num"><span class="holder"><span class="who">travis</span> · <span class="dur">4h12m</span></span></td>
+              </tr>
+              <tr>
+                <td><span class="place-name"><span class="led off"></span>versal-vck190-02</span></td>
+                <td><span class="group-tag"><span class="gswatch"></span>fpga-lab</span></td>
+                <td><span class="status-pill s-off"><span class="sd"></span>Offline</span></td>
+                <td class="num"><span class="holder muted">—</span></td>
+              </tr>
+              <tr>
+                <td><span class="place-name"><span class="led free"></span>vcu118-fpga-01</span></td>
+                <td><span class="group-tag"><span class="gswatch"></span>fpga-lab</span></td>
+                <td><span class="status-pill s-free"><span class="sd"></span>Free</span></td>
+                <td class="num"><span class="holder muted">—</span></td>
+              </tr>
+              <tr>
+                <td><span class="place-name"><span class="led acq"></span>rpi5-cam-07</span></td>
+                <td><span class="group-tag"><span class="gswatch"></span>rpi-lab</span></td>
+                <td><span class="status-pill s-acq"><span class="sd"></span>Acquired</span></td>
+                <td class="num"><span class="holder"><span class="who">jdoe</span> · <span class="dur">22m</span></span></td>
+              </tr>
+              <tr>
+                <td><span class="place-name"><span class="led free"></span>max96724-eval-02</span></td>
+                <td><span class="group-tag"><span class="gswatch"></span>sensor-lab</span></td>
+                <td><span class="status-pill s-free"><span class="sd"></span>Free</span></td>
+                <td class="num"><span class="holder muted">—</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </section>
+
+      </div>
+
+      <!-- ===== SIDE COLUMN ===== -->
+      <div class="col-side">
+
+        <!-- (c) CONCEPTS LEGEND -->
+        <section class="panel reveal" style="animation-delay:.20s">
+          <div class="panel-head">
+            <h2>Concepts</h2>
+            <span class="sec-label" style="flex:none"></span>
+          </div>
+          <div style="padding: 6px 18px 12px;">
+            <div class="concept">
+              <span class="sw" style="background:var(--c-exporter)"></span>
+              <span class="name">Exporter</span>
+              <span class="gloss">A lab host publishing hardware to the coordinator.</span>
+            </div>
+            <div class="concept">
+              <span class="sw" style="background:var(--c-group)"></span>
+              <span class="name">Group</span>
+              <span class="gloss">A namespace of resources under one exporter.</span>
+            </div>
+            <div class="concept">
+              <span class="sw" style="background:var(--c-resource)"></span>
+              <span class="name">Resource</span>
+              <span class="gloss">A single device or interface, e.g. a serial port.</span>
+            </div>
+            <div class="concept">
+              <span class="sw" style="background:var(--c-free)"></span>
+              <span class="name">Place</span>
+              <span class="gloss">A bundle of hardware you reserve.</span>
+            </div>
+            <div class="concept">
+              <span class="sw" style="background:var(--c-acquire)"></span>
+              <span class="name">Acquire</span>
+              <span class="gloss">An exclusive lock on a place.</span>
+            </div>
+            <div class="concept">
+              <span class="sw" style="background:var(--c-reservation)"></span>
+              <span class="name">Reservation</span>
+              <span class="gloss">A queued claim, allocated when a place frees.</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- (d) RECENT EVENTS -->
+        <section class="panel reveal" style="animation-delay:.27s">
+          <div class="panel-head">
+            <h2>Recent events</h2>
+            <span class="status-pill s-free" style="font-size:9px"><span class="sd" style="animation:led-pulse 2.4s infinite"></span>Live</span>
+          </div>
+          <div class="events">
+            <div class="event">
+              <span class="tick" style="background:var(--c-acquire)"></span>
+              <span class="etext">place <code>zynq-zed-03</code> acquired by <code>travis</code></span>
+              <span class="etime">2m ago</span>
+            </div>
+            <div class="event">
+              <span class="tick" style="background:var(--c-exporter)"></span>
+              <span class="etext">exporter <code>rpi-lab</code> reconnected</span>
+              <span class="etime">14m ago</span>
+            </div>
+            <div class="event">
+              <span class="tick" style="background:var(--c-reservation)"></span>
+              <span class="etext">reservation <code>#1182</code> allocated to <code>versal-vck190-02</code></span>
+              <span class="etime">31m ago</span>
+            </div>
+            <div class="event">
+              <span class="tick" style="background:var(--c-free)"></span>
+              <span class="etext">place <code>rpi5-cam-07</code> released</span>
+              <span class="etime">48m ago</span>
+            </div>
+            <div class="event">
+              <span class="tick" style="background:var(--c-resource)"></span>
+              <span class="etext">resource <code>NetworkSerialPort</code> published on <code>fpga-lab</code></span>
+              <span class="etime">1h 04m ago</span>
+            </div>
+          </div>
+        </section>
+
+      </div>
+
+      <!-- calibration footer -->
+      <div class="calib reveal" style="animation-delay:.34s">
+        <span>Labgrid Coordinator v25.0 · grpc bridge nominal</span>
+        <span class="ruler" aria-hidden="true">
+          <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+        </span>
+        <span>last sync 0.4s ago</span>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    var root = document.documentElement;
+    var btn = document.getElementById('themeToggle');
+    var label = document.getElementById('themeLabel');
+
+    function apply(theme) {
+      root.setAttribute('data-theme', theme);
+      label.textContent = theme === 'dark' ? 'Dark' : 'Light';
+      try { localStorage.setItem('lg-theme', theme); } catch (e) {}
+    }
+
+    // Hero mode is light; honor a stored preference if present.
+    var stored = null;
+    try { stored = localStorage.getItem('lg-theme'); } catch (e) {}
+    apply(stored === 'dark' ? 'dark' : 'light');
+
+    btn.addEventListener('click', function () {
+      var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      apply(next);
+    });
+  })();
+</script>
+</body>
+</html>
