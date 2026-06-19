@@ -1,5 +1,5 @@
 import { ReactNode } from "react";
-import { Link as RouterLink, useLocation } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import {
   Box,
   Flex,
@@ -10,7 +10,6 @@ import {
   IconButton,
   Spacer,
   useColorMode,
-  useColorModeValue,
 } from "@chakra-ui/react";
 import AccountMenu from "./AccountMenu";
 import {
@@ -28,36 +27,7 @@ import {
   MdOpenInNew,
 } from "react-icons/md";
 import ChipIcon from "./ChipIcon";
-
-interface NavItemProps {
-  to: string;
-  icon: React.ElementType;
-  label: string;
-  isActive: boolean;
-}
-
-function NavItem({ to, icon, label, isActive }: NavItemProps) {
-  return (
-    <Box
-      as={RouterLink}
-      to={to}
-      w="full"
-      px={4}
-      py={3}
-      borderRadius="md"
-      bg={isActive ? "whiteAlpha.200" : "transparent"}
-      _hover={{ bg: "whiteAlpha.100" }}
-      transition="background 0.15s"
-    >
-      <HStack spacing={3}>
-        <Icon as={icon} boxSize={5} color="sidebar.text" />
-        <Text color="sidebar.text" fontSize="sm" fontWeight={isActive ? "600" : "400"}>
-          {label}
-        </Text>
-      </HStack>
-    </Box>
-  );
-}
+import NavItem from "./ui/NavItem";
 
 const navItems = [
   { to: "/", icon: MdDashboard, label: "Dashboard" },
@@ -116,8 +86,8 @@ interface LayoutProps {
 export default function Layout({ children }: LayoutProps) {
   const location = useLocation();
   const { colorMode, toggleColorMode } = useColorMode();
-  const headerBg = useColorModeValue("white", "gray.800");
-  const borderColor = useColorModeValue("gray.200", "gray.700");
+  const headerBg = "surface.bg";
+  const borderColor = "border.hairline";
 
   return (
     <Flex h="100vh">
@@ -132,7 +102,7 @@ export default function Layout({ children }: LayoutProps) {
         flexDirection="column"
       >
         {/* Logo */}
-        <Box px={4} mb={8}>
+        <Box px={4} mb={8} color="sidebar.text">
           <ChipIcon size={36} />
           <Text color="white" fontSize="lg" fontWeight="700" mt={2}>
             Labgrid
@@ -187,7 +157,7 @@ export default function Layout({ children }: LayoutProps) {
         </Flex>
 
         {/* Page content */}
-        <Box flex={1} overflow="auto" p={6} bg={useColorModeValue("gray.50", "gray.900")}>
+        <Box flex={1} overflow="auto" p={6} bg="page.bg">
           {children}
         </Box>
       </Flex>
