@@ -67,6 +67,7 @@ jobs:
           tests/test_request_core.py \
           tests/test_request_public_api.py \
           tests/test_request_cli.py \
+          tests/hw_ci/test_request_cli_annotations.py \
           tests/test_provision.py \
           tests/test_pytest_fixtures.py \
           tests/hw_ci/test_request_matrix.py \
