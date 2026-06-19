@@ -6,6 +6,7 @@ import {
   ModalFooter, ModalCloseButton, FormControl, FormLabel, Select,
   useDisclosure, useToast, IconButton, Tag, Flex, Link, Stack,
 } from "@chakra-ui/react";
+import StatusPill from "../components/ui/StatusPill";
 import { MdDelete } from "react-icons/md";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
@@ -159,13 +160,13 @@ export default function PlaceDetail() {
       <Box flex="1" minW={0}>
         <HStack mb={4}>
           <Heading size="md">{place.name}</Heading>
-          {owner && <Badge colorScheme="orange">acquired by <Term name="acquire">{owner}</Term></Badge>}
+          {owner && <StatusPill status="acquired">acquired by <Term name="acquire">{owner}</Term></StatusPill>}
           <Box ml="auto">
             <Button size="sm" variant="outline" onClick={downloadModal.onOpen}>
               Download env yaml
             </Button>
             {canAcquire && (
-              <Button colorScheme="blue" onClick={() => acquireM.mutate()} isLoading={acquireM.isPending}>
+              <Button onClick={() => acquireM.mutate()} isLoading={acquireM.isPending}>
                 Acquire
               </Button>
             )}
@@ -177,18 +178,18 @@ export default function PlaceDetail() {
           </Box>
         </HStack>
 
-        {place.comment && <Text mb={4} color="gray.500">{place.comment}</Text>}
+        {place.comment && <Text mb={4} color="text.secondary">{place.comment}</Text>}
 
         <HStack mb={2}>
           <Heading size="sm">Resource matches</Heading>
           {canEdit && (
-            <Button ml="auto" size="xs" colorScheme="blue" onClick={matchModal.onOpen}>
+            <Button ml="auto" size="xs" onClick={matchModal.onOpen}>
               + Add match
             </Button>
           )}
         </HStack>
         {place.matches.length === 0 ? (
-          <Text color="gray.500" mb={4} fontSize="sm">
+          <Text color="text.secondary" mb={4} fontSize="sm">
             No matches yet — add one to attach exporter resources to this place.
           </Text>
         ) : (
@@ -223,7 +224,7 @@ export default function PlaceDetail() {
 
         <Heading size="sm" mb={2}>Resources</Heading>
         {placeResources.length === 0 ? (
-          <Text color="gray.500" fontSize="sm">
+          <Text color="text.secondary" fontSize="sm">
             No resources match. Add a resource match above (or check that the
             exporter is online).
           </Text>
@@ -240,7 +241,7 @@ export default function PlaceDetail() {
                   <Td>{r.cls}</Td>
                   <Td>{r.name}</Td>
                   <Td>{r.exporter}</Td>
-                  <Td><Badge colorScheme={r.avail ? "green" : "red"}>{r.avail ? "yes" : "no"}</Badge></Td>
+                  <Td><StatusPill status={r.avail ? "free" : "degraded"}>{r.avail ? "yes" : "no"}</StatusPill></Td>
                   <Td>
                     {r.cls === "NetworkSerialPort" && isOwner && (
                       <Button
@@ -302,14 +303,14 @@ export default function PlaceDetail() {
                   {classes.map((c) => <option key={c} value={c}>{c}</option>)}
                 </Select>
               </FormControl>
-              <Text fontSize="xs" color="gray.500" mt={3}>
+              <Text fontSize="xs" color="text.secondary" mt={3}>
                 Pattern preview:{" "}
                 <code>{exporter && group ? `${exporter}/${group}/${cls || "*"}` : "—"}</code>
               </Text>
             </ModalBody>
             <ModalFooter>
               <Button mr={2} onClick={matchModal.onClose}>Cancel</Button>
-              <Button colorScheme="blue" onClick={submitMatch} isLoading={addMatchM.isPending}>
+              <Button onClick={submitMatch} isLoading={addMatchM.isPending}>
                 Add match
               </Button>
             </ModalFooter>
@@ -328,16 +329,16 @@ export default function PlaceDetail() {
       <RelatedPanel>
         <RelatedPanel.Section title="Exporters contributing">
           {(placeToExporters.get(name) ?? []).length === 0 ? (
-            <Text color="gray.500">None online</Text>
+            <Text color="text.secondary">None online</Text>
           ) : (
             <Stack spacing={1}>
               {(placeToExporters.get(name) ?? []).map((e) => (
                 <HStack key={e.name}>
                   <Box w="8px" h="8px" borderRadius="full" bg={e.online ? "green.400" : "gray.400"} />
                   <RLink to={`/exporters/${encodeURIComponent(e.name)}`}>
-                    <Text color="blue.500">{e.name}</Text>
+                    <Text color="link">{e.name}</Text>
                   </RLink>
-                  {!e.online && <Text fontSize="xs" color="gray.500">offline</Text>}
+                  {!e.online && <Text fontSize="xs" color="text.secondary">offline</Text>}
                 </HStack>
               ))}
             </Stack>
@@ -346,7 +347,7 @@ export default function PlaceDetail() {
 
         <RelatedPanel.Section title="Live resources">
           {placeResources.length === 0 ? (
-            <Text color="gray.500">None</Text>
+            <Text color="text.secondary">None</Text>
           ) : (
             <Text>
               {summarizeByClass(placeResources.map((r) => r.cls))}
@@ -374,12 +375,12 @@ export default function PlaceDetail() {
           {owner ? (
             <Stack spacing={1}>
               <Text>{owner}</Text>
-              <Text color="gray.500" fontSize="xs">
+              <Text color="text.secondary" fontSize="xs">
                 This place is reserved — only this user can use its resources until released.
               </Text>
             </Stack>
           ) : (
-            <Text color="gray.500">Not reserved — press Acquire to reserve.</Text>
+            <Text color="text.secondary">Not reserved — press Acquire to reserve.</Text>
           )}
         </RelatedPanel.Section>
 
@@ -389,19 +390,19 @@ export default function PlaceDetail() {
               <Stack spacing={1}>
                 <HStack>
                   <Code fontSize="xs">{myReservation.token.slice(0, 8)}</Code>
-                  <Badge colorScheme={myReservation.state === "waiting" ? "yellow" : myReservation.state === "allocated" ? "blue" : myReservation.state === "acquired" ? "green" : "gray"}>
+                  <Badge colorScheme={myReservation.state === "waiting" ? "yellow" : myReservation.state === "allocated" ? "adi" : myReservation.state === "acquired" ? "green" : "gray"}>
                     {myReservation.state}
                   </Badge>
                 </HStack>
-                <Text color="gray.500" fontSize="xs">
+                <Text color="text.secondary" fontSize="xs">
                   Owner: {myReservation.owner} · Age: {formatAge(myReservation.created)}
                 </Text>
-                <Link as={RLink} to="/reservations" color="blue.500" fontSize="xs">Open in Reservations →</Link>
+                <Link as={RLink} to="/reservations" color="link" fontSize="xs">Open in Reservations →</Link>
               </Stack>
             ) : (
               <Stack spacing={1}>
                 <Code fontSize="xs">{place.reservation.slice(0, 8)}</Code>
-                <Text color="gray.500" fontSize="xs">Reservation details not available (may have expired).</Text>
+                <Text color="text.secondary" fontSize="xs">Reservation details not available (may have expired).</Text>
               </Stack>
             )}
           </RelatedPanel.Section>
