@@ -742,6 +742,12 @@ Reserves and acquires a labgrid place via the coordinator, waiting up to
 ``wait_minutes`` for it to become free.  Uses labgrid's reservation queue
 when available, falling back to a jittered polling loop.
 
+.. note::
+
+   ``acquire-place`` is only for the deprecated bash / ``hw-matrix`` flow. **hw-request-family
+   consumers do not need it** — reservation + release are handled inside the reusable workflow
+   by ``adi-lg request``.
+
 .. warning::
 
    Composite actions cannot run post-job cleanup.  Every caller **must**

@@ -199,7 +199,12 @@ the markers/manifest + catalog + places line up:
 
 **Success** is one ``matrix.include`` leg per board you expect, each with a non-empty
 ``runner``. A wanted board with no live place is emitted as a ``::warning::`` skip (fix it
-in Step 4). For flash, also prove the ``.xsa`` is extractable:
+in Step 4).
+
+If a board reports ``Unknown release version``, the coordinator catalog is stale — ask the lab
+admin to redeploy the coordinator after the catalog merge.
+
+For flash, also prove the ``.xsa`` is extractable:
 
 .. code-block:: bash
 
