@@ -29,7 +29,7 @@ _SELF_REF = re.compile(
 
 
 def find_consumer_pin_violations(
-    paths, recommended: str
+    paths: list[str | Path], recommended: str
 ) -> list[tuple[str, int, str]]:
     """``(file, lineno, found_ref)`` for each consumer-facing reusable-workflow
     reference whose pin != ``recommended`` (``@main`` counts as a violation)."""
@@ -46,7 +46,7 @@ def find_consumer_pin_violations(
     return out
 
 
-def find_main_self_refs(paths) -> list[tuple[str, int]]:
+def find_main_self_refs(paths: list[str | Path]) -> list[tuple[str, int]]:
     """``(file, lineno)`` for any internal ``@main`` self-reference (action ``uses:``
     or ``git+https…@main`` install) — used by the release guard to prove
     ``pin-release-refs.sh`` ran before tagging. MUST NOT be run on ``main``."""

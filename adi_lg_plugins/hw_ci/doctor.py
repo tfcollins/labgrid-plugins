@@ -134,10 +134,14 @@ def check_pin(repo_root: str | Path = ".") -> CheckResult:
         return CheckResult("pin", SKIP, "no .github/workflows in this repo")
     pat = re.compile(r"tfcollins/labgrid-plugins/\.github/workflows/[\w.-]+@(\S+)")
     stale: list[str] = []
+    found_any = False
     for f in sorted(wf_dir.glob("*.yml")) + sorted(wf_dir.glob("*.yaml")):
         for m in pat.finditer(f.read_text(encoding="utf-8")):
+            found_any = True
             if m.group(1) != RECOMMENDED_PIN:
                 stale.append(f"{f.name}@{m.group(1)}")
+    if not found_any:
+        return CheckResult("pin", SKIP, "no labgrid-plugins workflow pins found")
     if stale:
         return CheckResult("pin", FAIL, f"pins != {RECOMMENDED_PIN}: {', '.join(stale)}")
     return CheckResult("pin", PASS, f"pinned @{RECOMMENDED_PIN}")
@@ -200,18 +204,30 @@ def _infer_repo() -> str | None:
 def run_doctor(args) -> int:
     from . import coordinator as coord_mod
 
-    coord = coord_mod.resolve_coordinator(args.coord)
-    coord_mod.warn_if_rest_port(coord)
+    try:
+        coord = coord_mod.resolve_coordinator(args.coord)
+        coord_mod.warn_if_rest_port(coord)
+    except RuntimeError:
+        coord = None
     repo = args.repo or _infer_repo()
     fallback = args.runner_label or ""
 
-    results = [
-        check_discovery(
-            args.mode, coord=coord, test_root=args.test_root, manifest=args.manifest,
-            board_map=args.board_map, fallback_runner=fallback,
-        ),
-        check_pin(),
-    ]
+    results = []
+    if coord is None:
+        results.append(
+            CheckResult(
+                "discovery", FAIL,
+                "no coordinator — set LG_COORDINATOR (gRPC :20408) or pass --coord",
+            )
+        )
+    else:
+        results.append(
+            check_discovery(
+                args.mode, coord=coord, test_root=args.test_root, manifest=args.manifest,
+                board_map=args.board_map, fallback_runner=fallback,
+            )
+        )
+    results.append(check_pin())
     if repo:
         results.append(check_repo_vars(repo, args.mode))
         runner_labels = [args.runner_label] if args.runner_label else []

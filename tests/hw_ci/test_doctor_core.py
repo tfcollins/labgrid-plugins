@@ -77,3 +77,20 @@ def test_check_pin_flags_stale(tmp_path):
     res = doctor.check_pin(repo_root=str(tmp_path))
     assert res.status == FAIL
     assert "v3.4" in res.detail
+
+
+def test_run_doctor_no_coordinator_is_fail_not_crash(monkeypatch):
+    import argparse
+    monkeypatch.delenv("LG_COORDINATOR", raising=False)
+    monkeypatch.delenv("ADI_LG_COORDINATOR", raising=False)
+    ns = argparse.Namespace(mode="uri", coord=None, repo=None, test_root=None,
+                            manifest=None, board_map=None, runner_label=None)
+    rc = doctor.run_doctor(ns)   # must NOT raise
+    assert rc == 1
+
+
+def test_check_pin_skip_when_no_pins(tmp_path):
+    wf = tmp_path / ".github" / "workflows"
+    wf.mkdir(parents=True)
+    (wf / "ci.yml").write_text("uses: actions/checkout@v4\n", encoding="utf-8")
+    assert doctor.check_pin(repo_root=str(tmp_path)).status == doctor.SKIP

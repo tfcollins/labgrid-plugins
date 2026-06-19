@@ -36,3 +36,11 @@ def test_ignores_trailing_prose_punctuation(tmp_path):
         encoding="utf-8",
     )
     assert find_consumer_pin_violations([f], "v3.5") == []
+
+
+def test_real_repo_consumer_pins_are_clean():
+    # CI enforcement: the repo's own consumer-facing examples must pin to RECOMMENDED_PIN.
+    from adi_lg_plugins.hw_ci._release import RECOMMENDED_PIN
+    from adi_lg_plugins.hw_ci.pin_lint import CONSUMER_PIN_PATHS, find_consumer_pin_violations
+
+    assert find_consumer_pin_violations(CONSUMER_PIN_PATHS, RECOMMENDED_PIN) == []
