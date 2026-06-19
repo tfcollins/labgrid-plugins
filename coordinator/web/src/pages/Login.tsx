@@ -61,7 +61,7 @@ export default function Login() {
         <Link as={RLink} to={authApi.oidcLoginUrl()} reloadDocument>
           <Button variant="outline" w="full">Continue with SSO</Button>
         </Link>
-        <Text fontSize="xs" color="gray.500" mt={4}>
+        <Text fontSize="xs" color="text.secondary" mt={4}>
           (SSO button works only if OIDC is configured.)
         </Text>
       </Box>

@@ -61,7 +61,7 @@ export default function ConceptHeading({
         )}
       </Box>
       {showGloss && (
-        <Text fontSize="sm" color="gray.500">
+        <Text fontSize="sm" color="text.secondary">
           {concept.gloss}
         </Text>
       )}

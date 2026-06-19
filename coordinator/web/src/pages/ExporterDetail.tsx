@@ -18,10 +18,10 @@ import {
   IconButton,
   VStack,
   Code,
-  useColorModeValue,
   Flex,
   Stack,
 } from "@chakra-ui/react";
+import Panel from "../components/ui/Panel";
 import { MdArrowBack, MdExpandMore, MdExpandLess } from "react-icons/md";
 import { useExporters } from "../hooks/useResources";
 import { useWebSocket } from "../api/ws";
@@ -35,8 +35,6 @@ export default function ExporterDetail() {
   const { exporterName } = useParams<{ exporterName: string }>();
   const { data: exporters, isLoading } = useExporters();
   const [expandedRow, setExpandedRow] = useState<string | null>(null);
-  const tableBg = useColorModeValue("white", "gray.800");
-
   const { exporterToPlaces, resourceToPlaces } = useRelationships();
 
   if (isLoading) return <Spinner size="xl" color="adi.500" />;
@@ -120,7 +118,7 @@ export default function ExporterDetail() {
             {groupName}
           </Heading>
 
-          <Box bg={tableBg} borderRadius="lg" overflow="hidden" shadow="sm">
+          <Panel overflow="hidden">
             <Table variant="simple" size="sm">
               <Thead>
                 <Tr>
@@ -148,7 +146,7 @@ export default function ExporterDetail() {
                         cursor={paramEntries.length > 0 ? "pointer" : undefined}
                         _hover={
                           paramEntries.length > 0
-                            ? { bg: useColorModeValue("gray.50", "gray.700") }
+                            ? { bg: "surface.subtle" }
                             : undefined
                         }
                         onClick={() =>
@@ -201,7 +199,7 @@ export default function ExporterDetail() {
                         <Tr key={`${rowKey}-params`}>
                           <Td
                             colSpan={5}
-                            bg={useColorModeValue("gray.50", "gray.700")}
+                            bg="surface.subtle"
                             p={4}
                           >
                             <Text
@@ -234,7 +232,7 @@ export default function ExporterDetail() {
                 })}
               </Tbody>
             </Table>
-          </Box>
+          </Panel>
         </Box>
       ))}
       </Box>
@@ -243,7 +241,7 @@ export default function ExporterDetail() {
       <RelatedPanel>
         <RelatedPanel.Section title="Places using this exporter">
           {placesHere.length === 0 ? (
-            <Text color="gray.500">No places reference this exporter yet.</Text>
+            <Text color="text.secondary">No places reference this exporter yet.</Text>
           ) : (
             <Stack spacing={1}>
               {placesHere.map((p) => (
@@ -262,7 +260,7 @@ export default function ExporterDetail() {
 
         <RelatedPanel.Section title="Orphan resources">
           {orphanResources.length === 0 ? (
-            <Text color="gray.500">None — every live resource is matched.</Text>
+            <Text color="text.secondary">None — every live resource is matched.</Text>
           ) : (
             <Stack spacing={1}>
               {orphanResources.map((r) => (
@@ -270,7 +268,7 @@ export default function ExporterDetail() {
                   {r.group}/{r.cls}/{r.name}
                 </Text>
               ))}
-              <Text color="gray.500" fontSize="xs">
+              <Text color="text.secondary" fontSize="xs">
                 Published here but no place matches. Add a match to a place, or create one.
               </Text>
             </Stack>

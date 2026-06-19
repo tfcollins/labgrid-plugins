@@ -7,9 +7,10 @@ import {
   Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody, ModalFooter, ModalCloseButton,
   Input, VStack, FormControl, FormLabel,
   NumberInput, NumberInputField,
-  useColorModeValue, useToast,
+  useToast,
   Code, Tag, TagLabel, Stack,
 } from "@chakra-ui/react";
+import Panel from "../components/ui/Panel";
 import { Link as RouterLink } from "react-router-dom";
 import {
   useReservationsLive,
@@ -45,8 +46,6 @@ export default function Reservations() {
   const [filterValue, setFilterValue] = useState("");
   const [prio, setPrio] = useState(0);
   const toast = useToast();
-  const tableBg = useColorModeValue("white", "gray.800");
-
   const handleCreate = async () => {
     if (!filterTag.trim() || !filterValue.trim()) return;
     try {
@@ -75,7 +74,7 @@ export default function Reservations() {
         </Button>
       </HStack>
 
-      <Box bg={tableBg} borderRadius="lg" overflow="hidden" shadow="sm">
+      <Panel overflow="hidden">
         <Table variant="simple" size="sm">
           <Thead>
             <Tr>
@@ -169,7 +168,7 @@ export default function Reservations() {
             )}
           </Tbody>
         </Table>
-      </Box>
+      </Panel>
 
       {/* Create Reservation Modal */}
       <Modal isOpen={isOpen} onClose={onClose} isCentered>

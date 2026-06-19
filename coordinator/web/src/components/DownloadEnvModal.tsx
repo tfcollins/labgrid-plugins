@@ -103,7 +103,7 @@ export default function DownloadEnvModal({ isOpen, onClose, placeName, resourceC
                   <Radio value={t.value}>
                     <Text fontWeight={500}>{t.label}</Text>
                   </Radio>
-                  <Text fontSize="xs" color="gray.500" ml={6}>{t.desc}</Text>
+                  <Text fontSize="xs" color="text.secondary" ml={6}>{t.desc}</Text>
                 </Box>
               ))}
             </Stack>
@@ -124,8 +124,7 @@ export default function DownloadEnvModal({ isOpen, onClose, placeName, resourceC
             <Box
               borderWidth="1px"
               borderRadius="md"
-              bg="gray.50"
-              _dark={{ bg: "gray.900" }}
+              bg="surface.subtle"
               maxH="360px"
               overflow="auto"
               p={3}
@@ -133,7 +132,7 @@ export default function DownloadEnvModal({ isOpen, onClose, placeName, resourceC
               fontSize="xs"
             >
               {previewLoading ? (
-                <HStack spacing={2} color="gray.500">
+                <HStack spacing={2} color="text.secondary">
                   <Spinner size="xs" />
                   <Text>Loading preview…</Text>
                 </HStack>

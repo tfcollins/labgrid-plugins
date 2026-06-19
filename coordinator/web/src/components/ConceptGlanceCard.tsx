@@ -9,7 +9,7 @@ export default function ConceptGlanceCard() {
   const steps: ConceptName[] = ["exporter", "resource", "place"];
   return (
     <Box borderWidth="1px" borderRadius="md" p={4}>
-      <Text fontSize="xs" color="gray.500" mb={2} textTransform="uppercase" letterSpacing="wider">
+      <Text fontSize="xs" color="text.secondary" mb={2} textTransform="uppercase" letterSpacing="wider">
         How it fits together
       </Text>
       <HStack align="stretch" spacing={4}>
