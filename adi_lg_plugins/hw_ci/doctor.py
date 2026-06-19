@@ -175,6 +175,9 @@ def check_repo_vars(repo: str, mode: str, *, gh=run_gh) -> CheckResult:
 
 
 def check_runner_scope(repo: str, labels: list[str], *, gh=run_gh) -> CheckResult:
+    labels = [lbl for lbl in labels if lbl]
+    if not labels:
+        return CheckResult("runner-scope", SKIP, "no runner-label given to verify (pass --runner-label)")
     rc, out = gh(["api", f"/repos/{repo}/actions/runners"])
     if rc != 0:
         return CheckResult("runner-scope", SKIP, "gh unavailable/unauthenticated")
@@ -211,7 +214,8 @@ def run_doctor(args) -> int:
     ]
     if repo:
         results.append(check_repo_vars(repo, args.mode))
-        results.append(check_runner_scope(repo, ["HW_REQUEST_RUNNER", "HW_PREFLIGHT_RUNNER"]))
+        runner_labels = [args.runner_label] if args.runner_label else []
+        results.append(check_runner_scope(repo, runner_labels))
     else:
         results.append(CheckResult("repo-vars", SKIP, "no --repo and gh could not infer it"))
         results.append(CheckResult("runner-scope", SKIP, "no --repo and gh could not infer it"))

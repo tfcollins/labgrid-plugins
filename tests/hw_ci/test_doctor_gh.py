@@ -36,3 +36,13 @@ def test_runner_scope_fail_missing_label():
     out = '{"runners":[{"labels":[{"name":"other"}]}]}'
     res = doctor.check_runner_scope("o/r", ["hw-lab"], gh=lambda args: (0, out))
     assert res.status == FAIL
+
+
+def test_runner_scope_skip_when_no_labels():
+    res = doctor.check_runner_scope("o/r", [], gh=lambda args: (0, "{}"))
+    assert res.status == SKIP
+
+
+def test_runner_scope_skip_when_gh_absent():
+    res = doctor.check_runner_scope("o/r", ["hw-lab"], gh=lambda args: (127, ""))
+    assert res.status == SKIP
