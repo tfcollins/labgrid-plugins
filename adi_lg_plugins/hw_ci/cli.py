@@ -329,6 +329,22 @@ def _cmd_list_strategies(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_lint_markers(args: argparse.Namespace) -> int:
+    """Flag iio_hardware/iio_carrier markers whose args are not string literals
+    (silently invisible to discovery). Coordinator-free; CI/pre-commit friendly."""
+    rejections = markers_mod.collect_marker_rejections(args.test_root)
+    for path, lineno, reason in rejections:
+        print(f"{path}:{lineno}: {reason}", file=sys.stderr)
+    if rejections:
+        print(
+            f"# lint-markers: {len(rejections)} non-literal marker(s) — invisible to discovery",
+            file=sys.stderr,
+        )
+        return 1
+    print("# lint-markers: all hardware markers are string literals", file=sys.stderr)
+    return 0
+
+
 def _parse_build_vars(pairs: list[str]) -> dict[str, str]:
     out: dict[str, str] = {}
     for pair in pairs or []:
@@ -425,6 +441,13 @@ def main(argv: list[str] | None = None) -> int:
         "list-strategies", help="dump known boot-strategy class names + which have render templates"
     )
     pl.set_defaults(func=_cmd_list_strategies)
+
+    plm = sub.add_parser(
+        "lint-markers",
+        help="flag iio_hardware/iio_carrier markers that aren't string literals",
+    )
+    plm.add_argument("--test-root", required=True, help="path to the consumer's test directory")
+    plm.set_defaults(func=_cmd_lint_markers)
 
     pm = sub.add_parser(
         "request-matrix", help="emit a part-keyed matrix for the hw-request workflow"
