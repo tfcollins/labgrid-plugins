@@ -250,6 +250,7 @@ export default function PlaceWizard() {
                   >
                     <HStack align="start">
                       <Checkbox
+                        aria-label={`Select group ${g.exporter}/${g.group}`}
                         isChecked={ticked}
                         onChange={() => togglePick(g.exporter, g.group, g.classes)}
                         mt={1}

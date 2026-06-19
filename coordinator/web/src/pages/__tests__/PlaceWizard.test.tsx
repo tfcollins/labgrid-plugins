@@ -81,12 +81,8 @@ describe("PlaceWizard", () => {
     fireEvent.click(screen.getByRole("button", { name: /^next$/i }));
 
     // Step 2: pick the first group
-    const checkbox = await screen.findByLabelText(/class filter for exp1\/grpA/i, { selector: "select" }).catch(() => null);
-    // The checkbox itself is unlabeled; find via parent text.
-    const groupRow = await screen.findByText("exp1 / grpA");
-    const cb = groupRow.closest("div")?.parentElement?.querySelector("input[type=checkbox]");
-    expect(cb).toBeTruthy();
-    fireEvent.click(cb!);
+    const cb = await screen.findByRole("checkbox", { name: /select group exp1\/grpA/i });
+    fireEvent.click(cb);
     fireEvent.click(screen.getByRole("button", { name: /^next$/i }));
 
     // Step 3: fill the three required tags
@@ -113,8 +109,6 @@ describe("PlaceWizard", () => {
     await waitFor(() =>
       expect(navMock).toHaveBeenCalledWith("/places/fresh-place")
     );
-    // unused checkbox lookup ignored
-    void checkbox;
   });
 
   it("blocks Next on step 3 until all required tags are filled", async () => {
@@ -125,9 +119,8 @@ describe("PlaceWizard", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /^next$/i }));
 
-    const groupRow = await screen.findByText("exp1 / grpA");
-    const cb = groupRow.closest("div")?.parentElement?.querySelector("input[type=checkbox]");
-    fireEvent.click(cb!);
+    const cb = await screen.findByRole("checkbox", { name: /select group exp1\/grpA/i });
+    fireEvent.click(cb);
     fireEvent.click(screen.getByRole("button", { name: /^next$/i }));
 
     // On step 3 with no required tags filled, Next is disabled
@@ -151,9 +144,8 @@ describe("PlaceWizard", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /^next$/i }));
 
-    const groupRow = await screen.findByText("exp2 / grpB");
-    const cb = groupRow.closest("div")?.parentElement?.querySelector("input[type=checkbox]");
-    fireEvent.click(cb!);
+    const cb = await screen.findByRole("checkbox", { name: /select group exp2\/grpB/i });
+    fireEvent.click(cb);
     fireEvent.click(screen.getByRole("button", { name: /^next$/i }));
 
     // Step 3: required tags + one extra + comment
@@ -193,9 +185,8 @@ describe("PlaceWizard", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /^next$/i }));
 
-    const groupRow = await screen.findByText("exp1 / grpA");
-    const cb = groupRow.closest("div")?.parentElement?.querySelector("input[type=checkbox]");
-    fireEvent.click(cb!);
+    const cb = await screen.findByRole("checkbox", { name: /select group exp1\/grpA/i });
+    fireEvent.click(cb);
     fireEvent.click(screen.getByRole("button", { name: /^next$/i }));
 
     // Fill required tags so we can advance past step 3
