@@ -210,7 +210,7 @@ export default function Dashboard() {
                       <HStack spacing={1} flexWrap="wrap">
                         {Object.entries(r.allocations).map(([group, place]) => (
                           <Tag
-                            key={group} size="sm" variant="subtle" colorScheme="blue"
+                            key={group} size="sm" variant="subtle" colorScheme="adi"
                             as={RouterLink} to={`/places/${encodeURIComponent(place)}`}
                             cursor="pointer"
                           >

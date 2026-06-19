@@ -334,7 +334,7 @@ export default function PlaceDetail() {
             <Stack spacing={1}>
               {(placeToExporters.get(name) ?? []).map((e) => (
                 <HStack key={e.name}>
-                  <Box w="8px" h="8px" borderRadius="full" bg={e.online ? "green.400" : "gray.400"} />
+                  <Box w="8px" h="8px" borderRadius="full" bg={e.online ? "status.free" : "status.offline"} />
                   <RLink to={`/exporters/${encodeURIComponent(e.name)}`}>
                     <Text color="link">{e.name}</Text>
                   </RLink>
