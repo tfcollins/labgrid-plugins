@@ -74,7 +74,7 @@ uri mode (pytest over libIIO)
 **Workflow** — copy into ``.github/workflows/hw-request.yml`` and set ``test-root`` +
 ``install-cmd``:
 
-.. literalinclude:: ../onboarding-templates/hw-request-uri.yml
+.. literalinclude:: ../../../adi_lg_plugins/hw_ci/onboarding_templates/hw-request-uri.yml
    :language: yaml
 
 **Markers** — decorate the hardware tests; the preflight AST-parses these, so the
@@ -90,7 +90,7 @@ arguments must be **string literals**:
 **Conftest** — copy into ``test/hw/conftest.py`` for the ``iio_uri`` fixture
 (``adi-lg request`` boots the board out of band and exports ``IIO_URI``):
 
-.. literalinclude:: ../onboarding-templates/conftest-iio-uri.py
+.. literalinclude:: ../../../adi_lg_plugins/hw_ci/onboarding_templates/conftest-iio-uri.py
    :language: python
 
 .. admonition:: Reserve mode (drive boot yourself)
@@ -106,13 +106,13 @@ flash mode (no-os firmware)
 
 **Workflow** — copy into ``.github/workflows/hw-request.yml``:
 
-.. literalinclude:: ../onboarding-templates/noos-hw-request-flash.yml
+.. literalinclude:: ../../../adi_lg_plugins/hw_ci/onboarding_templates/noos-hw-request-flash.yml
    :language: yaml
 
 **Manifest** — copy into ``tools/hw_ci/projects.yaml``, one entry per buildable project
 (schema: ``adi_lg_plugins/hw_ci/noos_manifest.py``):
 
-.. literalinclude:: ../onboarding-templates/projects.yaml
+.. literalinclude:: ../../../adi_lg_plugins/hw_ci/onboarding_templates/projects.yaml
    :language: yaml
 
 The reusable workflow's ``build-noos`` step sources each board's HDL ``.xsa`` from the
@@ -124,7 +124,7 @@ matlab mode (MATLAB ``runHWTests``)
 
 **Workflow** — copy into ``.github/workflows/hw-matlab.yml``:
 
-.. literalinclude:: ../onboarding-templates/matlab-hw-request.yml
+.. literalinclude:: ../../../adi_lg_plugins/hw_ci/onboarding_templates/matlab-hw-request.yml
    :language: yaml
 
 **Board map** — ``test/hw_ci/board_map.yaml`` maps each board's
@@ -176,7 +176,7 @@ Step 4 — coordinator + lab prerequisites
 These you do not own — confirm with a lab admin (Step 5 fails clearly if any are missing):
 
 - **Catalog entry** per part in ``coordinator/api/board_catalog.yaml`` (template:
-  ``onboarding-templates/board-catalog-entry.yaml``; schema:
+  ``adi_lg_plugins/hw_ci/onboarding_templates/board-catalog-entry.yaml``; schema:
   ``coordinator/api/app/catalog.py``). uri needs ``image``; flash needs a ``flash:`` block.
   After any catalog edit the coordinator host must be **redeployed**.
 - **A live place** tagged ``daughter-board=<part> carrier=<carrier>
@@ -225,7 +225,7 @@ Drop in an ``AGENTS.md``
 ------------------------
 
 Add an ``AGENTS.md`` to the consumer repo so the next agent/human knows the wiring — copy
-``onboarding-templates/AGENTS-consumer-stub.md`` and fill in the mode + boards.
+``adi_lg_plugins/hw_ci/onboarding_templates/AGENTS-consumer-stub.md`` and fill in the mode + boards.
 
 Troubleshooting
 ---------------

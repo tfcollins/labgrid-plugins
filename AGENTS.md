@@ -4,7 +4,7 @@ This file is for AI coding agents (and humans) wiring a **new consumer repo** on
 labgrid-plugins hardware-CI flow. It is an executable recipe: follow the steps, run the
 verify commands, then open the PR. The human reference with full prose is
 `docs/source/user-guide/onboarding-a-consumer-repo.rst`; deep per-topic docs are linked
-from there. Copy-paste starting files live in `docs/source/onboarding-templates/`.
+from there. Copy-paste starting files live in `adi_lg_plugins/hw_ci/onboarding_templates/`.
 
 > Repo-level guidance for working *inside this package* is in `CLAUDE.md`. This file is
 > specifically about onboarding **other** repos as hardware-CI consumers.
@@ -34,13 +34,13 @@ reachable) before tests run, and boot failures are reported distinctly (exit 12 
 > workflows is tracked by the HW-CI convergence effort.
 
 Reference consumers: pyadi-iio (uri), no-os (flash), TransceiverToolbox (matlab). Matlab
-now has a drop-in template at `onboarding-templates/matlab-hw-request.yml` and the
+now has a drop-in template at `adi_lg_plugins/hw_ci/onboarding_templates/matlab-hw-request.yml` and the
 reusable `matlab-hw-request.yml` workflow — see Step 2 below. The rest of this file covers
 all three modes.
 
 ## Step 2 — add the files to the consumer repo
 
-Copy the matching template(s) from `docs/source/onboarding-templates/` and replace the
+Copy the matching template(s) from `adi_lg_plugins/hw_ci/onboarding_templates/` and replace the
 `<PLACEHOLDERS>`:
 
 **uri mode**
@@ -72,7 +72,7 @@ Copy the matching template(s) from `docs/source/onboarding-templates/` and repla
 - **One extra repo var beyond the Step-3 three**: `MATLAB_BIN` (path to the `matlab`
   binary on the runner, e.g. `/opt/MATLAB/R2025b/bin/matlab`).
 
-Drop `docs/source/onboarding-templates/AGENTS-consumer-stub.md` into the consumer repo as
+Drop `adi_lg_plugins/hw_ci/onboarding_templates/AGENTS-consumer-stub.md` into the consumer repo as
 its own `AGENTS.md` and fill in the wiring.
 
 ## Step 3 — set the three repo variables (REQUIRED, easy to miss)
@@ -101,7 +101,7 @@ verify they exist (Step 5 will fail clearly if they don't):
 
 - **Catalog entry** for each `part` in `coordinator/api/board_catalog.yaml`
   (schema: `coordinator/api/app/catalog.py` → `BoardEntry`/`FlashConfig`; template:
-  `onboarding-templates/board-catalog-entry.yaml`). uri needs `image`; flash needs a
+  `adi_lg_plugins/hw_ci/onboarding_templates/board-catalog-entry.yaml`). uri needs `image`; flash needs a
   `flash:` block. After any catalog edit the coordinator host must be **redeployed**
   (it does not auto-update).
 - **A live place** tagged `daughter-board=<part> carrier=<carrier> boot-strategy=<Strategy>`

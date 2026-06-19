@@ -12,10 +12,10 @@ from pathlib import Path
 # Consumer-facing files that must pin to RECOMMENDED_PIN (non-deprecated only —
 # the hw-matrix/v1/v2 docs legitimately reference older refs and are excluded).
 CONSUMER_PIN_PATHS = [
-    "docs/source/onboarding-templates/hw-request-uri.yml",
-    "docs/source/onboarding-templates/noos-hw-request-flash.yml",
-    "docs/source/onboarding-templates/matlab-hw-request.yml",
-    "docs/source/onboarding-templates/AGENTS-consumer-stub.md",
+    "adi_lg_plugins/hw_ci/onboarding_templates/hw-request-uri.yml",
+    "adi_lg_plugins/hw_ci/onboarding_templates/noos-hw-request-flash.yml",
+    "adi_lg_plugins/hw_ci/onboarding_templates/matlab-hw-request.yml",
+    "adi_lg_plugins/hw_ci/onboarding_templates/AGENTS-consumer-stub.md",
     "docs/source/user-guide/onboarding-a-consumer-repo.rst",
     "docs/source/user-guide/hw-request.rst",
     "AGENTS.md",

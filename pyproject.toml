@@ -62,6 +62,8 @@ namespaces = true
 "adi_lg_plugins.recovery.templates" = ["init", "udhcpc-default.script"]
 # HW-CI v2 per-strategy env-yaml templates (loaded via importlib.resources).
 "adi_lg_plugins.hw_ci.templates" = ["*.yaml"]
+# Onboarding copy-paste templates (read via importlib.resources by `adi-lg-hw-ci init`).
+"adi_lg_plugins.hw_ci.onboarding_templates" = ["*.yml", "*.yaml", "*.py", "*.md"]
 
 [project.urls]
 Homepage = "https://github.com/analogdevicesinc/adi-labgrid-plugins"
@@ -154,7 +156,7 @@ line-length = 100
 target-version = "py310"
 # Drop-in onboarding templates are illustrative (placeholders, copied verbatim
 # into other repos), not package code — don't gate CI lint on them.
-extend-exclude = ["docs/source/onboarding-templates"]
+extend-exclude = ["adi_lg_plugins/hw_ci/onboarding_templates"]
 
 [tool.ruff.lint]
 select = [

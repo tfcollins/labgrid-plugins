@@ -82,6 +82,7 @@ jobs:
           tests/hw_ci/test_release_pin.py \
           tests/hw_ci/test_pin_lint.py \
           tests/hw_ci/test_release_guard.py \
+          tests/hw_ci/test_onboarding_templates_packaged.py \
           tests/hw_ci/test_emit_matrix.py \
           tests/hw_ci/test_fetch_xsa_cli.py \
           tests/hw_ci/test_build_noos_cli.py \

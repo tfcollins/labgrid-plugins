@@ -81,7 +81,7 @@ consumer's tests actually *are* (full detail in `references/consumer-ci.md`):
 
 The canonical, step-by-step onboarding recipe is **`AGENTS.md` at the repo root** — treat it as
 executable and follow it; don't reconstruct the wiring from per-page docs. The copy-paste
-templates live in `docs/source/onboarding-templates/`.
+templates live in `adi_lg_plugins/hw_ci/onboarding_templates/`.
 
 ## Step 3 — For scripts, pick the abstraction level
 

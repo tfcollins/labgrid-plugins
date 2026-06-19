@@ -28,7 +28,7 @@ Five steps. Re-read AGENTS.md for the exact current wording — summarized here 
 shape:
 
 1. **Pick the mode** (uri / flash / matlab, above).
-2. **Copy templates into the consumer repo** from `docs/source/onboarding-templates/` and
+2. **Copy templates into the consumer repo** from `adi_lg_plugins/hw_ci/onboarding_templates/` and
    replace the `<PLACEHOLDERS>` (see the template table below).
 3. **Set three repo variables** in the consumer's GitHub Actions settings (below).
 4. **Confirm lab prerequisites** (a catalog entry per board + a live tagged place + registered
@@ -37,7 +37,7 @@ shape:
 
 ## Onboarding templates
 
-In `docs/source/onboarding-templates/` — read the actual file before copying; placeholder names
+In `adi_lg_plugins/hw_ci/onboarding_templates/` — read the actual file before copying; placeholder names
 and structure are authoritative there, not here.
 
 | Template file                  | Copy to (in consumer repo)        | For mode | Purpose                                              |
