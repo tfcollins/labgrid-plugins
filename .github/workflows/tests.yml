@@ -80,6 +80,7 @@ jobs:
           tests/hw_ci/test_noos_manifest.py \
           tests/hw_ci/test_coordinator_resolve_api.py \
           tests/hw_ci/test_release_pin.py \
+          tests/hw_ci/test_pin_lint.py \
           tests/hw_ci/test_emit_matrix.py \
           tests/hw_ci/test_fetch_xsa_cli.py \
           tests/hw_ci/test_build_noos_cli.py \
