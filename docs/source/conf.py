@@ -131,3 +131,16 @@ mermaid.initialize({
     fontSize: 12
 });
 """
+
+# --- Hardware-CI recommended pin substitution -------------------------------
+# Derive |hw_ci_pin| from the single source (adi_lg_plugins/hw_ci/_release.py)
+# WITHOUT importing the package (its __init__ pulls the driver/resource/strategy
+# registration chain, unsafe at config-eval time). Regex-parse the constant.
+import re as _re  # noqa: E402
+from pathlib import Path as _Path  # noqa: E402
+
+_release_src = (
+    _Path(__file__).resolve().parents[2] / "adi_lg_plugins" / "hw_ci" / "_release.py"
+).read_text(encoding="utf-8")
+_pin_match = _re.search(r'RECOMMENDED_PIN\s*=\s*"([^"]+)"', _release_src)
+rst_epilog = f"\n.. |hw_ci_pin| replace:: {_pin_match.group(1) if _pin_match else 'v3.5'}\n"
