@@ -17,13 +17,14 @@ import {
   Text,
   Tag,
   TagLabel,
-  useColorModeValue,
 } from "@chakra-ui/react";
 import { Link as RouterLink } from "react-router-dom";
 import { useResources } from "../hooks/useResources";
 import { useWebSocket } from "../api/ws";
 import ConceptHeading from "../components/ConceptHeading";
 import { useRelationships } from "../hooks/useRelationships";
+import StatusPill from "../components/ui/StatusPill";
+import Panel from "../components/ui/Panel";
 
 export default function Resources() {
   useWebSocket();
@@ -33,8 +34,6 @@ export default function Resources() {
   const [exporterFilter, setExporterFilter] = useState("");
   const [clsFilter, setClsFilter] = useState("");
   const [showOnlyAvail, setShowOnlyAvail] = useState(false);
-  const tableBg = useColorModeValue("white", "gray.800");
-
   const exporters = useMemo(() => {
     if (!resources) return [];
     return [...new Set(resources.map((r) => r.exporter))].sort();
@@ -69,7 +68,7 @@ export default function Resources() {
           onChange={(e) => setExporterFilter(e.target.value)}
           maxW="200px"
           size="sm"
-          bg={tableBg}
+          bg="surface.bg"
         >
           {exporters.map((e) => (
             <option key={e} value={e}>
@@ -83,7 +82,7 @@ export default function Resources() {
           onChange={(e) => setClsFilter(e.target.value)}
           maxW="200px"
           size="sm"
-          bg={tableBg}
+          bg="surface.bg"
         >
           {classes.map((c) => (
             <option key={c} value={c}>
@@ -107,7 +106,7 @@ export default function Resources() {
         </Text>
       </HStack>
 
-      <Box bg={tableBg} borderRadius="lg" overflow="hidden" shadow="sm">
+      <Panel overflow="hidden">
         <Table variant="simple" size="sm">
           <Thead>
             <Tr>
@@ -132,13 +131,13 @@ export default function Resources() {
                 </Td>
                 <Td>{r.name}</Td>
                 <Td>
-                  <Badge colorScheme={r.avail ? "green" : "red"}>
+                  <StatusPill status={r.avail ? "free" : "degraded"}>
                     {r.avail ? "Yes" : "No"}
-                  </Badge>
+                  </StatusPill>
                 </Td>
                 <Td>
                   {r.acquired ? (
-                    <Badge colorScheme="orange">{r.acquired}</Badge>
+                    <StatusPill status="acquired">{r.acquired}</StatusPill>
                   ) : (
                     <Text fontSize="sm" color="text.secondary">
                       -
@@ -150,7 +149,7 @@ export default function Resources() {
                     const key = `${r.exporter}/${r.group}/${r.cls}/${r.name}`;
                     const places = resourceToPlaces.get(key) ?? [];
                     if (places.length === 0) {
-                      return <Text fontSize="xs" color="gray.400">—</Text>;
+                      return <Text fontSize="xs" color="text.secondary">—</Text>;
                     }
                     return (
                       <HStack spacing={1} flexWrap="wrap">
@@ -181,7 +180,7 @@ export default function Resources() {
             )}
           </Tbody>
         </Table>
-      </Box>
+      </Panel>
     </Box>
   );
 }
