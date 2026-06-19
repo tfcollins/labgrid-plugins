@@ -120,7 +120,7 @@ input:
      hw:
        uses: tfcollins/labgrid-plugins/.github/workflows/hw-request.yml@v3.5
        with:
-         coordinator: ${{ vars.ADI_LG_COORDINATOR }}
+         coordinator: ${{ vars.LG_COORDINATOR }}
          test-root: "tests"
          request-mode: "reserve"
        secrets:
