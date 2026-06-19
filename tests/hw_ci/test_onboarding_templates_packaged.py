@@ -1,3 +1,4 @@
+import re
 from importlib import resources
 from pathlib import Path
 
@@ -27,3 +28,18 @@ def test_literalincludes_point_into_the_package():
             rel = line.split("literalinclude::", 1)[1].strip()
             target = (Path("docs/source/user-guide") / rel).resolve()
             assert target.is_file(), f"literalinclude target missing: {target}"
+
+
+def test_package_data_glob_covers_every_template_extension():
+    # Guards against a package-data regression silently dropping a template from the wheel:
+    # every packaged template's extension must be covered by the pyproject package-data glob.
+    pyproject = Path("pyproject.toml").read_text(encoding="utf-8")
+    m = re.search(r'onboarding_templates"\s*=\s*\[([^\]]*)\]', pyproject)
+    assert m, "onboarding_templates package-data entry not found in pyproject.toml"
+    covered = set(re.findall(r"\*(\.\w+)", m.group(1)))
+    root = resources.files("adi_lg_plugins.hw_ci.onboarding_templates")
+    for p in root.iterdir():
+        if p.name.startswith("__"):  # skip __init__.py and __pycache__
+            continue
+        suffix = Path(p.name).suffix
+        assert suffix in covered, f"{p.name} ({suffix}) not in package-data globs {sorted(covered)}"

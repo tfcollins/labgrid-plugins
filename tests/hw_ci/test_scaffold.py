@@ -20,6 +20,26 @@ def test_render_pins_the_stub_placeholder_ref():
     assert f".yml@{RECOMMENDED_PIN}" in out
 
 
+def test_rewrite_pins_only_touches_labgrid_refs():
+    # A foreign `.yml@v..` ref (a different org's pinned workflow) must NOT be rewritten.
+    foreign = "uses: someorg/cool-action/.github/workflows/ci.yml@v1"
+    assert scaffold._rewrite_pins(foreign) == foreign
+    # labgrid-plugins refs (workflow uses:, git+https install, and the bracketed stub form)
+    # ARE rewritten from any incoming pin to RECOMMENDED_PIN.
+    assert (
+        scaffold._rewrite_pins(
+            "uses: tfcollins/labgrid-plugins/.github/workflows/hw-request.yml@v2.9"
+        )
+        == f"uses: tfcollins/labgrid-plugins/.github/workflows/hw-request.yml@{RECOMMENDED_PIN}"
+    )
+    assert f"labgrid-plugins.git@{RECOMMENDED_PIN}" in scaffold._rewrite_pins(
+        "adi-labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins.git@v2.9"
+    )
+    assert f".yml@{RECOMMENDED_PIN}" in scaffold._rewrite_pins(
+        "tfcollins/labgrid-plugins/.github/workflows/<hw-request | noos-hw-request>.yml@v2.9"
+    )
+
+
 def test_scaffold_uri_writes_expected_files(tmp_path):
     written = scaffold.scaffold("uri", str(tmp_path), test_root="test/hw")
     rels = sorted(str(p.relative_to(tmp_path)) for p in written)
