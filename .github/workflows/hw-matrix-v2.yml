@@ -1,5 +1,8 @@
 name: HW matrix v2 (reusable, discovery-driven)
 
+# DEPRECATED — do not use for new consumers. Use hw-request.yml@v3.5 instead.
+# See docs/source/user-guide/onboarding-a-consumer-repo.rst.
+
 # Reusable workflow consumed by per-repo callers. Unlike v1 (which is
 # manifest-first), v2 discovers live hardware from the coordinator's
 # /api/places endpoint and intersects it with the caller's pytest

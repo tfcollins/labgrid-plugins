@@ -1,6 +1,11 @@
 Hardware CI for bash / non-Python test drivers (UART + JTAG)
 ============================================================
 
+.. deprecated:: v3
+   The ``hw-matrix`` family is deprecated. New consumers should use the
+   ``hw-request`` family — see :doc:`onboarding-a-consumer-repo`. This page is
+   retained for repos that have not migrated yet.
+
 The reusable workflow and the :doc:`v2 discovery flow <hw-ci-v2>` both
 assume the **test driver is pytest**: a labgrid fixture in the
 consumer's ``conftest.py`` owns the board lifecycle and tests reach the
