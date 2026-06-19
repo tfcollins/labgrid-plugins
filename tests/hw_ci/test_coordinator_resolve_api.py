@@ -56,3 +56,25 @@ def test_fetch_raw_places_rest_honors_lg_api_override(monkeypatch):
     seen = _capture_rest(monkeypatch)
     coord_mod.fetch_raw_places("10.0.0.41:20408")
     assert seen["coord"] == "api.lab:9001"
+
+
+def test_warn_if_rest_port_warns_on_8000(capsys):
+    from adi_lg_plugins.hw_ci.coordinator import warn_if_rest_port
+
+    warn_if_rest_port("10.0.0.41:8000")
+    assert "REST port :8000" in capsys.readouterr().err
+
+
+def test_warn_if_rest_port_silent_on_grpc(capsys):
+    from adi_lg_plugins.hw_ci.coordinator import warn_if_rest_port
+
+    warn_if_rest_port("10.0.0.41:20408")
+    assert capsys.readouterr().err == ""
+
+
+def test_warn_if_rest_port_github_annotation(capsys, monkeypatch):
+    from adi_lg_plugins.hw_ci.coordinator import warn_if_rest_port
+
+    monkeypatch.setenv("GITHUB_ACTIONS", "true")
+    warn_if_rest_port("http://host:8000")
+    assert capsys.readouterr().err.startswith("::warning::")
