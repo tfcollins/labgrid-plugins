@@ -131,11 +131,8 @@ matlab mode (MATLAB ``runHWTests``)
 ``(daughter-board, carrier, hdl-config)`` to the MATLAB board name passed to
 ``runHWTests`` (most-specific entry wins):
 
-.. code-block:: yaml
-
-   boards:
-     - {carrier: zcu102, daughter-board: adrv9002, matlab_board: zynqmp-zcu102-rev10-adrv9002-vcmos}
-     - {daughter-board: pluto, matlab_board: pluto}
+.. literalinclude:: ../../../adi_lg_plugins/hw_ci/onboarding_templates/board-map.yaml
+   :language: yaml
 
 ``runHWTests.m`` reads the URI from ``$IIO_URI`` (exported by ``adi-lg request``) and emits
 ``<matlab_board>_HWTestResults.xml`` — no test-side changes are needed. The leg runner must

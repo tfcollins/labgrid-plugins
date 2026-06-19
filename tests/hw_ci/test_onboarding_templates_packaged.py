@@ -4,6 +4,7 @@ from pathlib import Path
 EXPECTED = {
     "AGENTS-consumer-stub.md",
     "board-catalog-entry.yaml",
+    "board-map.yaml",
     "conftest-iio-uri.py",
     "hw-request-uri.yml",
     "matlab-hw-request.yml",
