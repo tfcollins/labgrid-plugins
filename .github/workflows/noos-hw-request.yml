@@ -18,7 +18,7 @@ on:
   workflow_call:
     inputs:
       coordinator:
-        description: "Coordinator host:port for /api/match (REST)."
+        description: "gRPC coordinator host:port (e.g. host:20408); the REST API (:8000) is derived automatically."
         required: true
         type: string
       manifest:

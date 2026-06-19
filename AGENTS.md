@@ -106,6 +106,14 @@ verify they exist (Step 5 will fail clearly if they don't):
   (it does not auto-update).
 - **A live place** tagged `daughter-board=<part> carrier=<carrier> boot-strategy=<Strategy>`
   (+ optional `runner=<label>`).
+
+  Hand the lab admin this (fill the placeholders) so the catalog + place round-trip is one message:
+
+  ```text
+  Please add to coordinator/api/board_catalog.yaml: a <part> entry (uri: image; flash: flash block),
+  and create a live place tagged: daughter-board=<part> carrier=<carrier> boot-strategy=<Strategy>
+  (+ runner=<label> if board-pinned). Redeploy the coordinator after merging.
+  ```
 - **Runner scope**: the lab runners must be registered on the consumer repo's (or its
   org's) GitHub scope, or legs queue forever. See
   `.github/scripts/register-hw-runners.sh --scopes`.
@@ -134,7 +142,11 @@ adi-lg-hw-ci matlab-matrix --board-map test/hw_ci/board_map.yaml --coord "$LG_CO
 
 **Success** = the printed `matrix.include` has one leg per board you expect, each with a
 non-empty `runner`. A wanted board with no live place is emitted as a `::warning::` skip
-(that means the catalog/place is missing — Step 4). Other quick checks:
+(that means the catalog/place is missing — Step 4).
+
+> If a board prints `Unknown release version`, the coordinator catalog is stale — ask the lab admin to **redeploy the coordinator** after the catalog merge.
+
+Other quick checks:
 
 ```bash
 adi-lg-hw-ci list-strategies                    # the board's boot-strategy must appear here

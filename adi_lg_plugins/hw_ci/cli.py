@@ -38,6 +38,7 @@ from .schema import KNOWN_STRATEGIES
 
 def _cmd_discover(args: argparse.Namespace) -> int:
     coord = coord_mod.resolve_coordinator(args.coord)
+    coord_mod.warn_if_rest_port(coord)
     places, skipped = coord_mod.list_live_places(
         coord,
         timeout=args.timeout,
@@ -145,6 +146,7 @@ def _cmd_request_matrix(args: argparse.Namespace) -> int:
     from .request_matrix import build_request_matrix
 
     coord = coord_mod.resolve_coordinator(args.coord)
+    coord_mod.warn_if_rest_port(coord)
     # LG_COORDINATOR is the gRPC coordinator (e.g. host:20408); the REST API
     # /api/match lives on host:8000 — derive it the same way request() does.
     api = _resolve_api(coord)
@@ -187,6 +189,7 @@ def _cmd_noos_matrix(args: argparse.Namespace) -> int:
     from .noos_manifest import build_noos_matrix, load_noos_manifest
 
     coord = coord_mod.resolve_coordinator(args.coord)
+    coord_mod.warn_if_rest_port(coord)
     # LG_COORDINATOR is the gRPC coordinator; /api/match is the REST API on :8000.
     api = _resolve_api(coord)
     projects = load_noos_manifest(args.manifest)
@@ -236,6 +239,7 @@ def _cmd_matlab_matrix(args: argparse.Namespace) -> int:
     matlab_board to pass to runHWTests. Live places with no board-map entry are
     annotated as skipped (the toolbox has no test entry point for them)."""
     coord = coord_mod.resolve_coordinator(args.coord)
+    coord_mod.warn_if_rest_port(coord)
     board_map = load_board_map(args.board_map)
     places, _bad = coord_mod.list_live_places(coord)
 

@@ -1,6 +1,11 @@
 Hardware CI (v1, manifest-first)
 ================================
 
+.. deprecated:: v3
+   The ``hw-matrix`` family is deprecated. New consumers should use the
+   ``hw-request`` family — see :doc:`onboarding-a-consumer-repo`. This page is
+   retained for repos that have not migrated yet.
+
 .. note::
 
    A discovery-driven successor (``hw-matrix.yml@v2``) is also

@@ -11,7 +11,8 @@ projects:
     part: <PART>                   # coordinator part to flash onto (may be a catalog alias)
     carriers: [<CARRIER>]          # FPGA carriers, preference order (>= 1 required)
     validate_banner: "Successfully initialized"  # optional; serial success marker (default shown)
-    build_vars: {}                 # optional extra `make` vars, e.g. {EXAMPLE: iio_example}
+    build_vars: {}                 # NOT wired through the default build-cmd — override the
+                                   # `build-cmd` workflow input to pass extra make vars.
 
   # Repeat per project. Example (the proven first cut):
   # - noos_project: adrv9009
