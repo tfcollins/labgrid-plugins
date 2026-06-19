@@ -329,6 +329,28 @@ def _cmd_list_strategies(_args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_doctor(args: argparse.Namespace) -> int:
+    from .doctor import run_doctor
+
+    return run_doctor(args)
+
+
+def _cmd_lint_markers(args: argparse.Namespace) -> int:
+    """Flag iio_hardware/iio_carrier markers whose args are not string literals
+    (silently invisible to discovery). Coordinator-free; CI/pre-commit friendly."""
+    rejections = markers_mod.collect_marker_rejections(args.test_root)
+    for path, lineno, reason in rejections:
+        print(f"{path}:{lineno}: {reason}", file=sys.stderr)
+    if rejections:
+        print(
+            f"# lint-markers: {len(rejections)} non-literal marker(s) — invisible to discovery",
+            file=sys.stderr,
+        )
+        return 1
+    print("# lint-markers: all hardware markers are string literals", file=sys.stderr)
+    return 0
+
+
 def _parse_build_vars(pairs: list[str]) -> dict[str, str]:
     out: dict[str, str] = {}
     for pair in pairs or []:
@@ -425,6 +447,27 @@ def main(argv: list[str] | None = None) -> int:
         "list-strategies", help="dump known boot-strategy class names + which have render templates"
     )
     pl.set_defaults(func=_cmd_list_strategies)
+
+    plm = sub.add_parser(
+        "lint-markers",
+        help="flag iio_hardware/iio_carrier markers that aren't string literals",
+    )
+    plm.add_argument("--test-root", required=True, help="path to the consumer's test directory")
+    plm.set_defaults(func=_cmd_lint_markers)
+
+    pdoc = sub.add_parser("doctor", help="validate the whole onboarding chain in one pass")
+    pdoc.add_argument("--mode", choices=["uri", "flash", "matlab"], required=True)
+    pdoc.add_argument(
+        "--coord", default=None, help="coordinator host:port (default: $LG_COORDINATOR)"
+    )
+    pdoc.add_argument("--repo", default=None, help="owner/name (default: infer via gh)")
+    pdoc.add_argument("--test-root", default=None, help="[uri] consumer test directory")
+    pdoc.add_argument("--manifest", default=None, help="[flash] projects.yaml path")
+    pdoc.add_argument("--board-map", default=None, help="[matlab] board_map.yaml path")
+    pdoc.add_argument(
+        "--runner-label", default=None, help="fallback runner label (vars.HW_REQUEST_RUNNER)"
+    )
+    pdoc.set_defaults(func=_cmd_doctor)
 
     pm = sub.add_parser(
         "request-matrix", help="emit a part-keyed matrix for the hw-request workflow"

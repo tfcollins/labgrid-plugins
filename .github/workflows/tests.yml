@@ -55,6 +55,9 @@ jobs:
           tests/test_bootfpgasocssh_helpers.py \
           tests/test_bootfpgasoctftp_sd_autoboot.py \
           tests/hw_ci/test_resolve.py \
+          tests/hw_ci/test_markers_ast.py \
+          tests/hw_ci/test_markers_rejections.py \
+          tests/hw_ci/test_lint_markers_cli.py \
           tests/test_cloudsmith_dl.py \
           tests/test_plugin_registration.py \
           tests/test_request_errors.py \
@@ -64,6 +67,7 @@ jobs:
           tests/test_request_core.py \
           tests/test_request_public_api.py \
           tests/test_request_cli.py \
+          tests/hw_ci/test_request_cli_annotations.py \
           tests/test_provision.py \
           tests/test_pytest_fixtures.py \
           tests/hw_ci/test_request_matrix.py \
@@ -75,12 +79,18 @@ jobs:
           tests/hw_ci/test_build_noos.py \
           tests/hw_ci/test_noos_manifest.py \
           tests/hw_ci/test_coordinator_resolve_api.py \
+          tests/hw_ci/test_release_pin.py \
+          tests/hw_ci/test_pin_lint.py \
+          tests/hw_ci/test_release_guard.py \
           tests/hw_ci/test_emit_matrix.py \
           tests/hw_ci/test_fetch_xsa_cli.py \
           tests/hw_ci/test_build_noos_cli.py \
           tests/hw_ci/test_board_map.py \
           tests/hw_ci/test_matlab_matrix.py \
           tests/hw_ci/test_matlab_matrix_cli.py \
+          tests/hw_ci/test_workflow_var_guard.py \
+          tests/hw_ci/test_doctor_core.py \
+          tests/hw_ci/test_doctor_gh.py \
           tests/test_kuiperdl_download_image.py \
           tests/test_kasa.py \
           tests/test_pin_release_refs.py

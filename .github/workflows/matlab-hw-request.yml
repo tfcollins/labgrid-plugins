@@ -89,6 +89,10 @@ jobs:
       matrix: ${{ steps.plan.outputs.matrix }}
       count: ${{ steps.plan.outputs.count }}
     steps:
+      - name: Validate required inputs
+        run: |
+          [ -n "${{ inputs.coordinator }}" ] || { echo "::error::coordinator is empty — set vars.LG_COORDINATOR (gRPC :20408)"; exit 1; }
+          [ -n "${{ inputs.runner-label }}" ] || { echo "::error::runner-label is empty — set vars.HW_REQUEST_RUNNER"; exit 1; }
       - uses: actions/checkout@v4
         with:
           submodules: recursive

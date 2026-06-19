@@ -184,9 +184,15 @@ def request_cmd(
         sys.exit(EXIT_INTERRUPTED)
     except NoMatchingBoard as e:
         console.print(f"[bold red]No matching board: {e}[/bold red]")
+        if os.environ.get("GITHUB_ACTIONS") == "true":
+            reason = " ".join(str(e).split())
+            click.echo(f"::error title=no-board::part={part} reason={reason}")
         sys.exit(EXIT_NO_MATCH)
     except BoardUnavailable as e:
         console.print(f"[bold red]Board unavailable: {e}[/bold red]")
+        if os.environ.get("GITHUB_ACTIONS") == "true":
+            reason = " ".join(str(e).split())
+            click.echo(f"::error title=board-unavailable::part={part} reason={reason}")
         sys.exit(EXIT_UNAVAILABLE)
     except ProvisionError as e:
         console.print(f"[bold red]Provisioning failed: {e}[/bold red]")

@@ -47,3 +47,35 @@ def docs(session):
     session.install("-e", ".[docs]")
     # Build the documentation using sphinx-build directly
     session.run("sphinx-build", "-b", "html", "docs/source", "docs/build/html")
+
+
+@nox.session(venv_backend="none")
+def lint_pins(session):
+    """Fail if any consumer-facing example pins != RECOMMENDED_PIN (or uses @main)."""
+    from adi_lg_plugins.hw_ci._release import RECOMMENDED_PIN
+    from adi_lg_plugins.hw_ci.pin_lint import CONSUMER_PIN_PATHS, find_consumer_pin_violations
+
+    violations = find_consumer_pin_violations(CONSUMER_PIN_PATHS, RECOMMENDED_PIN)
+    for f, line, found in violations:
+        session.log(f"{f}:{line}: consumer pin @{found} != @{RECOMMENDED_PIN}")
+    if violations:
+        session.error(f"{len(violations)} stale consumer pin(s)")
+
+
+@nox.session(venv_backend="none")
+def release_guard(session):
+    """RELEASE-ONLY. Fail if any hw-request-family workflow still has an @main
+    self-ref (i.e. scripts/pin-release-refs.sh was not run). MUST NOT run on
+    main — main keeps @main by design."""
+    from adi_lg_plugins.hw_ci.pin_lint import find_main_self_refs
+
+    family = [
+        ".github/workflows/hw-request.yml",
+        ".github/workflows/noos-hw-request.yml",
+        ".github/workflows/matlab-hw-request.yml",
+    ]
+    refs = find_main_self_refs(family)
+    for f, line in refs:
+        session.log(f"{f}:{line}: internal @main self-ref — run scripts/pin-release-refs.sh")
+    if refs:
+        session.error(f"{len(refs)} unpinned @main self-ref(s) — not release-ready")

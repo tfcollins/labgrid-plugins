@@ -1,0 +1,26 @@
+{
+  "skill_name": "hardware-test-automation",
+  "evals": [
+    {
+      "id": 0,
+      "name": "consumer-ci-uri",
+      "prompt": "I maintain `pyadi-example`, a Python repo with pytest tests for the AD9361 transceiver that talk to the board over libiio. I want these tests to run on real hardware in our lab whenever I put a `hw-request` label on a PR. Set up the GitHub Actions wiring for me — the workflow file and whatever else the repo needs. Our coordinator host is `lab-coord.internal`.",
+      "expected_output": "Recognizes this as consumer-CI uri mode. Generates a consumer workflow that calls the hw-request.yml reusable workflow pinned to a current tag (e.g. @v3.5, NOT @main), wires coordinator on the gRPC :20408 port, references the three repo variables (LG_COORDINATOR/HW_REQUEST_RUNNER/HW_PREFLIGHT_RUNNER), the iio_uri conftest, and @pytest.mark.iio_hardware([\"ad9361\"]) string-literal markers. Mentions the adi-lg-hw-ci request-matrix discovery preflight to verify before opening a PR.",
+      "files": []
+    },
+    {
+      "id": 1,
+      "name": "standalone-request-script",
+      "prompt": "Write a Python script I can run from my lab workstation that reserves an adrv9002 on a zcu102 carrier from our coordinator, boots it to Linux, opens an IIO context to confirm it's alive, prints the device names, and then cleanly releases the board. Our coordinator is at `lab-coord.internal`.",
+      "expected_output": "Uses the request() context manager from adi_lg_plugins.request with part=adrv9002, carrier=zcu102, mode=uri, and coord pointing at the gRPC :20408 endpoint. Uses board.uri to open the IIO context. Relies on the context manager for automatic release rather than hand-rolling reserve/acquire/release. Does NOT reach for raw labgrid unless justified.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "bring-board-online-infra",
+      "prompt": "We just physically wired up a new ZCU102 carrier with an AD9081 daughter card to one of our exporter hosts. Walk me through everything that has to happen so this board shows up and is usable by our hardware CI — config, tagging, runner, the works.",
+      "expected_output": "Routes to the exporter/coordinator infra path. Covers: an exporter config (from exporter_configs/templates, validated) exporting the place; a board_catalog.yaml entry for ad9081 (with coordinator redeploy noted); correct place tags (daughter-board=ad9081, carrier=zcu102, boot-strategy=<a real strategy>, optional runner); registering a self-hosted runner via register-hw-runners.sh; and verifying with the adi-lg-hw-ci discovery preflight. Notes that missing tags fail silently.",
+      "files": []
+    }
+  ]
+}
