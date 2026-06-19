@@ -106,8 +106,13 @@ def check_discovery(
     (its own ``runner`` or the non-empty fallback). Dropped places are surfaced."""
     try:
         legs, missing, dropped = _discovery_legs(
-            mode, coord=coord, test_root=test_root, manifest=manifest,
-            board_map=board_map, probe=probe, lister=lister,
+            mode,
+            coord=coord,
+            test_root=test_root,
+            manifest=manifest,
+            board_map=board_map,
+            probe=probe,
+            lister=lister,
         )
     except Exception as e:  # noqa: BLE001 - report, don't crash the doctor
         return CheckResult("discovery", FAIL, f"discovery error: {e}")
@@ -121,7 +126,8 @@ def check_discovery(
     no_runner = [leg["part"] for leg in legs if not leg["runner"] and not fallback_runner]
     if no_runner:
         return CheckResult(
-            "discovery", FAIL,
+            "discovery",
+            FAIL,
             f"no runner for: {', '.join(no_runner)} (set a place `runner` tag or runner-label){extra}",
         )
     return CheckResult("discovery", PASS, f"{len(legs)} leg(s){extra}")
@@ -181,7 +187,9 @@ def check_repo_vars(repo: str, mode: str, *, gh=run_gh) -> CheckResult:
 def check_runner_scope(repo: str, labels: list[str], *, gh=run_gh) -> CheckResult:
     labels = [lbl for lbl in labels if lbl]
     if not labels:
-        return CheckResult("runner-scope", SKIP, "no runner-label given to verify (pass --runner-label)")
+        return CheckResult(
+            "runner-scope", SKIP, "no runner-label given to verify (pass --runner-label)"
+        )
     rc, out = gh(["api", f"/repos/{repo}/actions/runners"])
     if rc != 0:
         return CheckResult("runner-scope", SKIP, "gh unavailable/unauthenticated")
@@ -193,7 +201,9 @@ def check_runner_scope(repo: str, labels: list[str], *, gh=run_gh) -> CheckResul
     missing = [lbl for lbl in labels if lbl and lbl not in have]
     if missing:
         return CheckResult("runner-scope", FAIL, f"no runner labelled: {', '.join(missing)}")
-    return CheckResult("runner-scope", PASS, f"runner(s) for: {', '.join(sorted(have & set(labels)))}")
+    return CheckResult(
+        "runner-scope", PASS, f"runner(s) for: {', '.join(sorted(have & set(labels)))}"
+    )
 
 
 def _infer_repo() -> str | None:
@@ -216,15 +226,20 @@ def run_doctor(args) -> int:
     if coord is None:
         results.append(
             CheckResult(
-                "discovery", FAIL,
+                "discovery",
+                FAIL,
                 "no coordinator — set LG_COORDINATOR (gRPC :20408) or pass --coord",
             )
         )
     else:
         results.append(
             check_discovery(
-                args.mode, coord=coord, test_root=args.test_root, manifest=args.manifest,
-                board_map=args.board_map, fallback_runner=fallback,
+                args.mode,
+                coord=coord,
+                test_root=args.test_root,
+                manifest=args.manifest,
+                board_map=args.board_map,
+                fallback_runner=fallback,
             )
         )
     results.append(check_pin())

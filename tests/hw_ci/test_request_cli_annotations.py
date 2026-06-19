@@ -21,7 +21,9 @@ def test_no_board_annotation(monkeypatch):
 def test_board_unavailable_annotation(monkeypatch):
     res = _invoke(BoardUnavailable("no free board within 0s"), monkeypatch)
     assert res.exit_code == 11
-    assert "::error title=board-unavailable::part=ad9081 reason=no free board within 0s" in res.output
+    assert (
+        "::error title=board-unavailable::part=ad9081 reason=no free board within 0s" in res.output
+    )
 
 
 def test_no_annotation_outside_actions(monkeypatch):

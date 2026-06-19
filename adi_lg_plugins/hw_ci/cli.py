@@ -455,16 +455,18 @@ def main(argv: list[str] | None = None) -> int:
     plm.add_argument("--test-root", required=True, help="path to the consumer's test directory")
     plm.set_defaults(func=_cmd_lint_markers)
 
-    pdoc = sub.add_parser(
-        "doctor", help="validate the whole onboarding chain in one pass"
-    )
+    pdoc = sub.add_parser("doctor", help="validate the whole onboarding chain in one pass")
     pdoc.add_argument("--mode", choices=["uri", "flash", "matlab"], required=True)
-    pdoc.add_argument("--coord", default=None, help="coordinator host:port (default: $LG_COORDINATOR)")
+    pdoc.add_argument(
+        "--coord", default=None, help="coordinator host:port (default: $LG_COORDINATOR)"
+    )
     pdoc.add_argument("--repo", default=None, help="owner/name (default: infer via gh)")
     pdoc.add_argument("--test-root", default=None, help="[uri] consumer test directory")
     pdoc.add_argument("--manifest", default=None, help="[flash] projects.yaml path")
     pdoc.add_argument("--board-map", default=None, help="[matlab] board_map.yaml path")
-    pdoc.add_argument("--runner-label", default=None, help="fallback runner label (vars.HW_REQUEST_RUNNER)")
+    pdoc.add_argument(
+        "--runner-label", default=None, help="fallback runner label (vars.HW_REQUEST_RUNNER)"
+    )
     pdoc.set_defaults(func=_cmd_doctor)
 
     pm = sub.add_parser(
