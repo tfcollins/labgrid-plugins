@@ -55,6 +55,8 @@ jobs:
           tests/test_bootfpgasocssh_helpers.py \
           tests/test_bootfpgasoctftp_sd_autoboot.py \
           tests/hw_ci/test_resolve.py \
+          tests/hw_ci/test_markers_ast.py \
+          tests/hw_ci/test_markers_rejections.py \
           tests/test_cloudsmith_dl.py \
           tests/test_plugin_registration.py \
           tests/test_request_errors.py \
