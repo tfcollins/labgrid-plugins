@@ -273,3 +273,47 @@ def test_download_cloudsmith_out_copy_failure(mock_dl, runner):
 
         assert result.exit_code != 0
         assert "Copy failed" in result.output
+
+
+def test_recover_help():
+    from click.testing import CliRunner
+
+    from adi_lg_plugins.tools.cli import cli
+
+    result = CliRunner().invoke(cli, ["recover", "--help"])
+    assert result.exit_code == 0
+    assert "sd_flash_done" in result.output
+
+
+def test_recover_runs_strategy_transition(tmp_path, monkeypatch):
+    from click.testing import CliRunner
+
+    import adi_lg_plugins.tools.cli as cli_mod
+
+    cfg = tmp_path / "env.yaml"
+    cfg.write_text("targets: {}\n")
+    calls = {}
+
+    class FakeStrategy:
+        def transition(self, state):
+            calls["state"] = state
+
+    class FakeTarget:
+        def get_resource(self, _cls):
+            raise Exception("no KuiperRelease")
+
+        def get_driver(self, name):
+            calls["driver"] = name
+            return FakeStrategy()
+
+    class FakeEnv:
+        def __init__(self, _cfg):
+            pass
+
+        def get_target(self, _t):
+            return FakeTarget()
+
+    monkeypatch.setattr(cli_mod, "Environment", FakeEnv)
+    result = CliRunner().invoke(cli_mod.cli, ["recover", "--config", str(cfg)])
+    assert result.exit_code == 0, result.output
+    assert calls == {"driver": "BootZynq7000JTAGRecovery", "state": "sd_flash_done"}

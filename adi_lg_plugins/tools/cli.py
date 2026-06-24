@@ -177,6 +177,55 @@ def boot_soc_ssh(config, release, kernel, bootbin, devicetree, target, state):
 @click.option(
     "--config", "-c", required=True, type=click.Path(exists=True), help="Labgrid configuration file"
 )
+@click.option("--release", help="Kuiper release version (e.g., 2023_R2_P1)")
+@click.option(
+    "--sd-image",
+    type=click.Path(exists=True),
+    help="Path to an SD card image to flash (overrides the strategy default)",
+)
+@click.option("--target", "-t", default="main", help="Target name in config (default: main)")
+@click.option(
+    "--state",
+    default="sd_flash_done",
+    help="Target state to transition to (default: sd_flash_done)",
+)
+def recover(config, release, sd_image, target, state):
+    """Recover a Zynq-7000 board via JTAG (BootZynq7000JTAGRecovery).
+
+    Bootstraps U-Boot over JTAG, TFTP-boots a RAM-rooted recovery Linux, then
+    reflashes the SD card. DESTRUCTIVE: wipes /dev/mmcblk0.
+    """
+    env = Environment(config)
+    tg = env.get_target(target)
+
+    try:
+        resource = tg.get_resource("KuiperRelease")
+        if release:
+            resource.release_version = release
+            logging.info(f"Overriding release version: {resource.release_version}")
+    except Exception as e:
+        logging.warning(f"Could not find KuiperRelease resource: {e}")
+
+    strategy = tg.get_driver("BootZynq7000JTAGRecovery")
+    if sd_image:
+        strategy.sd_image_path = os.path.abspath(sd_image)
+        logging.info(f"Overriding SD image path: {strategy.sd_image_path}")
+
+    with console.status(
+        f"[bold green]Recovering {target} to {state} using BootZynq7000JTAGRecovery..."
+    ):
+        try:
+            strategy.transition(state)
+            console.print(f"[bold green]Successfully reached {state}![/bold green]")
+        except Exception as e:
+            console.print(f"[bold red]Recovery failed: {e}[/bold red]")
+            raise click.ClickException(str(e)) from e
+
+
+@cli.command()
+@click.option(
+    "--config", "-c", required=True, type=click.Path(exists=True), help="Labgrid configuration file"
+)
 @click.option("--pre-boot-file", multiple=True, help="Format: local_path:remote_path")
 @click.option("--post-boot-file", multiple=True, help="Format: local_path:remote_path")
 @click.option("--target", "-t", default="main", help="Target name in config (default: main)")

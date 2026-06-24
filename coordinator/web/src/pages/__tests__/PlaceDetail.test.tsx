@@ -11,7 +11,7 @@ vi.mock("../../api/client", () => ({
       name: "vcu118-lab1",
       aliases: [],
       comment: "",
-      tags: {},
+      tags: { "board-location": "rackA", carrier: "zcu102" },
       matches: [],
       acquired: null,
       acquired_resources: [],
@@ -27,6 +27,8 @@ vi.mock("../../api/client", () => ({
     ]),
     acquirePlace: vi.fn().mockResolvedValue({ acquired: "vcu118-lab1" }),
     releasePlace: vi.fn().mockResolvedValue({ released: "vcu118-lab1" }),
+    setPlaceTags: vi.fn().mockResolvedValue({}),
+    recoverPlace: vi.fn().mockResolvedValue({ ok: true }),
   },
 }));
 
@@ -65,5 +67,54 @@ describe("PlaceDetail", () => {
     render(wrap(<PlaceDetail />));
     fireEvent.click(await screen.findByRole("button", { name: /acquire/i }));
     await waitFor(() => expect(api.acquirePlace).toHaveBeenCalledWith("vcu118-lab1"));
+  });
+
+  it("renders place tags as chips", async () => {
+    render(wrap(<PlaceDetail />));
+    expect(await screen.findByText("board-location=rackA")).toBeInTheDocument();
+    expect(screen.getByText("carrier=zcu102")).toBeInTheDocument();
+  });
+
+  it("edits and saves tags", async () => {
+    const { api } = await import("../../api/client");
+    render(wrap(<PlaceDetail />));
+    fireEvent.click(await screen.findByRole("button", { name: /edit tags/i }));
+    // add a new custom tag row
+    fireEvent.click(await screen.findByRole("button", { name: /add tag/i }));
+    const keyInputs = screen.getAllByLabelText(/tag \d+ key/i);
+    const valInputs = screen.getAllByLabelText(/tag \d+ value/i);
+    fireEvent.change(keyInputs[keyInputs.length - 1], { target: { value: "owner" } });
+    fireEvent.change(valInputs[valInputs.length - 1], { target: { value: "alice" } });
+    fireEvent.click(screen.getByRole("button", { name: /^save$/i }));
+    await waitFor(() =>
+      expect(api.setPlaceTags).toHaveBeenCalledWith(
+        "vcu118-lab1",
+        expect.objectContaining({ "board-location": "rackA", carrier: "zcu102", owner: "alice" }),
+      ),
+    );
+  });
+
+  it("recovers after confirm", async () => {
+    const { api } = await import("../../api/client");
+    // Make place owned by alice so isOwner is true
+    vi.mocked(api.getPlace).mockResolvedValue({
+      name: "vcu118-lab1",
+      aliases: [],
+      comment: "",
+      tags: { "board-location": "rackA", carrier: "zcu102" },
+      matches: [],
+      acquired: "alice",
+      acquired_resources: [],
+      allowed: [],
+      created: 0,
+      changed: 0,
+      reservation: null,
+      acquired_username: "alice",
+    });
+    render(wrap(<PlaceDetail />));
+    fireEvent.click(await screen.findByRole("button", { name: /recover/i }));
+    // confirm modal: the destructive confirm button
+    fireEvent.click(await screen.findByRole("button", { name: /^recover board$/i }));
+    await waitFor(() => expect(api.recoverPlace).toHaveBeenCalledWith("vcu118-lab1"));
   });
 });

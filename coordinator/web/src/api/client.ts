@@ -142,6 +142,11 @@ export const api = {
     request(`/places/${name}/acquire`, { method: "POST" }),
   releasePlace: (name: string) =>
     request(`/places/${name}/release`, { method: "POST" }),
+  recoverPlace: (name: string) =>
+    request<{ place: string; state: string; stdout: string; ok: boolean }>(
+      `/places/${name}/recover`,
+      { method: "POST" },
+    ),
   setPlaceTags: (name: string, tags: Record<string, string>) =>
     request(`/places/${name}/tags`, {
       method: "PUT",
