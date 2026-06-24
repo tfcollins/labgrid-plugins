@@ -18,6 +18,7 @@ from .routers import (
     places,
     power,
     recordings,
+    recovery,
     reservations,
     resources,
     sdmux,
@@ -198,4 +199,5 @@ app.include_router(users.router, prefix="/api")
 app.include_router(console.router, prefix="/api")
 app.include_router(recordings.router, prefix="/api")
 app.include_router(power.router, prefix="/api")
+app.include_router(recovery.router, prefix="/api")
 app.include_router(sdmux.router, prefix="/api")
