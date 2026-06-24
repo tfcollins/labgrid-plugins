@@ -7,7 +7,7 @@ import {
   useDisclosure, useToast, IconButton, Tag, TagLabel, Flex, Link, Stack,
 } from "@chakra-ui/react";
 import StatusPill from "../components/ui/StatusPill";
-import { MdDelete, MdEdit, MdAdd } from "react-icons/md";
+import { MdDelete, MdEdit, MdAdd, MdHealing } from "react-icons/md";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
@@ -52,6 +52,7 @@ export default function PlaceDetail() {
   const matchModal = useDisclosure();
   const downloadModal = useDisclosure();
   const tagsModal = useDisclosure();
+  const recoverModal = useDisclosure();
   const [tagRows, setTagRows] = useState<TagRow[]>([]);
 
   useEffect(() => {
@@ -118,6 +119,20 @@ export default function PlaceDetail() {
         description: e instanceof Error ? e.message : String(e),
       }),
   });
+  const recoverM = useMutation({
+    mutationFn: () => api.recoverPlace(name),
+    onSuccess: () => {
+      toast({ status: "success", title: "Recovery started" });
+      recoverModal.onClose();
+    },
+    onError: (e: unknown) =>
+      toast({
+        status: "error",
+        title: "Recovery failed",
+        description: e instanceof Error ? e.message : String(e),
+      }),
+  });
+
   const [exporter, setExporter] = useState("");
   const [group, setGroup] = useState("");
   const [cls, setCls] = useState("*");
@@ -205,6 +220,11 @@ export default function PlaceDetail() {
             {isOwner && (
               <Button colorScheme="red" onClick={() => releaseM.mutate()} isLoading={releaseM.isPending}>
                 Release
+              </Button>
+            )}
+            {isOwner && (
+              <Button colorScheme="orange" leftIcon={<MdHealing />} onClick={recoverModal.onOpen}>
+                Recover
               </Button>
             )}
           </Box>
@@ -375,6 +395,31 @@ export default function PlaceDetail() {
           placeName={name}
           resourceClasses={resourceClasses}
         />
+
+        {/* Recover confirm modal */}
+        <Modal isOpen={recoverModal.isOpen} onClose={recoverModal.onClose}>
+          <ModalOverlay />
+          <ModalContent>
+            <ModalHeader>Recover board?</ModalHeader>
+            <ModalCloseButton />
+            <ModalBody>
+              <Text>
+                This reflashes the SD card (erasing it) and runs for several minutes. The place
+                stays held for the duration.
+              </Text>
+            </ModalBody>
+            <ModalFooter>
+              <Button mr={2} onClick={recoverModal.onClose}>Cancel</Button>
+              <Button
+                colorScheme="red"
+                isLoading={recoverM.isPending}
+                onClick={() => recoverM.mutate()}
+              >
+                Recover board
+              </Button>
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
 
         {/* Edit tags modal */}
         <Modal isOpen={tagsModal.isOpen} onClose={tagsModal.onClose}>
