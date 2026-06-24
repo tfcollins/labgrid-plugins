@@ -110,6 +110,7 @@ async def recover_place(
             stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=RECOVER_TIMEOUT)
         except asyncio.TimeoutError:
             proc.kill()
+            await proc.wait()  # reap the killed child so it doesn't linger as a zombie
             raise HTTPException(status_code=504, detail="recovery timed out") from None
     finally:
         try:
