@@ -122,7 +122,7 @@ export default function PlaceDetail() {
   const recoverM = useMutation({
     mutationFn: () => api.recoverPlace(name),
     onSuccess: () => {
-      toast({ status: "success", title: "Recovery started" });
+      toast({ status: "success", title: "Recovery complete" });
       recoverModal.onClose();
     },
     onError: (e: unknown) =>
@@ -222,7 +222,7 @@ export default function PlaceDetail() {
                 Release
               </Button>
             )}
-            {isOwner && (
+            {(isOwner || user?.role === "admin") && (
               <Button colorScheme="orange" leftIcon={<MdHealing />} onClick={recoverModal.onOpen}>
                 Recover
               </Button>
@@ -405,7 +405,8 @@ export default function PlaceDetail() {
             <ModalBody>
               <Text>
                 This reflashes the SD card (erasing it) and runs for several minutes. The place
-                stays held for the duration.
+                stays held for the duration. The request is synchronous — if a proxy or the browser
+                times out first, recovery keeps running on the server.
               </Text>
             </ModalBody>
             <ModalFooter>
