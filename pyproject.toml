@@ -87,6 +87,7 @@ tftpserverdriver = "adi_lg_plugins.drivers.tftpserverdriver:TFTPServerDriver"
 softwareinstaller = "adi_lg_plugins.drivers.softwareinstaller:SoftwareInstallerDriver"
 homeassistantdriver = "adi_lg_plugins.drivers.homeassistantdriver:HomeAssistantPowerDriver"
 tickfpgamanagerdriver = "adi_lg_plugins.drivers.tickfpgamanagerdriver:TickFpgaManagerDriver"
+tickoverlaydriver = "adi_lg_plugins.drivers.tickoverlaydriver:TickOverlayDriver"
 
 [project.entry-points."labgrid.resources"]
 vesyncresource = "adi_lg_plugins.resources.vesync:VesyncOutlet"

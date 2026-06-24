@@ -29,6 +29,7 @@ _MODULES = (
     "softwareinstaller",
     "tftpserverdriver",
     "tickfpgamanagerdriver",
+    "tickoverlaydriver",
     "vesyncdriver",
     "xilinxjtagdriver",
 )
