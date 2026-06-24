@@ -97,6 +97,7 @@ xilinxdevicejtag = "adi_lg_plugins.resources.xilinxdevice:XilinxDeviceJTAG"
 xilinxvivadotool = "adi_lg_plugins.resources.xilinxtool:XilinxVivadoTool"
 tftpserverresource = "adi_lg_plugins.resources.tftpserver:TFTPServerResource"
 homeassistantresource = "adi_lg_plugins.resources.homeassistant:HomeAssistantOutlet"
+tickartifacts = "adi_lg_plugins.resources.tickartifacts:TickArtifacts"
 
 
 [project.entry-points."labgrid.strategies"]

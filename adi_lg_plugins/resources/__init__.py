@@ -19,6 +19,7 @@ _MODULES = (
     "kuiperrelease",
     "massstorage",
     "tftpserver",
+    "tickartifacts",
     "vesync",
     "xilinxdevice",
     "xilinxtool",
