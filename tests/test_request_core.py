@@ -100,6 +100,7 @@ def patched(monkeypatch):
 
     monkeypatch.setattr(core, "_boot", fake_boot)
     monkeypatch.setattr(core, "resolve_uri", lambda tg: "ip:10.0.0.57")
+    monkeypatch.setattr(core, "verify_iio_context", lambda uri, **kw: None)
     monkeypatch.setattr(core, "_power_off", lambda tg, strat: state.update(powered_off=strat))
     monkeypatch.setattr(core, "_cleanup_target", lambda tg: state.update(cleaned=True))
     return state
@@ -300,6 +301,42 @@ def test_request_resolve_uri_failure_still_cleans_and_releases(patched, monkeypa
     assert patched["released"] == "adrv9002-zcu102"
 
 
+# ── reserve mode (acquire + render env, no boot) ─────────────────────────────
+
+
+def test_reserve_mode_yields_env_path_without_booting(patched, monkeypatch):
+    boom = MagicMock(side_effect=AssertionError("reserve mode must not boot"))
+    monkeypatch.setattr(core, "_boot", boom)
+    monkeypatch.setattr(core, "_boot_verified", boom)
+    with core.request(part="adrv9009", mode="reserve", coord="c:20408") as lease:
+        assert lease.uri is None
+        assert lease.console is None
+        assert lease.target is None
+        assert lease.env_path
+        assert lease.place == "adrv9002-zcu102"
+    assert patched["released"] == "adrv9002-zcu102"
+
+
+def test_reserve_mode_env_dir_removed_after_exit(patched, monkeypatch):
+    # The `patched` fixture stubs _render_env with a fixed fake path that never
+    # exists on disk; substitute a fake that creates the same on-disk shape the
+    # real _render_env makes (tempdir prefixed adi-lg-req- containing env.yaml)
+    # so the cleanup assertion is meaningful.
+    import tempfile
+    from pathlib import Path
+
+    def fake_render(place, **kw):
+        out = Path(tempfile.mkdtemp(prefix="adi-lg-req-")) / "env.yaml"
+        out.write_text("targets: {}\n", encoding="utf-8")
+        return str(out)
+
+    monkeypatch.setattr(core, "_render_env", fake_render)
+    with core.request(part="adrv9009", mode="reserve", coord="c:20408") as lease:
+        env_path = lease.env_path
+        assert Path(env_path).exists()
+    assert not Path(env_path).exists()
+
+
 # ── REST API vs gRPC coordinator split (Bug 3) ───────────────────────────────
 
 
@@ -377,3 +414,142 @@ def test_flash_request_forwards_a9_target_name(monkeypatch):
 
     kw = state["render_kw"]
     assert kw["extra_subs"]["a9_target_name"] == "*Cortex-A9 MPCore #1"
+
+
+# ── _boot: env construction/config errors classified as boot failures (#82) ──
+
+
+def test_boot_wraps_env_config_errors_as_provision_error(monkeypatch):
+    """Errors before strategy.transition (Environment/get_target/get_driver,
+    e.g. labgrid InvalidConfigError) must surface as ProvisionError so the CLI
+    exits 12 with a boot-failure annotation instead of a raw traceback."""
+
+    class FakeEnv:
+        def __init__(self, path):
+            pass
+
+        def get_target(self, name):
+            raise RuntimeError("failed to create ADIShellDriver for target 'main'")
+
+    import labgrid
+
+    monkeypatch.setattr(labgrid, "Environment", FakeEnv)
+    with pytest.raises(ProvisionError, match="boot failed:.*ADIShellDriver"):
+        core._boot("env.yaml", "BootFabric", image=None)
+
+
+def test_boot_does_not_double_wrap_provision_errors(monkeypatch):
+    """A ProvisionError raised inside the boot body propagates unchanged."""
+
+    class FakeEnv:
+        def __init__(self, path):
+            pass
+
+        def get_target(self, name):
+            raise ProvisionError("boot failed: original message")
+
+    import labgrid
+
+    monkeypatch.setattr(labgrid, "Environment", FakeEnv)
+    with pytest.raises(ProvisionError, match="^boot failed: original message$"):
+        core._boot("env.yaml", "BootFabric", image=None)
+
+
+# ── _boot_verified: boot + iiod verification with one bounded retry ──────────
+
+
+def _stub_verify(monkeypatch, fail_times=0):
+    calls = {"n": 0}
+
+    def fake_verify(uri, **kw):
+        calls["n"] += 1
+        if calls["n"] <= fail_times:
+            raise ProvisionError("boot verification failed: iiod not reachable")
+
+    monkeypatch.setattr(core, "verify_iio_context", fake_verify)
+    return calls
+
+
+def test_boot_verified_happy_path_boots_once(monkeypatch):
+    target = MagicMock()
+    boots = {"n": 0}
+
+    def fake_boot(env, strat, *, image, target_name):
+        boots["n"] += 1
+        return target
+
+    monkeypatch.setattr(core, "_boot", fake_boot)
+    monkeypatch.setattr(core, "resolve_uri", lambda t: "ip:10.0.0.5")
+    _stub_verify(monkeypatch)
+    got_target, uri = core._boot_verified("env.yaml", "BootFPGASoC", image=None, target_name="main")
+    assert got_target is target
+    assert uri == "ip:10.0.0.5"
+    assert boots["n"] == 1
+
+
+def test_boot_verified_retries_once_after_boot_failure(monkeypatch):
+    boots = {"n": 0}
+
+    def fake_boot(env, strat, *, image, target_name):
+        boots["n"] += 1
+        if boots["n"] == 1:
+            raise ProvisionError("boot failed: strategy timeout")
+        return MagicMock()
+
+    monkeypatch.setattr(core, "_boot", fake_boot)
+    monkeypatch.setattr(core, "resolve_uri", lambda t: "ip:10.0.0.5")
+    _stub_verify(monkeypatch)
+    _target, uri = core._boot_verified("env.yaml", "BootFPGASoC", image=None, target_name="main")
+    assert boots["n"] == 2
+    assert uri == "ip:10.0.0.5"
+
+
+def test_boot_verified_verify_failure_triggers_retry_and_cleans_failed_target(monkeypatch):
+    first = MagicMock()
+    second = MagicMock()
+    targets = iter([first, second])
+    powered, cleaned = [], []
+    monkeypatch.setattr(core, "_boot", lambda *a, **k: next(targets))
+    monkeypatch.setattr(core, "resolve_uri", lambda t: "ip:10.0.0.5")
+    _stub_verify(monkeypatch, fail_times=1)
+    monkeypatch.setattr(core, "_power_off", lambda t, s: powered.append(t))
+    monkeypatch.setattr(core, "_cleanup_target", lambda t: cleaned.append(t))
+    got_target, _uri = core._boot_verified(
+        "env.yaml", "BootFPGASoC", image=None, target_name="main"
+    )
+    assert got_target is second
+    assert powered == [first]  # failed attempt's board was power-cycled
+    assert cleaned == [first]
+
+
+def test_boot_verified_second_failure_propagates_exactly_two_attempts(monkeypatch):
+    boots = {"n": 0}
+
+    def fake_boot(env, strat, *, image, target_name):
+        boots["n"] += 1
+        raise ProvisionError("boot failed: strategy timeout")
+
+    monkeypatch.setattr(core, "_boot", fake_boot)
+    with pytest.raises(ProvisionError, match="strategy timeout"):
+        core._boot_verified("env.yaml", "BootFPGASoC", image=None, target_name="main")
+    assert boots["n"] == 2  # bounded: never a third attempt
+
+
+def test_request_terminal_boot_failure_still_releases(patched, monkeypatch):
+    monkeypatch.setattr(
+        core, "_boot", MagicMock(side_effect=ProvisionError("boot failed: strategy timeout"))
+    )
+    with pytest.raises(ProvisionError, match="strategy timeout"):
+        with core.request(part="adrv9002", coord="c:20408"):
+            pass  # pragma: no cover
+    assert patched["released"] == "adrv9002-zcu102"
+
+
+def test_request_provision_error_carries_place(patched, monkeypatch):
+    monkeypatch.setattr(
+        core, "_boot_verified", MagicMock(side_effect=ProvisionError("boot failed"))
+    )
+    with pytest.raises(ProvisionError) as exc_info:
+        with core.request(part="adrv9002", coord="c:20408"):
+            pass  # pragma: no cover
+    assert exc_info.value.place == "adrv9002-zcu102"

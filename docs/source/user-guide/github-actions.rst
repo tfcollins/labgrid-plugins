@@ -23,6 +23,13 @@ unreachable.
 Choosing a workflow
 -------------------
 
+.. warning::
+
+   ``hw-matrix.yml`` and ``hw-matrix-v2.yml`` are **deprecated**.  New consumers must
+   use the hw-request family (``hw-request.yml``, ``noos-hw-request.yml``,
+   ``matlab-hw-request.yml``) pinned at ``@v3.5`` (current release).  Removal of the
+   deprecated workflows is tracked by the HW-CI convergence effort.
+
 .. list-table::
    :widths: 20 25 30 25
    :header-rows: 1
@@ -31,21 +38,25 @@ Choosing a workflow
      - What it runs
      - Discovery mechanism
      - Use when
-   * - ``hw-matrix.yml`` (v1)
+   * - ``hw-matrix.yml`` (v1) — **deprecated**
      - pytest against places from a committed manifest
      - ``labgrid-client places`` filtered by ``hw-nodes.json``
-     - You maintain an explicit place manifest.
-   * - ``hw-matrix-v2.yml`` (v2)
+     - Do not adopt for new consumers; use ``hw-request.yml@v3.5`` instead.
+   * - ``hw-matrix-v2.yml`` (v2) — **deprecated**
      - pytest against discovered places; renders env.yaml per shard
      - ``/api/places`` ∩ ``@pytest.mark.iio_hardware`` markers
-     - You want zero-manifest discovery driven by test markers + live
-       coordinator.
+     - Do not adopt for new consumers; use ``hw-request.yml@v3.5`` instead.
    * - ``hw-request.yml``
      - ``adi-lg request --part <p>`` per part; hands a booted board URI
        to pytest via ``IIO_URI``
      - ``adi-lg-hw-ci request-matrix`` (markers ∩ ``/api/match``)
      - Low-config: consumers name a part, labgrid boots and hands over a
        URI (pyadi-iio pattern).
+   * - ``matlab-hw-request.yml``
+     - MATLAB ``runHWTests(<board>)`` against the booted board's
+       ``IIO_URI``
+     - ``adi-lg-hw-ci matlab-matrix`` (``board_map.yaml`` ∩ live places)
+     - MATLAB toolbox hardware tests (TransceiverToolbox pattern).
    * - ``noos-hw-request.yml``
      - Build no-os firmware → JTAG-flash → validate on serial (flash mode)
      - ``adi-lg-hw-ci noos-matrix`` (project manifest ∩
@@ -96,7 +107,7 @@ migration notes.
    * - ``coordinator``
      - No
      - ``""``
-     - Coordinator ``host:port``.  Defaults to ``vars.ADI_LG_COORDINATOR``
+     - Coordinator ``host:port``.  Defaults to ``vars.LG_COORDINATOR``
        when empty.
    * - ``manifest_path``
      - No
@@ -245,7 +256,7 @@ rendered per-shard from the place's ``boot-strategy`` tag.  See
    * - ``coordinator``
      - No
      - ``""``
-     - Coordinator ``host:port``.  Defaults to ``vars.ADI_LG_COORDINATOR``
+     - Coordinator ``host:port``.  Defaults to ``vars.LG_COORDINATOR``
        when empty.
    * - ``marker_filter``
      - No
@@ -330,13 +341,13 @@ See :doc:`hw-request` for the full consumer contract.
    on: [pull_request]
    jobs:
      hw:
-       uses: tfcollins/labgrid-plugins/.github/workflows/hw-request.yml@main
+       uses: tfcollins/labgrid-plugins/.github/workflows/hw-request.yml@v3.5  # bump when a new release tags
        with:
-         coordinator: ${{ vars.ADI_LG_COORDINATOR }}
+         coordinator: ${{ vars.LG_COORDINATOR }}
          test-root: "test"
          install-cmd: >-
            uv pip install --quiet --python "$VENV_DIR/bin/python" -e "."
-           "adi-labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins@main"
+           "adi-labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins@v3.5"
 
 ``hw-request.yml`` inputs
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -392,6 +403,178 @@ See :doc:`hw-request` for the full consumer contract.
      - ``uv pip install --quiet --python "$VENV_DIR/bin/python" -e "." "adi-labgrid-plugins @ git+…"``
      - Shell command (run with ``$VENV_DIR`` exported) to install the
        consumer package + ``adi-labgrid-plugins`` into the per-leg venv.
+   * - ``request-mode``
+     - No
+     - ``uri``
+     - ``adi-lg request`` mode for each leg.  ``uri`` (default) boots the
+       board, verifies iiod, and exports ``IIO_URI``.  ``reserve`` only
+       acquires the place and exports ``LG_ENV``/``LG_COORDINATOR`` — for
+       suites that drive boot themselves via the labgrid pytest plugin
+       (e.g. pyadi-dt).  See :doc:`hw-request` ("Reserve mode").
+   * - ``prism-upload``
+     - No
+     - ``false``
+     - Post each leg's JUnit to Prism after the test run.  The upload step
+       runs with ``continue-on-error`` — a Prism outage never fails a
+       hardware leg.  See :doc:`hw-request` ("Uploading results to Prism").
+   * - ``prism-url``
+     - No
+     - ``""``
+     - Prism base URL.  Defaults to the caller's ``vars.PRISM_URL`` when
+       empty.
+   * - ``prism-project``
+     - No
+     - ``""``
+     - Prism project slug.  Required when ``prism-upload`` is ``true``.
+   * - ``prism-upload-cmd``
+     - No
+     - ``""``
+     - Consumer-supplied shell command that uploads results to Prism
+       (vendored-uploader escape hatch, e.g. for a private Prism repo).
+       Used **instead of** the built-in uploader when non-empty.  The step
+       exports ``PRISM_URL``, ``PRISM_API_TOKEN``, ``PRISM_EMAIL``,
+       ``PRISM_PASSWORD``, ``PRISM_PROJECT``, ``PRISM_JUNIT``,
+       ``PRISM_RUN_NAME``, ``PRISM_BOARD``, ``PRISM_CARRIER``,
+       ``PRISM_PLACE``.
+
+``hw-request.yml`` secrets
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+All secrets are optional; the Prism ones are only consulted when
+``prism-upload`` is ``true``.  Cross-org callers must pass them
+**explicitly** in the caller's ``secrets:`` block — ``secrets: inherit``
+does not cross org boundaries.
+
+.. list-table::
+   :widths: 26 10 64
+   :header-rows: 1
+
+   * - Secret
+     - Required
+     - Description
+   * - ``INSTALL_GIT_TOKEN``
+     - No
+     - PAT exposed as a ``github.com`` ``insteadOf`` credential during the
+       per-leg venv install, for consumers whose test deps live in private
+       git repos (e.g. pyadi-dt's ``pyadi-build``).  Scoped to the install
+       step only; never persists in the runner's git config.
+   * - ``PRISM_API_TOKEN``
+     - No
+     - API token used by the Prism upload step.
+   * - ``PRISM_EMAIL``
+     - No
+     - Login email for the Prism upload step (login-auth uploaders).
+   * - ``PRISM_PASSWORD``
+     - No
+     - Login password for the Prism upload step (login-auth uploaders).
+
+
+``matlab-hw-request.yml`` — MATLAB by-part
+--------------------------------------------
+
+Boots a matching board via labgrid, runs the MATLAB toolbox's
+``runHWTests(<board>)`` against the booted board's libIIO URI, collects the
+JUnit, and releases the board — one independent job per board.  The
+preflight runs ``adi-lg-hw-ci matlab-matrix``, intersecting the consumer's
+``board_map.yaml`` with the coordinator's live places.  Each leg uses the
+same ``adi-lg request`` core as the uri/flash flows.  The leg runner must
+have MATLAB installed (+ a reachable license) and the libIIO libs.
+
+``matlab-hw-request.yml`` example
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: yaml
+
+   # .github/workflows/hw-matlab.yml (consumer repo, e.g. TransceiverToolbox)
+   name: HW MATLAB
+   on: [pull_request]
+   jobs:
+     hw-matlab:
+       uses: tfcollins/labgrid-plugins/.github/workflows/matlab-hw-request.yml@v3.5  # bump when a new release tags
+       with:
+         coordinator: ${{ vars.LG_COORDINATOR }}
+         board-map: "test/hw_ci/board_map.yaml"
+         matlab-bin: ${{ vars.MATLAB_BIN }}
+
+``matlab-hw-request.yml`` inputs
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. list-table::
+   :widths: 26 10 30 34
+   :header-rows: 1
+
+   * - Input
+     - Required
+     - Default
+     - Description
+   * - ``coordinator``
+     - **Yes**
+     - —
+     - gRPC coordinator ``host:port`` (e.g. ``host:20408``).
+   * - ``board-map``
+     - No
+     - ``test/hw_ci/board_map.yaml``
+     - Path (in the consumer checkout) to the MATLAB ``board_map.yaml``.
+   * - ``runner-label``
+     - No
+     - ``hw-lab``
+     - Fallback self-hosted runner label for the per-board legs.
+   * - ``preflight-runner-label``
+     - No
+     - ``hw-coordinator``
+     - Runner label for the discovery preflight (reaches the coordinator).
+   * - ``matlab-bin``
+     - No
+     - ``/opt/MATLAB/R2025b/bin/matlab``
+     - Path to the MATLAB binary on the leg runner.
+   * - ``wait``
+     - No
+     - ``1800``
+     - Seconds each leg queues for a free matching board (``0`` = fail
+       fast).
+   * - ``venv-dir``
+     - No
+     - ``$HOME/.cache/matlab-hw-request/venv``
+     - Absolute path for the persistent uv venv on the runner.
+   * - ``install-cmd``
+     - No
+     - ``uv pip install --quiet --python "$VENV_DIR/bin/python" "adi-labgrid-plugins[kuiper] @ git+…"``
+     - Command (with ``$VENV_DIR`` exported) to install
+       ``adi-labgrid-plugins``.  The ``[kuiper]`` extra (pytsk3) is needed
+       to boot Kuiper uri-mode boards.
+   * - ``prism-upload``
+     - No
+     - ``false``
+     - Post each leg's JUnit to Prism after the test run.  The upload step
+       runs with ``continue-on-error`` — a Prism outage never fails a
+       hardware leg.  See :doc:`hw-request` ("Uploading results to Prism").
+   * - ``prism-url``
+     - No
+     - ``""``
+     - Prism base URL.  Defaults to the caller's ``vars.PRISM_URL`` when
+       empty.
+   * - ``prism-project``
+     - No
+     - ``""``
+     - Prism project slug.  Required when ``prism-upload`` is ``true``.
+   * - ``prism-upload-cmd``
+     - No
+     - ``""``
+     - Consumer-supplied shell command that uploads results to Prism
+       (vendored-uploader escape hatch, e.g. for a private Prism repo).
+       Used **instead of** the built-in uploader when non-empty.  The step
+       exports ``PRISM_URL``, ``PRISM_API_TOKEN``, ``PRISM_EMAIL``,
+       ``PRISM_PASSWORD``, ``PRISM_PROJECT``, ``PRISM_JUNIT``,
+       ``PRISM_RUN_NAME``, ``PRISM_BOARD``, ``PRISM_CARRIER``,
+       ``PRISM_PLACE``.
+
+``matlab-hw-request.yml`` secrets
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Identical to the ``hw-request.yml`` secrets above: optional
+``PRISM_API_TOKEN`` / ``PRISM_EMAIL`` / ``PRISM_PASSWORD``, only consulted
+when ``prism-upload`` is ``true``, and passed explicitly in the caller's
+``secrets:`` block (cross-org ``secrets: inherit`` does not work).
 
 
 ``noos-hw-request.yml`` — no-os firmware flash
@@ -415,9 +598,9 @@ and the manifest reference.
    on: [pull_request]
    jobs:
      noos-hw:
-       uses: tfcollins/labgrid-plugins/.github/workflows/noos-hw-request.yml@main
+       uses: tfcollins/labgrid-plugins/.github/workflows/noos-hw-request.yml@v3.5  # bump when a new release tags
        with:
-         coordinator: ${{ vars.ADI_LG_COORDINATOR }}
+         coordinator: ${{ vars.LG_COORDINATOR }}
          manifest: "tools/hw_ci/projects.yaml"
 
 ``noos-hw-request.yml`` inputs
@@ -511,7 +694,7 @@ venv's ``bin/`` directory to ``$GITHUB_PATH`` for subsequent steps.
 
 .. code-block:: yaml
 
-   - uses: tfcollins/labgrid-plugins/.github/actions/setup-uv-venv@main
+   - uses: tfcollins/labgrid-plugins/.github/actions/setup-uv-venv@v3.5  # bump when a new release tags
      with:
        venv_dir: "$HOME/.cache/hw-ci/venv"
        install_cmd: >-
@@ -559,6 +742,12 @@ Reserves and acquires a labgrid place via the coordinator, waiting up to
 ``wait_minutes`` for it to become free.  Uses labgrid's reservation queue
 when available, falling back to a jittered polling loop.
 
+.. note::
+
+   ``acquire-place`` is only for the deprecated bash / ``hw-matrix`` flow. **hw-request-family
+   consumers do not need it** — reservation + release are handled inside the reusable workflow
+   by ``adi-lg request``.
+
 .. warning::
 
    Composite actions cannot run post-job cleanup.  Every caller **must**
@@ -567,7 +756,7 @@ when available, falling back to a jittered polling loop.
 
 .. code-block:: yaml
 
-   - uses: tfcollins/labgrid-plugins/.github/actions/acquire-place@main
+   - uses: tfcollins/labgrid-plugins/.github/actions/acquire-place@v3.5  # bump when a new release tags
      with:
        coordinator: ${{ env.COORDINATOR }}
        place: my-zcu102

@@ -1,0 +1,39 @@
+# Template — copy into <consumer-repo>/.github/workflows/hw-matlab.yml; replace <PLACEHOLDERS>.
+#
+# matlab-mode hardware CI: labgrid boots a matching board; the leg runs the toolbox's
+# runHWTests(<matlab_board>) against the booted board's libIIO URI; JUnit is collected;
+# the board is released. Discovery intersects test/hw_ci/board_map.yaml with live boards.
+# The leg runner must have MATLAB installed (+ a reachable license).
+#
+# Repo vars: LG_COORDINATOR (gRPC host:20408), HW_REQUEST_RUNNER, HW_PREFLIGHT_RUNNER,
+#            MATLAB_BIN (path to the matlab binary on the runner).
+
+name: HW MATLAB
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [labeled]
+
+jobs:
+  hw-matlab:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.pull_request.labels.*.name, 'hw-request')
+    uses: tfcollins/labgrid-plugins/.github/workflows/matlab-hw-request.yml@v3.5  # bump when a new release tags
+    with:
+      coordinator: ${{ vars.LG_COORDINATOR }}    # MUST be the gRPC coordinator host:20408
+      board-map: "test/hw_ci/board_map.yaml"
+      runner-label: ${{ vars.HW_REQUEST_RUNNER }}
+      preflight-runner-label: ${{ vars.HW_PREFLIGHT_RUNNER }}
+      matlab-bin: ${{ vars.MATLAB_BIN }}
+      # Optional: upload each leg's JUnit to Prism (see "Uploading results to Prism"
+      # in the labgrid-plugins docs). Needs vars.PRISM_URL + the three secrets below.
+      # prism-upload: ${{ vars.PRISM_UPLOAD_ENABLED == 'true' }}
+      # prism-project: <PRISM_PROJECT_SLUG>
+    # Uncomment together with the prism-* inputs above. The secrets must be passed
+    # explicitly — cross-org `secrets: inherit` does NOT work.
+    # secrets:
+    #   PRISM_API_TOKEN: ${{ secrets.PRISM_API_TOKEN }}
+    #   PRISM_EMAIL: ${{ secrets.PRISM_EMAIL }}
+    #   PRISM_PASSWORD: ${{ secrets.PRISM_PASSWORD }}

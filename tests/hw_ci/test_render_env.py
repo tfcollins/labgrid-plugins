@@ -3,23 +3,26 @@
 from __future__ import annotations
 
 import pytest
+import yaml
 
 from adi_lg_plugins.hw_ci.render_env import (
     RenderError,
     list_strategy_templates,
     render_env,
     render_env_to,
+    stable_ethaddr,
 )
 from adi_lg_plugins.hw_ci.schema import KNOWN_STRATEGIES, Place
 
 
-def _place(strat, place="mini2"):
+def _place(strat, place="mini2", extra_tags=None):
     return Place(
         name=place,
         carrier="zcu102",
         daughter_board="ad9081",
         boot_strategy=strat,
         hdl_config="m8_l4",
+        extra_tags=extra_tags or {},
     )
 
 
@@ -238,6 +241,84 @@ def test_bootfpgasoctftp_tftp_root_overridable_via_tag():
     assert "/tmp/labgrid-tftp-bq" not in out
 
 
+def test_stable_ethaddr_is_deterministic_and_well_formed():
+    """stable_ethaddr derives a locally-administered unicast MAC from the
+    place name: deterministic, 6 octets, first octet 0x02."""
+    mac1 = stable_ethaddr("mini2")
+    mac2 = stable_ethaddr("mini2")
+    assert mac1 == mac2
+    octets = mac1.split(":")
+    assert len(octets) == 6
+    assert octets[0] == "02"
+    for o in octets:
+        assert len(o) == 2
+        int(o, 16)  # every octet is valid hex
+    # Different places get different MACs.
+    assert stable_ethaddr("mini2") != stable_ethaddr("maia")
+
+
+def test_bootfpgasoctftp_ethaddr_derived_for_tagless_place():
+    """Without an `ethaddr` tag the rendered env carries the derived
+    stable MAC (stock Kuiper randomizes the MAC every boot otherwise)."""
+    out = render_env(_place("BootFPGASoCTFTP"))
+    assert "ethaddr: '02:" in out
+    assert f"ethaddr: '{stable_ethaddr('mini2')}'" in out
+
+
+def test_bootfpgasoctftp_ethaddr_tag_overrides():
+    """An explicit `ethaddr` tag wins over the derived MAC."""
+    out = render_env(_place("BootFPGASoCTFTP", extra_tags={"ethaddr": "aa:bb:cc:dd:ee:ff"}))
+    assert "ethaddr: 'aa:bb:cc:dd:ee:ff'" in out
+
+
+def test_bootfpgasoctftp_ethaddr_stock_opts_out():
+    """`ethaddr=stock` opts out: the strategy gets an empty ethaddr and
+    leaves the board's own (random) MAC alone."""
+    out = render_env(_place("BootFPGASoCTFTP", extra_tags={"ethaddr": "stock"}))
+    assert "ethaddr: ''" in out
+    assert "ethaddr: '02:" not in out
+
+
+def test_bootfabric_login_config_matches_env_gen():
+    """BootFabric's rendered env must mirror the proven coordinator env-gen
+    config (coordinator/api/app/env_gen.py LOGIN/STRATEGY entries) that booted
+    daq3/vcu118. ADIShellDriver REQUIRES prompt + login_prompt + username — a
+    bare ``prompt`` raises labgrid InvalidConfigError on a real place (#81)."""
+    p = Place(
+        name="daq3-vcu118",
+        carrier="vcu118",
+        daughter_board="daq3",
+        boot_strategy="BootFabric",
+        # no power-driver tag: the documented default must apply
+    )
+    doc = yaml.safe_load(render_env(p))
+    drivers = doc["targets"]["main"]["drivers"]
+    shell = drivers["ADIShellDriver"]
+    assert shell["prompt"] == "#.*"
+    assert shell["login_prompt"] == "buildroot login: "
+    assert shell["username"] == "root"
+    assert "VesyncPowerDriver" in drivers  # documented default power driver
+    strat = drivers["BootFabric"]
+    assert strat["wait_for_boot_timeout"] == 700
+    assert strat["reached_boot_marker"] == "login:"
+    assert strat["trigger_dhcp_reset"] is True
+    assert strat["power_off_delay"] == 30
+
+
+def test_every_template_renders_parseable_yaml_for_minimal_place():
+    """Drift guard: every shipped template must render to parseable YAML with
+    a targets/main/drivers shape for a tag-minimal place."""
+    for strat in list_strategy_templates():
+        p = Place(
+            name="x",
+            carrier="zcu102",
+            daughter_board="ad9081",
+            boot_strategy=strat,
+        )
+        doc = yaml.safe_load(render_env(p))
+        assert doc["targets"]["main"]["drivers"], strat
+
+
 def test_bootnoosjtag_boot_marker_defaults_to_successfully_initialized():
     """Without a boot-marker tag, BootNoOSJTAG renders the unified default banner."""
     p = Place(
@@ -296,3 +377,20 @@ def test_bootnoosjtag_a9_target_name_override_via_extra_subs():
     assert "*Cortex-A9 MPCore #1" in out
     assert "*Cortex-A9 MPCore #0" not in out
     assert "${a9_target_name}" not in out
+
+
+# ── lg_feature gating: every template must expose place identity as features ──
+
+
+def test_every_template_declares_place_features():
+    """Consumers gating tests with @pytest.mark.lg_feature (pyadi-dt) are
+    silently SKIPPED unless the env declares matching labgrid ``features``.
+    The coordinator env_gen emits [daughter-board, carrier] for exactly this;
+    the render templates must stay in sync (live-found gap: every pyadi-dt
+    test skipped with 'unsupported feature(s): adrv9009, zc706')."""
+    for strat in list_strategy_templates():
+        doc = yaml.safe_load(render_env(_place(strat)))
+        feats = doc["targets"]["main"].get("features")
+        assert feats == ["ad9081", "zcu102"], (
+            f"{strat}: rendered env missing place features (got {feats!r})"
+        )

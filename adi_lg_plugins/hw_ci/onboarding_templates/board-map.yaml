@@ -1,0 +1,16 @@
+# Template — copy into <consumer-repo>/test/hw_ci/board_map.yaml; replace <PLACEHOLDERS>.
+#
+# matlab-mode board map: resolves each live place's (daughter-board, carrier, hdl-config)
+# to the MATLAB board name passed to runHWTests(). `adi-lg-hw-ci matlab-matrix` intersects
+# this with live coordinator places; most-specific entry wins (a row with more keys beats a
+# row with fewer). Live places with no matching entry are annotated + skipped.
+#
+# Schema (source of truth): adi_lg_plugins/hw_ci/board_map.py (load_board_map).
+boards:
+  - {carrier: <CARRIER>, daughter-board: <PART>, matlab_board: <MATLAB_BOARD>}
+  # Less-specific fallback (matches the part on any carrier):
+  # - {daughter-board: <PART>, matlab_board: <MATLAB_BOARD>}
+  #
+  # Example (proven):
+  # - {carrier: zcu102, daughter-board: adrv9002, matlab_board: zynqmp-zcu102-rev10-adrv9002-vcmos}
+  # - {daughter-board: pluto, matlab_board: pluto}

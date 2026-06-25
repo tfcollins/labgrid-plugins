@@ -5,6 +5,11 @@
 # VCU118 / MicroBlaze). No Linux on the DUT; tests interact via the
 # AXI bridge over JTAG (XilinxJTAGDriver) and optionally a UART
 # console. Power control is optional.
+#
+# The ADIShellDriver login config and the BootFabric strategy attrs mirror
+# the coordinator's env-gen (coordinator/api/app/env_gen.py: SHELL_DEFAULTS
+# and STRATEGY_CONFIGS "BootFabric") — the proven config the old CI booted
+# daq3/vcu118 with. Keep the two in sync.
 
 imports:
   - adi_lg_plugins
@@ -14,10 +19,24 @@ targets:
     resources:
       RemotePlace:
         name: ${place_name}
+    # Expose the place's identity as labgrid features so consumers gating
+    # tests with @pytest.mark.lg_feature (e.g. pyadi-dt) select rather than
+    # skip. Mirrors coordinator env_gen — keep in sync.
+    features:
+      - '${daughter_board}'
+      - '${carrier}'
+
     drivers:
       XilinxJTAGDriver: {}
       ${power_driver}: {}
       SerialDriver: {}
       ADIShellDriver:
-        prompt: '> '
-      BootFabric: {}
+        prompt: "#.*"
+        login_prompt: "buildroot login: "
+        username: "root"
+        password: "analog"
+      BootFabric:
+        reached_boot_marker: "login:"
+        trigger_dhcp_reset: true
+        wait_for_boot_timeout: 700
+        power_off_delay: 30

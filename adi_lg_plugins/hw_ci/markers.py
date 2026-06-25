@@ -181,3 +181,44 @@ def harvest_markers(
             test_id = f"{rel}::{node.name}"
             out[test_id] = MarkerSpec.of(iio_hw, iio_carr)
     return out
+
+
+def collect_marker_rejections(
+    test_root: str | Path,
+    *,
+    markers: tuple[str, ...] = ("iio_hardware", "iio_carrier"),
+) -> list[tuple[str, int, str]]:
+    """Find marker decorators that ARE ``iio_hardware``/``iio_carrier`` but whose
+    first argument is not a recognized string literal (or module-level literal
+    binding) — exactly the forms ``harvest_markers`` silently drops.
+
+    Returns a list of ``(relative_path, lineno, reason)``. A *non-marker*
+    decorator is never a rejection; only ``_is_pytest_mark`` matches with a
+    non-literal first arg are reported.
+    """
+    root = Path(test_root).resolve()
+    rejections: list[tuple[str, int, str]] = []
+    for py in sorted(root.rglob("test_*.py")):
+        try:
+            tree = ast.parse(py.read_text(encoding="utf-8"))
+        except (SyntaxError, UnicodeDecodeError, OSError):
+            continue
+        bindings = _module_str_bindings(tree)
+        rel = str(py.relative_to(root))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call):
+                continue
+            for name in markers:
+                if not _is_pytest_mark(node.func, name):
+                    continue
+                if not node.args:
+                    continue  # bare marker — nothing to reject
+                if _literal_str_list(node.args[0], bindings=bindings, lineno=node.lineno) is None:
+                    rejections.append(
+                        (
+                            rel,
+                            node.lineno,
+                            f"{name} arg is not a string literal (invisible to discovery)",
+                        )
+                    )
+    return rejections

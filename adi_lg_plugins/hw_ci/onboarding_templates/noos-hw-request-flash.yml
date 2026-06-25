@@ -1,0 +1,38 @@
+# Template — copy into <consumer-repo>/.github/workflows/hw-request.yml; replace <PLACEHOLDERS>.
+#
+# flash-mode hardware CI (bare-metal firmware): build a project, JTAG-flash it onto a
+# matching physical board, validate a serial banner on-target, then release. Discovery
+# reads your manifest (tools/hw_ci/projects.yaml) and intersects it with live
+# flash-capable boards (GET /api/match?mode=flash). The reusable workflow's `build-noos`
+# step sources each board's HDL .xsa from the Kuiper image, composes the Vivado env, and
+# runs make — so the runner only needs Vivado/Vitis installed (no .xsa staging).
+#
+# Repo prerequisites (Settings -> ... -> Variables):
+#   vars.LG_COORDINATOR       gRPC coordinator host:port, e.g. 10.0.0.41:20408
+#   vars.HW_REQUEST_RUNNER    self-hosted label (Vivado + JTAG) for the per-project legs
+#   vars.HW_PREFLIGHT_RUNNER  self-hosted label that can reach the coordinator
+# The leg runner needs Vivado/Vitis + JTAG wiring; the reusable workflow installs the
+# `[kuiper]` extra (pytsk3) it needs to read the Kuiper image. Runners must be registered
+# on this repo's/org's scope. See the onboarding guide + AGENTS.md.
+
+name: HW Request (flash)
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [labeled]
+
+jobs:
+  noos-hw-request:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.pull_request.labels.*.name, 'hw-request')
+    uses: tfcollins/labgrid-plugins/.github/workflows/noos-hw-request.yml@v3.5  # bump when a new release tags
+    with:
+      coordinator: ${{ vars.LG_COORDINATOR }}
+      manifest: "tools/hw_ci/projects.yaml"
+      runner-label: ${{ vars.HW_REQUEST_RUNNER }}
+      preflight-runner-label: ${{ vars.HW_PREFLIGHT_RUNNER }}

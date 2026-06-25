@@ -23,6 +23,7 @@ _MODULES = (
     "cloudsmithdldriver",
     "cyberpowerdriver",
     "homeassistantdriver",
+    "kasadriver",
     "kuiperdldriver",
     "massstoragedriver",
     "shelldriver",

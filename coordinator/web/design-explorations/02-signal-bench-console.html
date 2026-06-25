@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>B — Signal / Bench Console · Labgrid Coordinator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Saira:wght@300;400;500;600;700&family=Saira+Semi+Condensed:wght@500;600;700&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=Spline+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+/* ============================================================
+   SIGNAL / BENCH CONSOLE — Labgrid Coordinator Dashboard
+   Instrument-panel art direction. Dark hero + datasheet light.
+   ============================================================ */
+
+:root {
+  /* ADI brand ramp (fixed) */
+  --adi-50:#e6f2fa; --adi-100:#b3d9f0; --adi-200:#80bfe6; --adi-300:#4da6dc;
+  --adi-400:#1e9bd7; --adi-500:#0071ba; --adi-600:#005fa0; --adi-700:#004d85;
+  --adi-800:#003d71; --adi-900:#002b50;
+
+  /* Domain / semantic system (fixed) */
+  --c-exporter:#0071ba;
+  --c-group:#1e9bd7;
+  --c-resource:#2b6cb0;
+  --c-free:#38a169;
+  --c-acquire:#dd6b20;
+  --c-reservation:#ecc94b;
+  --c-offline:#718096;
+
+  --signal:#1e9bd7;
+  --signal-deep:#0071ba;
+
+  --ease: cubic-bezier(.22,.61,.36,1);
+  --r:7px;
+  --sidebar:248px;
+  --header:58px;
+}
+
+/* ---------- DARK (hero): bench oscilloscope at night ---------- */
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --bg-0:#06101d;
+  --bg-1:#08131f;
+  --panel:#0b1a2b;
+  --panel-2:#0e2031;
+  --panel-raise:#102639;
+  --ink:#dbe9f5;
+  --ink-dim:#8ea7bf;
+  --ink-faint:#5c7791;
+  --hair:#173049;
+  --hair-soft:#112538;
+  --grid-line:rgba(30,155,215,.055);
+  --grid-line-strong:rgba(30,155,215,.10);
+  --signal-glow:rgba(30,155,215,.55);
+  --signal-text:#5cc1f0;
+  --led-glow-a:.9;
+  --reticle:rgba(140,167,191,.16);
+  --panel-shadow: 0 1px 0 rgba(255,255,255,.025) inset,
+                  0 0 0 1px rgba(7,16,28,.6),
+                  0 18px 40px -22px rgba(0,0,0,.9);
+  --panel-edge: rgba(30,155,215,.16);
+  --vignette: radial-gradient(120% 90% at 50% -10%, rgba(30,155,215,.07), transparent 60%);
+  --led-off-fill:#2b3a4a;
+}
+
+/* ---------- LIGHT: datasheet / printed reticle ---------- */
+html[data-theme="light"] {
+  color-scheme: light;
+  --bg-0:#eef3f7;
+  --bg-1:#f4f8fb;
+  --panel:#ffffff;
+  --panel-2:#fbfdff;
+  --panel-raise:#ffffff;
+  --ink:#0c2438;
+  --ink-dim:#456178;
+  --ink-faint:#6c8499;
+  --hair:#cfdeea;
+  --hair-soft:#e1ecf4;
+  --grid-line:rgba(0,113,186,.07);
+  --grid-line-strong:rgba(0,113,186,.13);
+  --signal-glow:rgba(0,113,186,.22);
+  --signal-text:#005fa0;
+  --led-glow-a:.34;
+  --reticle:rgba(0,61,113,.14);
+  --panel-shadow: 0 1px 0 rgba(255,255,255,.8) inset,
+                  0 0 0 1px rgba(15,52,84,.07),
+                  0 10px 26px -18px rgba(0,61,113,.30);
+  --panel-edge: rgba(0,113,186,.18);
+  --vignette: radial-gradient(120% 90% at 50% -10%, rgba(0,113,186,.05), transparent 60%);
+  --led-off-fill:#c2d2de;
+}
+
+* { box-sizing:border-box; }
+html,body { height:100%; }
+body {
+  margin:0;
+  font-family:"IBM Plex Sans", system-ui, sans-serif;
+  background:var(--bg-0);
+  color:var(--ink);
+  -webkit-font-smoothing:antialiased;
+  text-rendering:optimizeLegibility;
+  letter-spacing:.005em;
+  overflow:hidden;
+}
+
+/* graph-paper texture layer behind everything */
+body::before {
+  content:"";
+  position:fixed; inset:0;
+  background-image:
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px),
+    linear-gradient(var(--grid-line-strong) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line-strong) 1px, transparent 1px);
+  background-size: 26px 26px, 26px 26px, 130px 130px, 130px 130px;
+  pointer-events:none;
+  z-index:0;
+}
+body::after {
+  content:"";
+  position:fixed; inset:0;
+  background:var(--vignette);
+  pointer-events:none;
+  z-index:0;
+}
+
+/* ============================ LAYOUT ============================ */
+.app {
+  position:relative; z-index:1;
+  display:grid;
+  grid-template-columns:var(--sidebar) 1fr;
+  grid-template-rows:100vh;
+  height:100vh;
+}
+
+/* ============================ SIDEBAR ============================ */
+.sidebar {
+  position:relative;
+  background:
+    linear-gradient(180deg, var(--panel-2), var(--panel));
+  border-right:1px solid var(--hair);
+  display:flex; flex-direction:column;
+  padding:18px 14px 14px;
+  overflow:hidden;
+}
+.sidebar::after { /* faint vertical reticle tick rail */
+  content:"";
+  position:absolute; top:0; right:-1px; bottom:0; width:1px;
+  background:linear-gradient(180deg, transparent, var(--panel-edge) 18%, var(--panel-edge) 82%, transparent);
+  opacity:.7;
+}
+
+.brand {
+  display:flex; align-items:center; gap:11px;
+  padding:6px 8px 18px;
+  margin-bottom:8px;
+  border-bottom:1px dashed var(--hair);
+}
+.brand .chip-glyph {
+  width:38px; height:38px; flex:0 0 38px;
+  display:grid; place-items:center;
+  border-radius:9px;
+  background:
+    radial-gradient(120% 120% at 30% 20%, rgba(30,155,215,.30), transparent 70%),
+    linear-gradient(160deg, var(--adi-700), var(--adi-900));
+  box-shadow: 0 0 0 1px var(--panel-edge), 0 0 22px -6px var(--signal-glow);
+}
+.brand .chip-glyph svg { width:24px; height:24px; }
+.brand .wm { line-height:1; }
+.brand .wm .name {
+  font-family:"Saira", sans-serif;
+  font-weight:700; font-size:21px; letter-spacing:.04em;
+  color:var(--ink);
+  text-transform:uppercase;
+}
+.brand .wm .sub {
+  font-family:"Spline Sans Mono", monospace;
+  font-size:9.5px; letter-spacing:.22em; text-transform:uppercase;
+  color:var(--ink-faint); margin-top:5px;
+}
+
+.nav-label {
+  font-family:"Spline Sans Mono", monospace;
+  font-size:9px; letter-spacing:.28em; text-transform:uppercase;
+  color:var(--ink-faint);
+  padding:14px 10px 7px;
+  display:flex; align-items:center; gap:8px;
+}
+.nav-label::after { content:""; flex:1; height:1px; background:var(--hair-soft); }
+
+.nav { display:flex; flex-direction:column; gap:1px; }
+.nav a {
+  position:relative;
+  display:flex; align-items:center; gap:11px;
+  padding:9px 11px;
+  border-radius:6px;
+  color:var(--ink-dim);
+  text-decoration:none;
+  font-size:13.5px; font-weight:500;
+  letter-spacing:.01em;
+  transition:background .16s var(--ease), color .16s var(--ease);
+}
+.nav a svg { width:17px; height:17px; opacity:.8; flex:0 0 17px; transition:opacity .16s, transform .16s var(--ease); }
+.nav a:hover { background:var(--panel-raise); color:var(--ink); }
+.nav a:hover svg { opacity:1; transform:translateX(1px); }
+.nav a.active {
+  color:var(--ink);
+  background:
+    linear-gradient(90deg, rgba(30,155,215,.16), rgba(30,155,215,.02) 70%);
+}
+.nav a.active svg { opacity:1; color:var(--signal-text); }
+.nav a.active::before { /* lit channel indicator */
+  content:"";
+  position:absolute; left:-14px; top:6px; bottom:6px; width:3px;
+  border-radius:0 3px 3px 0;
+  background:var(--signal);
+  box-shadow:0 0 10px 1px var(--signal-glow), 0 0 3px var(--signal);
+}
+.nav a .kbd {
+  margin-left:auto;
+  font-family:"Spline Sans Mono", monospace;
+  font-size:10px; color:var(--ink-faint);
+  opacity:0; transition:opacity .16s;
+}
+.nav a:hover .kbd, .nav a.active .kbd { opacity:.7; }
+
+.sidebar-foot {
+  margin-top:auto;
+  padding-top:12px;
+  border-top:1px dashed var(--hair);
+}
+.docs-link {
+  display:flex; align-items:center; gap:9px;
+  padding:9px 11px; border-radius:6px;
+  font-family:"Spline Sans Mono", monospace;
+  font-size:11px; letter-spacing:.04em;
+  color:var(--ink-dim); text-decoration:none;
+  transition:color .16s, background .16s;
+}
+.docs-link:hover { color:var(--signal-text); background:var(--panel-raise); }
+.docs-link svg { width:13px; height:13px; }
+.foot-meta {
+  display:flex; align-items:center; gap:7px;
+  padding:8px 11px 2px;
+  font-family:"Spline Sans Mono", monospace;
+  font-size:9.5px; letter-spacing:.08em; color:var(--ink-faint);
+}
+.foot-meta .pulse {
+  width:6px; height:6px; border-radius:50%;
+  background:var(--c-free);
+  box-shadow:0 0 8px 1px rgba(56,161,105,calc(var(--led-glow-a)));
+  animation:breathe 2.6s var(--ease) infinite;
+}
+
+/* ============================ HEADER ============================ */
+.main { position:relative; overflow:hidden; display:flex; flex-direction:column; }
+.header {
+  height:var(--header); flex:0 0 var(--header);
+  display:flex; align-items:center; gap:16px;
+  padding:0 26px;
+  border-bottom:1px solid var(--hair);
+  background:linear-gradient(180deg, var(--panel-2), var(--bg-1));
+  position:relative; z-index:3;
+}
+.header::after { /* baseline trace */
+  content:""; position:absolute; left:0; right:0; bottom:-1px; height:1px;
+  background:linear-gradient(90deg, transparent, var(--panel-edge), transparent);
+}
+.header .title-wrap { display:flex; align-items:baseline; gap:13px; }
+.header h1 {
+  font-family:"Saira", sans-serif;
+  font-weight:600; font-size:22px; letter-spacing:.04em;
+  margin:0; text-transform:uppercase; color:var(--ink);
+}
+.header .crumb {
+  font-family:"Spline Sans Mono", monospace;
+  font-size:10px; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--ink-faint);
+}
+.header .spacer { flex:1; }
+
+.live-tag {
+  display:flex; align-items:center; gap:7px;
+  font-family:"Spline Sans Mono", monospace;
+  font-size:10px; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--ink-dim);
+  padding:5px 11px;
+  border:1px solid var(--hair);
+  border-radius:20px;
+  background:var(--panel);
+}
+.live-tag .dot {
+  width:6px; height:6px; border-radius:50%;
+  background:var(--signal);
+  box-shadow:0 0 8px 1px var(--signal-glow);
+  animation:breathe 2s var(--ease) infinite;
+}
+
+.icon-btn {
+  display:grid; place-items:center;
+  width:38px; height:38px;
+  border:1px solid var(--hair);
+  background:var(--panel);
+  border-radius:8px;
+  color:var(--ink-dim);
+  cursor:pointer;
+  transition:all .18s var(--ease);
+}
+.icon-btn:hover { color:var(--signal-text); border-color:var(--panel-edge); box-shadow:0 0 18px -6px var(--signal-glow); }
+.icon-btn svg { width:18px; height:18px; }
+.icon-btn .moon { display:none; }
+html[data-theme="light"] .icon-btn .sun { display:none; }
+html[data-theme="light"] .icon-btn .moon { display:block; }
+
+.account {
+  display:flex; align-items:center; gap:10px;
+  padding:5px 12px 5px 6px;
+  border:1px solid var(--hair);
+  border-radius:24px;
+  background:var(--panel);
+  cursor:pointer;
+  transition:border-color .18s, box-shadow .18s;
+}
+.account:hover { border-color:var(--panel-edge); box-shadow:0 0 18px -8px var(--signal-glow); }
+.account .avatar {
+  width:30px; height:30px; border-radius:50%;
+  display:grid; place-items:center;
+  font-family:"Saira", sans-serif; font-weight:700; font-size:12px; letter-spacing:.04em;
+  color:#eaf6ff;
+  background:radial-gradient(120% 120% at 30% 20%, var(--adi-400), var(--adi-700));
+  box-shadow:0 0 0 1px var(--panel-edge), inset 0 0 8px rgba(255,255,255,.12);
+}
+.account .who { line-height:1.15; }
+.account .who .nm { font-size:13px; font-weight:600; color:var(--ink); }
+.account .who .rl { font-family:"Spline Sans Mono", monospace; font-size:9px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-faint); }
+
+/* ============================ SCROLL BODY ============================ */
+.body {
+  flex:1; overflow-y:auto;
+  padding:24px 26px 40px;
+  scrollbar-width:thin;
+  scrollbar-color:var(--hair) transparent;
+}
+.body::-webkit-scrollbar{width:10px;}
+.body::-webkit-scrollbar-thumb{background:var(--hair); border-radius:6px; border:3px solid var(--bg-0);}
+
+/* panel base — instrument framing with corner ticks */
+.panel {
+  position:relative;
+  background:linear-gradient(180deg, var(--panel-2), var(--panel));
+  border:1px solid var(--hair);
+  border-radius:var(--r);
+  box-shadow:var(--panel-shadow);
+}
+.panel::before, .panel::after { /* corner reticle ticks (top-left + bottom-right) */
+  content:""; position:absolute; width:9px; height:9px; pointer-events:none;
+  border-color:var(--panel-edge); opacity:.85;
+}
+.panel::before { top:7px; left:7px; border-left:1.5px solid; border-top:1.5px solid; border-top-left-radius:2px; }
+.panel::after  { bottom:7px; right:7px; border-right:1.5px solid; border-bottom:1.5px solid; border-bottom-right-radius:2px; }
+
+.panel-head {
+  display:flex; align-items:center; gap:10px;
+  padding:13px 16px 11px;
+  border-bottom:1px solid var(--hair-soft);
+}
+.panel-head h2 {
+  font-family:"Saira Semi Condensed", sans-serif;
+  font-weight:600; font-size:13px; letter-spacing:.16em; text-transform:uppercase;
+  margin:0; color:var(--ink);
+}
+.panel-head .ch-tag {
+  font-family:"Spline Sans Mono", monospace;
+  font-size:9px; letter-spacing:.14em; text-transform:uppercase;
+  color:var(--ink-faint);
+  border:1px solid var(--hair); border-radius:4px;
+  padding:2px 6px;
+}
+.panel-head .spacer { flex:1; }
+.panel-head .meta {
+  font-family:"Spline Sans Mono", monospace;
+  font-size:10px; letter-spacing:.08em; color:var(--ink-dim);
+}
+
+/* ---------------- reveal animation ---------------- */
+@keyframes rise { from { opacity:0; transform:translateY(12px); } to { opacity:1; transform:none; } }
+.reveal { opacity:0; animation:rise .6s var(--ease) forwards; }
+@keyframes breathe { 0%,100%{opacity:1;} 50%{opacity:.45;} }
+@keyframes traceDraw { from { stroke-dashoffset: var(--len); } to { stroke-dashoffset:0; } }
+@keyframes blink { 0%,46%{opacity:1;} 50%,96%{opacity:.25;} 100%{opacity:1;} }
+
+/* ============================ STAT CARDS ============================ */
+.stat-row {
+  display:grid; grid-template-columns:repeat(4,1fr); gap:16px;
+  margin-bottom:18px;
+}
+.stat {
+  padding:15px 16px 14px;
+  overflow:hidden;
+}
+.stat .s-top {
+  display:flex; align-items:center; gap:8px;
+  font-family:"Spline Sans Mono", monospace;
+  font-size:9.5px; letter-spacing:.18em; text-transform:uppercase;
+  color:var(--ink-faint);
+  margin-bottom:11px;
+}
+.stat .s-top .ico { color:var(--signal-text); opacity:.85; display:grid; }
+.stat .s-top .ico svg { width:14px; height:14px; }
+.stat .s-val {
+  font-family:"Saira", sans-serif;
+  font-weight:600; font-size:34px; line-height:.95; letter-spacing:.01em;
+  color:var(--ink);
+  display:flex; align-items:baseline; gap:7px;
+}
+.stat .s-val .unit {
+  font-family:"Spline Sans Mono", monospace;
+  font-size:12px; font-weight:500; letter-spacing:.04em; color:var(--ink-dim);
+}
+.stat .s-sub {
+  margin-top:9px;
+  font-family:"Spline Sans Mono", monospace;
+  font-size:11px; letter-spacing:.03em;
+  color:var(--ink-dim);
+  display:flex; align-items:center; gap:6px;
+}
+.stat .s-sub b { color:var(--signal-text); font-weight:600; }
+.stat .s-sub .ok { color:var(--c-free); }
+.stat .s-sub .warn { color:var(--c-acquire); }
+.stat .led-mini {
+  width:7px; height:7px; border-radius:50%;
+  background:var(--c-free);
+  box-shadow:0 0 7px 1px rgba(56,161,105,calc(var(--led-glow-a)));
+}
+
+/* waveform accent in the spotlight stat card */
+.stat.signal-card {
+  border-color:var(--panel-edge);
+  background:
+    radial-gradient(140% 120% at 100% 0%, rgba(30,155,215,.10), transparent 55%),
+    linear-gradient(180deg, var(--panel-2), var(--panel));
+}
+.wave-wrap {
+  position:absolute; inset:auto 0 0 0; height:42px;
+  pointer-events:none; opacity:.9;
+}
+.wave-wrap svg { width:100%; height:100%; display:block; }
+.wave-trace {
+  fill:none; stroke:var(--signal); stroke-width:1.6;
+  filter:drop-shadow(0 0 4px var(--signal-glow));
+  stroke-dasharray:var(--len); stroke-dashoffset:var(--len);
+  animation:traceDraw 2.2s var(--ease) .5s forwards;
+}
+.wave-base { fill:none; stroke:var(--reticle); stroke-width:1; stroke-dasharray:2 4; }
+
+/* mini sparkline (queue) */
+.spark { display:flex; align-items:flex-end; gap:2px; height:20px; margin-top:8px; }
+.spark i { width:4px; border-radius:1px; background:var(--c-reservation); opacity:.75;
+  box-shadow:0 0 5px rgba(236,201,75,calc(var(--led-glow-a))); }
+
+/* ============================ MAIN GRID ============================ */
+.grid-2 {
+  display:grid; grid-template-columns: 1fr 350px; gap:16px;
+  align-items:start;
+}
+@media (max-width:1180px){ .grid-2{ grid-template-columns:1fr; } .stat-row{grid-template-columns:repeat(2,1fr);} }
+
+/* ============================ PLACES TABLE ============================ */
+.places-tools { display:flex; align-items:center; gap:8px; }
+.seg {
+  display:flex; border:1px solid var(--hair); border-radius:6px; overflow:hidden;
+  font-family:"Spline Sans Mono", monospace; font-size:10px; letter-spacing:.08em;
+}
+.seg button {
+  background:transparent; border:none; color:var(--ink-dim);
+  padding:5px 10px; cursor:pointer; text-transform:uppercase;
+  transition:background .15s, color .15s;
+}
+.seg button.on { background:var(--signal); color:#04121e; font-weight:600; box-shadow:0 0 14px -4px var(--signal-glow); }
+html[data-theme="light"] .seg button.on{ color:#fff; }
+.seg button:not(.on):hover { color:var(--ink); background:var(--panel-raise); }
+
+table.places { width:100%; border-collapse:collapse; }
+table.places thead th {
+  text-align:left;
+  font-family:"Spline Sans Mono", monospace;
+  font-size:9px; letter-spacing:.18em; text-transform:uppercase;
+  color:var(--ink-faint); font-weight:500;
+  padding:9px 16px; border-bottom:1px solid var(--hair);
+  background:var(--panel-2);
+}
+table.places tbody td { padding:12px 16px; border-bottom:1px solid var(--hair-soft); vertical-align:middle; }
+table.places tbody tr { transition:background .15s var(--ease); }
+table.places tbody tr:hover { background:var(--panel-raise); }
+table.places tbody tr:last-child td { border-bottom:none; }
+
+.pl-name { display:flex; align-items:center; gap:11px; }
+.pl-name .name { font-family:"Spline Sans Mono", monospace; font-size:13px; font-weight:500; color:var(--ink); letter-spacing:.01em; }
+.pl-name .glyph {
+  width:26px;height:26px; border-radius:6px; display:grid; place-items:center;
+  background:var(--panel-2); border:1px solid var(--hair); color:var(--ink-faint);
+}
+.pl-name .glyph svg{ width:14px;height:14px; }
+.grp {
+  font-family:"Spline Sans Mono", monospace; font-size:11px; color:var(--ink-dim);
+  display:inline-flex; align-items:center; gap:6px;
+}
+.grp .gswatch{ width:8px;height:8px;border-radius:2px;background:var(--c-group); box-shadow:0 0 0 1px rgba(0,0,0,.2) inset; }
+
+/* status LED pill */
+.status { display:inline-flex; align-items:center; gap:9px; }
+.led {
+  width:9px; height:9px; border-radius:50%; flex:0 0 9px;
+  position:relative;
+}
+.led.free   { background:var(--c-free);    box-shadow:0 0 9px 1px rgba(56,161,105,calc(var(--led-glow-a))), inset 0 0 2px rgba(255,255,255,.5); }
+.led.acq    { background:var(--c-acquire); box-shadow:0 0 9px 1px rgba(221,107,32,calc(var(--led-glow-a))), inset 0 0 2px rgba(255,255,255,.5); animation:breathe 2.4s var(--ease) infinite; }
+.led.off    { background:var(--led-off-fill); box-shadow:inset 0 0 3px rgba(0,0,0,.5); }
+.status .txt {
+  font-family:"Spline Sans Mono", monospace; font-size:11px; letter-spacing:.08em; text-transform:uppercase;
+}
+.status.free .txt { color:var(--c-free); }
+.status.acq  .txt { color:var(--c-acquire); }
+.status.off  .txt { color:var(--ink-faint); }
+
+.holder { font-family:"Spline Sans Mono", monospace; font-size:11.5px; color:var(--ink-dim); }
+.holder .by { color:var(--ink); }
+.holder .up { color:var(--signal-text); }
+.holder .dash { color:var(--ink-faint); }
+
+/* ============================ RIGHT COLUMN ============================ */
+.right-col { display:flex; flex-direction:column; gap:16px; }
+
+/* concepts legend */
+.concepts { padding:6px 4px 8px; }
+.concept {
+  display:grid; grid-template-columns:auto 1fr; gap:11px;
+  align-items:start;
+  padding:9px 14px;
+  border-bottom:1px solid var(--hair-soft);
+  transition:background .15s;
+}
+.concept:last-child{ border-bottom:none; }
+.concept:hover{ background:var(--panel-raise); }
+.concept .sw {
+  width:13px; height:13px; border-radius:3px; margin-top:2px;
+  box-shadow:0 0 0 1px rgba(0,0,0,.25) inset, 0 0 9px -1px currentColor;
+}
+.concept .label {
+  font-family:"Saira Semi Condensed", sans-serif; font-weight:600;
+  font-size:13px; letter-spacing:.05em; text-transform:uppercase; color:var(--ink);
+}
+.concept .gloss { font-size:11.5px; color:var(--ink-dim); line-height:1.35; margin-top:2px; }
+
+/* recent events */
+.events { padding:4px 0 6px; }
+.event {
+  position:relative;
+  display:grid; grid-template-columns:auto 1fr auto; gap:11px; align-items:center;
+  padding:10px 16px 10px 16px;
+  border-bottom:1px solid var(--hair-soft);
+}
+.event:last-child{ border-bottom:none; }
+.event .ev-led {
+  width:7px; height:7px; border-radius:50%; flex:0 0 7px;
+  box-shadow:0 0 7px 1px currentColor;
+}
+.event .ev-txt { font-size:12px; color:var(--ink-dim); line-height:1.3; }
+.event .ev-txt b { color:var(--ink); font-weight:600; font-family:"Spline Sans Mono",monospace; font-size:11.5px; }
+.event .ev-txt .id { color:var(--c-reservation); font-family:"Spline Sans Mono",monospace; }
+.event .ts {
+  font-family:"Spline Sans Mono", monospace; font-size:10px; letter-spacing:.06em;
+  color:var(--ink-faint); white-space:nowrap;
+}
+
+.foot-note {
+  margin-top:6px; padding:10px 4px 0;
+  text-align:center;
+  font-family:"Spline Sans Mono", monospace;
+  font-size:9.5px; letter-spacing:.16em; text-transform:uppercase;
+  color:var(--ink-faint);
+}
+.foot-note .cursor { color:var(--signal-text); animation:blink 1.2s steps(1) infinite; }
+
+/* focus visibility */
+a:focus-visible, button:focus-visible {
+  outline:2px solid var(--signal); outline-offset:2px; border-radius:4px;
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ===================== SIDEBAR ===================== -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="chip-glyph" aria-hidden="true">
+        <!-- integrated-circuit / chip glyph -->
+        <svg viewBox="0 0 24 24" fill="none" stroke="#9fe0ff" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="6.5" y="6.5" width="11" height="11" rx="1.6"/>
+          <rect x="9.6" y="9.6" width="4.8" height="4.8" rx="1" fill="#1e9bd7" stroke="#7fd2ff"/>
+          <path d="M9 6.5V3.4M12 6.5V3.4M15 6.5V3.4M9 17.5v3.1M12 17.5v3.1M15 17.5v3.1M6.5 9H3.4M6.5 12H3.4M6.5 15H3.4M17.5 9h3.1M17.5 12h3.1M17.5 15h3.1"/>
+        </svg>
+      </div>
+      <div class="wm">
+        <div class="name">Labgrid</div>
+        <div class="sub">Coordinator Dashboard</div>
+      </div>
+    </div>
+
+    <div class="nav-label">Console</div>
+    <nav class="nav">
+      <a href="#" class="active reveal" style="animation-delay:.02s">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 13h6l2-4 3 8 2-4h5"/><rect x="3" y="4" width="18" height="16" rx="2" opacity=".4"/></svg>
+        Dashboard <span class="kbd">D</span>
+      </a>
+      <a href="#" class="reveal" style="animation-delay:.05s">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 4v16M15 4v16M4 9h16M4 15h16" opacity=".5"/></svg>
+        Resources
+      </a>
+      <a href="#" class="reveal" style="animation-delay:.08s">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-4.5-7-10a7 7 0 0 1 14 0c0 5.5-7 10-7 10Z"/><circle cx="12" cy="11" r="2.4"/></svg>
+        Places
+      </a>
+      <a href="#" class="reveal" style="animation-delay:.11s">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/><path d="M9 14l2 2 4-4"/></svg>
+        Reservations
+      </a>
+      <a href="#" class="reveal" style="animation-delay:.14s">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2.4"/><circle cx="18" cy="6" r="2.4"/><circle cx="12" cy="18" r="2.4"/><path d="M7.6 7.6 11 16M16.4 7.6 13 16M8.4 6h7.2"/></svg>
+        Topology
+      </a>
+      <a href="#" class="reveal" style="animation-delay:.17s">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" opacity=".95"/></svg>
+        Statistics
+      </a>
+      <a href="#" class="reveal" style="animation-delay:.20s">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h14v16H5z"/><path d="M8 8h8M8 12h8M8 16h5" opacity=".7"/></svg>
+        Event Log
+      </a>
+      <a href="#" class="reveal" style="animation-delay:.23s">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="2.6" fill="currentColor" stroke="none"/></svg>
+        Recordings
+      </a>
+      <a href="#" class="reveal" style="animation-delay:.26s">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M9.6 9.4a2.4 2.4 0 1 1 3.4 2.2c-.8.4-1 .8-1 1.6"/><path d="M12 16.6h.01"/></svg>
+        Help
+      </a>
+    </nav>
+
+    <div class="sidebar-foot">
+      <div class="foot-meta"><span class="pulse"></span> COORD 25.0 · :20408</div>
+      <a class="docs-link" href="#">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h11v14H4z"/><path d="M15 9h5v10h-5"/><path d="M7 9h5M7 12h5" opacity=".6"/></svg>
+        labgrid-plugins docs
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="margin-left:auto;width:11px;height:11px;"><path d="M7 17 17 7M9 7h8v8"/></svg>
+      </a>
+    </div>
+  </aside>
+
+  <!-- ===================== MAIN ===================== -->
+  <div class="main">
+    <header class="header">
+      <div class="title-wrap">
+        <h1>Dashboard</h1>
+        <span class="crumb">/ coordinator / overview</span>
+      </div>
+      <div class="spacer"></div>
+      <div class="live-tag"><span class="dot"></span> Live</div>
+      <button class="icon-btn" id="themeToggle" aria-label="Toggle light / dark mode" title="Toggle theme">
+        <svg class="sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M19.1 4.9l-1.8 1.8M6.7 17.3l-1.8 1.8"/></svg>
+        <svg class="moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5Z"/></svg>
+      </button>
+      <button class="account" aria-label="Account: Travis Collins">
+        <span class="avatar">TC</span>
+        <span class="who">
+          <span class="nm">Travis Collins</span>
+          <span class="rl">Operator · travis</span>
+        </span>
+      </button>
+    </header>
+
+    <div class="body">
+
+      <!-- ============ STAT CARDS ============ -->
+      <section class="stat-row">
+
+        <div class="panel stat reveal" style="animation-delay:.10s">
+          <div class="s-top"><span class="ico">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="11" rx="2"/><path d="M7 20h10M9 16v4M15 16v4"/></svg>
+          </span> Exporters</div>
+          <div class="s-val">4 <span class="unit">online</span></div>
+          <div class="s-sub"><span class="led-mini"></span> <span class="ok">all hosts reporting</span> · of 4</div>
+        </div>
+
+        <div class="panel stat reveal" style="animation-delay:.16s">
+          <div class="s-top"><span class="ico">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s-7-4.5-7-10a7 7 0 0 1 14 0c0 5.5-7 10-7 10Z"/><circle cx="12" cy="11" r="2.2"/></svg>
+          </span> Places</div>
+          <div class="s-val">12 <span class="unit">total</span></div>
+          <div class="s-sub"><span class="led-mini" style="background:var(--c-acquire);box-shadow:0 0 7px 1px rgba(221,107,32,calc(var(--led-glow-a)))"></span> <span class="warn">3 acquired</span> · 9 free</div>
+        </div>
+
+        <!-- signal card with live waveform -->
+        <div class="panel stat signal-card reveal" style="animation-delay:.22s">
+          <div class="s-top"><span class="ico">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 4v16M15 4v16M4 9h16M4 15h16" opacity=".5"/></svg>
+          </span> Resources</div>
+          <div class="s-val">38 <span class="unit">published</span></div>
+          <div class="s-sub"><b>CH1</b> · throughput nominal</div>
+          <div class="wave-wrap" aria-hidden="true">
+            <svg viewBox="0 0 320 42" preserveAspectRatio="none">
+              <path class="wave-base" d="M0 21 H320"/>
+              <path class="wave-trace" style="--len:520"
+                d="M0 30 L18 28 L30 14 L42 32 L54 20 L66 22 L78 8 L92 30 L104 24 L118 18
+                   L130 26 L142 12 L156 30 L170 22 L182 27 L196 10 L210 31 L224 19 L238 24
+                   L252 16 L266 28 L280 13 L294 30 L308 22 L320 24"/>
+            </svg>
+          </div>
+        </div>
+
+        <div class="panel stat reveal" style="animation-delay:.28s">
+          <div class="s-top"><span class="ico">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
+          </span> Active reservations</div>
+          <div class="s-val">2 <span class="unit">queued</span></div>
+          <div class="spark" title="reservation queue activity">
+            <i style="height:30%"></i><i style="height:55%"></i><i style="height:40%"></i><i style="height:70%"></i><i style="height:50%"></i><i style="height:85%"></i><i style="height:60%"></i><i style="height:100%"></i><i style="height:45%"></i><i style="height:75%"></i>
+          </div>
+        </div>
+
+      </section>
+
+      <!-- ============ MAIN GRID ============ -->
+      <div class="grid-2">
+
+        <!-- PLACES TABLE -->
+        <section class="panel reveal" style="animation-delay:.32s">
+          <div class="panel-head">
+            <h2>Places</h2>
+            <span class="ch-tag">6 of 12 shown</span>
+            <div class="spacer"></div>
+            <div class="places-tools">
+              <div class="seg" role="group" aria-label="Filter places">
+                <button class="on">All</button>
+                <button>Free</button>
+                <button>Mine</button>
+              </div>
+            </div>
+          </div>
+          <div style="overflow-x:auto">
+          <table class="places">
+            <thead>
+              <tr>
+                <th>Place</th>
+                <th>Group</th>
+                <th>Status</th>
+                <th>Holder / Uptime</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><div class="pl-name"><span class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="6" y="6" width="12" height="12" rx="1.5"/><path d="M9 6V3.5M15 6V3.5M9 20.5V18M15 20.5V18M6 9H3.5M6 15H3.5M20.5 9H18M20.5 15H18"/></svg></span><span class="name">zynqmp-zcu102-01</span></div></td>
+                <td><span class="grp"><span class="gswatch"></span> bq/tlab</span></td>
+                <td><span class="status free"><span class="led free"></span><span class="txt">Free</span></span></td>
+                <td><span class="holder"><span class="dash">— available —</span></span></td>
+              </tr>
+              <tr>
+                <td><div class="pl-name"><span class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="6" y="6" width="12" height="12" rx="1.5"/><path d="M9 6V3.5M15 6V3.5M9 20.5V18M15 20.5V18M6 9H3.5M6 15H3.5M20.5 9H18M20.5 15H18"/></svg></span><span class="name">zynq-zed-03</span></div></td>
+                <td><span class="grp"><span class="gswatch"></span> rpi-lab</span></td>
+                <td><span class="status acq"><span class="led acq"></span><span class="txt">Acquired</span></span></td>
+                <td><span class="holder">by <span class="by">travis</span> <span class="dash">·</span> <span class="up">4h12m</span></span></td>
+              </tr>
+              <tr>
+                <td><div class="pl-name"><span class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="6" y="6" width="12" height="12" rx="1.5"/><path d="M9 6V3.5M15 6V3.5M9 20.5V18M15 20.5V18M6 9H3.5M6 15H3.5M20.5 9H18M20.5 15H18"/></svg></span><span class="name">versal-vck190-02</span></div></td>
+                <td><span class="grp"><span class="gswatch"></span> fpga-lab</span></td>
+                <td><span class="status off"><span class="led off"></span><span class="txt">Offline</span></span></td>
+                <td><span class="holder"><span class="dash">— no exporter —</span></span></td>
+              </tr>
+              <tr>
+                <td><div class="pl-name"><span class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="6" y="6" width="12" height="12" rx="1.5"/><path d="M9 6V3.5M15 6V3.5M9 20.5V18M15 20.5V18M6 9H3.5M6 15H3.5M20.5 9H18M20.5 15H18"/></svg></span><span class="name">vcu118-fpga-01</span></div></td>
+                <td><span class="grp"><span class="gswatch"></span> fpga-lab</span></td>
+                <td><span class="status free"><span class="led free"></span><span class="txt">Free</span></span></td>
+                <td><span class="holder"><span class="dash">— available —</span></span></td>
+              </tr>
+              <tr>
+                <td><div class="pl-name"><span class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="6" y="6" width="12" height="12" rx="1.5"/><path d="M9 6V3.5M15 6V3.5M9 20.5V18M15 20.5V18M6 9H3.5M6 15H3.5M20.5 9H18M20.5 15H18"/></svg></span><span class="name">rpi5-cam-07</span></div></td>
+                <td><span class="grp"><span class="gswatch"></span> rpi-lab</span></td>
+                <td><span class="status acq"><span class="led acq"></span><span class="txt">Acquired</span></span></td>
+                <td><span class="holder">by <span class="by">jdoe</span> <span class="dash">·</span> <span class="up">22m</span></span></td>
+              </tr>
+              <tr>
+                <td><div class="pl-name"><span class="glyph"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="6" y="6" width="12" height="12" rx="1.5"/><path d="M9 6V3.5M15 6V3.5M9 20.5V18M15 20.5V18M6 9H3.5M6 15H3.5M20.5 9H18M20.5 15H18"/></svg></span><span class="name">max96724-eval-02</span></div></td>
+                <td><span class="grp"><span class="gswatch"></span> sensor-lab</span></td>
+                <td><span class="status free"><span class="led free"></span><span class="txt">Free</span></span></td>
+                <td><span class="holder"><span class="dash">— available —</span></span></td>
+              </tr>
+            </tbody>
+          </table>
+          </div>
+        </section>
+
+        <!-- RIGHT COLUMN -->
+        <div class="right-col">
+
+          <!-- CONCEPTS LEGEND -->
+          <section class="panel reveal" style="animation-delay:.38s">
+            <div class="panel-head">
+              <h2>Concepts</h2>
+              <span class="ch-tag">Color key</span>
+            </div>
+            <div class="concepts">
+              <div class="concept">
+                <span class="sw" style="background:var(--c-exporter);color:var(--c-exporter)"></span>
+                <div><div class="label">Exporter</div><div class="gloss">A lab host publishing hardware to the coordinator.</div></div>
+              </div>
+              <div class="concept">
+                <span class="sw" style="background:var(--c-group);color:var(--c-group)"></span>
+                <div><div class="label">Group</div><div class="gloss">A named cluster of related places and exporters.</div></div>
+              </div>
+              <div class="concept">
+                <span class="sw" style="background:var(--c-resource);color:var(--c-resource)"></span>
+                <div><div class="label">Resource</div><div class="gloss">A single published device or interface on an exporter.</div></div>
+              </div>
+              <div class="concept">
+                <span class="sw" style="background:var(--c-free);color:var(--c-free)"></span>
+                <div><div class="label">Place · Free</div><div class="gloss">A bundle of hardware you reserve — currently available.</div></div>
+              </div>
+              <div class="concept">
+                <span class="sw" style="background:var(--c-acquire);color:var(--c-acquire)"></span>
+                <div><div class="label">Acquire</div><div class="gloss">An exclusive lock on a place held by one user.</div></div>
+              </div>
+              <div class="concept">
+                <span class="sw" style="background:var(--c-reservation);color:var(--c-reservation)"></span>
+                <div><div class="label">Reservation</div><div class="gloss">A queued claim, allocated when a place comes free.</div></div>
+              </div>
+            </div>
+          </section>
+
+          <!-- RECENT EVENTS -->
+          <section class="panel reveal" style="animation-delay:.44s">
+            <div class="panel-head">
+              <h2>Recent events</h2>
+              <div class="spacer"></div>
+              <span class="meta">last 15 min</span>
+            </div>
+            <div class="events">
+              <div class="event">
+                <span class="ev-led" style="color:var(--c-acquire)"></span>
+                <span class="ev-txt">place <b>zynq-zed-03</b> acquired by <b>travis</b></span>
+                <span class="ts">2m ago</span>
+              </div>
+              <div class="event">
+                <span class="ev-led" style="color:var(--c-exporter)"></span>
+                <span class="ev-txt">exporter <b>rpi-lab</b> reconnected</span>
+                <span class="ts">7m ago</span>
+              </div>
+              <div class="event">
+                <span class="ev-led" style="color:var(--c-reservation)"></span>
+                <span class="ev-txt">reservation <span class="id">#1182</span> allocated to <b>versal-vck190-02</b></span>
+                <span class="ts">14m ago</span>
+              </div>
+              <div class="event">
+                <span class="ev-led" style="color:var(--c-free)"></span>
+                <span class="ev-txt">place <b>rpi5-cam-07</b> released</span>
+                <span class="ts">14m ago</span>
+              </div>
+              <div class="event">
+                <span class="ev-led" style="color:var(--c-group)"></span>
+                <span class="ev-txt">group <b>fpga-lab</b> published 3 resources</span>
+                <span class="ts">15m ago</span>
+              </div>
+            </div>
+            <div class="foot-note">end of trace <span class="cursor">_</span></div>
+          </section>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var root = document.documentElement;
+  var btn = document.getElementById('themeToggle');
+  // honor saved choice; default = dark (hero)
+  try {
+    var saved = localStorage.getItem('lg-theme');
+    if (saved === 'light' || saved === 'dark') root.setAttribute('data-theme', saved);
+  } catch (e) {}
+  btn.addEventListener('click', function () {
+    var next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    root.setAttribute('data-theme', next);
+    try { localStorage.setItem('lg-theme', next); } catch (e) {}
+  });
+})();
+</script>
+</body>
+</html>

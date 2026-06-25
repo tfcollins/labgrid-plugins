@@ -24,9 +24,10 @@ class BoardUnavailable(RequestError):
 class ProvisionError(RequestError):
     """Booting the acquired board failed."""
 
-    def __init__(self, message: str, console_tail: str = ""):
+    def __init__(self, message: str, console_tail: str = "", place: str = ""):
         super().__init__(message)
         self.console_tail = console_tail
+        self.place = place  # stamped by request() post-reservation for CI annotations
 
 
 class NoBoardSource(RequestError):

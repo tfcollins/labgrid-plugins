@@ -14,13 +14,18 @@ def download_cloudsmith_boot_file(
     repo,
     version,
     cache_path,
+    vfilter=None,
+    vnot=None,
 ):
+    """Resolve, download, and return the local path of the boot artifact."""
     target = Target("CloudsmithDownloader")
     CloudsmithRelease(
         target,
         name=None,
         fpga_carrier=fpga_carrier,
         daughter_card=daughter_card,
+        vfilter=vfilter,
+        vnot=vnot,
         filename=filename,
         owner=owner,
         repo=repo,
@@ -31,9 +36,7 @@ def download_cloudsmith_boot_file(
     dl = CloudsmithDLDriver(target, name=None)
 
     target.activate(dl)
-    path = dl.get_boot_file_path()
-
-    print(f"Downloaded boot file: {path}")
+    return dl.get_boot_file_path()
 
 
 def main():
@@ -56,7 +59,7 @@ def main():
     )
 
     args = parser.parse_args()
-    download_cloudsmith_boot_file(
+    path = download_cloudsmith_boot_file(
         args.fpga_carrier,
         args.daughter_card,
         args.filename,
@@ -65,3 +68,4 @@ def main():
         args.version,
         args.cache_path,
     )
+    print(f"Downloaded boot file: {path}")

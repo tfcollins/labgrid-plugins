@@ -1,11 +1,13 @@
 import logging
 import os
+import shutil
 
 import click
 from labgrid import Environment
 from rich.console import Console
 from rich.logging import RichHandler
 
+from adi_lg_plugins.tools.cloudsmithdl import download_cloudsmith_boot_file
 from adi_lg_plugins.tools.config_gen import generate_config
 from adi_lg_plugins.tools.request_cli import request_cmd
 
@@ -175,6 +177,55 @@ def boot_soc_ssh(config, release, kernel, bootbin, devicetree, target, state):
 @click.option(
     "--config", "-c", required=True, type=click.Path(exists=True), help="Labgrid configuration file"
 )
+@click.option("--release", help="Kuiper release version (e.g., 2023_R2_P1)")
+@click.option(
+    "--sd-image",
+    type=click.Path(exists=True),
+    help="Path to an SD card image to flash (overrides the strategy default)",
+)
+@click.option("--target", "-t", default="main", help="Target name in config (default: main)")
+@click.option(
+    "--state",
+    default="sd_flash_done",
+    help="Target state to transition to (default: sd_flash_done)",
+)
+def recover(config, release, sd_image, target, state):
+    """Recover a Zynq-7000 board via JTAG (BootZynq7000JTAGRecovery).
+
+    Bootstraps U-Boot over JTAG, TFTP-boots a RAM-rooted recovery Linux, then
+    reflashes the SD card. DESTRUCTIVE: wipes /dev/mmcblk0.
+    """
+    env = Environment(config)
+    tg = env.get_target(target)
+
+    try:
+        resource = tg.get_resource("KuiperRelease")
+        if release:
+            resource.release_version = release
+            logging.info(f"Overriding release version: {resource.release_version}")
+    except Exception as e:
+        logging.warning(f"Could not find KuiperRelease resource: {e}")
+
+    strategy = tg.get_driver("BootZynq7000JTAGRecovery")
+    if sd_image:
+        strategy.sd_image_path = os.path.abspath(sd_image)
+        logging.info(f"Overriding SD image path: {strategy.sd_image_path}")
+
+    with console.status(
+        f"[bold green]Recovering {target} to {state} using BootZynq7000JTAGRecovery..."
+    ):
+        try:
+            strategy.transition(state)
+            console.print(f"[bold green]Successfully reached {state}![/bold green]")
+        except Exception as e:
+            console.print(f"[bold red]Recovery failed: {e}[/bold red]")
+            raise click.ClickException(str(e)) from e
+
+
+@cli.command()
+@click.option(
+    "--config", "-c", required=True, type=click.Path(exists=True), help="Labgrid configuration file"
+)
 @click.option("--pre-boot-file", multiple=True, help="Format: local_path:remote_path")
 @click.option("--post-boot-file", multiple=True, help="Format: local_path:remote_path")
 @click.option("--target", "-t", default="main", help="Target name in config (default: main)")
@@ -279,6 +330,81 @@ def provision_software(config, package, repo, build, test, target, state):
         except Exception as e:
             console.print(f"[bold red]Provisioning failed: {e}[/bold red]")
             raise click.ClickException(str(e)) from e
+
+
+@cli.command(name="download-cloudsmith")
+@click.option("--fpga-carrier", required=False, help="FPGA carrier, e.g. zcu102")
+@click.option("--daughter-card", required=False, help="Daughter card, e.g. adrv9009")
+@click.option(
+    "--vfilter",
+    required=False,
+    multiple=True,
+    help="Generic version tag filter. Device info is all in the version flag. "
+    "Repeatable; each value adds an AND-ed match clause.",
+)
+@click.option(
+    "--vnot",
+    multiple=True,
+    help="Exclude packages whose version matches this term. "
+    "Repeatable; each value adds an AND-ed exclusion clause.",
+)
+@click.option("--filename", default="BOOT.BIN", show_default=True, help="Artifact filename")
+@click.option("--owner", default="adi", show_default=True, help="Cloudsmith owner/org")
+@click.option(
+    "--repo", default="sdg-boot-partition", show_default=True, help="Cloudsmith repository"
+)
+@click.option("--version", default=None, help="Pin an exact package version (default: latest)")
+@click.option(
+    "--cache-path",
+    default="~/.labgrid/cloudsmith_releases/",
+    show_default=True,
+    help="Cache directory for downloaded artifacts",
+)
+@click.option(
+    "--out",
+    type=click.Path(),
+    default=None,
+    help="Copy the artifact here after download (file path or existing directory)",
+)
+def download_cloudsmith(
+    fpga_carrier, daughter_card, vfilter, vnot, filename, owner, repo, version, cache_path, out
+):
+    """Download a boot artifact from Cloudsmith.
+
+    Resolves the latest (or pinned) package matching the FPGA carrier and
+    daughter card in the Cloudsmith repo, downloads it into the local cache
+    (sha256-verified), and prints the cached path. Requires the
+    CLOUDSMITH_API_TOKEN environment variable.
+    """
+    if not fpga_carrier and not daughter_card and not vfilter:
+        raise click.ClickException(
+            "Must have at least --fpga-carrier or --daughter-card or --vfilter set"
+        )
+    try:
+        path = download_cloudsmith_boot_file(
+            fpga_carrier=fpga_carrier,
+            daughter_card=daughter_card,
+            vfilter=vfilter,
+            vnot=vnot,
+            filename=filename,
+            owner=owner,
+            repo=repo,
+            version=version,
+            cache_path=cache_path,
+        )
+    except Exception as e:
+        console.print(f"[bold red]Download failed: {e}[/bold red]")
+        raise click.ClickException(str(e)) from e
+
+    console.print(f"[bold green]Downloaded:[/bold green] {path}")
+    if out:
+        dest = os.path.join(out, os.path.basename(path)) if os.path.isdir(out) else out
+        try:
+            shutil.copy2(path, dest)
+        except OSError as e:
+            console.print(f"[bold red]Copy failed: {e}[/bold red]")
+            raise click.ClickException(str(e)) from e
+        console.print(f"[bold green]Copied to:[/bold green] {dest}")
 
 
 @cli.command(name="build-recovery-initramfs")

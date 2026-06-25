@@ -53,8 +53,9 @@ Options:
 * ``--wait`` (default ``1800``): seconds to queue for a free matching board. ``0`` fails fast.
 * ``--power-down``: power the board off after release (default: leave it powered for the next user).
 * ``--coord``: coordinator ``host:port`` (default: ``$LG_COORDINATOR``).
-* ``--run '<cmd>'``: run ``<cmd>`` with ``IIO_URI``, ``LG_PLACE`` and ``LG_CARRIER`` exported into
-  its environment. The command's own exit code is propagated.
+* ``--run '<cmd>'``: run ``<cmd>`` with ``IIO_URI``, ``LG_PLACE``, ``LG_CARRIER``,
+  ``HW_DAUGHTER`` and ``HW_CARRIER`` exported into its environment. The command's own
+  exit code is propagated.
 
 Exit codes (so CI can tell an infra problem from a real test failure):
 
@@ -229,6 +230,40 @@ Provision software on a target system using the ``SoftwareProvisioningStrategy``
 * ``--test <cmd,dir>``: Test command to run in a specific directory. Format: command, directory. Can be specified multiple times.
 * ``-t, --target <name>``: Target name in the configuration (default: ``main``).
 * ``--state <name>``: Target state to transition to (default: ``tested``).
+
+download-cloudsmith
+~~~~~~~~~~~~~~~~~~~
+
+Download a boot artifact (e.g. ``BOOT.BIN``) from a Cloudsmith package
+repository. Resolves the latest package matching the FPGA carrier and
+daughter card (or an exact pinned version), downloads it into a local
+cache with SHA256 verification, and prints the cached path.
+
+Requires the ``CLOUDSMITH_API_TOKEN`` environment variable.
+
+.. code-block:: bash
+
+    adi-lg download-cloudsmith --fpga-carrier zcu102 --daughter-card adrv9009
+
+    # Pin an exact package version and copy the file next to your project
+    adi-lg download-cloudsmith \
+        --fpga-carrier zcu102 \
+        --daughter-card adrv9009 \
+        --version "boot_partition/main/2025_06_14-07_18_12/zynqmp-zcu102-rev10-adrv9009/" \
+        --out ./BOOT.BIN
+
+**Options:**
+
+* ``--fpga-carrier <name>``: (Required) FPGA carrier, e.g. ``zcu102``.
+* ``--daughter-card <name>``: (Required) Daughter card, e.g. ``adrv9009``.
+* ``--filename <name>``: Artifact filename (default ``BOOT.BIN``).
+* ``--owner <org>``: Cloudsmith owner/org (default ``adi``).
+* ``--repo <name>``: Cloudsmith repository (default ``sdg-boot-partition``).
+* ``--version <version>``: Pin an exact package version (default: latest).
+* ``--cache-path <path>``: Cache directory (default ``~/.labgrid/cloudsmith_releases/``).
+* ``--out <path>``: Copy the artifact here after download. If the path is an existing directory the file is copied into it keeping its filename; otherwise the path is used as the destination file.
+
+The standalone ``cloudsmithdl`` console script (below) exposes the same resolution and download, with a different default cache path.
 
 Standalone download tools
 -------------------------

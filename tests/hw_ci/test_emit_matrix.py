@@ -30,3 +30,31 @@ def test_warns_when_github_output_requested_but_env_unset(monkeypatch, capsys):
     monkeypatch.delenv("GITHUB_OUTPUT", raising=False)
     _emit_matrix({"include": []}, count=0, missing=[], kind="request-matrix", github_output=True)
     assert "$GITHUB_OUTPUT is unset" in capsys.readouterr().err
+
+
+def test_missing_default_wording_is_wanted_but_no_live_board(capsys):
+    """Default annotation covers the wanted-part-missing case."""
+    _emit_matrix(
+        {"include": []}, count=0, missing=["daq3"], kind="request-matrix", github_output=False
+    )
+    err = capsys.readouterr().err
+    assert (
+        "::warning::request-matrix: 'daq3' is wanted but no live board matches on the "
+        "coordinator — skipping" in err
+    )
+
+
+def test_missing_msg_parameterizes_unmapped_place_wording(capsys):
+    """matlab-matrix passes live-but-unmapped places; the annotation must not
+    claim 'no live board matches' for a board that is live."""
+    _emit_matrix(
+        {"include": []},
+        count=0,
+        missing=["nuc"],
+        kind="matlab-matrix",
+        github_output=False,
+        missing_msg="live place {item!r} has no board_map entry",
+    )
+    err = capsys.readouterr().err
+    assert "::warning::matlab-matrix: live place 'nuc' has no board_map entry — skipping" in err
+    assert "is wanted but" not in err

@@ -16,6 +16,7 @@ _MODULES = (
     "cloudsmithrelease",
     "cyberpowerpdu",
     "homeassistant",
+    "kasa",
     "kuiperrelease",
     "massstorage",
     "tftpserver",

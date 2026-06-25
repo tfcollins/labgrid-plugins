@@ -16,7 +16,7 @@ const ACTIONS: { label: string; value: Exclude<SDMuxAction, "get"> }[] = [
 ];
 
 const MODE_COLORS: Record<string, string> = {
-  host: "blue",
+  host: "adi",
   dut: "purple",
   off: "gray",
   client: "teal",

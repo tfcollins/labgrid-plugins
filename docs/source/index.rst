@@ -35,6 +35,12 @@ adi-labgrid-plugins Documentation
 
         Contributing, architecture, and implementation patterns.
 
+    .. grid-item-card:: Hardware CI — Onboarding
+        :link: user-guide/onboarding-a-consumer-repo
+        :link-type: doc
+
+        Wire a consumer repo onto the lab hardware-CI flow — start here.
+
 .. admonition:: Version Information
     :class: note
 

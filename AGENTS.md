@@ -4,7 +4,7 @@ This file is for AI coding agents (and humans) wiring a **new consumer repo** on
 labgrid-plugins hardware-CI flow. It is an executable recipe: follow the steps, run the
 verify commands, then open the PR. The human reference with full prose is
 `docs/source/user-guide/onboarding-a-consumer-repo.rst`; deep per-topic docs are linked
-from there. Copy-paste starting files live in `docs/source/onboarding-templates/`.
+from there. Copy-paste starting files live in `adi_lg_plugins/hw_ci/onboarding_templates/`.
 
 > Repo-level guidance for working *inside this package* is in `CLAUDE.md`. This file is
 > specifically about onboarding **other** repos as hardware-CI consumers.
@@ -15,7 +15,9 @@ A consumer repo's CI calls a **reusable workflow** here. A *preflight* job disco
 of the consumer's wanted boards are live on the lab **coordinator**, then fans out one CI
 leg per board to a **self-hosted runner** co-located with that board. The board is
 reserved, provisioned, exercised, and released automatically — the consumer never defines
-labgrid drivers/strategies or touches a board directly.
+labgrid drivers/strategies or touches a board directly. Boards are boot-verified (iiod
+reachable) before tests run, and boot failures are reported distinctly (exit 12 plus an
+`::error title=boot-failure::` annotation) so they never masquerade as test failures.
 
 ## Step 1 — pick the mode (decision tree)
 
@@ -24,15 +26,21 @@ labgrid drivers/strategies or touches a board directly.
 | runs **Python/pytest** against a booted Linux board over libIIO (a URI) | **uri** | `hw-request.yml` | `@pytest.mark.iio_hardware(["<part>"])` markers |
 | builds **bare-metal firmware**, JTAG-flashes it, validates over serial | **flash** | `noos-hw-request.yml` | a `tools/hw_ci/projects.yaml` manifest |
 | runs **MATLAB** `runHWTests` against a URI | **matlab** | `matlab-hw-request.yml` | a `board_map.yaml` |
+| **drives boot itself** via labgrid (pytest plugin + `LG_ENV`, e.g. per-test DTBs) | **uri workflow, `request-mode: reserve`** | `hw-request.yml` with `request-mode: "reserve"` | `@pytest.mark.iio_hardware(["<part>"])` markers |
+
+> **Deprecation notice:** `hw-matrix.yml` and `hw-matrix-v2.yml` are deprecated. New
+> consumers must use the hw-request family (`hw-request.yml`, `noos-hw-request.yml`,
+> `matlab-hw-request.yml`) pinned at `@v3.5` (current release). Removal of the deprecated
+> workflows is tracked by the HW-CI convergence effort.
 
 Reference consumers: pyadi-iio (uri), no-os (flash), TransceiverToolbox (matlab). Matlab
-now has a drop-in template at `onboarding-templates/matlab-hw-request.yml` and the
+now has a drop-in template at `adi_lg_plugins/hw_ci/onboarding_templates/matlab-hw-request.yml` and the
 reusable `matlab-hw-request.yml` workflow — see Step 2 below. The rest of this file covers
 all three modes.
 
 ## Step 2 — add the files to the consumer repo
 
-Copy the matching template(s) from `docs/source/onboarding-templates/` and replace the
+Copy the matching template(s) from `adi_lg_plugins/hw_ci/onboarding_templates/` and replace the
 `<PLACEHOLDERS>`:
 
 **uri mode**
@@ -64,7 +72,7 @@ Copy the matching template(s) from `docs/source/onboarding-templates/` and repla
 - **One extra repo var beyond the Step-3 three**: `MATLAB_BIN` (path to the `matlab`
   binary on the runner, e.g. `/opt/MATLAB/R2025b/bin/matlab`).
 
-Drop `docs/source/onboarding-templates/AGENTS-consumer-stub.md` into the consumer repo as
+Drop `adi_lg_plugins/hw_ci/onboarding_templates/AGENTS-consumer-stub.md` into the consumer repo as
 its own `AGENTS.md` and fill in the wiring.
 
 ## Step 3 — set the three repo variables (REQUIRED, easy to miss)
@@ -79,6 +87,13 @@ In the consumer repo: **Settings → Secrets and variables → Actions → Varia
 
 If unset, matrix jobs receive empty values and fail.
 
+**Optional — Prism result reporting** (`hw-request.yml` / `matlab-hw-request.yml`): two
+more repo variables — `PRISM_UPLOAD_ENABLED` (`true` enables the `prism-upload` input)
+and `PRISM_URL` (Prism base URL) — plus three Actions **secrets** passed explicitly in
+the caller's `secrets:` block: `PRISM_API_TOKEN`, `PRISM_EMAIL`, `PRISM_PASSWORD`
+(cross-org `secrets: inherit` does NOT work). See "Uploading results to Prism" in
+`docs/source/user-guide/hw-request.rst`.
+
 ## Step 4 — confirm the prerequisites you do NOT own (ask a lab admin)
 
 These live **coordinator-side** and **lab-side**; an agent cannot create them but MUST
@@ -86,11 +101,19 @@ verify they exist (Step 5 will fail clearly if they don't):
 
 - **Catalog entry** for each `part` in `coordinator/api/board_catalog.yaml`
   (schema: `coordinator/api/app/catalog.py` → `BoardEntry`/`FlashConfig`; template:
-  `onboarding-templates/board-catalog-entry.yaml`). uri needs `image`; flash needs a
+  `adi_lg_plugins/hw_ci/onboarding_templates/board-catalog-entry.yaml`). uri needs `image`; flash needs a
   `flash:` block. After any catalog edit the coordinator host must be **redeployed**
   (it does not auto-update).
 - **A live place** tagged `daughter-board=<part> carrier=<carrier> boot-strategy=<Strategy>`
   (+ optional `runner=<label>`).
+
+  Hand the lab admin this (fill the placeholders) so the catalog + place round-trip is one message:
+
+  ```text
+  Please add to coordinator/api/board_catalog.yaml: a <part> entry (uri: image; flash: flash block),
+  and create a live place tagged: daughter-board=<part> carrier=<carrier> boot-strategy=<Strategy>
+  (+ runner=<label> if board-pinned). Redeploy the coordinator after merging.
+  ```
 - **Runner scope**: the lab runners must be registered on the consumer repo's (or its
   org's) GitHub scope, or legs queue forever. See
   `.github/scripts/register-hw-runners.sh --scopes`.
@@ -119,7 +142,11 @@ adi-lg-hw-ci matlab-matrix --board-map test/hw_ci/board_map.yaml --coord "$LG_CO
 
 **Success** = the printed `matrix.include` has one leg per board you expect, each with a
 non-empty `runner`. A wanted board with no live place is emitted as a `::warning::` skip
-(that means the catalog/place is missing — Step 4). Other quick checks:
+(that means the catalog/place is missing — Step 4).
+
+> If a board prints `Unknown release version`, the coordinator catalog is stale — ask the lab admin to **redeploy the coordinator** after the catalog merge.
+
+Other quick checks:
 
 ```bash
 adi-lg-hw-ci list-strategies                    # the board's boot-strategy must appear here
@@ -145,6 +172,11 @@ confirm both the preflight and the per-board legs go green.
   the catalog `flash.kuiper_xsa_dir` override pins the folder.
 - **flash runner**: needs Vivado + the `[kuiper]`/pytsk3 install + ~10 GB disk for the
   Kuiper image.
+- **Random MACs on stock images**: stock Kuiper boot files randomize the DUT MAC every
+  boot → fresh DHCP lease/IP per boot. The interactive TFTP path (`BootFPGASoCTFTP`)
+  auto-derives a stable per-place MAC and runs `setenv ethaddr` before `dhcp`; override
+  with the place tag `ethaddr=<mac>`, opt out with `ethaddr=stock`. `sd-autoboot` boards
+  boot U-Boot's own env — set `ethaddr` in the SD's `uEnv.txt` instead.
 - After editing the coordinator catalog, **redeploy the coordinator host** — it does not
   auto-update.
 
@@ -155,3 +187,6 @@ confirm both the preflight and the per-board legs go green.
 - Catalog schema: `coordinator/api/app/catalog.py` (`BoardEntry`, `FlashConfig`).
 - Reusable workflow inputs: `docs/source/user-guide/github-actions.rst`.
 - CLI: `docs/source/user-guide/cli.rst` (`adi-lg-hw-ci`, `adi-lg request`).
+- **Pinning**: consumer `uses:` lines must reference `@v3.5` (current release), e.g.
+  `uses: tfcollins/labgrid-plugins/.github/workflows/hw-request.yml@v3.5`. Bump the pin
+  when a new release tags. Never pin to `@main` in production workflows.

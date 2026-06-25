@@ -3,10 +3,11 @@ import { Link as RLink, useParams } from "react-router-dom";
 import {
   Box, Code, Heading, HStack, Button, Badge, Table, Tbody, Td, Th, Thead, Tr,
   Text, Spinner, Modal, ModalOverlay, ModalContent, ModalHeader, ModalBody,
-  ModalFooter, ModalCloseButton, FormControl, FormLabel, Select,
-  useDisclosure, useToast, IconButton, Tag, Flex, Link, Stack,
+  ModalFooter, ModalCloseButton, FormControl, FormLabel, Select, Input,
+  useDisclosure, useToast, IconButton, Tag, TagLabel, Flex, Link, Stack,
 } from "@chakra-ui/react";
-import { MdDelete } from "react-icons/md";
+import StatusPill from "../components/ui/StatusPill";
+import { MdDelete, MdEdit, MdAdd, MdHealing } from "react-icons/md";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "../api/client";
 import { useAuth } from "../auth/AuthContext";
@@ -21,6 +22,13 @@ import { useRelationships } from "../hooks/useRelationships";
 import { useRecentPlaces } from "../hooks/useRecentPlaces";
 import { useReservationsLive } from "../hooks/useReservations";
 import { formatAge } from "../lib/formatAge";
+
+const REQUIRED_TAG_KEYS = ["board-location", "carrier", "daughter-board"] as const;
+
+interface TagRow {
+  key: string;
+  value: string;
+}
 
 /** Group class names with counts: ["a","a","b"] -> "2 a, 1 b". */
 function summarizeByClass(classes: string[]): string {
@@ -40,6 +48,13 @@ export default function PlaceDetail() {
 
   const { placeToExporters, placeToMissingMatches } = useRelationships();
   const { record } = useRecentPlaces();
+
+  const matchModal = useDisclosure();
+  const downloadModal = useDisclosure();
+  const tagsModal = useDisclosure();
+  const recoverModal = useDisclosure();
+  const [tagRows, setTagRows] = useState<TagRow[]>([]);
+
   useEffect(() => {
     if (name) record(name);
   }, [name, record]);
@@ -54,6 +69,12 @@ export default function PlaceDetail() {
   });
 
   const { data: reservations = [] } = useReservationsLive();
+
+  useEffect(() => {
+    if (tagsModal.isOpen && place) {
+      setTagRows(Object.entries(place.tags).map(([key, value]) => ({ key, value })));
+    }
+  }, [tagsModal.isOpen, place]);
 
   const myReservation = useMemo(
     () => place?.reservation ? reservations.find((r) => r.token === place.reservation) : null,
@@ -83,8 +104,35 @@ export default function PlaceDetail() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["place", name] }),
   });
 
-  const matchModal = useDisclosure();
-  const downloadModal = useDisclosure();
+  const setTagsM = useMutation({
+    mutationFn: (tags: Record<string, string>) => api.setPlaceTags(name, tags),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["place", name] });
+      qc.invalidateQueries({ queryKey: ["places"] });
+      toast({ status: "success", title: "Tags updated" });
+      tagsModal.onClose();
+    },
+    onError: (e: unknown) =>
+      toast({
+        status: "error",
+        title: "Update failed",
+        description: e instanceof Error ? e.message : String(e),
+      }),
+  });
+  const recoverM = useMutation({
+    mutationFn: () => api.recoverPlace(name),
+    onSuccess: () => {
+      toast({ status: "success", title: "Recovery complete" });
+      recoverModal.onClose();
+    },
+    onError: (e: unknown) =>
+      toast({
+        status: "error",
+        title: "Recovery failed",
+        description: e instanceof Error ? e.message : String(e),
+      }),
+  });
+
   const [exporter, setExporter] = useState("");
   const [group, setGroup] = useState("");
   const [cls, setCls] = useState("*");
@@ -159,13 +207,13 @@ export default function PlaceDetail() {
       <Box flex="1" minW={0}>
         <HStack mb={4}>
           <Heading size="md">{place.name}</Heading>
-          {owner && <Badge colorScheme="orange">acquired by <Term name="acquire">{owner}</Term></Badge>}
+          {owner && <StatusPill status="acquired">acquired by <Term name="acquire">{owner}</Term></StatusPill>}
           <Box ml="auto">
             <Button size="sm" variant="outline" onClick={downloadModal.onOpen}>
               Download env yaml
             </Button>
             {canAcquire && (
-              <Button colorScheme="blue" onClick={() => acquireM.mutate()} isLoading={acquireM.isPending}>
+              <Button onClick={() => acquireM.mutate()} isLoading={acquireM.isPending}>
                 Acquire
               </Button>
             )}
@@ -174,21 +222,46 @@ export default function PlaceDetail() {
                 Release
               </Button>
             )}
+            {(isOwner || user?.role === "admin") && (
+              <Button colorScheme="orange" leftIcon={<MdHealing />} onClick={recoverModal.onOpen}>
+                Recover
+              </Button>
+            )}
           </Box>
         </HStack>
 
-        {place.comment && <Text mb={4} color="gray.500">{place.comment}</Text>}
+        {place.comment && <Text mb={4} color="text.secondary">{place.comment}</Text>}
+
+        <HStack mb={2}>
+          <Heading size="sm">Tags</Heading>
+          {canEdit && (
+            <Button ml="auto" size="xs" leftIcon={<MdEdit />} onClick={tagsModal.onOpen}>
+              Edit tags
+            </Button>
+          )}
+        </HStack>
+        <HStack spacing={1} mb={4} flexWrap="wrap">
+          {Object.entries(place.tags).length === 0 ? (
+            <Text color="gray.500" fontSize="sm">No tags</Text>
+          ) : (
+            Object.entries(place.tags).map(([k, v]) => (
+              <Tag key={k} size="sm" colorScheme="adi" variant="subtle">
+                <TagLabel>{k}={v}</TagLabel>
+              </Tag>
+            ))
+          )}
+        </HStack>
 
         <HStack mb={2}>
           <Heading size="sm">Resource matches</Heading>
           {canEdit && (
-            <Button ml="auto" size="xs" colorScheme="blue" onClick={matchModal.onOpen}>
+            <Button ml="auto" size="xs" onClick={matchModal.onOpen}>
               + Add match
             </Button>
           )}
         </HStack>
         {place.matches.length === 0 ? (
-          <Text color="gray.500" mb={4} fontSize="sm">
+          <Text color="text.secondary" mb={4} fontSize="sm">
             No matches yet — add one to attach exporter resources to this place.
           </Text>
         ) : (
@@ -223,7 +296,7 @@ export default function PlaceDetail() {
 
         <Heading size="sm" mb={2}>Resources</Heading>
         {placeResources.length === 0 ? (
-          <Text color="gray.500" fontSize="sm">
+          <Text color="text.secondary" fontSize="sm">
             No resources match. Add a resource match above (or check that the
             exporter is online).
           </Text>
@@ -240,7 +313,7 @@ export default function PlaceDetail() {
                   <Td>{r.cls}</Td>
                   <Td>{r.name}</Td>
                   <Td>{r.exporter}</Td>
-                  <Td><Badge colorScheme={r.avail ? "green" : "red"}>{r.avail ? "yes" : "no"}</Badge></Td>
+                  <Td><StatusPill status={r.avail ? "free" : "degraded"}>{r.avail ? "yes" : "no"}</StatusPill></Td>
                   <Td>
                     {r.cls === "NetworkSerialPort" && isOwner && (
                       <Button
@@ -302,14 +375,14 @@ export default function PlaceDetail() {
                   {classes.map((c) => <option key={c} value={c}>{c}</option>)}
                 </Select>
               </FormControl>
-              <Text fontSize="xs" color="gray.500" mt={3}>
+              <Text fontSize="xs" color="text.secondary" mt={3}>
                 Pattern preview:{" "}
                 <code>{exporter && group ? `${exporter}/${group}/${cls || "*"}` : "—"}</code>
               </Text>
             </ModalBody>
             <ModalFooter>
               <Button mr={2} onClick={matchModal.onClose}>Cancel</Button>
-              <Button colorScheme="blue" onClick={submitMatch} isLoading={addMatchM.isPending}>
+              <Button onClick={submitMatch} isLoading={addMatchM.isPending}>
                 Add match
               </Button>
             </ModalFooter>
@@ -322,22 +395,116 @@ export default function PlaceDetail() {
           placeName={name}
           resourceClasses={resourceClasses}
         />
+
+        {/* Recover confirm modal */}
+        <Modal isOpen={recoverModal.isOpen} onClose={recoverModal.onClose}>
+          <ModalOverlay />
+          <ModalContent>
+            <ModalHeader>Recover board?</ModalHeader>
+            <ModalCloseButton />
+            <ModalBody>
+              <Text>
+                This reflashes the SD card (erasing it) and runs for several minutes. The place
+                stays held for the duration. The request is synchronous — if a proxy or the browser
+                times out first, recovery keeps running on the server.
+              </Text>
+            </ModalBody>
+            <ModalFooter>
+              <Button mr={2} onClick={recoverModal.onClose}>Cancel</Button>
+              <Button
+                colorScheme="red"
+                isLoading={recoverM.isPending}
+                onClick={() => recoverM.mutate()}
+              >
+                Recover board
+              </Button>
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
+
+        {/* Edit tags modal */}
+        <Modal isOpen={tagsModal.isOpen} onClose={tagsModal.onClose}>
+          <ModalOverlay />
+          <ModalContent>
+            <ModalHeader>Edit tags</ModalHeader>
+            <ModalCloseButton />
+            <ModalBody>
+              <Stack spacing={2}>
+                {tagRows.map((row, i) => {
+                  const isRequired = (REQUIRED_TAG_KEYS as readonly string[]).includes(row.key);
+                  return (
+                    <HStack key={i}>
+                      <Input
+                        placeholder="key"
+                        value={row.key}
+                        isReadOnly={isRequired}
+                        aria-label={`Tag ${i} key`}
+                        onChange={(e) =>
+                          setTagRows((cur) => cur.map((r, j) => (j === i ? { ...r, key: e.target.value } : r)))
+                        }
+                      />
+                      <Input
+                        placeholder="value"
+                        value={row.value}
+                        aria-label={`Tag ${i} value`}
+                        onChange={(e) =>
+                          setTagRows((cur) => cur.map((r, j) => (j === i ? { ...r, value: e.target.value } : r)))
+                        }
+                      />
+                      {!isRequired && (
+                        <IconButton
+                          aria-label="Remove tag"
+                          icon={<MdDelete />}
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => setTagRows((cur) => cur.filter((_, j) => j !== i))}
+                        />
+                      )}
+                    </HStack>
+                  );
+                })}
+              </Stack>
+              <Button
+                mt={3}
+                size="sm"
+                leftIcon={<MdAdd />}
+                onClick={() => setTagRows((cur) => [...cur, { key: "", value: "" }])}
+              >
+                Add tag
+              </Button>
+            </ModalBody>
+            <ModalFooter>
+              <Button mr={2} onClick={tagsModal.onClose}>Cancel</Button>
+              <Button
+                isLoading={setTagsM.isPending}
+                onClick={() => {
+                  const tagsObj = Object.fromEntries(
+                    tagRows.filter((r) => r.key.trim()).map((r) => [r.key.trim(), r.value])
+                  );
+                  setTagsM.mutate(tagsObj);
+                }}
+              >
+                Save
+              </Button>
+            </ModalFooter>
+          </ModalContent>
+        </Modal>
       </Box>
 
       {/* ===== new right-hand Related sidebar ===== */}
       <RelatedPanel>
         <RelatedPanel.Section title="Exporters contributing">
           {(placeToExporters.get(name) ?? []).length === 0 ? (
-            <Text color="gray.500">None online</Text>
+            <Text color="text.secondary">None online</Text>
           ) : (
             <Stack spacing={1}>
               {(placeToExporters.get(name) ?? []).map((e) => (
                 <HStack key={e.name}>
-                  <Box w="8px" h="8px" borderRadius="full" bg={e.online ? "green.400" : "gray.400"} />
+                  <Box w="8px" h="8px" borderRadius="full" bg={e.online ? "status.free" : "status.offline"} />
                   <RLink to={`/exporters/${encodeURIComponent(e.name)}`}>
-                    <Text color="blue.500">{e.name}</Text>
+                    <Text color="link">{e.name}</Text>
                   </RLink>
-                  {!e.online && <Text fontSize="xs" color="gray.500">offline</Text>}
+                  {!e.online && <Text fontSize="xs" color="text.secondary">offline</Text>}
                 </HStack>
               ))}
             </Stack>
@@ -346,7 +513,7 @@ export default function PlaceDetail() {
 
         <RelatedPanel.Section title="Live resources">
           {placeResources.length === 0 ? (
-            <Text color="gray.500">None</Text>
+            <Text color="text.secondary">None</Text>
           ) : (
             <Text>
               {summarizeByClass(placeResources.map((r) => r.cls))}
@@ -374,12 +541,12 @@ export default function PlaceDetail() {
           {owner ? (
             <Stack spacing={1}>
               <Text>{owner}</Text>
-              <Text color="gray.500" fontSize="xs">
+              <Text color="text.secondary" fontSize="xs">
                 This place is reserved — only this user can use its resources until released.
               </Text>
             </Stack>
           ) : (
-            <Text color="gray.500">Not reserved — press Acquire to reserve.</Text>
+            <Text color="text.secondary">Not reserved — press Acquire to reserve.</Text>
           )}
         </RelatedPanel.Section>
 
@@ -389,19 +556,19 @@ export default function PlaceDetail() {
               <Stack spacing={1}>
                 <HStack>
                   <Code fontSize="xs">{myReservation.token.slice(0, 8)}</Code>
-                  <Badge colorScheme={myReservation.state === "waiting" ? "yellow" : myReservation.state === "allocated" ? "blue" : myReservation.state === "acquired" ? "green" : "gray"}>
+                  <Badge colorScheme={myReservation.state === "waiting" ? "yellow" : myReservation.state === "allocated" ? "adi" : myReservation.state === "acquired" ? "green" : "gray"}>
                     {myReservation.state}
                   </Badge>
                 </HStack>
-                <Text color="gray.500" fontSize="xs">
+                <Text color="text.secondary" fontSize="xs">
                   Owner: {myReservation.owner} · Age: {formatAge(myReservation.created)}
                 </Text>
-                <Link as={RLink} to="/reservations" color="blue.500" fontSize="xs">Open in Reservations →</Link>
+                <Link as={RLink} to="/reservations" color="link" fontSize="xs">Open in Reservations →</Link>
               </Stack>
             ) : (
               <Stack spacing={1}>
                 <Code fontSize="xs">{place.reservation.slice(0, 8)}</Code>
-                <Text color="gray.500" fontSize="xs">Reservation details not available (may have expired).</Text>
+                <Text color="text.secondary" fontSize="xs">Reservation details not available (may have expired).</Text>
               </Stack>
             )}
           </RelatedPanel.Section>

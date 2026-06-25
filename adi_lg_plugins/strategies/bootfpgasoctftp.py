@@ -53,6 +53,13 @@ class BootFPGASoCTFTP(Strategy):
     It depends on a `TFTPServerResource` to provide the server IP address.
     It handles transitions through various states including powering off, booting,
     updating boot files, and entering a shell.
+
+    When ``ethaddr`` is set (non-empty), the interactive U-Boot TFTP path
+    issues ``setenv ethaddr <value>`` BEFORE ``dhcp`` so the lease is
+    requested with a stable MAC (stock Kuiper boot files randomize the
+    MAC every boot). This applies ONLY to the interactive TFTP path:
+    ``sd_autoboot`` boards boot with U-Boot's own environment, so set
+    ``ethaddr`` in the SD card's ``uEnv.txt`` instead.
     """
 
     bindings = {
@@ -123,6 +130,14 @@ class BootFPGASoCTFTP(Strategy):
     # only missing piece is a working on-SD FSBL/U-Boot. Opt in via the
     # place tag ``sd-autoboot``; requires the JTAG bootstrap inputs.
     sd_autoboot = attr.ib(default=False, converter=_as_bool)
+
+    # Stable MAC for the interactive TFTP path. Non-empty → the strategy
+    # runs `setenv ethaddr <value>` before `dhcp` so the DHCP lease (and
+    # therefore the DUT's address) is predictable per place. Empty (the
+    # default / `ethaddr=stock` opt-out) leaves the board's own — on
+    # stock Kuiper, per-boot random — MAC untouched. Has no effect on
+    # sd_autoboot boards (set ethaddr in the SD's uEnv.txt instead).
+    ethaddr = attr.ib(default="", validator=attr.validators.instance_of(str))
 
     def _require(self, name: str) -> str:
         """Fetch a required attr or raise StrategyError naming the field."""
@@ -369,6 +384,11 @@ class BootFPGASoCTFTP(Strategy):
             # U-Boot commands configuration
             commands = [
                 "setenv autoload no",
+                # Stable MAC must be in effect BEFORE dhcp so the lease is
+                # requested with it (stock Kuiper randomizes the MAC every
+                # boot → unpinnable leases). Empty ethaddr = leave the
+                # board's own MAC alone.
+                *([f"setenv ethaddr {self.ethaddr}"] if self.ethaddr else []),
                 "dhcp",
                 f"setenv serverip {self.tftp_server.get_ip()}",
                 f"setenv tftpdstport {self.tftp_driver.resource.port}",

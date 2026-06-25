@@ -68,13 +68,23 @@ Step 2 — what you'll touch
    * - **Lab**
      - runners registered on the consumer's GitHub scope (+ Vivado/JTAG for flash)
 
+.. tip::
+
+   Instead of copying templates by hand, scaffold them with the packaged CLI::
+
+      pip install adi-labgrid-plugins
+      adi-lg-hw-ci init --mode uri --dest . --test-root test/hw
+
+   It writes the mode's files (pinned to the current release), then prints the repo
+   variables to set and the ``doctor``/``lint-markers`` commands to verify with.
+
 uri mode (pytest over libIIO)
 -----------------------------
 
 **Workflow** — copy into ``.github/workflows/hw-request.yml`` and set ``test-root`` +
 ``install-cmd``:
 
-.. literalinclude:: ../onboarding-templates/hw-request-uri.yml
+.. literalinclude:: ../../../adi_lg_plugins/hw_ci/onboarding_templates/hw-request-uri.yml
    :language: yaml
 
 **Markers** — decorate the hardware tests; the preflight AST-parses these, so the
@@ -90,21 +100,29 @@ arguments must be **string literals**:
 **Conftest** — copy into ``test/hw/conftest.py`` for the ``iio_uri`` fixture
 (``adi-lg request`` boots the board out of band and exports ``IIO_URI``):
 
-.. literalinclude:: ../onboarding-templates/conftest-iio-uri.py
+.. literalinclude:: ../../../adi_lg_plugins/hw_ci/onboarding_templates/conftest-iio-uri.py
    :language: python
+
+.. admonition:: Reserve mode (drive boot yourself)
+   :class: tip
+
+   Suites that boot the board themselves via labgrid (the pytest plugin + ``LG_ENV``, e.g.
+   per-test DTBs) use the same uri workflow with ``request-mode: "reserve"`` — the board is
+   reserved but not booted. See :doc:`hw-request` "Reserve mode". For private dependencies,
+   pass an ``INSTALL_GIT_TOKEN`` secret (see :doc:`github-actions`).
 
 flash mode (no-os firmware)
 ---------------------------
 
 **Workflow** — copy into ``.github/workflows/hw-request.yml``:
 
-.. literalinclude:: ../onboarding-templates/noos-hw-request-flash.yml
+.. literalinclude:: ../../../adi_lg_plugins/hw_ci/onboarding_templates/noos-hw-request-flash.yml
    :language: yaml
 
 **Manifest** — copy into ``tools/hw_ci/projects.yaml``, one entry per buildable project
 (schema: ``adi_lg_plugins/hw_ci/noos_manifest.py``):
 
-.. literalinclude:: ../onboarding-templates/projects.yaml
+.. literalinclude:: ../../../adi_lg_plugins/hw_ci/onboarding_templates/projects.yaml
    :language: yaml
 
 The reusable workflow's ``build-noos`` step sources each board's HDL ``.xsa`` from the
@@ -116,18 +134,15 @@ matlab mode (MATLAB ``runHWTests``)
 
 **Workflow** — copy into ``.github/workflows/hw-matlab.yml``:
 
-.. literalinclude:: ../onboarding-templates/matlab-hw-request.yml
+.. literalinclude:: ../../../adi_lg_plugins/hw_ci/onboarding_templates/matlab-hw-request.yml
    :language: yaml
 
 **Board map** — ``test/hw_ci/board_map.yaml`` maps each board's
 ``(daughter-board, carrier, hdl-config)`` to the MATLAB board name passed to
 ``runHWTests`` (most-specific entry wins):
 
-.. code-block:: yaml
-
-   boards:
-     - {carrier: zcu102, daughter-board: adrv9002, matlab_board: zynqmp-zcu102-rev10-adrv9002-vcmos}
-     - {daughter-board: pluto, matlab_board: pluto}
+.. literalinclude:: ../../../adi_lg_plugins/hw_ci/onboarding_templates/board-map.yaml
+   :language: yaml
 
 ``runHWTests.m`` reads the URI from ``$IIO_URI`` (exported by ``adi-lg request``) and emits
 ``<matlab_board>_HWTestResults.xml`` — no test-side changes are needed. The leg runner must
@@ -168,7 +183,7 @@ Step 4 — coordinator + lab prerequisites
 These you do not own — confirm with a lab admin (Step 5 fails clearly if any are missing):
 
 - **Catalog entry** per part in ``coordinator/api/board_catalog.yaml`` (template:
-  ``onboarding-templates/board-catalog-entry.yaml``; schema:
+  ``adi_lg_plugins/hw_ci/onboarding_templates/board-catalog-entry.yaml``; schema:
   ``coordinator/api/app/catalog.py``). uri needs ``image``; flash needs a ``flash:`` block.
   After any catalog edit the coordinator host must be **redeployed**.
 - **A live place** tagged ``daughter-board=<part> carrier=<carrier>
@@ -199,7 +214,12 @@ the markers/manifest + catalog + places line up:
 
 **Success** is one ``matrix.include`` leg per board you expect, each with a non-empty
 ``runner``. A wanted board with no live place is emitted as a ``::warning::`` skip (fix it
-in Step 4). For flash, also prove the ``.xsa`` is extractable:
+in Step 4).
+
+If a board reports ``Unknown release version``, the coordinator catalog is stale — ask the lab
+admin to redeploy the coordinator after the catalog merge.
+
+For flash, also prove the ``.xsa`` is extractable:
 
 .. code-block:: bash
 
@@ -212,7 +232,7 @@ Drop in an ``AGENTS.md``
 ------------------------
 
 Add an ``AGENTS.md`` to the consumer repo so the next agent/human knows the wiring — copy
-``onboarding-templates/AGENTS-consumer-stub.md`` and fill in the mode + boards.
+``adi_lg_plugins/hw_ci/onboarding_templates/AGENTS-consumer-stub.md`` and fill in the mode + boards.
 
 Troubleshooting
 ---------------

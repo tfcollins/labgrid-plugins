@@ -6,15 +6,15 @@ name: HW Request (low-config)
 #
 #   jobs:
 #     hw:
-#       uses: tfcollins/labgrid-plugins/.github/workflows/hw-request.yml@main
+#       uses: tfcollins/labgrid-plugins/.github/workflows/hw-request.yml@v3.5  # bump when a new release tags
 #       with:
-#         coordinator: "10.0.0.41:8000"
+#         coordinator: "10.0.0.41:20408"
 #         test-root: "test"
 on:
   workflow_call:
     inputs:
       coordinator:
-        description: "Coordinator host:port for the REST API (GET /api/match) and reservations."
+        description: "gRPC coordinator host:port (e.g. host:20408); the REST API (:8000) is derived automatically."
         type: string
         required: true
       test-root:
@@ -43,7 +43,10 @@ on:
         type: string
         default: "hw-coordinator"
       pytest-args:
-        description: "Extra args appended to the per-leg pytest command."
+        description: >-
+          Extra args appended to the per-leg pytest command. Whitespace-split
+          verbatim — shell quoting is NOT parsed (no -k "a and b"; use
+          -k 'a_and_b'-style single tokens).
         type: string
         default: ""
       venv-dir:
@@ -58,6 +61,52 @@ on:
         default: >-
           uv pip install --quiet --python "$VENV_DIR/bin/python" -e "."
           "adi-labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins@main"
+      request-mode:
+        description: >-
+          adi-lg request mode for each leg. "uri" (default) boots the board,
+          verifies iiod, and exports IIO_URI. "reserve" only acquires the
+          place and exports LG_ENV/LG_COORDINATOR — for suites that drive
+          boot themselves via the labgrid pytest plugin (e.g. pyadi-dt).
+        type: string
+        default: "uri"
+      prism-upload:
+        description: "Post each leg's JUnit to Prism."
+        type: boolean
+        default: false
+      prism-url:
+        description: "Prism base URL. Defaults to the caller's vars.PRISM_URL when empty."
+        type: string
+        default: ""
+      prism-project:
+        description: "Prism project slug. Required when prism-upload is true."
+        type: string
+        default: ""
+      prism-upload-cmd:
+        description: >-
+          Consumer-supplied shell command that uploads results to Prism
+          (vendored-uploader escape hatch, e.g. for a private Prism repo).
+          Used instead of the built-in uploader when non-empty. The step
+          exports PRISM_URL, PRISM_API_TOKEN, PRISM_EMAIL, PRISM_PASSWORD,
+          PRISM_PROJECT, PRISM_JUNIT, PRISM_RUN_NAME, PRISM_BOARD,
+          PRISM_CARRIER, PRISM_PLACE.
+        type: string
+        default: ""
+    secrets:
+      INSTALL_GIT_TOKEN:
+        required: false
+        description: >-
+          PAT exposed as a github.com insteadOf credential during venv
+          install, for consumers whose test deps live in private git repos
+          (e.g. pyadi-dt's pyadi-build).
+      PRISM_API_TOKEN:
+        required: false
+        description: API token used by the Prism upload step.
+      PRISM_EMAIL:
+        required: false
+        description: Login email for the Prism upload step (login-auth uploaders).
+      PRISM_PASSWORD:
+        required: false
+        description: Login password for the Prism upload step (login-auth uploaders).
 
 jobs:
   preflight:
@@ -66,6 +115,10 @@ jobs:
       matrix: ${{ steps.plan.outputs.matrix }}
       count: ${{ steps.plan.outputs.count }}
     steps:
+      - name: Validate required inputs
+        run: |
+          [ -n "${{ inputs.coordinator }}" ] || { echo "::error::coordinator is empty — set vars.LG_COORDINATOR (gRPC :20408)"; exit 1; }
+          [ -n "${{ inputs.runner-label }}" ] || { echo "::error::runner-label is empty — set vars.HW_REQUEST_RUNNER"; exit 1; }
       - uses: actions/checkout@v4
       - uses: tfcollins/labgrid-plugins/.github/actions/setup-uv-venv@main
         with:
@@ -101,13 +154,71 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: tfcollins/labgrid-plugins/.github/actions/setup-uv-venv@main
+        env:
+          INSTALL_GIT_TOKEN: ${{ secrets.INSTALL_GIT_TOKEN }}
         with:
           venv_dir: ${{ inputs.venv-dir }}
-          install_cmd: ${{ inputs.install-cmd }}
+          # Same mechanism as hw-matrix.yml's PYADI_BUILD_TOKEN wiring: when
+          # the secret is set, expose it as a github.com insteadOf credential
+          # via GIT_CONFIG_* env vars — scoped to this install step only, so
+          # nothing persists in the runner's git config afterwards.
+          install_cmd: |
+            set -euo pipefail
+            if [[ -n "${INSTALL_GIT_TOKEN:-}" ]]; then
+              export GIT_CONFIG_COUNT=1
+              export GIT_CONFIG_KEY_0="url.https://x-access-token:${INSTALL_GIT_TOKEN}@github.com/.insteadOf"
+              export GIT_CONFIG_VALUE_0="https://github.com/"
+            fi
+            ${{ inputs.install-cmd }}
       - name: Request ${{ matrix.part }} and run its tests
+        env:
+          TEST_ROOT: ${{ inputs.test-root }}
+          MARKER: ${{ inputs.marker }}
+          JUNIT: results-${{ matrix.part }}.xml
+          PYTEST_ARGS: ${{ inputs.pytest-args }}
         run: |
-          adi-lg request --part "${{ matrix.part }}" --wait "${{ inputs.wait }}" \
-            --run "pytest ${{ inputs.test-root }} -m ${{ inputs.marker }} --junitxml=results-${{ matrix.part }}.xml ${{ inputs.pytest-args }}"
+          # The child runs inside the reservation: LG_PLACE/LG_CARRIER are only
+          # known there, so persist them for the Prism step via GITHUB_ENV.
+          cat > run-leg.sh <<'EOF'
+          set -euo pipefail
+          {
+            echo "PRISM_PLACE=${LG_PLACE:-}"
+            echo "PRISM_CARRIER=${LG_CARRIER:-}"
+          } >> "$GITHUB_ENV"
+          pytest $TEST_ROOT -m "$MARKER" --junitxml="$JUNIT" $PYTEST_ARGS
+          EOF
+          adi-lg request --part "${{ matrix.part }}" \
+            --mode "${{ inputs.request-mode }}" --wait "${{ inputs.wait }}" \
+            --run "bash run-leg.sh"
+      - name: Upload to Prism
+        if: always() && inputs.prism-upload
+        continue-on-error: true
+        env:
+          PRISM_URL: ${{ inputs.prism-url != '' && inputs.prism-url || vars.PRISM_URL }}
+          PRISM_API_TOKEN: ${{ secrets.PRISM_API_TOKEN }}
+          PRISM_EMAIL: ${{ secrets.PRISM_EMAIL }}
+          PRISM_PASSWORD: ${{ secrets.PRISM_PASSWORD }}
+          PRISM_PROJECT: ${{ inputs.prism-project }}
+          PRISM_JUNIT: results-${{ matrix.part }}.xml
+          PRISM_RUN_NAME: ${{ github.workflow }}-${{ github.run_number }}-${{ matrix.part }}
+          PRISM_BOARD: ${{ matrix.part }}
+        run: |
+          set -euo pipefail
+          [ -f "$PRISM_JUNIT" ] || { echo "::notice::no JUnit produced; skipping Prism upload"; exit 0; }
+          if [ -n "${{ inputs.prism-upload-cmd }}" ]; then
+            ${{ inputs.prism-upload-cmd }}
+          else
+            uv pip install --quiet --python "$VENV_DIR/bin/python" \
+              "prism-uploader @ git+https://github.com/analogdevicesinc/prism.git#subdirectory=scripts" \
+              || echo "::warning::prism-uploader install failed; upload will be skipped"
+            "$VENV_DIR/bin/python" -m prism_client.upload_run \
+              --url "$PRISM_URL" \
+              --project "$PRISM_PROJECT" \
+              --junit "$PRISM_JUNIT" \
+              --labgrid-place "${PRISM_PLACE:-}" \
+              --leg request \
+              --git-sha "$GITHUB_SHA"
+          fi
       - name: Upload JUnit
         if: always()
         uses: actions/upload-artifact@v4

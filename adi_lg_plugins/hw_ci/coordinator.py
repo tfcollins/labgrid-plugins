@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import subprocess
+import sys
 import urllib.request
 from collections.abc import Iterable
 
@@ -97,17 +98,19 @@ def fetch_raw_places(
 ) -> list[dict]:
     """Try REST first, fall back to CLI on transport failure.
 
-    Set ``force_cli=True`` to skip the REST path entirely (useful when
-    the coordinator hasn't exposed the JSON endpoint yet).
+    ``coord`` is the gRPC coordinator address (``host:20408``); the REST
+    API lives on a different port, so the REST path queries
+    ``_resolve_api(coord)`` (``host:8000``, or the ADI_LG_API / LG_API
+    override). Set ``force_cli=True`` to skip the REST path entirely
+    (useful when the coordinator hasn't exposed the JSON endpoint yet).
     """
     if not force_cli:
         try:
-            return _fetch_places_rest(coord, timeout=timeout)
+            return _fetch_places_rest(_resolve_api(coord), timeout=timeout)
         except (OSError, http.client.HTTPException, json.JSONDecodeError, ValueError) as e:
-            # Stock labgrid coordinator speaks WAMP/crossbar, not HTTP:
-            # hitting :20408/api/places returns garbled binary which surfaces
-            # as http.client.BadStatusLine. Any transport failure (connect
-            # refused, garbage response, timeout, bad JSON) is treated the
+            # Any transport failure (connect refused, timeout, bad JSON, or a
+            # garbled BadStatusLine from a non-HTTP service if someone points
+            # an ADI_LG_API/LG_API override at the wrong port) is treated the
             # same way — fall through to the labgrid-client CLI path,
             # which is the canonical interface.
             logger.warning(
@@ -158,6 +161,26 @@ def resolve_coordinator(explicit: str | None = None) -> str:
         "no coordinator URL — pass --coord, or set LG_COORDINATOR / "
         "ADI_LG_COORDINATOR in the environment"
     )
+
+
+def warn_if_rest_port(coord: str) -> None:
+    """Warn when the coordinator address carries the REST port ``:8000``.
+
+    ``LG_COORDINATOR`` must be the gRPC coordinator (e.g. ``host:20408``); a
+    value ending in ``:8000`` is the REST API port, which passes discovery but
+    fails at gRPC reservation. Emits a GitHub ``::warning::`` under Actions,
+    else a stderr ``warning:`` line. Inspection only — never raises.
+    """
+    base = coord.split("://", 1)[-1]
+    port = base.rsplit(":", 1)[-1] if ":" in base else ""
+    if port != "8000":
+        return
+    msg = (
+        f"coordinator {coord!r} uses the REST port :8000 — LG_COORDINATOR should be "
+        "the gRPC coordinator (e.g. host:20408); the REST API is derived automatically"
+    )
+    prefix = "::warning::" if os.environ.get("GITHUB_ACTIONS") else "warning: "
+    print(f"{prefix}{msg}", file=sys.stderr)
 
 
 def _resolve_api(coord: str) -> str:

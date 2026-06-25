@@ -38,6 +38,7 @@ from .schema import KNOWN_STRATEGIES
 
 def _cmd_discover(args: argparse.Namespace) -> int:
     coord = coord_mod.resolve_coordinator(args.coord)
+    coord_mod.warn_if_rest_port(coord)
     places, skipped = coord_mod.list_live_places(
         coord,
         timeout=args.timeout,
@@ -110,10 +111,15 @@ def _emit_matrix(
     missing: list[str],
     kind: str,
     github_output: bool,
+    missing_msg: str = "{item!r} is wanted but no live board matches on the coordinator",
 ) -> None:
     """Write the matrix to $GITHUB_OUTPUT (when asked), print it to stdout, and
-    emit a ``::warning::`` annotation per missing item. Shared by request-matrix
-    and noos-matrix so the GH-output + annotation tail lives in one place."""
+    emit a ``::warning::`` annotation per missing item. Shared by request-matrix,
+    noos-matrix, and matlab-matrix so the GH-output + annotation tail lives in
+    one place. ``missing_msg`` is a ``str.format`` template receiving ``item``;
+    the default covers the wanted-part-missing case — callers whose ``missing``
+    items mean something else (e.g. matlab-matrix's live-but-unmapped places)
+    must pass a truthful wording."""
     if github_output:
         gh_out = os.environ.get("GITHUB_OUTPUT")
         if gh_out:
@@ -126,8 +132,7 @@ def _emit_matrix(
     print(json.dumps(matrix, indent=2))
     for item in missing:
         print(
-            f"::warning::{kind}: {item!r} is wanted but no live board matches on the "
-            f"coordinator — skipping",
+            f"::warning::{kind}: {missing_msg.format(item=item)} — skipping",
             file=sys.stderr,
         )
 
@@ -141,6 +146,7 @@ def _cmd_request_matrix(args: argparse.Namespace) -> int:
     from .request_matrix import build_request_matrix
 
     coord = coord_mod.resolve_coordinator(args.coord)
+    coord_mod.warn_if_rest_port(coord)
     # LG_COORDINATOR is the gRPC coordinator (e.g. host:20408); the REST API
     # /api/match lives on host:8000 — derive it the same way request() does.
     api = _resolve_api(coord)
@@ -183,6 +189,7 @@ def _cmd_noos_matrix(args: argparse.Namespace) -> int:
     from .noos_manifest import build_noos_matrix, load_noos_manifest
 
     coord = coord_mod.resolve_coordinator(args.coord)
+    coord_mod.warn_if_rest_port(coord)
     # LG_COORDINATOR is the gRPC coordinator; /api/match is the REST API on :8000.
     api = _resolve_api(coord)
     projects = load_noos_manifest(args.manifest)
@@ -232,6 +239,7 @@ def _cmd_matlab_matrix(args: argparse.Namespace) -> int:
     matlab_board to pass to runHWTests. Live places with no board-map entry are
     annotated as skipped (the toolbox has no test entry point for them)."""
     coord = coord_mod.resolve_coordinator(args.coord)
+    coord_mod.warn_if_rest_port(coord)
     board_map = load_board_map(args.board_map)
     places, _bad = coord_mod.list_live_places(coord)
 
@@ -253,6 +261,9 @@ def _cmd_matlab_matrix(args: argparse.Namespace) -> int:
         missing=skipped,
         kind="matlab-matrix",
         github_output=args.github_output,
+        # `skipped` holds *live* places with no board_map entry — the default
+        # "no live board matches" wording would be untrue for them.
+        missing_msg="live place {item!r} has no board_map entry",
     )
     print(
         f"# matlab-matrix: {len(places)} live place(s), {len(legs)} testable, "
@@ -315,6 +326,50 @@ def _cmd_list_strategies(_args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 1
+    return 0
+
+
+def _cmd_doctor(args: argparse.Namespace) -> int:
+    from .doctor import run_doctor
+
+    return run_doctor(args)
+
+
+def _cmd_lint_markers(args: argparse.Namespace) -> int:
+    """Flag iio_hardware/iio_carrier markers whose args are not string literals
+    (silently invisible to discovery). Coordinator-free; CI/pre-commit friendly."""
+    rejections = markers_mod.collect_marker_rejections(args.test_root)
+    for path, lineno, reason in rejections:
+        print(f"{path}:{lineno}: {reason}", file=sys.stderr)
+    if rejections:
+        print(
+            f"# lint-markers: {len(rejections)} non-literal marker(s) — invisible to discovery",
+            file=sys.stderr,
+        )
+        return 1
+    print("# lint-markers: all hardware markers are string literals", file=sys.stderr)
+    return 0
+
+
+def _cmd_init(args: argparse.Namespace) -> int:
+    """Scaffold a consumer repo's hw-CI files for a chosen mode."""
+    from . import scaffold
+
+    try:
+        written = scaffold.scaffold(
+            args.mode,
+            args.dest,
+            test_root=args.test_root,
+            install_cmd=args.install_cmd,
+            force=args.force,
+        )
+    except FileExistsError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+    for path in written:
+        print(f"wrote {path}", file=sys.stderr)
+    print("", file=sys.stderr)
+    print(scaffold.next_steps(args.mode), file=sys.stderr)
     return 0
 
 
@@ -414,6 +469,43 @@ def main(argv: list[str] | None = None) -> int:
         "list-strategies", help="dump known boot-strategy class names + which have render templates"
     )
     pl.set_defaults(func=_cmd_list_strategies)
+
+    plm = sub.add_parser(
+        "lint-markers",
+        help="flag iio_hardware/iio_carrier markers that aren't string literals",
+    )
+    plm.add_argument("--test-root", required=True, help="path to the consumer's test directory")
+    plm.set_defaults(func=_cmd_lint_markers)
+
+    pinit = sub.add_parser("init", help="scaffold a consumer repo's hw-CI files for a mode")
+    pinit.add_argument("--mode", choices=["uri", "flash", "matlab"], required=True)
+    pinit.add_argument("--dest", required=True, help="consumer repo root to write into")
+    pinit.add_argument(
+        "--test-root", default=None, help="[uri] value for <TEST_ROOT> (e.g. test/hw)"
+    )
+    pinit.add_argument(
+        "--install-cmd",
+        default=None,
+        help="[uri] value for <YOUR_INSTALL_ARGS> in the install step",
+    )
+    pinit.add_argument(
+        "--force", action="store_true", help="overwrite existing files at the destination"
+    )
+    pinit.set_defaults(func=_cmd_init)
+
+    pdoc = sub.add_parser("doctor", help="validate the whole onboarding chain in one pass")
+    pdoc.add_argument("--mode", choices=["uri", "flash", "matlab"], required=True)
+    pdoc.add_argument(
+        "--coord", default=None, help="coordinator host:port (default: $LG_COORDINATOR)"
+    )
+    pdoc.add_argument("--repo", default=None, help="owner/name (default: infer via gh)")
+    pdoc.add_argument("--test-root", default=None, help="[uri] consumer test directory")
+    pdoc.add_argument("--manifest", default=None, help="[flash] projects.yaml path")
+    pdoc.add_argument("--board-map", default=None, help="[matlab] board_map.yaml path")
+    pdoc.add_argument(
+        "--runner-label", default=None, help="fallback runner label (vars.HW_REQUEST_RUNNER)"
+    )
+    pdoc.set_defaults(func=_cmd_doctor)
 
     pm = sub.add_parser(
         "request-matrix", help="emit a part-keyed matrix for the hw-request workflow"

@@ -2,7 +2,7 @@
 
 Flow: resolve coordinator -> GET /match -> reserve+acquire (labgrid, queues
 if busy) -> find the concrete place -> render env -> boot to shell -> resolve
-URI -> yield Lease -> on exit: optional power-down, then release (always).
+URI -> verify iiod -> yield Lease -> on exit: optional power-down, then release (always).
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from ..hw_ci.render_env import render_env_to
 from ..hw_ci.schema import Place
 from . import match_client, reservation
 from .errors import NoMatchingBoard, ProvisionError
-from .uri import resolve_uri
+from .uri import resolve_uri, verify_iio_context
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +34,8 @@ class Lease:
     ``uri`` is the primary handover for pyadi-iio (uri mode). ``console`` is
     the serial console handle for flash mode (no-os firmware); exactly one of
     ``uri`` / ``console`` is set depending on the request mode.
+    ``env_path`` is set only in reserve mode — the rendered labgrid env for
+    the acquired place, exported to the child as ``LG_ENV``.
     """
 
     place: str
@@ -42,6 +44,7 @@ class Lease:
     uri: str | None = None
     console: Any = None
     target: Any = None
+    env_path: str | None = None
 
 
 def _concrete_place(coord: str, name: str) -> Place:
@@ -62,24 +65,73 @@ def _render_env(place, **kw) -> str:
 def _boot(
     env_path: str, strategy_name: str, *, image: str | None, target_name: str = "main"
 ) -> Any:
-    """Boot the board to a Linux shell and return the labgrid target."""
+    """Boot the board to a Linux shell and return the labgrid target.
+
+    Any failure — Environment construction, get_target/get_driver (e.g. a
+    labgrid InvalidConfigError from a bad env), or the strategy transition —
+    is normalised to ProvisionError so callers classify it as a boot failure
+    (exit 12 + boot-failure annotation) instead of a raw traceback (#82).
+    """
     from labgrid import Environment
 
-    env = Environment(env_path)
-    tg = env.get_target(target_name)
-    if image:
-        try:
-            res = tg.get_resource("KuiperRelease")
-            res.release_version = image
-            logger.info("Using image version %s", image)
-        except Exception:  # noqa: BLE001 - resource may be absent for some boards
-            logger.warning("no KuiperRelease resource to pin image %s", image)
-    strategy = tg.get_driver(strategy_name)
     try:
+        env = Environment(env_path)
+        tg = env.get_target(target_name)
+        if image:
+            try:
+                res = tg.get_resource("KuiperRelease")
+                res.release_version = image
+                logger.info("Using image version %s", image)
+            except Exception:  # noqa: BLE001 - resource may be absent for some boards
+                logger.warning("no KuiperRelease resource to pin image %s", image)
+        strategy = tg.get_driver(strategy_name)
         strategy.transition("shell")
-    except Exception as e:  # noqa: BLE001 - normalise any strategy error
+    except ProvisionError:
+        raise
+    except Exception as e:  # noqa: BLE001 - normalise any env/config/strategy error
         raise ProvisionError(f"boot failed: {e}") from e
     return tg
+
+
+def _boot_verified(
+    env_path: str,
+    strategy_name: str,
+    *,
+    image: str | None,
+    target_name: str = "main",
+    retries: int = 1,
+) -> tuple[Any, str]:
+    """Boot to shell, resolve the URI, and verify iiod accepts connections.
+
+    A failed attempt (strategy error, no URI, or iiod never up) gets exactly
+    ``retries`` more cold-boot attempts (power-off + reboot); the final
+    failure propagates. Bounded on purpose — unbounded retries burn lab time.
+    """
+    last: ProvisionError | None = None
+    for attempt in range(retries + 1):
+        target = None
+        try:
+            target = _boot(env_path, strategy_name, image=image, target_name=target_name)
+            uri = resolve_uri(target)
+            verify_iio_context(uri)
+            return target, uri
+        except ProvisionError as e:
+            last = e
+            cycled = ""
+            if target is not None:
+                _power_off(target, strategy_name)
+                _cleanup_target(target)
+                cycled = "power-cycled, "
+            if attempt < retries:
+                logger.warning("boot attempt %d failed (%s); %sretrying", attempt + 1, e, cycled)
+        except BaseException:
+            # Anything else (notably KeyboardInterrupt during the verify poll)
+            # must not leak a live target the outer finally can't see.
+            if target is not None:
+                _cleanup_target(target)
+            raise
+    assert last is not None
+    raise last
 
 
 def _get_console(target: Any) -> Any:
@@ -147,9 +199,12 @@ def request(
     ``mode='flash'`` JTAG-flashes a no-os firmware ``.elf`` (``firmware``,
     required) onto the board, validates a serial banner (``validate``, default
     the IIOD banner), and hands over the serial console (``uri`` is None).
+    ``mode='reserve'`` only acquires a matching place and renders its labgrid
+    env (``env_path``) — no boot, no verification; the consumer drives the
+    board itself (e.g. the labgrid pytest plugin via ``LG_ENV``).
     """
-    if mode not in ("uri", "flash"):
-        raise NotImplementedError(f"mode '{mode}' is not available (uri | flash)")
+    if mode not in ("uri", "flash", "reserve"):
+        raise NotImplementedError(f"mode '{mode}' is not available (uri | flash | reserve)")
     if mode == "flash" and not firmware:
         raise ProvisionError("flash mode requires a firmware .elf (firmware=...)")
     if filters:
@@ -188,15 +243,26 @@ def request(
             target = _boot(env_path, strategy_name, image=None, target_name=target_name)
             console = _get_console(target)
             uri = None
+        elif mode == "reserve":
+            # No boot, no verification: the consumer's own tooling (e.g. the
+            # labgrid pytest plugin reading LG_ENV/LG_COORDINATOR) drives the
+            # acquired place — pyadi-dt boots per-test DTBs itself. The boot
+            # gate is the consumer's job in this mode.
+            strategy_name = place.boot_strategy
+            env_path = _render_env(place)
+            target = None
+            console = None
+            uri = None
         else:
             # The live place's boot-strategy tag is the authority for the driver
             # name the rendered env defines; match.strategy (parsed for metadata)
             # should equal it.
             strategy_name = place.boot_strategy
             env_path = _render_env(place)
-            target = _boot(env_path, strategy_name, image=match.image, target_name=target_name)
+            target, uri = _boot_verified(
+                env_path, strategy_name, image=match.image, target_name=target_name
+            )
             console = None
-            uri = resolve_uri(target)
         yield Lease(
             place=res.place,
             carrier=place.carrier,
@@ -211,7 +277,13 @@ def request(
             uri=uri,
             console=console,
             target=target,
+            env_path=env_path if mode == "reserve" else None,
         )
+    except ProvisionError as e:
+        # Stamp the failed place so the CLI can emit a machine-readable
+        # boot-failure annotation; boot-success-rate tracking counts these.
+        e.place = e.place or res.place
+        raise
     finally:
         if power_down and target is not None:
             _power_off(target, strategy_name)
