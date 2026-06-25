@@ -93,6 +93,9 @@ xilinxjtagdriver = "adi_lg_plugins.drivers.xilinxjtagdriver:XilinxJTAGDriver"
 tftpserverdriver = "adi_lg_plugins.drivers.tftpserverdriver:TFTPServerDriver"
 softwareinstaller = "adi_lg_plugins.drivers.softwareinstaller:SoftwareInstallerDriver"
 homeassistantdriver = "adi_lg_plugins.drivers.homeassistantdriver:HomeAssistantPowerDriver"
+tickfpgamanagerdriver = "adi_lg_plugins.drivers.tickfpgamanagerdriver:TickFpgaManagerDriver"
+tickmoduledriver = "adi_lg_plugins.drivers.tickmoduledriver:TickModuleDriver"
+tickoverlaydriver = "adi_lg_plugins.drivers.tickoverlaydriver:TickOverlayDriver"
 kasapowerdriver = "adi_lg_plugins.drivers.kasadriver:KasaPowerDriver"
 
 [project.entry-points."labgrid.resources"]
@@ -105,12 +108,14 @@ xilinxdevicejtag = "adi_lg_plugins.resources.xilinxdevice:XilinxDeviceJTAG"
 xilinxvivadotool = "adi_lg_plugins.resources.xilinxtool:XilinxVivadoTool"
 tftpserverresource = "adi_lg_plugins.resources.tftpserver:TFTPServerResource"
 homeassistantresource = "adi_lg_plugins.resources.homeassistant:HomeAssistantOutlet"
+tickartifacts = "adi_lg_plugins.resources.tickartifacts:TickArtifacts"
 kasaresource = "adi_lg_plugins.resources.kasa:KasaOutlet"
 
 
 [project.entry-points."labgrid.strategies"]
 bootsocstrategy = "adi_lg_plugins.strategies.bootfpgasoc:BootFPGASoC"
 bootsocsshstrategy = "adi_lg_plugins.strategies.bootfpgasocssh:BootFPGASoCSSH"
+boottickfpgassh = "adi_lg_plugins.strategies.boottickfpgassh:BootTickFPGASSH"
 bootselmap = "adi_lg_plugins.strategies.bootselmap:BootSelMap"
 bootfabric = "adi_lg_plugins.strategies.bootfabric:BootFabric"
 bootsoctftp = "adi_lg_plugins.strategies.bootfpgasoctftp:BootFPGASoCTFTP"

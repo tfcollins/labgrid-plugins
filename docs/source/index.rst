@@ -97,6 +97,7 @@ Quick Example
    api/index
    developer-guide/index
    examples/index
+   tick
 
 Indices and tables
 ==================
