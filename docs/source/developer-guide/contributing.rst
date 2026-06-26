@@ -1,6 +1,12 @@
 Contributing
 ============
 
+.. tip::
+
+   New to the project? Start with :doc:`onboarding` — it walks through the dev environment,
+   the ``nox`` loop, how plugins register, and how to add a component. This page is the
+   condensed command reference.
+
 Development Setup
 -----------------
 
