@@ -12,6 +12,7 @@ Comprehensive guides for using adi-labgrid-plugins.
    strategies
    cli
    mcp
+   tick
 
 .. toctree::
    :maxdepth: 2
