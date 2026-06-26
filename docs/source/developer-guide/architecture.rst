@@ -394,31 +394,39 @@ Strategies manage the activation order to ensure dependencies are met:
 Plugin Discovery
 ----------------
 
-Plugins are discovered and registered using Python entry points. This allows third-party drivers and strategies without modifying core code.
+Upstream labgrid has **no entry-point plugin auto-discovery** (that existed only in the
+previously-used fork). Components register by **import side effect**: importing the package
+runs the ``@target_factory`` decorators, which is what makes the drivers, resources, and
+strategies resolvable by name.
 
-**Entry Points** (pyproject.toml):
+**Registration Process**:
+
+1. ``import adi_lg_plugins`` runs ``adi_lg_plugins/__init__.py``, which imports the
+   ``drivers``, ``resources``, and ``strategies`` subpackages.
+2. Each subpackage ``__init__`` imports its individual modules (a ``_MODULES`` tuple), so the
+   ``@target_factory.reg_driver`` / ``@reg_resource`` decorators run. A module whose optional
+   dependency is missing logs a warning and is skipped rather than failing the import.
+3. Every labgrid env YAML that names an ADI component must therefore carry
+   ``imports: [adi_lg_plugins]`` (or the consuming process must ``import adi_lg_plugins``).
+
+**Entry Points** (pyproject.toml) — kept as a manifest/reference, **not** a discovery
+mechanism; upstream labgrid never reads them:
 
 .. code-block:: toml
 
     [project.entry-points."labgrid.drivers"]
     VesyncPowerDriver = "adi_lg_plugins.drivers.vesyncdriver:VesyncPowerDriver"
     ADIShellDriver = "adi_lg_plugins.drivers.shelldriver:ADIShellDriver"
-    CyberPowerDriver = "adi_lg_plugins.drivers.cyberpowerdriver:CyberPowerDriver"
 
     [project.entry-points."labgrid.strategies"]
     BootFPGASoC = "adi_lg_plugins.strategies.bootfpgasoc:BootFPGASoC"
-    BootFPGASoCSSH = "adi_lg_plugins.strategies.bootfpgasocssh:BootFPGASoCSSH"
 
     [project.entry-points."labgrid.resources"]
     VesyncOutlet = "adi_lg_plugins.resources.vesync:VesyncOutlet"
-    CyberPowerOutlet = "adi_lg_plugins.resources.cyberpowerpdu:CyberPowerOutlet"
 
-**Discovery Process**:
-
-1. Labgrid loads all installed packages
-2. Searches for entry points in labgrid.drivers, labgrid.strategies, labgrid.resources
-3. Imports and registers components via @target_factory decorators
-4. Makes components available in target configuration
+The fork-only ``never_retry`` strategy decorator is provided by a self-contained shim in
+``adi_lg_plugins/strategies/_compat.py``. See :doc:`onboarding` for the contributor's
+walk-through of adding and registering a component.
 
 Component Dependencies
 ----------------------

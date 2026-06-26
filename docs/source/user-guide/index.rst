@@ -26,6 +26,7 @@ Comprehensive guides for using adi-labgrid-plugins.
    :maxdepth: 2
    :caption: Coordinator & exporters
 
+   onboarding-a-lab-host
    coordinator
    coordinator-testing
    web-dashboard

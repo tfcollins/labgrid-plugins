@@ -41,6 +41,12 @@ adi-labgrid-plugins Documentation
 
         Wire a consumer repo onto the lab hardware-CI flow — start here.
 
+    .. grid-item-card:: Lab Host — Onboarding
+        :link: user-guide/onboarding-a-lab-host
+        :link-type: doc
+
+        Bring hardware online: coordinator, exporters, places, and runners.
+
 .. admonition:: Version Information
     :class: note
 
