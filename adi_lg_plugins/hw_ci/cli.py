@@ -273,6 +273,70 @@ def _cmd_matlab_matrix(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_all_places_matrix(args: argparse.Namespace) -> int:
+    """Emit a boot-smoke matrix of EVERY live place on the coordinator.
+
+    Infra-health discovery: no consumer markers/manifest. A coordinator that is
+    unreachable or has zero live places fails (exit 3) so the daily job's
+    preflight goes red at a single loud point. Acquired places are skipped with a
+    ``::notice::`` (contention, not breakage)."""
+    from .all_places import build_all_places_matrix
+
+    coord = coord_mod.resolve_coordinator(args.coord)
+    coord_mod.warn_if_rest_port(coord)
+    try:
+        places, skipped_invalid = coord_mod.list_live_places(coord)
+    except Exception as e:  # noqa: BLE001 - an unreachable coordinator must fail loudly, not crash
+        print(f"::error title=coordinator-unreachable::{coord}: {e}", file=sys.stderr)
+        return 3
+
+    legs, acquired = build_all_places_matrix(places)
+    matrix = {"include": [leg.as_matrix_dict() for leg in legs]}
+    _emit_matrix(
+        matrix,
+        count=len(legs),
+        missing=[],
+        kind="all-places-matrix",
+        github_output=args.github_output,
+    )
+    for name in acquired:
+        print(
+            f"::notice::all-places-matrix: {name} is acquired — skipping this run", file=sys.stderr
+        )
+    for name, reason in skipped_invalid:
+        print(f"::warning::all-places-matrix: place {name!r} skipped ({reason})", file=sys.stderr)
+    if not places:
+        print(
+            "::error title=no-live-places::coordinator returned zero live places",
+            file=sys.stderr,
+        )
+        return 3
+    print(
+        f"# all-places-matrix: {len(places)} live place(s), {len(legs)} bootable leg(s), "
+        f"{len(acquired)} acquired",
+        file=sys.stderr,
+    )
+    return 0
+
+
+def _cmd_boot_junit(args: argparse.Namespace) -> int:
+    """Render a single boot outcome to a one-testcase JUnit file."""
+    from .boot_junit import render_boot_junit
+
+    xml = render_boot_junit(
+        place=args.place,
+        part=args.part,
+        carrier=args.carrier,
+        mode=args.mode,
+        status=args.status,
+        seconds=args.seconds,
+        message=args.message,
+    )
+    Path(args.out).write_text(xml, encoding="utf-8")
+    print(f"wrote {args.out}", file=sys.stderr)
+    return 0
+
+
 def _cmd_render_env(args: argparse.Namespace) -> int:
     coord = coord_mod.resolve_coordinator(args.coord)
     places, _skipped = coord_mod.list_live_places(
@@ -547,6 +611,29 @@ def main(argv: list[str] | None = None) -> int:
         "--github-output", action="store_true", help="also write matrix=/count= to $GITHUB_OUTPUT"
     )
     pmm.set_defaults(func=_cmd_matlab_matrix)
+
+    pap = sub.add_parser(
+        "all-places-matrix",
+        help="emit a boot-smoke matrix of every live place (infra health)",
+    )
+    pap.add_argument(
+        "--coord", default=None, help="coordinator host:port (default: $LG_COORDINATOR)"
+    )
+    pap.add_argument(
+        "--github-output", action="store_true", help="also write matrix=/count= to $GITHUB_OUTPUT"
+    )
+    pap.set_defaults(func=_cmd_all_places_matrix)
+
+    pbj = sub.add_parser("boot-junit", help="render a boot outcome to a one-testcase JUnit file")
+    pbj.add_argument("--place", required=True)
+    pbj.add_argument("--part", required=True)
+    pbj.add_argument("--carrier", default="")
+    pbj.add_argument("--mode", default="uri")
+    pbj.add_argument("--status", choices=["pass", "fail", "skip"], required=True)
+    pbj.add_argument("--seconds", type=int, default=0)
+    pbj.add_argument("--message", default="")
+    pbj.add_argument("--out", required=True, help="path to write the JUnit XML to")
+    pbj.set_defaults(func=_cmd_boot_junit)
 
     pb = sub.add_parser("build-noos", help="build a no-os project for HW CI (env + Kuiper .xsa)")
     pb.add_argument("--project", required=True, help="projects/<project> to build")

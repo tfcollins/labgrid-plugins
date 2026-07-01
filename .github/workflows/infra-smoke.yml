@@ -1,0 +1,177 @@
+name: Infra boot-smoke
+
+# Reusable workflow: boot-smoke EVERY live board on a coordinator to prove the
+# lab infrastructure is healthy. No consumer repo tests run — a leg just calls
+# `adi-lg request` (which boots + verifies iiod + releases) and records pass/fail.
+#
+#   jobs:
+#     infra:
+#       uses: tfcollins/labgrid-plugins/.github/workflows/infra-smoke.yml@main
+#       with:
+#         coordinator: "10.0.0.41:20408"
+on:
+  workflow_call:
+    inputs:
+      coordinator:
+        description: "gRPC coordinator host:port (e.g. host:20408); REST API (:8000) derived automatically."
+        type: string
+        required: true
+      wait:
+        description: "Seconds each leg queues for its board (0 = fail fast)."
+        type: number
+        default: 1800
+      runner-label:
+        description: "Fallback runner label for a board whose place carries no `runner` tag."
+        type: string
+        default: "hw-lab"
+      preflight-runner-label:
+        description: "Runner label for the discovery preflight (must reach the coordinator REST API)."
+        type: string
+        default: "hw-coordinator"
+      venv-dir:
+        description: "Absolute path for the persistent uv venv on the runner."
+        type: string
+        default: "$HOME/.cache/infra-smoke/venv"
+      prism-upload:
+        description: "Post each board's boot JUnit to Prism."
+        type: boolean
+        default: false
+      prism-url:
+        description: "Prism base URL. Defaults to the caller's vars.PRISM_URL when empty."
+        type: string
+        default: ""
+      prism-project:
+        description: "Prism project slug (e.g. lab-infra-daily). Required when prism-upload is true."
+        type: string
+        default: ""
+    secrets:
+      PRISM_API_TOKEN:
+        required: false
+        description: API token for the Prism upload step.
+      PRISM_EMAIL:
+        required: false
+        description: Login email for the Prism upload step.
+      PRISM_PASSWORD:
+        required: false
+        description: Login password for the Prism upload step.
+
+jobs:
+  preflight:
+    runs-on: [self-hosted, "${{ inputs.preflight-runner-label }}"]
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
+      count: ${{ steps.plan.outputs.count }}
+    steps:
+      - name: Validate required inputs
+        run: |
+          [ -n "${{ inputs.coordinator }}" ] || { echo "::error::coordinator is empty — set vars.LG_COORDINATOR (gRPC :20408)"; exit 1; }
+          [ -n "${{ inputs.runner-label }}" ] || { echo "::error::runner-label is empty — set vars.HW_REQUEST_RUNNER"; exit 1; }
+      - uses: actions/checkout@v4
+      - uses: tfcollins/labgrid-plugins/.github/actions/setup-uv-venv@main
+        with:
+          venv_dir: ${{ inputs.venv-dir }}
+          install_cmd: >-
+            uv pip install --quiet --python "$VENV_DIR/bin/python"
+            "adi-labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins@main"
+      - id: plan
+        env:
+          LG_COORDINATOR: ${{ inputs.coordinator }}
+        run: |
+          adi-lg-hw-ci all-places-matrix --coord "${{ inputs.coordinator }}" --github-output
+
+  boot-smoke:
+    needs: preflight
+    if: ${{ fromJSON(needs.preflight.outputs.count) > 0 }}
+    runs-on: [self-hosted, "${{ matrix.runner || inputs.runner-label }}"]
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.preflight.outputs.matrix) }}
+    env:
+      LG_COORDINATOR: ${{ inputs.coordinator }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: tfcollins/labgrid-plugins/.github/actions/setup-uv-venv@main
+        with:
+          venv_dir: ${{ inputs.venv-dir }}
+          install_cmd: >-
+            uv pip install --quiet --python "$VENV_DIR/bin/python"
+            "adi-labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins@main"
+      - name: Boot-smoke ${{ matrix.place }}
+        env:
+          PLACE: ${{ matrix.place }}
+          PART: ${{ matrix.part }}
+          CARRIER: ${{ matrix.carrier }}
+          MODE: ${{ matrix.mode }}
+          WAIT: ${{ inputs.wait }}
+          JUNIT: results-${{ matrix.place }}.xml
+        run: |
+          set -uo pipefail
+          start=$SECONDS
+          rc=0
+          adi-lg request --part "$PART" ${CARRIER:+--carrier "$CARRIER"} \
+            --mode "$MODE" --wait "$WAIT" || rc=$?
+          elapsed=$(( SECONDS - start ))
+          # Exit-code contract (adi_lg_plugins/request/errors.py):
+          #   0        booted/reserved OK          -> pass
+          #   10 / 11  no-match / board-unavailable -> skip (contention or the board
+          #            vanished between preflight and the leg; NOT infra breakage)
+          #   other    boot/provision failure       -> fail (red)
+          case "$rc" in
+            0) status=pass ;;
+            10|11) status=skip ;;
+            *) status=fail ;;
+          esac
+          adi-lg-hw-ci boot-junit \
+            --place "$PLACE" --part "$PART" --carrier "$CARRIER" --mode "$MODE" \
+            --status "$status" --seconds "$elapsed" \
+            --message "adi-lg request exit $rc" --out "$JUNIT"
+          # Only a real boot/provision failure fails the leg; contention is neutral.
+          if [ "$status" = fail ]; then exit "$rc"; fi
+      - name: Upload to Prism
+        if: always() && inputs.prism-upload
+        continue-on-error: true
+        env:
+          PRISM_URL: ${{ inputs.prism-url != '' && inputs.prism-url || vars.PRISM_URL }}
+          PRISM_API_TOKEN: ${{ secrets.PRISM_API_TOKEN }}
+          PRISM_EMAIL: ${{ secrets.PRISM_EMAIL }}
+          PRISM_PASSWORD: ${{ secrets.PRISM_PASSWORD }}
+          PRISM_PROJECT: ${{ inputs.prism-project }}
+          PRISM_JUNIT: results-${{ matrix.place }}.xml
+          PRISM_RUN_NAME: ${{ github.workflow }}-${{ github.run_number }}-${{ matrix.place }}
+          PRISM_BOARD: ${{ matrix.part }}
+          PRISM_CARRIER: ${{ matrix.carrier }}
+          PRISM_PLACE: ${{ matrix.place }}
+        run: |
+          set -euo pipefail
+          [ -f "$PRISM_JUNIT" ] || { echo "::notice::no JUnit produced; skipping Prism upload"; exit 0; }
+          uv pip install --quiet --python "$VENV_DIR/bin/python" \
+            "prism-uploader @ git+https://github.com/analogdevicesinc/prism.git#subdirectory=scripts" \
+            || echo "::warning::prism-uploader install failed; upload will be skipped"
+          "$VENV_DIR/bin/python" -m prism_client.upload_run \
+            --url "$PRISM_URL" \
+            --project "$PRISM_PROJECT" \
+            --junit "$PRISM_JUNIT" \
+            --labgrid-place "$PRISM_PLACE" \
+            --leg boot \
+            --git-sha "$GITHUB_SHA"
+      - name: Upload JUnit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: junit-${{ matrix.place }}
+          path: results-${{ matrix.place }}.xml
+          if-no-files-found: ignore
+
+  report:
+    needs: boot-smoke
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: junit-*
+          merge-multiple: true
+      - name: Publish boot-smoke results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        with:
+          junit_files: "results-*.xml"
