@@ -88,7 +88,7 @@ jobs:
           venv_dir: ${{ inputs.venv-dir }}
           install_cmd: >-
             uv pip install --quiet --python "$VENV_DIR/bin/python"
-            "adi-labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins@main"
+            "labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins@main"
       - id: plan
         env:
           LG_COORDINATOR: ${{ inputs.coordinator }}
@@ -111,7 +111,7 @@ jobs:
           venv_dir: ${{ inputs.venv-dir }}
           install_cmd: >-
             uv pip install --quiet --python "$VENV_DIR/bin/python"
-            "adi-labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins@main"
+            "labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins@main"
       - name: Boot-smoke ${{ matrix.place }}
         env:
           PLACE: ${{ matrix.place }}
