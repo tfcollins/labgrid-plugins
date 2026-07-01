@@ -56,7 +56,23 @@ on:
         description: Login password for the Prism upload step.
 
 jobs:
+  # Runs on a GitHub-hosted runner FIRST so a missing var/runner-label fails fast
+  # with a clear ::error:: — otherwise the self-hosted `preflight` job below can't
+  # even be scheduled (an empty preflight-runner-label yields runs-on
+  # [self-hosted, ""], which never matches a runner and just sits queued).
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate required inputs
+        run: |
+          fail=0
+          [ -n "${{ inputs.coordinator }}" ] || { echo "::error::coordinator is empty — set vars.LG_COORDINATOR (gRPC :20408)"; fail=1; }
+          [ -n "${{ inputs.runner-label }}" ] || { echo "::error::runner-label is empty — set vars.HW_REQUEST_RUNNER"; fail=1; }
+          [ -n "${{ inputs.preflight-runner-label }}" ] || { echo "::error::preflight-runner-label is empty — set vars.HW_PREFLIGHT_RUNNER"; fail=1; }
+          exit $fail
+
   preflight:
+    needs: validate
     runs-on: [self-hosted, "${{ inputs.preflight-runner-label }}"]
     outputs:
       matrix: ${{ steps.plan.outputs.matrix }}
