@@ -91,6 +91,9 @@ jobs:
           tests/hw_ci/test_board_map.py \
           tests/hw_ci/test_matlab_matrix.py \
           tests/hw_ci/test_matlab_matrix_cli.py \
+          tests/hw_ci/test_all_places.py \
+          tests/hw_ci/test_boot_junit.py \
+          tests/hw_ci/test_all_places_cli.py \
           tests/hw_ci/test_workflow_var_guard.py \
           tests/hw_ci/test_doctor_core.py \
           tests/hw_ci/test_doctor_gh.py \
