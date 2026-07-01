@@ -31,7 +31,7 @@ class TestHardwareIntegration:
             pytest.fail(f"Failed to install package: {e}")
 
     def test_clone_repo(self, driver):
-        repo_url = "https://github.com/analogdevicesinc/adi-labgrid-plugins.git"
+        repo_url = "https://github.com/tfcollins/labgrid-plugins.git"
         dest = "/tmp/adi-plugins-test"
 
         # Clean up remote if exists (best effort)
@@ -93,7 +93,7 @@ class TestHardwareIntegration:
         strategy.packages = ["curl"]
         strategy.repos = [
             (
-                "https://github.com/analogdevicesinc/adi-labgrid-plugins.git",
+                "https://github.com/tfcollins/labgrid-plugins.git",
                 "/tmp/strat_test",
                 "main",
             )

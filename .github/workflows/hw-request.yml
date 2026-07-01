@@ -56,11 +56,11 @@ on:
       install-cmd:
         description: >-
           Shell command (run with $VENV_DIR exported) to install the consumer
-          package + adi-labgrid-plugins into the per-leg venv. Override per repo.
+          package + labgrid-plugins into the per-leg venv. Override per repo.
         type: string
         default: >-
           uv pip install --quiet --python "$VENV_DIR/bin/python" -e "."
-          "adi-labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins@main"
+          "labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins@main"
       request-mode:
         description: >-
           adi-lg request mode for each leg. "uri" (default) boots the board,
@@ -125,7 +125,7 @@ jobs:
           venv_dir: ${{ inputs.venv-dir }}
           install_cmd: >-
             uv pip install --quiet --python "$VENV_DIR/bin/python"
-            "adi-labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins@main"
+            "labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins@main"
       - id: plan
         env:
           LG_COORDINATOR: ${{ inputs.coordinator }}

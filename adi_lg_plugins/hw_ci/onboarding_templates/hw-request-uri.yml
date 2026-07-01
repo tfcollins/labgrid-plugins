@@ -30,25 +30,25 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       contains(github.event.pull_request.labels.*.name, 'hw-request')
-    uses: tfcollins/labgrid-plugins/.github/workflows/hw-request.yml@v3.5  # bump when a new release tags
+    uses: tfcollins/labgrid-plugins/.github/workflows/hw-request.yml@v3.5 # bump when a new release tags
     with:
       coordinator: ${{ vars.LG_COORDINATOR }}
       # Directory holding your @pytest.mark.iio_hardware(["<board>"]) tests.
-      test-root: "<TEST_ROOT>"          # e.g. test/hw
+      test-root: "<TEST_ROOT>" # e.g. test/hw
       runner-label: ${{ vars.HW_REQUEST_RUNNER }}
       preflight-runner-label: ${{ vars.HW_PREFLIGHT_RUNNER }}
       # Reserve mode — for suites that drive boot themselves via labgrid (pytest plugin
       # + LG_ENV, e.g. per-test DTBs). Uncomment to reserve the board without booting it.
       # Private deps: pass an INSTALL_GIT_TOKEN secret (see the hub github-actions docs).
       # request-mode: "reserve"
-      # Install your package + test deps + adi-labgrid-plugins (brings the
+      # Install your package + test deps + labgrid-plugins (brings the
       # adi_lg_plugins pytest plugin used for per-board HW_DAUGHTER narrowing).
       # Runs with $VENV_DIR exported. Replace <YOUR_INSTALL_ARGS> with your deps.
       install-cmd: |
         set -euo pipefail
         uv pip install --quiet --python "$VENV_DIR/bin/python" <YOUR_INSTALL_ARGS>
         uv pip install --quiet --python "$VENV_DIR/bin/python" \
-          "adi-labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins.git@v3.5"
+          "labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins.git@v3.5"
       # Optional: upload each leg's JUnit to Prism (see "Uploading results to Prism"
       # in the labgrid-plugins docs). Needs vars.PRISM_URL + the three secrets below.
       # prism-upload: ${{ vars.PRISM_UPLOAD_ENABLED == 'true' }}

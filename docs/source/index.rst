@@ -1,7 +1,7 @@
-adi-labgrid-plugins Documentation
+labgrid-plugins Documentation
 ==================================
 
-**adi-labgrid-plugins** is a labgrid plugin package providing Analog Devices specific drivers, resources, and strategies for automated testing and device control of FPGA SoC systems.
+**labgrid-plugins** is a labgrid plugin package providing Analog Devices specific drivers, resources, and strategies for automated testing and device control of FPGA SoC systems.
 
 .. grid:: 2
 
@@ -9,7 +9,7 @@ adi-labgrid-plugins Documentation
         :link: getting-started/index
         :link-type: doc
 
-        New to adi-labgrid-plugins? Start here with installation and basic usage.
+        New to labgrid-plugins? Start here with installation and basic usage.
 
     .. grid-item-card:: API Reference
         :link: api/index

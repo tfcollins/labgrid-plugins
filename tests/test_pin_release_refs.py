@@ -15,7 +15,7 @@ SAMPLE = """\
         with:
           install_cmd: >-
             uv pip install --quiet --python "$VENV_DIR/bin/python"
-            "adi-labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins@main"
+            "labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins@main"
       - uses: actions/checkout@v4
 """
 

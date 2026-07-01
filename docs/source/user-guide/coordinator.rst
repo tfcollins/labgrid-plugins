@@ -2,7 +2,7 @@ Coordinator Setup
 =================
 
 The labgrid coordinator provides centralized management of hardware resources
-across multiple exporter hosts. The adi-labgrid-plugins project includes a
+across multiple exporter hosts. The labgrid-plugins project includes a
 Docker-based deployment of the coordinator, a REST/WebSocket API bridge, and a
 web dashboard.
 

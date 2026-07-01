@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.abspath("../../"))
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = "adi-labgrid-plugins"
+project = "labgrid-plugins"
 copyright = "2024, Analog Devices, Inc."
 author = "Analog Devices, Inc."
 version = "0.1.0"
@@ -99,7 +99,7 @@ exclude_patterns = []
 pygments_style = "sphinx"
 
 html_theme = "furo"
-html_title = "adi-labgrid-plugins"
+html_title = "labgrid-plugins"
 html_static_path = ["_static"]
 html_css_files = ["custom.css"]
 
@@ -110,7 +110,7 @@ html_theme_options = {
     "sidebar_hide_name": True,
     "navigation_with_keys": True,
     "top_of_page_button": "edit",
-    "source_repository": "https://github.com/analogdevicesinc/adi-labgrid-plugins",
+    "source_repository": "https://github.com/tfcollins/labgrid-plugins",
     "source_branch": "main",
     "source_directory": "docs/source/",
     "light_logo": "lg_adi_light.svg",

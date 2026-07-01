@@ -236,7 +236,7 @@ rendered per-shard from the place's ``boot-strategy`` tag.  See
        with:
          venv_install_cmd: >-
            uv pip install --quiet --python "$VENV_DIR/bin/python" -e ".[dev]"
-           "adi-labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins@main"
+           "labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins@main"
          pytest_cmd_template: >-
            "$VENV_DIR/bin/pytest" -m "$MARKER_FILTER" --junitxml="$JUNIT"
        secrets:
@@ -271,7 +271,7 @@ rendered per-shard from the place's ``boot-strategy`` tag.  See
      - **Yes**
      - —
      - Shell command run with ``$VENV_DIR`` exported; must install the
-       caller's test deps **plus** ``adi-labgrid-plugins`` (so the marker
+       caller's test deps **plus** ``labgrid-plugins`` (so the marker
        plugin is available during the discover step).
    * - ``venv_dir``
      - No
@@ -347,7 +347,7 @@ See :doc:`hw-request` for the full consumer contract.
          test-root: "test"
          install-cmd: >-
            uv pip install --quiet --python "$VENV_DIR/bin/python" -e "."
-           "adi-labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins@v3.5"
+           "labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins@v3.5"
 
 ``hw-request.yml`` inputs
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -400,9 +400,9 @@ See :doc:`hw-request` for the full consumer contract.
      - Absolute path for the persistent uv venv on the runner.
    * - ``install-cmd``
      - No
-     - ``uv pip install --quiet --python "$VENV_DIR/bin/python" -e "." "adi-labgrid-plugins @ git+…"``
+     - ``uv pip install --quiet --python "$VENV_DIR/bin/python" -e "." "labgrid-plugins @ git+…"``
      - Shell command (run with ``$VENV_DIR`` exported) to install the
-       consumer package + ``adi-labgrid-plugins`` into the per-leg venv.
+       consumer package + ``labgrid-plugins`` into the per-leg venv.
    * - ``request-mode``
      - No
      - ``uri``
@@ -538,9 +538,9 @@ have MATLAB installed (+ a reachable license) and the libIIO libs.
      - Absolute path for the persistent uv venv on the runner.
    * - ``install-cmd``
      - No
-     - ``uv pip install --quiet --python "$VENV_DIR/bin/python" "adi-labgrid-plugins[kuiper] @ git+…"``
+     - ``uv pip install --quiet --python "$VENV_DIR/bin/python" "labgrid-plugins[kuiper] @ git+…"``
      - Command (with ``$VENV_DIR`` exported) to install
-       ``adi-labgrid-plugins``.  The ``[kuiper]`` extra (pytsk3) is needed
+       ``labgrid-plugins``.  The ``[kuiper]`` extra (pytsk3) is needed
        to boot Kuiper uri-mode boards.
    * - ``prism-upload``
      - No
@@ -672,9 +672,9 @@ and the manifest reference.
      - Absolute path for the persistent uv venv on the runner.
    * - ``install-cmd``
      - No
-     - ``uv pip install --quiet --python "$VENV_DIR/bin/python" "adi-labgrid-plugins @ git+…"``
+     - ``uv pip install --quiet --python "$VENV_DIR/bin/python" "labgrid-plugins @ git+…"``
      - Shell command (run with ``$VENV_DIR`` exported) to install
-       ``adi-labgrid-plugins`` into the per-leg venv.
+       ``labgrid-plugins`` into the per-leg venv.
 
 
 .. _composite-actions:

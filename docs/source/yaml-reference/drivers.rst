@@ -1,7 +1,7 @@
 Drivers
 =======
 
-Schema-level lookup for every driver registered by ``adi-labgrid-plugins``. Most drivers
+Schema-level lookup for every driver registered by ``labgrid-plugins``. Most drivers
 take no YAML-level attributes of their own — configuration lives on the bound resource.
 For full prose and troubleshooting, follow the link on each driver name into the
 :doc:`User Guide <../user-guide/drivers>`.

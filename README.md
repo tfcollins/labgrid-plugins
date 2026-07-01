@@ -1,17 +1,17 @@
 <p align="center">
-  <img src="docs/source/_static/lg_adi_light.svg" alt="adi-labgrid-plugins" width="400">
+  <img src="docs/source/_static/lg_adi_light.svg" alt="labgrid-plugins" width="400">
 </p>
 
 <p align="center">
   <a href="https://github.com/tfcollins/labgrid-plugins/actions/workflows/tests.yml"><img src="https://github.com/tfcollins/labgrid-plugins/actions/workflows/tests.yml/badge.svg" alt="Tests"></a>
-  <a href="https://adi-labgrid-plugins.readthedocs.io/"><img src="https://readthedocs.org/projects/adi-labgrid-plugins/badge/?version=latest" alt="Documentation"></a>
+  <a href="https://labgrid-plugins.readthedocs.io/"><img src="https://readthedocs.org/projects/labgrid-plugins/badge/?version=latest" alt="Documentation"></a>
   <a href="https://github.com/tfcollins/labgrid-plugins/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue" alt="License"></a>
   <img src="https://img.shields.io/badge/python-3.10%2B-blue" alt="Python 3.10+">
 </p>
 
 ---
 
-**adi-labgrid-plugins** is a [labgrid](https://labgrid.readthedocs.io/) plugin package providing Analog Devices specific drivers, resources, and strategies for automated hardware testing and device control of FPGA SoC systems.
+**labgrid-plugins** is a [labgrid](https://labgrid.readthedocs.io/) plugin package providing Analog Devices specific drivers, resources, and strategies for automated hardware testing and device control of FPGA SoC systems.
 
 ## Features
 
@@ -28,14 +28,14 @@
 ### Install
 
 ```bash
-pip install git+https://github.com/analogdevicesinc/adi-labgrid-plugins.git
+pip install git+https://github.com/tfcollins/labgrid-plugins.git
 ```
 
 Or for development:
 
 ```bash
-git clone https://github.com/analogdevicesinc/adi-labgrid-plugins.git
-cd adi-labgrid-plugins
+git clone https://github.com/tfcollins/labgrid-plugins.git
+cd labgrid-plugins
 pip install -e ".[dev]"
 ```
 
@@ -89,15 +89,15 @@ adi-lg-mcp
 
 ## Documentation
 
-Full documentation is available at **[adi-labgrid-plugins.readthedocs.io](https://adi-labgrid-plugins.readthedocs.io/)**.
+Full documentation is available at **[labgrid-plugins.readthedocs.io](https://labgrid-plugins.readthedocs.io/)**.
 
 Key sections:
 
-- [Getting Started](https://adi-labgrid-plugins.readthedocs.io/en/latest/getting-started/index.html)
-- [User Guide](https://adi-labgrid-plugins.readthedocs.io/en/latest/user-guide/index.html) -- drivers, strategies, CLI, MCP, coordinator
-- [API Reference](https://adi-labgrid-plugins.readthedocs.io/en/latest/api/index.html)
-- [Exporter Deployment](https://adi-labgrid-plugins.readthedocs.io/en/latest/user-guide/exporter-deployment.html)
-- [Running Coordinator Tests](https://adi-labgrid-plugins.readthedocs.io/en/latest/user-guide/coordinator-testing.html)
+- [Getting Started](https://labgrid-plugins.readthedocs.io/en/latest/getting-started/index.html)
+- [User Guide](https://labgrid-plugins.readthedocs.io/en/latest/user-guide/index.html) -- drivers, strategies, CLI, MCP, coordinator
+- [API Reference](https://labgrid-plugins.readthedocs.io/en/latest/api/index.html)
+- [Exporter Deployment](https://labgrid-plugins.readthedocs.io/en/latest/user-guide/exporter-deployment.html)
+- [Running Coordinator Tests](https://labgrid-plugins.readthedocs.io/en/latest/user-guide/coordinator-testing.html)
 
 ## License
 

@@ -5,7 +5,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /
 WORKDIR /app
 
 # Build context is the repo root (set in docker-compose.yml). We install
-# the API package and the adi-labgrid-plugins package so labgrid-client
+# the API package and the labgrid-plugins package so labgrid-client
 # inside this container recognises plugin resource classes (KuiperRelease,
 # VesyncOutlet, CyberPowerOutlet, etc.) used by exporters in this lab.
 
@@ -13,7 +13,7 @@ WORKDIR /app
 COPY coordinator/api/pyproject.toml ./api-pyproject.toml
 RUN cp api-pyproject.toml pyproject.toml && pip install --no-cache-dir . && rm api-pyproject.toml pyproject.toml
 
-# 2. Install adi-labgrid-plugins for resource-class entry-point registration.
+# 2. Install labgrid-plugins for resource-class entry-point registration.
 #    Use --no-deps to skip heavy/system-bound deps (pytsk3, pylibiio, usbsdmux,
 #    fastmcp). Install only the runtime deps needed by power/outlet drivers
 #    that the API actually invokes via labgrid-client.

@@ -123,7 +123,7 @@ verify they exist (Step 5 will fail clearly if they don't):
 
 ## Step 5 — verify BEFORE opening the PR (uses existing CLI; no hardware)
 
-Install the package (`pip install -e ".[dev]"` here, or `pip install adi-labgrid-plugins`)
+Install the package (`pip install -e ".[dev]"` here, or `pip install labgrid-plugins`)
 and run the discovery preflight against the live coordinator — this proves the markers/
 manifest + catalog + places line up:
 

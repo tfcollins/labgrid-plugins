@@ -4,7 +4,7 @@ Configuration
 Target Configuration Basics
 ----------------------------
 
-adi-labgrid-plugins uses YAML files to configure targets, resources, and drivers.
+labgrid-plugins uses YAML files to configure targets, resources, and drivers.
 
 .. tip::
 

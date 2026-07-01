@@ -1,7 +1,7 @@
 API Reference
 =============
 
-Complete API documentation for all adi-labgrid-plugins components.
+Complete API documentation for all labgrid-plugins components.
 
 .. toctree::
    :maxdepth: 2

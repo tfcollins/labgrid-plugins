@@ -20,7 +20,7 @@ SCRIPT_DIR = Path(__file__).parent
 DEFAULT_SCHEMA = SCRIPT_DIR / "schemas" / "exporter_schema.json"
 HW_NODES_SCHEMA = SCRIPT_DIR / "schemas" / "hw-nodes.schema.json"
 
-# Known resource classes from the adi-labgrid-plugins project
+# Known resource classes from the labgrid-plugins project
 KNOWN_CLASSES = {
     "NetworkService",
     "RawSerialPort",

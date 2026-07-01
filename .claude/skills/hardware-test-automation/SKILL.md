@@ -1,7 +1,7 @@
 ---
 name: hardware-test-automation
 description: >-
-  Design and generate automation that uses adi-labgrid-plugins to run tests against real
+  Design and generate automation that uses labgrid-plugins to run tests against real
   hardware. Covers three things: (1) GitHub Actions CI for consumer repos that run their tests
   on lab boards via the reusable hw-request workflows, (2) standalone Python/bash scripts that
   acquire, boot, flash, and drive boards through the adi-lg CLI and labgrid, and (3) exporter
@@ -13,10 +13,10 @@ description: >-
   specific workflow file.
 ---
 
-# Hardware-test automation with adi-labgrid-plugins
+# Hardware-test automation with labgrid-plugins
 
 This skill helps you design automation — GitHub Actions, scripts, or lab infrastructure — that
-uses **this repo** (`adi-labgrid-plugins`) to acquire, boot, flash, and test physical boards.
+uses **this repo** (`labgrid-plugins`) to acquire, boot, flash, and test physical boards.
 
 The defining risk here is **broken automation that looks plausible**: a workflow that pins a
 stale tag, a script that imports a function that was renamed, a place filter that silently

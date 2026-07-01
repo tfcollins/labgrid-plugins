@@ -4,7 +4,7 @@
 # fork to upstream labgrid (>=25.0) and register the ADI plugins.
 #
 # WHY: upstream labgrid has no entry-point plugin auto-discovery, so an
-# exporter must (a) run upstream labgrid + have adi-labgrid-plugins installed
+# exporter must (a) run upstream labgrid + have labgrid-plugins installed
 # in the SAME python env, and (b) `import adi_lg_plugins` at startup so the
 # ADI resource classes (KuiperRelease, XilinxDeviceJTAG, VesyncOutlet, ...)
 # register. This script does both, for whichever env type the exporter uses
@@ -22,7 +22,7 @@ set -euo pipefail
 
 BRANCH="${ADI_BRANCH:-feat/upstream-labgrid}"
 PKG_URL="git+https://github.com/tfcollins/labgrid-plugins.git@${BRANCH}"
-PKG_SPEC="adi-labgrid-plugins @ ${PKG_URL}"
+PKG_SPEC="labgrid-plugins @ ${PKG_URL}"
 LABGRID_SPEC="labgrid>=25.0"
 SVC="labgrid-exporter.service"
 DRY="${DRY_RUN:-0}"

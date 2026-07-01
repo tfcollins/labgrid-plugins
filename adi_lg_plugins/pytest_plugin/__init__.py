@@ -1,7 +1,7 @@
 """pytest plugin: HW-CI markers + collection export.
 
 Registers two markers usable in any project that pip-installs
-``adi-labgrid-plugins``:
+``labgrid-plugins``:
 
 * ``@pytest.mark.iio_hardware([daughter, ...])``
 * ``@pytest.mark.iio_carrier([carrier, ...])``

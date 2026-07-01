@@ -6,11 +6,11 @@ The ``adi-lg`` command provides a convenient way to execute boot strategies dire
 Installation
 ------------
 
-The CLI is automatically installed when you install ``adi-labgrid-plugins``. Ensure you have the necessary dependencies:
+The CLI is automatically installed when you install ``labgrid-plugins``. Ensure you have the necessary dependencies:
 
 .. code-block:: bash
 
-    pip install adi-labgrid-plugins[cli]  # or just pip install . if you have click and rich
+    pip install labgrid-plugins[cli]  # or just pip install . if you have click and rich
 
 Global Options
 --------------
@@ -101,7 +101,7 @@ Boot an FPGA using the JTAG-based ``BootFabric`` strategy. This is typically use
 * ``--state <name>``: Target state to transition to (default: ``shell``).
 
 boot-soc
-~~~~~~~~ 
+~~~~~~~~
 
 Boot an FPGA SoC using the SD Mux-based ``BootFPGASoC`` strategy. This is used for Zynq and ZynqMP based systems.
 

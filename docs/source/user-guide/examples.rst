@@ -1,7 +1,7 @@
 Common Use Cases
 ================
 
-This page provides quick reference examples for typical workflows with adi-labgrid-plugins. Each example shows both configuration and Python usage.
+This page provides quick reference examples for typical workflows with labgrid-plugins. Each example shows both configuration and Python usage.
 
 Basic Power Control
 --------------------

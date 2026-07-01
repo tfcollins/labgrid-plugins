@@ -33,7 +33,7 @@ def test_rewrite_pins_only_touches_labgrid_refs():
         == f"uses: tfcollins/labgrid-plugins/.github/workflows/hw-request.yml@{RECOMMENDED_PIN}"
     )
     assert f"labgrid-plugins.git@{RECOMMENDED_PIN}" in scaffold._rewrite_pins(
-        "adi-labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins.git@v2.9"
+        "labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins.git@v2.9"
     )
     assert f".yml@{RECOMMENDED_PIN}" in scaffold._rewrite_pins(
         "tfcollins/labgrid-plugins/.github/workflows/<hw-request | noos-hw-request>.yml@v2.9"

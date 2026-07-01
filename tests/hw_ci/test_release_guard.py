@@ -13,7 +13,7 @@ def test_detects_main_action_ref(tmp_path):
 def test_detects_main_git_install(tmp_path):
     f = tmp_path / "wf.yml"
     f.write_text(
-        '          "adi-labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins@main"\n',
+        '          "labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins@main"\n',
         encoding="utf-8",
     )
     assert len(find_main_self_refs([f])) == 1

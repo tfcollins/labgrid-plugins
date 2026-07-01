@@ -80,7 +80,7 @@ jobs:
         set -euo pipefail
         uv pip install --quiet --python "$VENV_DIR/bin/python" <YOUR_INSTALL_ARGS>
         uv pip install --quiet --python "$VENV_DIR/bin/python" \
-          "adi-labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins.git@v3.5"
+          "labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins.git@v3.5"
       # prism-upload: ${{ vars.PRISM_UPLOAD_ENABLED == 'true' }}
       # prism-project: <PRISM_PROJECT_SLUG>
     # secrets:                       # cross-org `secrets: inherit` does NOT work — pass explicitly

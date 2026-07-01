@@ -89,7 +89,7 @@ on:
         default: "$HOME/.cache/noos-hw-request/venv"
       install-cmd:
         description: >-
-          Shell command (run with $VENV_DIR exported) to install adi-labgrid-plugins
+          Shell command (run with $VENV_DIR exported) to install labgrid-plugins
           into the per-leg venv. Override per repo if the consumer needs extras.
           The default installs the `kuiper` extra (pytsk3) because `build-noos`
           reads the board's .xsa from the Kuiper image's FAT partition via
@@ -98,7 +98,7 @@ on:
         type: string
         default: >-
           uv pip install --quiet --python "$VENV_DIR/bin/python"
-          "adi-labgrid-plugins[kuiper] @ git+https://github.com/tfcollins/labgrid-plugins@main"
+          "labgrid-plugins[kuiper] @ git+https://github.com/tfcollins/labgrid-plugins@main"
 
 jobs:
   preflight:
@@ -117,7 +117,7 @@ jobs:
           venv_dir: ${{ inputs.venv-dir }}
           install_cmd: >-
             uv pip install --quiet --python "$VENV_DIR/bin/python"
-            "adi-labgrid-plugins[kuiper] @ git+https://github.com/tfcollins/labgrid-plugins@main"
+            "labgrid-plugins[kuiper] @ git+https://github.com/tfcollins/labgrid-plugins@main"
       - id: plan
         env:
           LG_COORDINATOR: ${{ inputs.coordinator }}

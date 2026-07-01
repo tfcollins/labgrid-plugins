@@ -1,7 +1,7 @@
 Quick Start
 ===========
 
-This guide will walk you through your first use of adi-labgrid-plugins.
+This guide will walk you through your first use of labgrid-plugins.
 
 Basic Power Control Example
 ----------------------------

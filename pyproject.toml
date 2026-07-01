@@ -3,7 +3,7 @@ requires = ["setuptools>=47.2.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "adi-labgrid-plugins"
+name = "labgrid-plugins"
 version = "0.1.0"
 description = "labgrid plugin package for Analog Devices, Inc. (ADI) specific plugins."
 readme = "README.md"
@@ -66,9 +66,9 @@ namespaces = true
 "adi_lg_plugins.hw_ci.onboarding_templates" = ["*.yml", "*.yaml", "*.py", "*.md"]
 
 [project.urls]
-Homepage = "https://github.com/analogdevicesinc/adi-labgrid-plugins"
-Documentation = "https://adi-labgrid-plugins.readthedocs.io/"
-Repository = "https://github.com/analogdevicesinc/adi-labgrid-plugins"
+Homepage = "https://github.com/analogdevicesinc/labgrid-plugins"
+Documentation = "https://labgrid-plugins.readthedocs.io/"
+Repository = "https://github.com/analogdevicesinc/labgrid-plugins"
 
 
 # Add entry point scripts for tools
@@ -127,7 +127,7 @@ bootnoosjtag = "adi_lg_plugins.strategies.bootnoosjtag:BootNoOSJTAG"
 reflashvpk180sd = "adi_lg_plugins.strategies.reflashvpk180sd:ReflashVPK180SD"
 
 # pytest auto-discovery — installs the iio_hardware / iio_carrier markers
-# in any project that pip-installs adi-labgrid-plugins.
+# in any project that pip-installs labgrid-plugins.
 [project.entry-points."pytest11"]
 adi_lg_hw_ci = "adi_lg_plugins.pytest_plugin"
 

@@ -40,7 +40,7 @@ on:
         type: string
         default: "$HOME/.cache/matlab-hw-request/venv"
       install-cmd:
-        description: "Command (with $VENV_DIR exported) to install adi-labgrid-plugins."
+        description: "Command (with $VENV_DIR exported) to install labgrid-plugins."
         type: string
         # The [kuiper] extra (pytsk3) is required to boot Kuiper uri-mode
         # boards via KuiperDLDriver (BootFPGASoC/BootFPGASoCTFTP). pytsk3
@@ -48,7 +48,7 @@ on:
         # libtsk headers.
         default: >-
           uv pip install --quiet --python "$VENV_DIR/bin/python"
-          "adi-labgrid-plugins[kuiper] @ git+https://github.com/tfcollins/labgrid-plugins@main"
+          "labgrid-plugins[kuiper] @ git+https://github.com/tfcollins/labgrid-plugins@main"
       prism-upload:
         description: "Post each leg's JUnit to Prism."
         type: boolean

@@ -7,7 +7,7 @@ what hardware is available to a target and store configuration parameters that d
 Overview
 --------
 
-Resources in labgrid and adi-labgrid-plugins:
+Resources in labgrid and labgrid-plugins:
 
 - Describe physical hardware (outlets, serial ports, USB devices, network endpoints)
 - Store configuration parameters (IP addresses, credentials, device paths)

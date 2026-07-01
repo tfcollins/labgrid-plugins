@@ -1,7 +1,7 @@
 Resources
 =========
 
-Schema-level lookup for every resource registered by ``adi-labgrid-plugins``. For full
+Schema-level lookup for every resource registered by ``labgrid-plugins``. For full
 prose, troubleshooting, and examples, follow the link on each resource name into the
 :doc:`User Guide <../user-guide/resources>`.
 

@@ -37,12 +37,12 @@ Using pip
 
 Basic installation::
 
-    pip install git+https://github.com/analogdevicesinc/adi-labgrid-plugins.git
+    pip install git+https://github.com/tfcollins/labgrid-plugins.git
 
 Development installation::
 
-    git clone https://github.com/analogdevicesinc/adi-labgrid-plugins.git
-    cd adi-labgrid-plugins
+    git clone https://github.com/tfcollins/labgrid-plugins.git
+    cd labgrid-plugins
     pip install -e ".[dev]"
 
 Using uv (Recommended for Development)

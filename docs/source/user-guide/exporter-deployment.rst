@@ -57,7 +57,7 @@ Verify:
    $HOME/opt/ser2net-4.6.1/sbin/ser2net -v
    # ser2net version 4.6.1
 
-Install adi-labgrid-plugins
+Install labgrid-plugins
 ---------------------------
 
 On the exporter host:

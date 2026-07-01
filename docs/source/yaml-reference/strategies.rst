@@ -1,7 +1,7 @@
 Strategies
 ==========
 
-Schema-level lookup for every strategy registered by ``adi-labgrid-plugins``. For
+Schema-level lookup for every strategy registered by ``labgrid-plugins``. For
 full prose, state diagrams, and troubleshooting, follow the link on each strategy
 name into the :doc:`User Guide <../user-guide/strategies>`.
 

@@ -2,7 +2,7 @@ YAML Reference
 ==============
 
 Quick schema lookup for every resource, driver, and strategy registered by
-``adi-labgrid-plugins``. Use this section as a cheat sheet when authoring a target
+``labgrid-plugins``. Use this section as a cheat sheet when authoring a target
 YAML; each component name links back to its full user-guide entry for prose and
 troubleshooting.
 

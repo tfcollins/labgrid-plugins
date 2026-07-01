@@ -2,7 +2,7 @@ Onboarding a Consumer Repo
 ==========================
 
 This is the single, prescriptive guide for wiring a **new repo** onto the
-adi-labgrid-plugins hardware-CI flow. It consolidates what is otherwise spread across the
+labgrid-plugins hardware-CI flow. It consolidates what is otherwise spread across the
 reference pages (:doc:`github-actions`, :doc:`hw-request`, :doc:`hardware-ci-runner-setup`)
 into one ordered procedure with copy-paste templates.
 
@@ -72,7 +72,7 @@ Step 2 — what you'll touch
 
    Instead of copying templates by hand, scaffold them with the packaged CLI::
 
-      pip install adi-labgrid-plugins
+      pip install labgrid-plugins
       adi-lg-hw-ci init --mode uri --dest . --test-root test/hw
 
    It writes the mode's files (pinned to the current release), then prints the repo

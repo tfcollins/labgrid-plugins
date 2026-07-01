@@ -7,7 +7,7 @@ module hides the build and exposes a single entry point:
     from adi_lg_plugins.recovery.busybox import ensure_busybox_static
     bb = ensure_busybox_static()
 
-``cache_dir`` defaults to ``$XDG_CACHE_HOME/adi-labgrid-plugins/recovery``
+``cache_dir`` defaults to ``$XDG_CACHE_HOME/labgrid-plugins/recovery``
 (falls back to ``~/.cache/...``). Cross-compiler is autodetected by
 walking common ``arm-*-gnueabihf-`` toolchain prefixes on ``PATH``; pass
 ``cross_compile=`` explicitly to override.
@@ -48,7 +48,7 @@ class BusyboxBuildError(RuntimeError):
 def default_cache_dir() -> str:
     """Return the on-disk cache directory used for busybox artifacts."""
     base = os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache")
-    return os.path.join(base, "adi-labgrid-plugins", "recovery")
+    return os.path.join(base, "labgrid-plugins", "recovery")
 
 
 def detect_cross_compile() -> str | None:
@@ -145,7 +145,7 @@ def ensure_busybox_static(
 
     Args:
         cache_dir: directory to cache the built binary in. Defaults to
-            ``$XDG_CACHE_HOME/adi-labgrid-plugins/recovery``.
+            ``$XDG_CACHE_HOME/labgrid-plugins/recovery``.
         source_url: where to fetch busybox sources from when a build is
             needed. Defaults to the upstream 1.36.1 tarball.
         cross_compile: toolchain prefix (e.g.

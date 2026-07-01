@@ -1,7 +1,7 @@
 Model Context Protocol (MCP) Server
 ====================================
 
-The ``adi-labgrid-plugins`` package includes a Model Context Protocol (MCP) server implementation using ``fastmcp``. This allows Large Language Models (LLMs) to directly interact with your Labgrid-managed hardware through a standardized interface.
+The ``labgrid-plugins`` package includes a Model Context Protocol (MCP) server implementation using ``fastmcp``. This allows Large Language Models (LLMs) to directly interact with your Labgrid-managed hardware through a standardized interface.
 
 The MCP server provides:
 - **Stateful Sessions**: Persistent Labgrid environments across multiple tool calls.

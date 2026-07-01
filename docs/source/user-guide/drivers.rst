@@ -7,7 +7,7 @@ and expose protocols that can be used by strategies or tests.
 Overview
 --------
 
-Drivers in adi-labgrid-plugins:
+Drivers in labgrid-plugins:
 
 - Control hardware devices via serial, network, or USB interfaces
 - Implement standardized protocols for interoperability (PowerProtocol, CommandProtocol, etc.)
@@ -119,7 +119,7 @@ Used within the ``BootFPGASoCTFTP`` strategy to serve boot files:
 .. code-block:: python
 
     strategy = target.get_driver("BootFPGASoCTFTP")
-    
+
     # The strategy automatically:
     # 1. Activates the TFTPServerDriver
     # 2. Configures U-Boot environment (serverip, tftpport)

@@ -1,7 +1,7 @@
 Developer Onboarding
 ====================
 
-The front door for contributing to **adi-labgrid-plugins** itself: clone the repo, install
+The front door for contributing to **labgrid-plugins** itself: clone the repo, install
 the dev environment, learn the day-to-day ``nox`` loop, understand how the plugins register,
 and add a driver, resource, or strategy. For the design and component model read
 :doc:`architecture`; for the bare lint/test/doc commands see :doc:`contributing`.
@@ -9,7 +9,7 @@ and add a driver, resource, or strategy. For the design and component model read
 .. admonition:: Three different "onboardings" — don't confuse them
    :class: tip
 
-   - **This page** — working *inside* the ``adi-labgrid-plugins`` package.
+   - **This page** — working *inside* the ``labgrid-plugins`` package.
    - :doc:`../user-guide/onboarding-a-consumer-repo` — wiring *another* repo onto the
      hardware-CI flow.
    - :doc:`../user-guide/onboarding-a-lab-host` — bringing *hardware* online to serve those

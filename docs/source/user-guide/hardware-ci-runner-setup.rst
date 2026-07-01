@@ -4,7 +4,7 @@ Hardware-CI Runner Setup (no-os flash mode)
 A no-os DUT repo opts into on-hardware CI with a project manifest and four
 workflow inputs. The lab/toolchain logic (Vivado sourcing, the libtinfo shim,
 the ``.xsa`` fetch from the Kuiper image) lives entirely in
-``adi-labgrid-plugins`` — the runner's only hard requirement is a Vivado/Vitis
+``labgrid-plugins`` — the runner's only hard requirement is a Vivado/Vitis
 install.
 
 Runner requirements
@@ -19,7 +19,7 @@ The per-project build+flash legs run on a **self-hosted runner** that must:
 * Be able to **reach the JTAG cable** wired to the target board (the runner is
   typically co-located on the exporter host, or uses the place's ``runner``
   tag to route each leg to the right host).
-* Have ``adi-labgrid-plugins`` installed (the workflow installs it per leg via
+* Have ``labgrid-plugins`` installed (the workflow installs it per leg via
   ``uv``; no manual prep required).
 
 Register the runner with ``.github/scripts/register-hw-runners.sh``. Use

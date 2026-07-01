@@ -42,7 +42,7 @@ on:
         required: true
         description: >-
           Shell command run with $VENV_DIR exported, installing the caller's
-          test deps PLUS adi-labgrid-plugins (so the marker plugin is
+          test deps PLUS labgrid-plugins (so the marker plugin is
           available during the discover step).
       venv_dir:
         type: string

@@ -121,7 +121,7 @@ Test-marker schema (project-side contract)
 
 The ``adi_lg_plugins.pytest_plugin`` module registers two markers via
 the ``pytest11`` entry point. Any project that ``pip install``\s
-``adi-labgrid-plugins`` gets them auto-registered (no per-project
+``labgrid-plugins`` gets them auto-registered (no per-project
 ``conftest.py`` plumbing needed):
 
 .. code-block:: python
@@ -166,13 +166,13 @@ Consumer setup
 
 Three things on the consumer side:
 
-1. Install ``adi-labgrid-plugins`` in the test venv (the workflow's
+1. Install ``labgrid-plugins`` in the test venv (the workflow's
    ``venv_install_cmd`` already needs to do this — the marker plugin
    AND the discover CLI both live in this package):
 
    .. code-block:: text
 
-      adi-labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins.git@v2
+      labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins.git@v2
 
 2. Mark tests:
 
@@ -205,7 +205,7 @@ Three things on the consumer side:
                 -r requirements_dev.txt
               uv pip install --quiet --python "$VENV_DIR/bin/python" -e .
               uv pip install --quiet --python "$VENV_DIR/bin/python" \
-                "adi-labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins.git@v2"
+                "labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins.git@v2"
             pytest_cmd_template: >-
               "$VENV_DIR/bin/pytest" -v
               -m "$MARKER_FILTER"

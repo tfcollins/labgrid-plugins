@@ -1,7 +1,7 @@
 Examples
 ========
 
-Detailed examples showing how to use adi-labgrid-plugins.
+Detailed examples showing how to use labgrid-plugins.
 
 .. toctree::
    :maxdepth: 2

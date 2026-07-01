@@ -1,7 +1,7 @@
 Architecture
 ============
 
-The adi-labgrid-plugins project follows the **labgrid plugin architecture** with three main component types: Resources, Drivers, and Strategies. This document explains the design, component relationships, and extensibility patterns.
+The labgrid-plugins project follows the **labgrid plugin architecture** with three main component types: Resources, Drivers, and Strategies. This document explains the design, component relationships, and extensibility patterns.
 
 Component Overview
 ------------------

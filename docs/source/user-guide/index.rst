@@ -1,7 +1,7 @@
 User Guide
 ==========
 
-Comprehensive guides for using adi-labgrid-plugins.
+Comprehensive guides for using labgrid-plugins.
 
 .. toctree::
    :maxdepth: 2
