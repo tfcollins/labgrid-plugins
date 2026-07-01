@@ -111,12 +111,22 @@ jobs:
           adi-lg request --part "$PART" ${CARRIER:+--carrier "$CARRIER"} \
             --mode "$MODE" --wait "$WAIT" || rc=$?
           elapsed=$(( SECONDS - start ))
-          status=pass; [ "$rc" -eq 0 ] || status=fail
+          # Exit-code contract (adi_lg_plugins/request/errors.py):
+          #   0        booted/reserved OK          -> pass
+          #   10 / 11  no-match / board-unavailable -> skip (contention or the board
+          #            vanished between preflight and the leg; NOT infra breakage)
+          #   other    boot/provision failure       -> fail (red)
+          case "$rc" in
+            0) status=pass ;;
+            10|11) status=skip ;;
+            *) status=fail ;;
+          esac
           adi-lg-hw-ci boot-junit \
             --place "$PLACE" --part "$PART" --carrier "$CARRIER" --mode "$MODE" \
             --status "$status" --seconds "$elapsed" \
             --message "adi-lg request exit $rc" --out "$JUNIT"
-          exit "$rc"
+          # Only a real boot/provision failure fails the leg; contention is neutral.
+          if [ "$status" = fail ]; then exit "$rc"; fi
       - name: Upload to Prism
         if: always() && inputs.prism-upload
         continue-on-error: true

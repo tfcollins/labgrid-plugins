@@ -40,6 +40,13 @@ def test_noos_place_becomes_a_reserve_leg():
     assert legs[0].mode == "reserve"
 
 
+def test_unknown_strategy_defaults_to_reserve():
+    legs, _ = build_all_places_matrix(
+        [_place("fabricbox", "adrv9371", "zc706", strategy="BootFabric")]
+    )
+    assert legs[0].mode == "reserve"
+
+
 def test_acquired_place_is_skipped_and_reported():
     legs, acquired = build_all_places_matrix(
         [_place("busy", "ad9081", "vcu118", acquired="someone")]

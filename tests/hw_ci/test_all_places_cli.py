@@ -71,19 +71,54 @@ def test_boot_junit_writes_file(tmp_path):
     rc = cli_mod.main(
         [
             "boot-junit",
-            "--place", "mini2",
-            "--part", "adrv9002",
-            "--carrier", "zcu102",
-            "--mode", "uri",
-            "--status", "pass",
-            "--seconds", "42",
-            "--out", str(out),
+            "--place",
+            "mini2",
+            "--part",
+            "adrv9002",
+            "--carrier",
+            "zcu102",
+            "--mode",
+            "uri",
+            "--status",
+            "pass",
+            "--seconds",
+            "42",
+            "--out",
+            str(out),
         ]
     )
     assert rc == 0
     text = out.read_text(encoding="utf-8")
     assert 'name="uri:adrv9002@mini2"' in text
     assert 'failures="0"' in text
+
+
+def test_boot_junit_writes_skip_file(tmp_path):
+    out = tmp_path / "results-mini2.xml"
+    rc = cli_mod.main(
+        [
+            "boot-junit",
+            "--place",
+            "mini2",
+            "--part",
+            "adrv9002",
+            "--carrier",
+            "zcu102",
+            "--mode",
+            "uri",
+            "--status",
+            "skip",
+            "--seconds",
+            "3",
+            "--message",
+            "adi-lg request exit 11",
+            "--out",
+            str(out),
+        ]
+    )
+    assert rc == 0
+    text = out.read_text(encoding="utf-8")
+    assert 'skipped="1"' in text
 
 
 def test_all_places_matrix_wires_via_main(monkeypatch):

@@ -16,9 +16,22 @@ from dataclasses import dataclass
 
 from adi_lg_plugins.hw_ci.schema import Place
 
-# Boot strategies that cannot boot to a self-contained known-good state without
-# consumer firmware. These get a reserve-only (acquire + reachable) check.
-FLASH_ONLY_STRATEGIES: frozenset[str] = frozenset({"BootNoOSJTAG"})
+# Boot strategies KNOWN to boot Linux and expose an iiod URI over the network.
+# These get a real boot-verify (mode="uri"). Every OTHER strategy — fabric-only
+# loads, JTAG recovery, SD reflash, no-os firmware, and anything not yet listed —
+# falls through to reserve-only (mode="reserve"), which fails safe: a place that
+# cannot answer iiod is acquired + reachability-checked instead of false-failing a
+# boot it was never going to pass. Add a strategy here only once it is confirmed to
+# serve iiod after boot.
+URI_BOOTABLE_STRATEGIES: frozenset[str] = frozenset(
+    {
+        "BootFPGASoC",
+        "BootFPGASoCTFTP",
+        "BootFPGASoCSSH",
+        "BootTickFPGASSH",
+        "BootRPI",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -56,7 +69,7 @@ def build_all_places_matrix(places: Iterable[Place]) -> tuple[list[BootLeg], lis
         if place.is_acquired:
             acquired.append(place.name)
             continue
-        mode = "reserve" if place.boot_strategy in FLASH_ONLY_STRATEGIES else "uri"
+        mode = "uri" if place.boot_strategy in URI_BOOTABLE_STRATEGIES else "reserve"
         legs.append(
             BootLeg(
                 place=place.name,

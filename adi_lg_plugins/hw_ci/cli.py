@@ -328,7 +328,7 @@ def _cmd_boot_junit(args: argparse.Namespace) -> int:
         part=args.part,
         carrier=args.carrier,
         mode=args.mode,
-        ok=args.status == "pass",
+        status=args.status,
         seconds=args.seconds,
         message=args.message,
     )
@@ -629,7 +629,7 @@ def main(argv: list[str] | None = None) -> int:
     pbj.add_argument("--part", required=True)
     pbj.add_argument("--carrier", default="")
     pbj.add_argument("--mode", default="uri")
-    pbj.add_argument("--status", choices=["pass", "fail"], required=True)
+    pbj.add_argument("--status", choices=["pass", "fail", "skip"], required=True)
     pbj.add_argument("--seconds", type=int, default=0)
     pbj.add_argument("--message", default="")
     pbj.add_argument("--out", required=True, help="path to write the JUnit XML to")
