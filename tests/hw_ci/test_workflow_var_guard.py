@@ -6,6 +6,7 @@ WORKFLOWS = [
     ".github/workflows/hw-request.yml",
     ".github/workflows/noos-hw-request.yml",
     ".github/workflows/matlab-hw-request.yml",
+    ".github/workflows/infra-smoke.yml",
 ]
 
 
