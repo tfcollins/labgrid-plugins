@@ -62,18 +62,22 @@ def resolve_uri(target: Any, *, wait: float = 90.0, interval: float = 3.0) -> st
     static ``NetworkService.address`` on deadline, with a warning that it may
     be stale.
     """
+    # Read the board's own IPv4 off its default-route / global-scope interface
+    # rather than a hardcoded ``eth0``: newer kernels (and some SD-autoboot Kuiper
+    # images) name the DUT NIC ``end0`` / ``enp*s0``, so ``show eth0`` returns
+    # nothing and we would wrongly fall back to the (often stale) static address.
+    live_ip_cmd = "ip -4 -o addr show scope global | awk '{print $4}' | cut -d/ -f1 | head -1"
     deadline = time.monotonic() + wait
+    last_err: Exception | None = None
     while True:
         for drv in ("ADIShellDriver", "ShellDriver"):
             try:
                 shell = target.get_driver(drv)
-                out, _err, rc = shell.run(
-                    "ip -4 -o addr show eth0 | awk '{print $4}' | cut -d/ -f1"
-                )
+                out, _err, rc = shell.run(live_ip_cmd)
                 if rc == 0 and out and out[0].strip():
                     return f"ip:{out[0].strip()}"
-            except Exception:  # noqa: BLE001 - fall back to the static address
-                pass
+            except Exception as e:  # noqa: BLE001 - fall back to the static address
+                last_err = e
         if time.monotonic() >= deadline:
             break
         time.sleep(interval)
@@ -86,9 +90,10 @@ def resolve_uri(target: Any, *, wait: float = 90.0, interval: float = 3.0) -> st
     if not address:
         raise ProvisionError("booted target's NetworkService has no address")
     logger.warning(
-        "live eth0 IP not readable after %.0fs; falling back to static"
-        " NetworkService.address %s (may be stale)",
+        "live IP not readable after %.0fs (last shell error: %s); falling back to"
+        " static NetworkService.address %s (may be stale)",
         wait,
+        last_err,
         address,
     )
     return f"ip:{address}"
