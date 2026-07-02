@@ -9,6 +9,28 @@ from __future__ import annotations
 
 from xml.sax.saxutils import escape, quoteattr
 
+from adi_lg_plugins.request.errors import EXIT_UNAVAILABLE
+
+
+def boot_status_for_rc(rc: int) -> str:
+    """Map an ``adi-lg request`` exit code to an infra boot-smoke testcase status.
+
+    * ``0`` -> ``"pass"`` (booted/reserved and verified).
+    * ``EXIT_UNAVAILABLE`` (11) -> ``"skip"`` — matching board(s) exist but none
+      were free within ``--wait``: genuine contention, not infra breakage, so it
+      must not fail the run.
+    * anything else -> ``"fail"``. Notably ``EXIT_NO_MATCH`` (10) fails: a place
+      preflight discovered but that "can never be satisfied" at request time
+      (unknown/uncatalogued part, or the board vanished) is a coordinator
+      catalog/config gap this job must surface, not silently skip.
+      ``EXIT_PROVISION`` (12, boot failed) and any other non-zero code fail too.
+    """
+    if rc == 0:
+        return "pass"
+    if rc == EXIT_UNAVAILABLE:
+        return "skip"
+    return "fail"
+
 
 def render_boot_junit(
     *,
@@ -28,8 +50,8 @@ def render_boot_junit(
 
     * ``"pass"`` — no child element.
     * ``"fail"`` — a ``<failure>`` element carries the collapsed ``message``.
-    * ``"skip"`` — a neutral ``<skipped>`` element (contention / board vanished
-      between preflight and the leg); a JUnit ``<skipped>`` does not fail the run.
+    * ``"skip"`` — a neutral ``<skipped>`` element (contention: the board is busy);
+      a JUnit ``<skipped>`` does not fail the run.
     """
     if status not in ("pass", "fail", "skip"):
         raise ValueError(f"unknown status {status!r}")

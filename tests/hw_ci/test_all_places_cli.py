@@ -156,6 +156,14 @@ def test_all_places_matrix_drops_unreachable_with_check_reachability(monkeypatch
     assert "::warning::" in out.err and "down" in out.err and "unreachable" in out.err
 
 
+def test_boot_status_cli_maps_exit_codes(capsys):
+    # The leg calls `adi-lg-hw-ci boot-status --rc N` to get pass|fail|skip.
+    cases = {0: "pass", 11: "skip", 10: "fail", 12: "fail", 130: "fail"}
+    for rc, expected in cases.items():
+        assert cli_mod.main(["boot-status", "--rc", str(rc)]) == 0
+        assert capsys.readouterr().out.strip() == expected
+
+
 def test_all_places_matrix_wires_via_main(monkeypatch):
     monkeypatch.setenv("LG_COORDINATOR", "c:20408")
     monkeypatch.setattr(
