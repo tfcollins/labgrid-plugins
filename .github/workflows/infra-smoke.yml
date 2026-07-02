@@ -131,21 +131,17 @@ jobs:
           adi-lg request --part "$PART" ${CARRIER:+--carrier "$CARRIER"} \
             --mode "$MODE" --wait "$WAIT" || rc=$?
           elapsed=$(( SECONDS - start ))
-          # Exit-code contract (adi_lg_plugins/request/errors.py):
-          #   0        booted/reserved OK          -> pass
-          #   10 / 11  no-match / board-unavailable -> skip (contention or the board
-          #            vanished between preflight and the leg; NOT infra breakage)
-          #   other    boot/provision failure       -> fail (red)
-          case "$rc" in
-            0) status=pass ;;
-            10|11) status=skip ;;
-            *) status=fail ;;
-          esac
+          # Map adi-lg request's exit code to pass|fail|skip (single tested source
+          # of truth: adi_lg_plugins.hw_ci.boot_junit.boot_status_for_rc). Only
+          # UNAVAILABLE (11, board busy) is a neutral skip; NO_MATCH (10, a live
+          # place that can't be matched — usually an uncatalogued/stale part) and
+          # boot/provision failures (12, ...) fail so the config gap is surfaced.
+          status=$(adi-lg-hw-ci boot-status --rc "$rc")
           adi-lg-hw-ci boot-junit \
             --place "$PLACE" --part "$PART" --carrier "$CARRIER" --mode "$MODE" \
             --status "$status" --seconds "$elapsed" \
             --message "adi-lg request exit $rc" --out "$JUNIT"
-          # Only a real boot/provision failure fails the leg; contention is neutral.
+          # pass/skip are neutral (exit 0); any fail reddens the leg.
           if [ "$status" = fail ]; then exit "$rc"; fi
       - name: Upload to Prism
         if: always() && inputs.prism-upload

@@ -344,6 +344,14 @@ def _cmd_boot_junit(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_boot_status(args: argparse.Namespace) -> int:
+    """Print the boot-smoke status (pass|fail|skip) for an adi-lg request exit code."""
+    from .boot_junit import boot_status_for_rc
+
+    print(boot_status_for_rc(args.rc))
+    return 0
+
+
 def _cmd_render_env(args: argparse.Namespace) -> int:
     coord = coord_mod.resolve_coordinator(args.coord)
     places, _skipped = coord_mod.list_live_places(
@@ -647,6 +655,13 @@ def main(argv: list[str] | None = None) -> int:
     pbj.add_argument("--message", default="")
     pbj.add_argument("--out", required=True, help="path to write the JUnit XML to")
     pbj.set_defaults(func=_cmd_boot_junit)
+
+    pbs = sub.add_parser(
+        "boot-status",
+        help="map an adi-lg request exit code to a boot-smoke status (pass|fail|skip)",
+    )
+    pbs.add_argument("--rc", type=int, required=True, help="the adi-lg request exit code")
+    pbs.set_defaults(func=_cmd_boot_status)
 
     pb = sub.add_parser("build-noos", help="build a no-os project for HW CI (env + Kuiper .xsa)")
     pb.add_argument("--project", required=True, help="projects/<project> to build")

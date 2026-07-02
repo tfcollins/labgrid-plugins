@@ -2,7 +2,7 @@ from xml.etree import ElementTree as ET
 
 import pytest
 
-from adi_lg_plugins.hw_ci.boot_junit import render_boot_junit
+from adi_lg_plugins.hw_ci.boot_junit import boot_status_for_rc, render_boot_junit
 
 
 def test_pass_has_no_failure_element():
@@ -66,3 +66,27 @@ def test_skip_has_skipped_element():
 def test_unknown_status_raises():
     with pytest.raises(ValueError):
         render_boot_junit(place="p", part="x", carrier="c", mode="uri", status="bogus", seconds=1)
+
+
+def test_boot_status_pass_on_zero():
+    assert boot_status_for_rc(0) == "pass"
+
+
+def test_boot_status_unavailable_is_skip():
+    # EXIT_UNAVAILABLE (11): board(s) exist but none free -> contention -> skip.
+    assert boot_status_for_rc(11) == "skip"
+
+
+def test_boot_status_no_match_fails():
+    # EXIT_NO_MATCH (10): live place can't be matched (uncatalogued/stale part) ->
+    # a coordinator config gap the daily must surface, so it must FAIL, not skip.
+    assert boot_status_for_rc(10) == "fail"
+
+
+def test_boot_status_provision_fails():
+    assert boot_status_for_rc(12) == "fail"
+
+
+@pytest.mark.parametrize("rc", [1, 2, 13, 130, 255])
+def test_boot_status_other_nonzero_fails(rc):
+    assert boot_status_for_rc(rc) == "fail"
