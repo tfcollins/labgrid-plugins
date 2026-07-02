@@ -93,7 +93,11 @@ jobs:
         env:
           LG_COORDINATOR: ${{ inputs.coordinator }}
         run: |
-          adi-lg-hw-ci all-places-matrix --coord "${{ inputs.coordinator }}" --github-output
+          # --check-reachability drops live places whose exporter host is offline
+          # (e.g. a powered-down board host) so they don't emit a leg that would
+          # queue forever waiting on a runner that will never come online.
+          adi-lg-hw-ci all-places-matrix --coord "${{ inputs.coordinator }}" \
+            --check-reachability --github-output
 
   boot-smoke:
     needs: preflight

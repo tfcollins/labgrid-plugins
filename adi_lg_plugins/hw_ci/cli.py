@@ -280,7 +280,7 @@ def _cmd_all_places_matrix(args: argparse.Namespace) -> int:
     unreachable or has zero live places fails (exit 3) so the daily job's
     preflight goes red at a single loud point. Acquired places are skipped with a
     ``::notice::`` (contention, not breakage)."""
-    from .all_places import build_all_places_matrix
+    from .all_places import build_all_places_matrix, default_reachable
 
     coord = coord_mod.resolve_coordinator(args.coord)
     coord_mod.warn_if_rest_port(coord)
@@ -290,7 +290,8 @@ def _cmd_all_places_matrix(args: argparse.Namespace) -> int:
         print(f"::error title=coordinator-unreachable::{coord}: {e}", file=sys.stderr)
         return 3
 
-    legs, acquired = build_all_places_matrix(places)
+    reachable = default_reachable if args.check_reachability else None
+    legs, acquired, unreachable = build_all_places_matrix(places, reachable=reachable)
     matrix = {"include": [leg.as_matrix_dict() for leg in legs]}
     _emit_matrix(
         matrix,
@@ -303,6 +304,12 @@ def _cmd_all_places_matrix(args: argparse.Namespace) -> int:
         print(
             f"::notice::all-places-matrix: {name} is acquired — skipping this run", file=sys.stderr
         )
+    for name in unreachable:
+        print(
+            f"::warning::all-places-matrix: place {name!r} skipped — exporter host "
+            "unreachable (board host offline?)",
+            file=sys.stderr,
+        )
     for name, reason in skipped_invalid:
         print(f"::warning::all-places-matrix: place {name!r} skipped ({reason})", file=sys.stderr)
     if not places:
@@ -313,7 +320,7 @@ def _cmd_all_places_matrix(args: argparse.Namespace) -> int:
         return 3
     print(
         f"# all-places-matrix: {len(places)} live place(s), {len(legs)} bootable leg(s), "
-        f"{len(acquired)} acquired",
+        f"{len(acquired)} acquired, {len(unreachable)} unreachable",
         file=sys.stderr,
     )
     return 0
@@ -621,6 +628,12 @@ def main(argv: list[str] | None = None) -> int:
     )
     pap.add_argument(
         "--github-output", action="store_true", help="also write matrix=/count= to $GITHUB_OUTPUT"
+    )
+    pap.add_argument(
+        "--check-reachability",
+        action="store_true",
+        help="drop live places whose exporter host is unreachable (offline board host), "
+        "so an offline board doesn't emit a leg that queues forever",
     )
     pap.set_defaults(func=_cmd_all_places_matrix)
 
