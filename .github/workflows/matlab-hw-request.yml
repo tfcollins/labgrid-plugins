@@ -183,22 +183,26 @@ jobs:
           PRISM_JUNIT: ${{ matrix.matlab_board }}_HWTestResults.xml
           PRISM_RUN_NAME: ${{ github.workflow }}-${{ github.run_number }}-${{ matrix.matlab_board }}
           PRISM_BOARD: ${{ matrix.matlab_board }}
+          PRISM_CARRIER: ${{ matrix.carrier }}
         run: |
           set -euo pipefail
           [ -f "$PRISM_JUNIT" ] || { echo "::notice::no JUnit produced; skipping Prism upload"; exit 0; }
           if [ -n "${{ inputs.prism-upload-cmd }}" ]; then
             ${{ inputs.prism-upload-cmd }}
           else
-            uv pip install --quiet --python "$VENV_DIR/bin/python" \
-              "prism-uploader @ git+https://github.com/analogdevicesinc/prism.git#subdirectory=scripts" \
-              || echo "::warning::prism-uploader install failed; upload will be skipped"
-            "$VENV_DIR/bin/python" -m prism_client.upload_run \
+            # Prism's uploader is vendored into adi-labgrid-plugins (stdlib-only);
+            # run it from the installed package — no pip-install / private-repo fetch.
+            "$VENV_DIR/bin/python" -m adi_lg_plugins.hw_ci.prism_upload.upload_run "$PRISM_JUNIT" \
               --url "$PRISM_URL" \
               --project "$PRISM_PROJECT" \
-              --junit "$PRISM_JUNIT" \
-              --labgrid-place "${PRISM_PLACE:-}" \
-              --leg matlab \
-              --git-sha "$GITHUB_SHA"
+              --token "$PRISM_API_TOKEN" \
+              --auto-create-project \
+              --run-name "$PRISM_RUN_NAME" \
+              --tag "place=${PRISM_PLACE:-}" \
+              --tag "board=$PRISM_BOARD" \
+              --tag "carrier=${PRISM_CARRIER:-}" \
+              --tag "leg=matlab" \
+              --tag "git-sha=$GITHUB_SHA"
           fi
       - name: Upload JUnit
         if: always()
