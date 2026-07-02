@@ -152,28 +152,27 @@ jobs:
         continue-on-error: true
         env:
           PRISM_URL: ${{ inputs.prism-url != '' && inputs.prism-url || vars.PRISM_URL }}
-          PRISM_API_TOKEN: ${{ secrets.PRISM_API_TOKEN }}
+          # The vendored uploader reads PRISM_TOKEN (bearer) or PRISM_EMAIL/PASSWORD.
+          PRISM_TOKEN: ${{ secrets.PRISM_API_TOKEN }}
           PRISM_EMAIL: ${{ secrets.PRISM_EMAIL }}
           PRISM_PASSWORD: ${{ secrets.PRISM_PASSWORD }}
-          PRISM_PROJECT: ${{ inputs.prism-project }}
           PRISM_JUNIT: results-${{ matrix.place }}.xml
-          PRISM_RUN_NAME: ${{ github.workflow }}-${{ github.run_number }}-${{ matrix.place }}
-          PRISM_BOARD: ${{ matrix.part }}
-          PRISM_CARRIER: ${{ matrix.carrier }}
-          PRISM_PLACE: ${{ matrix.place }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
           [ -f "$PRISM_JUNIT" ] || { echo "::notice::no JUnit produced; skipping Prism upload"; exit 0; }
-          uv pip install --quiet --python "$VENV_DIR/bin/python" \
-            "prism-uploader @ git+https://github.com/analogdevicesinc/prism.git#subdirectory=scripts" \
-            || echo "::warning::prism-uploader install failed; upload will be skipped"
-          "$VENV_DIR/bin/python" -m prism_client.upload_run \
+          # Prism's uploader is vendored into adi-labgrid-plugins (stdlib-only) and
+          # runs from the installed package — no pip-install of a nonexistent
+          # package, no clone of the private prism repo.
+          "$VENV_DIR/bin/python" -m adi_lg_plugins.hw_ci.prism_upload.upload_run "$PRISM_JUNIT" \
             --url "$PRISM_URL" \
-            --project "$PRISM_PROJECT" \
-            --junit "$PRISM_JUNIT" \
-            --labgrid-place "$PRISM_PLACE" \
-            --leg boot \
-            --git-sha "$GITHUB_SHA"
+            --project "${{ inputs.prism-project }}" \
+            --auto-create-project \
+            --run-name "${{ github.workflow }}-${{ github.run_number }}-${{ matrix.place }}" \
+            --tag "place=${{ matrix.place }}" \
+            --tag "board=${{ matrix.part }}" \
+            --tag "carrier=${{ matrix.carrier }}" \
+            --tag "mode=${{ matrix.mode }}" \
+            --tag "git-sha=${{ github.sha }}"
       - name: Upload JUnit
         if: always()
         uses: actions/upload-artifact@v4

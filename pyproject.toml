@@ -79,6 +79,7 @@ cloudsmithdl = "adi_lg_plugins.tools.cloudsmithdl:main"
 adi-lg = "adi_lg_plugins.tools.cli:cli"
 adi-lg-mcp = "adi_lg_plugins.tools.mcp:main"
 adi-lg-hw-ci = "adi_lg_plugins.hw_ci.cli:main"
+adi-lg-prism-upload = "adi_lg_plugins.hw_ci.prism_upload.upload_run:main"
 
 # Entry points for plugin discovery
 # Labgrid automatically discovers and registers these components
@@ -161,7 +162,10 @@ line-length = 100
 target-version = "py310"
 # Drop-in onboarding templates are illustrative (placeholders, copied verbatim
 # into other repos), not package code — don't gate CI lint on them.
-extend-exclude = ["adi_lg_plugins/hw_ci/onboarding_templates"]
+extend-exclude = [
+    "adi_lg_plugins/hw_ci/onboarding_templates",
+    "adi_lg_plugins/hw_ci/prism_upload",  # vendored verbatim from tfcollins/prism scripts/
+]
 
 [tool.ruff.lint]
 select = [
