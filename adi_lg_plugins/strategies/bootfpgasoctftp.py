@@ -174,6 +174,43 @@ class BootFPGASoCTFTP(Strategy):
         self.target.deactivate(self.shell)
         self.logger.info("Device booted successfully via SD autoboot")
 
+    def _sync_network_address_from_live_ip(self, *, wait=90.0, interval=5.0):
+        """Point NetworkService.address at the DUT's live global-scope IPv4.
+
+        sd-autoboot boards DHCP a fresh (random-MAC) address every boot, so the
+        exporter's static ``NetworkService.address`` is stale and the request-side
+        URI resolver — which cannot reliably re-acquire a shell on these targets —
+        falls back to that wrong address. Read the live IP over the strategy's own
+        already-active shell (which works) and write it onto the resource so the
+        URI resolver targets the real board.
+
+        Polls until the DHCP lease lands (the board reaches a shell before eth0
+        gets an address) or ``wait`` elapses. Best-effort: never fail the boot
+        over this, and leave the static address untouched if no IP appears.
+        """
+        cmd = "ip -4 -o addr show scope global | awk '{print $4}' | cut -d/ -f1 | head -1"
+        deadline = time.monotonic() + wait
+        while True:
+            try:
+                out, _err, rc = self.shell.run(cmd)
+                ip = out[0].strip() if rc == 0 and out else ""
+                if ip:
+                    net = self.target.get_resource("NetworkService")
+                    old = getattr(net, "address", None)
+                    net.address = ip
+                    self.logger.info(
+                        "synced NetworkService.address to live DUT IP %s (was %s)", ip, old
+                    )
+                    return
+            except Exception as e:  # noqa: BLE001 - never fail the boot over an IP sync
+                self.logger.warning("live DUT IP read errored (will retry): %s", e)
+            if time.monotonic() >= deadline:
+                break
+            time.sleep(interval)
+        self.logger.warning(
+            "live DUT IP not readable after %.0fs; keeping static NetworkService.address", wait
+        )
+
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
         self.logger.info("BootFPGASoCTFTP strategy initialized")
@@ -426,6 +463,7 @@ class BootFPGASoCTFTP(Strategy):
             self.logger.info("Preparing interactive shell...")
             self.target.activate(self.shell)
             self.logger.info("Shell access ready")
+            self._sync_network_address_from_live_ip()
 
         elif status == Status.soft_off:
             self.transition(Status.shell)
