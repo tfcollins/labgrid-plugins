@@ -43,6 +43,7 @@ class Place:
     hdl_config: str | None = None
     board_location: str | None = None
     acquired: str | None = None
+    exporter: str | None = None  # host exporting this place's resources (from `matches`)
     extra_tags: dict[str, str] = field(default_factory=dict)
 
     @property
@@ -142,6 +143,12 @@ def validate_place(
     consumed = set(REQUIRED_TAGS) | set(OPTIONAL_TAGS)
     extra = {k: v for k, v in tags.items() if k not in consumed}
 
+    # /api/places carries `matches: [{exporter: <host>, ...}]`; the exporter host
+    # is the machine serving this place's resources. Absent on the CLI-fallback
+    # path (labgrid-client `show` doesn't report it), so guard for it.
+    matches = raw.get("matches") or []
+    exporter = matches[0].get("exporter") if matches and isinstance(matches[0], dict) else None
+
     return Place(
         name=name,
         carrier=tags["carrier"],
@@ -150,5 +157,6 @@ def validate_place(
         hdl_config=tags.get("hdl-config"),
         board_location=tags.get("board-location"),
         acquired=raw.get("acquired") or None,
+        exporter=exporter or None,
         extra_tags=extra,
     )

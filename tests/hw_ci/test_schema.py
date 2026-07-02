@@ -114,6 +114,22 @@ def test_unknown_strategy_rejected():
         validate_place(raw, known_strategies=STRATS)
 
 
+def test_exporter_captured_from_matches():
+    raw = _raw(
+        "nuc",
+        **{"carrier": "vcu118", "daughter-board": "daq3", "boot-strategy": "BootFabric"},
+    )
+    raw["matches"] = [{"exporter": "nuc", "group": "tlab"}]
+    p = validate_place(raw, known_strategies=STRATS)
+    assert p.exporter == "nuc"
+
+
+def test_exporter_none_without_matches():
+    raw = _raw(**{"carrier": "zcu102", "daughter-board": "ad9081", "boot-strategy": "BootFPGASoC"})
+    p = validate_place(raw, known_strategies=STRATS)
+    assert p.exporter is None
+
+
 def test_real_strategy_registry_populated():
     """Spot-check: the live registry includes at least BootFPGASoC."""
     assert "BootFPGASoC" in KNOWN_STRATEGIES
