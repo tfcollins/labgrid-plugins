@@ -71,6 +71,13 @@ on:
           PRISM_CARRIER, PRISM_PLACE.
         type: string
         default: ""
+      power-down:
+        description: >-
+          Power each board off after its leg completes (adi-lg request
+          --power-down; best-effort, runs before release). No-op in reserve
+          mode, where the consumer drives boot itself.
+        type: boolean
+        default: true
     secrets:
       PRISM_API_TOKEN:
         required: false
@@ -130,6 +137,7 @@ jobs:
         env:
           MATLAB_BIN: ${{ inputs.matlab-bin }}
           MATLAB_BOARD: ${{ matrix.matlab_board }}
+          POWER_DOWN: ${{ inputs.power-down }}
         run: |
           set -euo pipefail
           # The MATLAB invocation runs *inside* the booted-board reservation: adi-lg
@@ -169,8 +177,9 @@ jobs:
           sys.exit(2 if fails else 0)
           PY
           EOF
+          pd=""; if [ "$POWER_DOWN" = "true" ]; then pd="--power-down"; fi
           adi-lg request --part "${{ matrix.part }}" --carrier "${{ matrix.carrier }}" \
-            --wait "${{ inputs.wait }}" --run "bash run-matlab.sh"
+            --wait "${{ inputs.wait }}" $pd --run "bash run-matlab.sh"
       - name: Upload to Prism
         if: always() && inputs.prism-upload
         continue-on-error: true

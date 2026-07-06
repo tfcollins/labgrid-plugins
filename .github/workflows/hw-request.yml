@@ -91,6 +91,13 @@ on:
           PRISM_CARRIER, PRISM_PLACE.
         type: string
         default: ""
+      power-down:
+        description: >-
+          Power each board off after its leg completes (adi-lg request
+          --power-down; best-effort, runs before release). No-op in reserve
+          mode, where the consumer drives boot itself.
+        type: boolean
+        default: true
     secrets:
       INSTALL_GIT_TOKEN:
         required: false
@@ -176,6 +183,7 @@ jobs:
           MARKER: ${{ inputs.marker }}
           JUNIT: results-${{ matrix.part }}.xml
           PYTEST_ARGS: ${{ inputs.pytest-args }}
+          POWER_DOWN: ${{ inputs.power-down }}
         run: |
           # The child runs inside the reservation: LG_PLACE/LG_CARRIER are only
           # known there, so persist them for the Prism step via GITHUB_ENV.
@@ -187,8 +195,9 @@ jobs:
           } >> "$GITHUB_ENV"
           pytest $TEST_ROOT -m "$MARKER" --junitxml="$JUNIT" $PYTEST_ARGS
           EOF
+          pd=""; if [ "$POWER_DOWN" = "true" ]; then pd="--power-down"; fi
           adi-lg request --part "${{ matrix.part }}" \
-            --mode "${{ inputs.request-mode }}" --wait "${{ inputs.wait }}" \
+            --mode "${{ inputs.request-mode }}" --wait "${{ inputs.wait }}" $pd \
             --run "bash run-leg.sh"
       - name: Upload to Prism
         if: always() && inputs.prism-upload
