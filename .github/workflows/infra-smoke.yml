@@ -44,6 +44,13 @@ on:
         description: "Prism project slug (e.g. lab-infra-daily). Required when prism-upload is true."
         type: string
         default: ""
+      power-down:
+        description: >-
+          Power each board off after its leg completes (adi-lg request
+          --power-down; best-effort, runs before release). No-op in reserve
+          mode, where the consumer drives boot itself.
+        type: boolean
+        default: true
     secrets:
       PRISM_API_TOKEN:
         required: false
@@ -124,12 +131,14 @@ jobs:
           MODE: ${{ matrix.mode }}
           WAIT: ${{ inputs.wait }}
           JUNIT: results-${{ matrix.place }}.xml
+          POWER_DOWN: ${{ inputs.power-down }}
         run: |
           set -uo pipefail
           start=$SECONDS
           rc=0
+          pd=""; if [ "$POWER_DOWN" = "true" ]; then pd="--power-down"; fi
           adi-lg request --part "$PART" ${CARRIER:+--carrier "$CARRIER"} \
-            --mode "$MODE" --wait "$WAIT" || rc=$?
+            --mode "$MODE" --wait "$WAIT" $pd || rc=$?
           elapsed=$(( SECONDS - start ))
           # Map adi-lg request's exit code to pass|fail|skip (single tested source
           # of truth: adi_lg_plugins.hw_ci.boot_junit.boot_status_for_rc). Only
