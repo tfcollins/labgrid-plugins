@@ -42,6 +42,7 @@ def test_import_registers_all_components():
 
     try:
         import kasa  # noqa: F401
+
         has_kasa = True
     except ImportError:
         has_kasa = False
