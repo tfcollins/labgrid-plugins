@@ -12,6 +12,8 @@ from unittest.mock import MagicMock
 import pytest
 from labgrid.binding import BindingState
 
+pytest.importorskip("kasa")
+
 from adi_lg_plugins.drivers import kasadriver as kd
 from adi_lg_plugins.drivers.kasadriver import KasaPowerDriver
 from adi_lg_plugins.resources.kasa import KasaOutlet
