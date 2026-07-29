@@ -40,8 +40,18 @@ def test_import_registers_all_components():
 
     import adi_lg_plugins  # noqa: F401
 
-    missing_d = [n for n in _DRIVERS if n not in target_factory.drivers]
-    missing_r = [n for n in _RESOURCES if n not in target_factory.resources]
+    try:
+        import kasa  # noqa: F401
+
+        has_kasa = True
+    except ImportError:
+        has_kasa = False
+
+    expected_drivers = [n for n in _DRIVERS if has_kasa or n != "KasaPowerDriver"]
+    expected_resources = [n for n in _RESOURCES if has_kasa or n != "KasaOutlet"]
+
+    missing_d = [n for n in expected_drivers if n not in target_factory.drivers]
+    missing_r = [n for n in expected_resources if n not in target_factory.resources]
     assert not missing_d, f"unregistered drivers/strategies: {missing_d}"
     assert not missing_r, f"unregistered resources: {missing_r}"
 

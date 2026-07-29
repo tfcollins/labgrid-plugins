@@ -126,8 +126,10 @@ def test_source_env_does_not_execute_path_metacharacters(tmp_path):
     assert env.get("XILINX_VIVADO") == "/x"
 
 
-def test_source_env_raises_on_non_vivado_settings(tmp_path):
+def test_source_env_raises_on_non_vivado_settings(tmp_path, monkeypatch):
     """A settings file that doesn't set XILINX_VIVADO/XILINX_VITIS must raise RuntimeError."""
+    monkeypatch.delenv("XILINX_VIVADO", raising=False)
+    monkeypatch.delenv("XILINX_VITIS", raising=False)
     settings = tmp_path / "not_vivado.sh"
     settings.write_text("export FOO=bar\n")
     with pytest.raises(RuntimeError, match="XILINX_VIVADO"):

@@ -51,6 +51,11 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
         self.logger.info("XilinxJTAGDriver initialized")
         self.logger.debug(f"xsdb path: {self.xilinxvivado.xsdb_path}")
 
+    def _exporter_host(self, res):
+        if os.environ.get("LG_FORCE_LOCAL_XSDB", "").lower() in ("1", "true", "yes", "on"):
+            return None
+        return super()._exporter_host(res)
+
     def _run_xsdb(self, tcl_script: str):
         """Execute ``tcl_script`` through xsdb, locally or on the exporter.
 
