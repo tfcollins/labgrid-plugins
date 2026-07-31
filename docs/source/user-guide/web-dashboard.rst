@@ -5,7 +5,9 @@ The web dashboard provides a real-time view of the labgrid coordinator's state,
 including exporters, places, resources, and reservations.
 
 Access the dashboard at ``http://localhost:3000`` after starting the Docker
-compose stack (see :doc:`coordinator`).
+compose stack (see :doc:`coordinator`). Most pages are viewable without
+signing in; acquiring/releasing places, creating reservations, opening a
+console, and managing users require an account — see :doc:`web-ui-auth`.
 
 Dashboard Page
 --------------
@@ -71,6 +73,85 @@ The reservations page manages resource reservations:
 .. image:: /_static/screenshots/reservations.png
    :alt: Reservation management page
    :width: 100%
+
+Place Creation Wizard
+----------------------
+
+``/places/new`` walks through creating a place in four steps instead of a
+single form:
+
+1. **Name** - validated for format and checked for uniqueness
+2. **Matches** - pick exporter resource groups/classes to match into the place
+3. **Tags** - required tags (board location, carrier, daughter board) plus
+   any custom tags, and an optional comment
+4. **Review** - confirm before submitting
+
+If a later step fails, the wizard rolls back the place it already created
+so you don't end up with a half-configured place.
+
+Topology Page
+-------------
+
+``/topology`` renders an interactive graph (exporters -> resource groups ->
+places) showing which resources are matched into which places:
+
+- Dashed edges are unmatched; solid/animated edges are live and acquired
+- Filter by name (reflected in the URL as ``?focus=``), "Mine only", hide
+  offline exporters, hide places with no live matches
+- Clicking a node opens that exporter's or place's detail page
+
+Statistics Page
+----------------
+
+``/statistics`` provides usage analytics over a selectable 7/30/90-day
+window, across three tabs:
+
+- **Overview**: 24h event count, average acquisition duration, busiest
+  hour, most-used place, average uptime
+- **Places**: session count and utilization per place
+- **Resources**: per-exporter/resource uptime bars and online/offline hours
+
+Event Log
+---------
+
+``/events`` is a paginated audit log of coordinator activity - places
+created/acquired/released/deleted, resources coming online/offline or being
+acquired/released, and reservations created/cancelled. Filter by event
+type; 50 events per page.
+
+Console
+-------
+
+Opening a place's console resource (``/places/:name/console/:resource``)
+gives a full-screen interactive terminal (xterm.js) over a WebSocket
+connection to the resource's serial/console stream. Console sessions are
+always recorded (see below); a Reconnect button re-establishes a dropped
+connection.
+
+Recordings & Playback
+----------------------
+
+``/recordings`` lists every recorded console session (start time, place,
+resource, duration, size, and end reason). Selecting one opens
+``/recordings/:id``, which replays the session with the asciinema player.
+Admins can delete recordings from the list.
+
+Exporter Detail
+----------------
+
+``/exporters/:exporterName`` shows one exporter's resource groups, each
+resource's class/availability/owner, and expandable connection parameters
+(passwords are hidden). A sidebar lists places that reference the exporter
+and any "orphan" resources - live resources not matched into any place -
+with a link into the Topology page.
+
+Help Page
+---------
+
+``/help`` is a static in-app reference: an explainer of how exporters,
+resources, places, and matches fit together, a link into Topology, and a
+step-by-step guide to writing exporter resource YAML, available resource
+classes, validating configs, starting an exporter, and creating a place.
 
 Real-Time Updates
 -----------------

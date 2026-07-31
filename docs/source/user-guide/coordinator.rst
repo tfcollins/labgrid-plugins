@@ -192,6 +192,29 @@ The API server exposes the following endpoints:
 - ``DELETE /api/reservations/{token}`` - Cancel reservation
 - ``POST /api/reservations/{token}/poll`` - Poll reservation status
 
+**Auth**
+
+- ``POST /api/auth/bootstrap`` - One-time creation of the first admin account
+  (body: ``{"token": "...", "username": "...", "password": "..."}``\ ). Only
+  works while zero users exist; see :doc:`web-ui-auth`.
+- ``POST /api/auth/login`` - Local username/password login (body:
+  ``{"username": "...", "password": "..."}``\ ). Sets the session cookie.
+- ``POST /api/auth/logout`` - Clear the session
+- ``GET /api/auth/me`` - Current authenticated user (``{"username": "...", "role": "..."}``\ )
+- ``GET /api/auth/oidc/login`` - Redirect to the configured OIDC provider (``404`` if OIDC is disabled)
+- ``GET /api/auth/oidc/callback`` - OIDC redirect target; exchanges the code and sets the session cookie
+
+**Users** (admin role required)
+
+- ``GET /api/users`` - List all users
+- ``POST /api/users`` - Create a user (body: ``{"username": "...", "password": "...", "role": "admin"|"user"}``\ )
+- ``DELETE /api/users/{user_id}`` - Delete a user
+- ``PUT /api/users/{user_id}/password`` - Set a user's password
+- ``PUT /api/users/{user_id}/role`` - Change a user's role
+- ``PUT /api/users/{user_id}/disabled`` - Enable/disable a user
+
+See :doc:`web-ui-auth` for the full authentication and user-management guide.
+
 **WebSocket**
 
 - ``WS /api/ws`` - Real-time updates. On connect, receives full state snapshot.
