@@ -292,7 +292,9 @@ class BootSelMap(Strategy):
                     print(f"Pre-load command output:\n{out}")
             time.sleep(2)
             out = self.ssh.run(
-                f"cd {self.target_dut_folder} && ./selmap_dtbo.sh -d {os.path.basename(self.local_overlay_filename)} -b {os.path.basename(self.local_bitstream_filename)}"
+                f"cd {self.target_dut_folder} && ./{self.selmap_boot_script_name} "
+                f"-d {os.path.basename(self.local_overlay_filename)} "
+                f"-b {os.path.basename(self.local_bitstream_filename)}"
             )
             print(f"SelMap boot trigger output:\n{out}")
             self.target.deactivate(self.ssh)

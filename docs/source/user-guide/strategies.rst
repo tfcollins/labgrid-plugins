@@ -1020,6 +1020,7 @@ trigger command:
         local_bitstream_filename: '/path/to/vu11p.bin'
         local_overlay_filename: '/path/to/vu11p.dtbo'
         target_dut_folder: '/boot/ci'  # default
+        selmap_boot_script_name: 'selmap_dtbo.sh'  # default
         pre_load_commands:
           - 'echo 1 > /sys/some/setup/attr'
 
@@ -1033,7 +1034,7 @@ trigger command:
 
   .. code-block:: bash
 
-     cd <target_dut_folder> && ./selmap_dtbo.sh -d <overlay basename> -b <bitstream basename>
+     cd <target_dut_folder> && ./<selmap_boot_script_name> -d <overlay basename> -b <bitstream basename>
 
   Both attributes can also be set (or overridden) via the environment
   variables ``LG_SM_BITSTREAM`` and ``LG_SM_OVERLAY`` — handy for CI where
@@ -1043,7 +1044,13 @@ trigger command:
 
 - **target_dut_folder** (default ``/boot/ci``): Remote directory on the
   Zynq where the bitstream/overlay are uploaded and where the SelMap boot
-  script (``selmap_dtbo.sh``) is expected to already exist.
+  script (see ``selmap_boot_script_name`` below) is expected to already exist.
+
+- **selmap_boot_script_name** (default ``selmap_dtbo.sh``): Filename of the
+  SelMap trigger script, run from inside ``target_dut_folder`` during
+  ``trigger_selmap_boot``. The script itself is not uploaded by the
+  strategy — it must already exist on the DUT (stage it yourself via
+  ``post_boot_boot_files`` if it isn't baked into the image).
 
 - **pre_load_commands**: A single command string, or a list of command
   strings, run over SSH on the Zynq immediately before the SelMap trigger
