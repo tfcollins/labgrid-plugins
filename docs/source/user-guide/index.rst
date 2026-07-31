@@ -30,9 +30,15 @@ Comprehensive guides for using labgrid-plugins.
    onboarding-a-lab-host
    coordinator
    coordinator-testing
-   web-dashboard
    exporter-setup
    exporter-deployment
+
+.. toctree::
+   :maxdepth: 2
+   :caption: Web UI
+
+   web-dashboard
+   web-ui-auth
 
 .. toctree::
    :maxdepth: 1

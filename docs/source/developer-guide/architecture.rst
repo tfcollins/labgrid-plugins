@@ -789,5 +789,6 @@ See Also
 - :doc:`../user-guide/resources` - Resource configuration
 - :doc:`../user-guide/coordinator` - Coordinator setup
 - :doc:`../user-guide/web-dashboard` - Web dashboard guide
+- :doc:`../user-guide/web-ui-auth` - Web UI authentication and user management
 - :doc:`../api/index` - Complete API reference
 - Labgrid documentation: https://labgrid.readthedocs.io/

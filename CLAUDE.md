@@ -136,3 +136,10 @@ Both `pyproject.toml` and `coordinator/api/pyproject.toml` depend on upstream `l
 Plugin registration no longer relies on entry-point auto-discovery (a fork-only feature). Instead:
 - `import adi_lg_plugins` registers everything (the package `__init__` imports all driver/resource/strategy submodules; missing optional deps log a warning and skip rather than failing the import).
 - Every committed labgrid env YAML and the `adi_lg_plugins/hw_ci/templates/*.yaml` render templates carry `imports: [adi_lg_plugins]`; the coordinator env-gen (`coordinator/api/app/env_gen.py`) emits it too. **Downstream configs must include this key** to resolve ADI drivers/resources/strategies by name.
+
+## Documentation theme (Furo)
+
+The Sphinx docs use the **Furo** theme: never add `.. contents::` TOC directives — Furo errors
+on them at build time (this has broken the deployed docs before). Use section link lists instead.
+After a docs PR merges, verify the deployed pages actually render (green CI is not enough)
+before declaring done.
