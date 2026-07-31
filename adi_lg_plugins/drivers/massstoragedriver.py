@@ -63,10 +63,13 @@ class MassStorageDriver(RemoteExecMixin, Driver):
 
     def mount_partition(self):
         """Mount the configured partition at /media/<mount_label>."""
-        if self.mounted:
-            self.logger.debug("Already mounted; skipping.")
-            return
         mnt = self._mount_dir()
+        if self.mounted:
+            if self._is_mountpoint(mnt):
+                self.logger.debug("Already mounted; skipping.")
+                return
+            self.logger.warning("%s is no longer mounted; clearing stale driver state.", mnt)
+            self.mounted = False
         if self._is_mountpoint(mnt):
             self.logger.debug(f"{mnt} already mounted; treating as mounted.")
             self.mounted = True
@@ -90,6 +93,10 @@ class MassStorageDriver(RemoteExecMixin, Driver):
         if not self.mounted:
             return
         mnt = self._mount_dir()
+        if not self._is_mountpoint(mnt):
+            self.logger.info("%s is already unmounted; clearing driver state.", mnt)
+            self.mounted = False
+            return
         self._remote_run(["sync"], check=False)
         try:
             self._remote_check(["pumount", self.mount_label])
