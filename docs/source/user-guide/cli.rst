@@ -158,6 +158,13 @@ Boot a dual-FPGA system using the ``BootSelMap`` strategy.
 * ``-t, --target <name>``: Target name in the configuration (default: ``main``).
 * ``--state <name>``: Target state to transition to (default: ``shell``).
 
+The dedicated ``local_bitstream_filename``/``local_overlay_filename``
+strategy attributes (or their ``LG_SM_BITSTREAM``/``LG_SM_OVERLAY``
+environment variable overrides) are not exposed as CLI flags — set them in
+the target YAML, or export the env vars before invoking this command, if
+you're not using ``--post-boot-file`` for the Virtex artifacts. See
+:doc:`strategies` for the full ``BootSelMap`` attribute reference.
+
 generate-config
 ~~~~~~~~~~~~~~~
 

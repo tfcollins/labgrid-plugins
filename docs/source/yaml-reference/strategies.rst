@@ -25,7 +25,7 @@ Schema
      - ``reached_linux_marker`` (``'analog'``), ``wait_for_linux_prompt_timeout`` (60), ``tftp_root_folder`` (``/var/lib/tftpboot``), ``kernel_addr`` (``0x30000000``), ``dtb_addr`` (``0x2A000000``), ``bootargs``
      - ``ADIShellDriver``, ``TFTPServerResource``, ``TFTPServerDriver`` (+ optional ``PowerProtocol``, ``SSHDriver``, ``KuiperDLDriver``)
    * - :ref:`user-guide/strategies:BootSelMap Strategy`
-     - ``reached_linux_marker`` (``'analog'``), ``ethernet_interface``, ``iio_jesd_driver_name`` (``axi-ad9081-rx-hpc``), ``iio_jesd_data_mode`` (``DATA``), ``iio_jesd_link_mode_attr`` (``jesd204_link_mode``), ``pre_boot_boot_files``, ``post_boot_boot_files``
+     - ``reached_linux_marker`` (``'analog'``), ``ethernet_interface``, ``iio_jesd_driver_name`` (``axi-ad9081-rx-hpc``), ``iio_jesd_data_mode`` (``DATA``), ``iio_jesd_link_mode_attr`` (``jesd204_fsm_state``), ``pre_boot_boot_files``, ``post_boot_boot_files``, ``local_bitstream_filename`` (env ``LG_SM_BITSTREAM``), ``local_overlay_filename`` (env ``LG_SM_OVERLAY``), ``target_dut_folder`` (``/boot/ci``), ``pre_load_commands``
      - Shell, SSH, power, JESD (see User Guide)
    * - :ref:`user-guide/strategies:BootFabric Strategy`
      - ``reached_boot_marker`` (``'login:'``), ``wait_for_boot_timeout`` (120), ``verify_iio_device``, ``trigger_dhcp_reset``, ``power_off_delay``, ``debug_write_boot_log`` (False)
@@ -70,6 +70,8 @@ Dual-FPGA (SelMap)
       BootSelMap:
         reached_linux_marker: 'analog'
         iio_jesd_driver_name: 'axi-ad9081-rx-hpc'
+        local_bitstream_filename: '/path/to/vu11p.bin'
+        local_overlay_filename: '/path/to/vu11p.dtbo'
 
 FPGA Fabric (Microblaze / JTAG)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -962,6 +962,10 @@ The strategy manages 11 states with dual-FPGA boot orchestration:
             iio_jesd_driver_name: 'axi-ad9081-rx-hpc'
             pre_boot_boot_files: null
             post_boot_boot_files: null
+            local_bitstream_filename: '/path/to/vu11p.bin'
+            local_overlay_filename: '/path/to/vu11p.dtbo'
+            target_dut_folder: '/boot/ci'
+            pre_load_commands: null
 
 **Usage Example**:
 
@@ -1002,6 +1006,50 @@ The strategy supports optional pre-boot and post-boot file copying:
     # Pre-boot files are copied before Zynq boot
     # Post-boot files are copied after Zynq boots but before Virtex boot
 
+**Advanced: Virtex Bitstream/Overlay and Pre-Load Commands**:
+
+Uploading the Virtex bitstream and device-tree overlay no longer has to go
+through ``post_boot_boot_files``. Two dedicated attributes handle staging
+them on the DUT and feeding their filenames straight into the SelMap
+trigger command:
+
+.. code-block:: yaml
+
+    strategies:
+      BootSelMap:
+        local_bitstream_filename: '/path/to/vu11p.bin'
+        local_overlay_filename: '/path/to/vu11p.dtbo'
+        target_dut_folder: '/boot/ci'  # default
+        pre_load_commands:
+          - 'echo 1 > /sys/some/setup/attr'
+
+- **local_bitstream_filename** / **local_overlay_filename**: Local paths to
+  the Virtex ``.bin`` bitstream and ``.dtbo`` overlay. Validated to exist on
+  the host when the strategy is constructed (raises ``StrategyError``
+  immediately if missing, instead of failing mid-boot). During
+  ``update_virtex_boot_files`` they are uploaded via SSH to
+  ``target_dut_folder`` (creating it if needed), keeping their original
+  basenames. During ``trigger_selmap_boot`` the strategy runs:
+
+  .. code-block:: bash
+
+     cd <target_dut_folder> && ./selmap_dtbo.sh -d <overlay basename> -b <bitstream basename>
+
+  Both attributes can also be set (or overridden) via the environment
+  variables ``LG_SM_BITSTREAM`` and ``LG_SM_OVERLAY`` — handy for CI where
+  the artifact paths aren't known until the pipeline resolves them. Both
+  must resolve to a real file before ``trigger_selmap_boot`` runs, since
+  their basenames are required to build the trigger command.
+
+- **target_dut_folder** (default ``/boot/ci``): Remote directory on the
+  Zynq where the bitstream/overlay are uploaded and where the SelMap boot
+  script (``selmap_dtbo.sh``) is expected to already exist.
+
+- **pre_load_commands**: A single command string, or a list of command
+  strings, run over SSH on the Zynq immediately before the SelMap trigger
+  script — e.g. to set a sysfs attribute or run a setup step the bitstream
+  load depends on. Each command's output is logged.
+
 **Configuration Details**:
 
 The BootSelMap strategy requires careful configuration of boot files for both
@@ -1014,17 +1062,14 @@ the Zynq (primary) and Virtex (secondary) FPGAs:
   - Zynq device tree blob (system.dtb)
   - Zynq boot files (BOOT.BIN, image.ub)
 
-  These files are uploaded via SSH, then the Zynq is rebooted to apply them.
+  These files are uploaded via SSH (then synced to disk), and the Zynq is
+  rebooted to apply them.
 
-- **post_boot_boot_files**: Files uploaded after Zynq boots with new device tree.
-  Dictionary format: ``{local_path: remote_path}``
-
-  Example files:
-  - Virtex bitstream (.bin)
-  - Virtex device tree overlay (.dtbo)
-  - SelMap boot script (selmap_dtbo.sh)
-
-  These files are used to configure the Virtex FPGA via SelMap interface.
+- **post_boot_boot_files**: Any additional files uploaded after Zynq boots
+  and after the Virtex bitstream/overlay are staged. Dictionary format:
+  ``{local_path: remote_path}``. Use ``local_bitstream_filename`` and
+  ``local_overlay_filename`` (above) for the Virtex bitstream and overlay
+  themselves — this bucket is for extras.
 
 - **ethernet_interface**: Network interface name on target (e.g., "eth0").
   Used to discover target IP address for SSH connections.
@@ -1033,19 +1078,46 @@ the Zynq (primary) and Virtex (secondary) FPGAs:
   Example: "axi-ad9081-rx-hpc" for AD9081 transceiver.
   Strategy polls this device to verify Virtex has booted successfully.
 
+- **iio_jesd_link_mode_attr** (default ``jesd204_fsm_state``): IIO device
+  attribute read directly via the Python ``iio`` bindings (over the
+  network, using the SSH driver's resolved IP) while waiting for the JESD
+  link to come up. The wait succeeds once the attribute value contains
+  ``opt_post_running_stage`` or ``link``.
+
 **Troubleshooting**:
 
-*Zynq boots but Virtex doesn't configure*:
-   - Check pre_boot_boot_files and post_boot_boot_files are correctly specified
-   - Verify .dtbo and .bin files exist at specified paths
-   - Check SelMap script exists: ``/boot/ci/selmap_dtbo.sh``
-   - Run script manually: ``cd /boot/ci && ./selmap_dtbo.sh -d vu11p.dtbo -b vu11p.bin``
+*Strategy raises StrategyError immediately on construction*:
+   - ``local_bitstream_filename``, ``local_overlay_filename``,
+     ``pre_boot_boot_files``, and ``post_boot_boot_files`` are all validated
+     to exist on the host as soon as the strategy is built (before any
+     hardware is touched). Fix the path, or clear the ``LG_SM_BITSTREAM`` /
+     ``LG_SM_OVERLAY`` env vars if they're pointing somewhere stale.
 
-*IIO JESD device not found (wait_for_virtex_boot timeout)*:
-   - Increase timeout if device takes longer than 30s to appear
+*Zynq boots but Virtex doesn't configure*:
+   - Check ``local_bitstream_filename``/``local_overlay_filename`` (or
+     ``LG_SM_BITSTREAM``/``LG_SM_OVERLAY``) and ``post_boot_boot_files`` are
+     correctly specified
+   - Verify the uploaded ``.dtbo`` and ``.bin`` basenames match what the
+     SelMap script expects in ``target_dut_folder``
+   - Check the SelMap script exists on the DUT, e.g.
+     ``/boot/ci/selmap_dtbo.sh`` for the default ``target_dut_folder``
+   - Run the trigger manually with the same basenames the strategy would
+     use, e.g. ``cd /boot/ci && ./selmap_dtbo.sh -d vu11p.dtbo -b vu11p.bin``
+   - If ``pre_load_commands`` is set, check its output in the strategy log —
+     a failing setup command still lets the trigger script run next
+
+*IIO JESD device not found (wait_for_virtex_boot timeout, ~120s)*:
    - Check device tree is correct for your hardware
    - Verify Virtex bitstream matches Zynq device tree configuration
    - Run ``dmesg | grep iio`` to see IIO driver messages
+
+*JESD FSM never reaches opt_post_running_stage/link (~200s timeout)*:
+   - The strategy now reads ``iio_jesd_link_mode_attr`` (default
+     ``jesd204_fsm_state``) directly via the Python ``iio`` bindings against
+     ``ip:<zynq-ip>``, not via ``iio_attr`` over the shell — make sure
+     ``iiod`` is reachable on the network from the host running labgrid
+   - Confirm the attribute name matches your kernel/driver version if you
+     changed ``iio_jesd_link_mode_attr``
 
 *JESD state machine doesn't reach opt_post_running_stage*:
    - Check JESD clock configuration in device tree
