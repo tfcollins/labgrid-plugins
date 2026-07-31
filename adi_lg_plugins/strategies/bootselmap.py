@@ -5,6 +5,7 @@ import os
 import time
 
 import attr
+import iio
 from labgrid.factory import target_factory
 from labgrid.step import step
 from labgrid.strategy import Strategy, StrategyError
@@ -65,15 +66,44 @@ class BootSelMap(Strategy):
     ethernet_interface = attr.ib(default=None)
     iio_jesd_driver_name = attr.ib(default="axi-ad9081-rx-hpc")
     iio_jesd_data_mode = attr.ib(default="DATA")
-    iio_jesd_link_mode_attr = attr.ib(default="jesd204_link_mode")
+    # iio_jesd_link_mode_attr = attr.ib(default="jesd204_link_mode")
+    iio_jesd_link_mode_attr = attr.ib(default="jesd204_fsm_state")
     pre_boot_boot_files = attr.ib(default=None)
     post_boot_boot_files = attr.ib(default=None)
     boot_log = attr.ib(default="", init=False)
+
+    target_dut_folder = attr.ib(default="/boot/ci")
+    selmap_boot_script_name = attr.ib(default="selmap_dtbo.sh")
+    local_overlay_filename = attr.ib(default=None)
+    local_bitstream_filename = attr.ib(default=None)
+    pre_load_commands = attr.ib(default=None)
 
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
         self._copied_pre_boot_files = False
         self._copied_post_boot_files = False
+
+        # Override if environment variable is set
+        self.local_bitstream_filename = os.environ.get(
+            "LG_SM_BITSTREAM", self.local_bitstream_filename
+        )
+        self.local_overlay_filename = os.environ.get("LG_SM_OVERLAY", self.local_overlay_filename)
+
+        # Check if files exist
+        if self.local_bitstream_filename and not os.path.isfile(self.local_bitstream_filename):
+            raise StrategyError(
+                f"Local bitstream file {self.local_bitstream_filename} does not exist"
+            )
+        if self.local_overlay_filename and not os.path.isfile(self.local_overlay_filename):
+            raise StrategyError(f"Local overlay file {self.local_overlay_filename} does not exist")
+        if self.pre_boot_boot_files:
+            for local_path in self.pre_boot_boot_files.keys():
+                if not os.path.isfile(local_path):
+                    raise StrategyError(f"Local pre-boot file {local_path} does not exist")
+        if self.post_boot_boot_files:
+            for local_path in self.post_boot_boot_files.keys():
+                if not os.path.isfile(local_path):
+                    raise StrategyError(f"Local post-boot file {local_path} does not exist")
 
     @never_retry
     @step()
@@ -170,6 +200,8 @@ class BootSelMap(Strategy):
                             f"Uploading Zynq boot file {local_path} to {remote_path}..."
                         )
                         self.ssh.put(local_path, remote_path)
+                    self.ssh.run("sync")
+                    time.sleep(5)  # Allow time for the files to be written
                     self.target.deactivate(self.ssh)
                     self._copied_pre_boot_files = True
                     # Restart to apply new boot files
@@ -195,6 +227,40 @@ class BootSelMap(Strategy):
             if self.ssh.networkservice.address == ip:
                 self.ssh.networkservice.address = ip
 
+            # Copy required files to the target device for Virtex boot
+            if self.local_bitstream_filename:
+                if not os.path.isfile(self.local_bitstream_filename):
+                    raise StrategyError(
+                        f"Local bitstream file {self.local_bitstream_filename} does not exist"
+                    )
+                remote_bitstream_path = os.path.join(
+                    self.target_dut_folder, os.path.basename(self.local_bitstream_filename)
+                )
+                self.logger.info(
+                    f"Uploading Virtex bitstream file {self.local_bitstream_filename} to {remote_bitstream_path}..."
+                )
+                self.target.activate(self.ssh)
+                self.ssh.run(f"mkdir -p {self.target_dut_folder}")
+                self.ssh.put(self.local_bitstream_filename, remote_bitstream_path)
+                self.target.deactivate(self.ssh)
+
+            if self.local_overlay_filename:
+                if not os.path.isfile(self.local_overlay_filename):
+                    raise StrategyError(
+                        f"Local overlay file {self.local_overlay_filename} does not exist"
+                    )
+                remote_overlay_path = os.path.join(
+                    self.target_dut_folder, os.path.basename(self.local_overlay_filename)
+                )
+                self.logger.info(
+                    f"Uploading Virtex overlay file {self.local_overlay_filename} to {remote_overlay_path}..."
+                )
+                self.target.activate(self.ssh)
+                self.ssh.run(f"mkdir -p {self.target_dut_folder}")
+                self.ssh.put(self.local_overlay_filename, remote_overlay_path)
+                self.target.deactivate(self.ssh)
+
+            # Copy extras
             if not self._copied_post_boot_files:
                 if self.post_boot_boot_files:
                     self.target.activate(self.ssh)
@@ -217,7 +283,18 @@ class BootSelMap(Strategy):
             self.transition(Status.update_virtex_boot_files)
             self.logger.info("Triggering SelMap boot for secondary Virtex FPGA...")
             self.target.activate(self.ssh)
-            self.ssh.run("cd /boot/ci && ./selmap_dtbo.sh -d vu11p.dtbo -b vu11p.bin")
+            if self.pre_load_commands:
+                if isinstance(self.pre_load_commands, str):
+                    self.pre_load_commands = [self.pre_load_commands]
+                for cmd in self.pre_load_commands:
+                    self.logger.info(f"Executing pre-load command: {cmd}")
+                    out = self.ssh.run(cmd)
+                    print(f"Pre-load command output:\n{out}")
+            time.sleep(2)
+            out = self.ssh.run(
+                f"cd {self.target_dut_folder} && ./selmap_dtbo.sh -d {os.path.basename(self.local_overlay_filename)} -b {os.path.basename(self.local_bitstream_filename)}"
+            )
+            print(f"SelMap boot trigger output:\n{out}")
             self.target.deactivate(self.ssh)
             self.logger.info("SelMap boot trigger script executed")
 
@@ -230,14 +307,20 @@ class BootSelMap(Strategy):
             self.logger.info(
                 f"Waiting for IIO JESD device ({self.iio_jesd_driver_name}) to appear..."
             )
-            for t in range(30):
+            driver_up_delay = 120
+            for t in range(driver_up_delay):
                 stdout, stderr, returncode = self.shell.run(
                     f"iio_attr -d {self.iio_jesd_driver_name} jesd204_fsm_state", timeout=4
                 )
+                if isinstance(stdout, list):
+                    stdout = "\n".join(stdout)
+                stdout = str(stdout).strip()
                 if "could not find device" in stdout:
-                    self.logger.info(f"Still waiting for IIO JESD device... ({t + 1}/30)")
+                    self.logger.info(
+                        f"Still waiting for IIO JESD device... ({t + 1}/{driver_up_delay})"
+                    )
                 else:
-                    self.logger.info(f"IIO JESD device found: {stdout.strip()}")
+                    self.logger.info(f"IIO JESD device found: {stdout}")
                     found_device = True
                     break
                 time.sleep(1)
@@ -247,28 +330,38 @@ class BootSelMap(Strategy):
                     "Virtex did not boot successfully within timeout (device not found)"
                 )
 
+            # Device available, restart iiod so remote works
+            self.logger.info("Restarting IIOD service to ensure remote access...")
+            self.shell.run("systemctl restart iiod.service")
+            time.sleep(3)
+
             jesd_finished = False
             self.logger.info("Waiting for JESD FSM to reach post_running_stage...")
             data_mode_ready = False
-            for t in range(120):
-                stdout, stderr, returncode = self.shell.run(
-                    f"iio_attr -d {self.iio_jesd_driver_name} jesd204_fsm_state", timeout=4
+            fsm_links_up_delay = 200
+
+            ctx = iio.Context(f"ip:{self.ssh.networkservice.address}")
+            if not ctx:
+                raise StrategyError("Failed to create IIO context for checking JESD link modes")
+            dev = ctx.find_device(self.iio_jesd_driver_name)
+            if not dev:
+                raise StrategyError(
+                    f"Failed to find IIO device {self.iio_jesd_driver_name} for checking JESD link modes"
                 )
-                if "opt_post_running_stage" in stdout:
-                    if self.check_jesd_links_data_mode():
-                        jesd_finished = True
-                        data_mode_ready = True
-                        self.logger.info(
-                            "JESD FSM reached post_running_stage and links are in DATA mode"
-                        )
-                        break
-                    self.logger.warning(
-                        "JESD FSM reached post_running_stage but links are not DATA yet (%d/120)",
-                        t + 1,
+
+            # Check for JESD FSM state and link modes
+            for t in range(fsm_links_up_delay):
+                jesd204_fsm_state = dev.attrs[self.iio_jesd_link_mode_attr].value
+                self.logger.info(
+                    f"JESD FSM state: {jesd204_fsm_state} ({t + 1}/{fsm_links_up_delay})"
+                )
+                if "opt_post_running_stage" in jesd204_fsm_state or "link" in jesd204_fsm_state:
+                    jesd_finished = True
+                    data_mode_ready = True
+                    self.logger.info(
+                        "JESD FSM reached post_running_stage and links are in DATA mode"
                     )
-                else:
-                    if t % 10 == 0:
-                        self.logger.info(f"JESD FSM state: {stdout.strip()} ({t + 1}/120)")
+                    break
                 time.sleep(1)
 
             if not jesd_finished:
@@ -336,6 +429,10 @@ class BootSelMap(Strategy):
         )
         if return_code != 0:
             return False
+
+        if isinstance(stdout, list):
+            stdout = "\n".join(stdout)
+        stdout = str(stdout).strip()
 
         link_modes = self._parse_jesd_link_modes(stdout)
         if not link_modes:
