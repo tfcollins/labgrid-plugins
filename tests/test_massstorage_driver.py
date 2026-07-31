@@ -85,3 +85,38 @@ def test_mount_partition_routes_through_remote_check():
     assert ["pmount", "/dev/sdb1", "lg_mass_storage"] in calls
     assert d.mounted is True
     d.mounted = False  # avoid __del__ -> real ssh unmount at GC time
+
+
+def test_mount_partition_repairs_stale_mounted_state():
+    d = _driver(types.SimpleNamespace(path="/dev/sdb1", extra={"proxy": "exp.host"}))
+    calls = []
+
+    def fake_check(cmd):
+        calls.append(list(cmd))
+
+    with (
+        mock.patch.object(d, "_is_mountpoint", side_effect=[False, False, True]),
+        mock.patch.object(d, "_path_exists", return_value=True),
+        mock.patch.object(d, "_remote_check", side_effect=fake_check),
+        mock.patch("time.sleep"),
+    ):
+        d.mount_partition()
+
+    assert ["pmount", "/dev/sdb1", "lg_mass_storage"] in calls
+    assert d.mounted is True
+    d.mounted = False
+
+
+def test_unmount_partition_accepts_already_unmounted_device():
+    d = _driver(types.SimpleNamespace(path="/dev/sdb1", extra={"proxy": "exp.host"}))
+
+    with (
+        mock.patch.object(d, "_is_mountpoint", return_value=False),
+        mock.patch.object(d, "_remote_run") as run,
+        mock.patch.object(d, "_remote_check") as check,
+    ):
+        d.unmount_partition()
+
+    run.assert_not_called()
+    check.assert_not_called()
+    assert d.mounted is False
