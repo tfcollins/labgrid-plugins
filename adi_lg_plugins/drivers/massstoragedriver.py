@@ -39,6 +39,11 @@ class MassStorageDriver(RemoteExecMixin, Driver):
     )
     mount_label = attr.ib(default="lg_mass_storage")
 
+    #: How many times to retry a busy ``pumount`` before the lazy-unmount
+    #: fallback.  Each retry syncs and waits ``unmount_retry_delay`` seconds.
+    unmount_retries = attr.ib(default=3)
+    unmount_retry_delay = attr.ib(default=2.0)
+
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
         self.mounted = False
@@ -89,7 +94,16 @@ class MassStorageDriver(RemoteExecMixin, Driver):
         self.mounted = True
 
     def unmount_partition(self):
-        """Unmount the mass storage device partition."""
+        """Unmount the mass storage device partition.
+
+        A freshly-written USB mass-storage mount is frequently still busy
+        when teardown runs (a lingering writer, udev/blkid probe, or the
+        kernel flushing the FAT dirty bits), so a bare ``pumount`` races and
+        fails with ``target is busy``.  On a shared CI board that stranded
+        the place in a broken state.  This retries ``pumount`` a few times
+        (syncing + waiting between attempts) and, if the mountpoint is still
+        busy, falls back to a lazy unmount so the device is always detached.
+        """
         if not self.mounted:
             return
         mnt = self._mount_dir()
@@ -97,15 +111,63 @@ class MassStorageDriver(RemoteExecMixin, Driver):
             self.logger.info("%s is already unmounted; clearing driver state.", mnt)
             self.mounted = False
             return
+
+        last_exc = None
+        for attempt in range(1, self.unmount_retries + 1):
+            self._remote_run(["sync"], check=False)
+            try:
+                self._remote_check(["pumount", self.mount_label])
+            except subprocess.CalledProcessError as e:
+                last_exc = e
+                # It may already be gone (another writer released + something
+                # else unmounted it) — re-check before treating as a failure.
+                if not self._is_mountpoint(mnt):
+                    self.logger.info(
+                        "%s unmounted despite pumount error on attempt %d.",
+                        mnt,
+                        attempt,
+                    )
+                    self.mounted = False
+                    return
+                self.logger.warning(
+                    "pumount %s busy (attempt %d/%d): %s",
+                    self.mount_label,
+                    attempt,
+                    self.unmount_retries,
+                    e,
+                )
+                if attempt < self.unmount_retries:
+                    time.sleep(self.unmount_retry_delay)
+                continue
+            if not self._is_mountpoint(mnt):
+                self.mounted = False
+                return
+            self.logger.warning(
+                "%s still a mount point after pumount (attempt %d/%d).",
+                mnt,
+                attempt,
+                self.unmount_retries,
+            )
+            if attempt < self.unmount_retries:
+                time.sleep(self.unmount_retry_delay)
+
+        # Last resort: a lazy unmount detaches the filesystem as soon as it
+        # is no longer busy, so the shared board is never left stranded.
+        self.logger.warning(
+            "Falling back to lazy unmount of %s after %d busy attempt(s).",
+            mnt,
+            self.unmount_retries,
+        )
         self._remote_run(["sync"], check=False)
-        try:
-            self._remote_check(["pumount", self.mount_label])
-        except subprocess.CalledProcessError as e:
-            self.logger.error(f"Failed to unmount {self.mount_label}: {e}")
-            raise
-        if self._is_mountpoint(mnt):
-            raise RuntimeError(f"Unmount failed; {mnt} is still a mount point.")
-        self.mounted = False
+        lazy = self._remote_run(["umount", "-l", mnt], check=False)
+        if lazy.returncode == 0 and not self._is_mountpoint(mnt):
+            self.mounted = False
+            return
+        # Truly stuck — surface the original pumount error for diagnosis.
+        if last_exc is not None:
+            self.logger.error("Failed to unmount %s: %s", self.mount_label, last_exc)
+            raise last_exc
+        raise RuntimeError(f"Unmount failed; {mnt} is still a mount point.")
 
     def copy_file(self, src, dst):
         """Copy a local file onto the mass storage device.

@@ -5,6 +5,7 @@ does) and assert mount/copy route through the mixin's remote-exec methods.
 """
 
 import logging
+import subprocess
 import types
 from unittest import mock
 
@@ -18,6 +19,8 @@ def _driver(resource):
     d.mount_label = "lg_mass_storage"
     d.mounted = True
     d.logger = logging.getLogger("test_massstorage")
+    d.unmount_retries = 3
+    d.unmount_retry_delay = 0.0
     return d
 
 
@@ -119,4 +122,83 @@ def test_unmount_partition_accepts_already_unmounted_device():
 
     run.assert_not_called()
     check.assert_not_called()
+    assert d.mounted is False
+
+
+def _busy_error():
+    return subprocess.CalledProcessError(1, ["pumount", "lg_mass_storage"])
+
+
+def test_unmount_retries_then_succeeds_when_busy_clears():
+    d = _driver(types.SimpleNamespace(path="/dev/sdb1", extra={"proxy": "exp.host"}))
+    # mountpoint: initial True; after 1st busy pumount still True; after
+    # 2nd pumount succeeds -> not a mountpoint.
+    with (
+        mock.patch.object(d, "_is_mountpoint", side_effect=[True, True, False]),
+        mock.patch.object(d, "_remote_run"),
+        mock.patch.object(d, "_remote_check", side_effect=[_busy_error(), None]) as check,
+        mock.patch("time.sleep"),
+    ):
+        d.unmount_partition()
+
+    assert check.call_count == 2
+    assert d.mounted is False
+
+
+def test_unmount_falls_back_to_lazy_umount_when_persistently_busy():
+    d = _driver(types.SimpleNamespace(path="/dev/sdb1", extra={"proxy": "exp.host"}))
+    d.unmount_retries = 2
+    lazy_calls = []
+
+    def fake_run(cmd, check=False):
+        lazy_calls.append(list(cmd))
+        return mock.Mock(returncode=0)
+
+    # _is_mountpoint calls: initial(True) + busy re-check x2 (True,True)
+    # + post-lazy check (False).
+    mp_states = [True, True, True, False]
+    with (
+        mock.patch.object(d, "_is_mountpoint", side_effect=mp_states),
+        mock.patch.object(d, "_remote_run", side_effect=fake_run),
+        mock.patch.object(d, "_remote_check", side_effect=_busy_error()),
+        mock.patch("time.sleep"),
+    ):
+        d.unmount_partition()
+
+    assert ["umount", "-l", "/media/lg_mass_storage"] in lazy_calls
+    assert d.mounted is False
+
+
+def test_unmount_raises_when_lazy_fallback_also_fails():
+    d = _driver(types.SimpleNamespace(path="/dev/sdb1", extra={"proxy": "exp.host"}))
+    d.unmount_retries = 1
+
+    def fake_run(cmd, check=False):
+        return mock.Mock(returncode=1)  # lazy umount fails too
+
+    with (
+        mock.patch.object(d, "_is_mountpoint", return_value=True),
+        mock.patch.object(d, "_remote_run", side_effect=fake_run),
+        mock.patch.object(d, "_remote_check", side_effect=_busy_error()),
+        mock.patch("time.sleep"),
+    ):
+        try:
+            d.unmount_partition()
+        except subprocess.CalledProcessError:
+            pass
+        else:  # pragma: no cover
+            raise AssertionError("expected CalledProcessError to propagate")
+
+
+def test_unmount_returns_when_pumount_errors_but_already_gone():
+    d = _driver(types.SimpleNamespace(path="/dev/sdb1", extra={"proxy": "exp.host"}))
+    # initial mountpoint True; the busy re-check shows it's gone.
+    with (
+        mock.patch.object(d, "_is_mountpoint", side_effect=[True, False]),
+        mock.patch.object(d, "_remote_run"),
+        mock.patch.object(d, "_remote_check", side_effect=_busy_error()),
+        mock.patch("time.sleep"),
+    ):
+        d.unmount_partition()
+
     assert d.mounted is False
