@@ -339,3 +339,125 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
         if returncode != 0:
             self.logger.warning(f"Stop CPU warning: {stderr}")
         self.logger.debug(f"Stop CPU output: {stdout}")
+
+    @Driver.check_active
+    @step()
+    def load_zynqmp_uboot(
+        self,
+        psu_init_tcl: str,
+        spl_elf: str,
+        bitstream_path: str | None = None,
+        a53_target_name: str = "*Cortex-A53*#0*",
+        apu_release_rst_value: str = "0x380E",
+        dcc_log_path: str | None = None,
+        settle_ms: int = 12000,
+    ) -> None:
+        """JTAG-bootstrap Xilinx "mini" U-Boot SPL on a ZynqMP (UltraScale+).
+
+        This is the UltraScale+ counterpart of :meth:`load_zynq_uboot`. It is
+        required because ZynqMP differs fundamentally from Zynq-7000:
+
+        * In **JTAG boot mode** (``BOOT_MODE_USER == 0x0``) the BootROM does
+          not load PMU firmware and the MicroBlaze PMU is not a debug target,
+          so full U-Boot + Arm Trusted Firmware (BL31) cannot run -- BL31
+          spins forever in ``ipi_mb_notify`` waiting on the PMU IPI mailbox.
+        * The working recovery bootstrap is the Xilinx ``xilinx_zynqmp_mini_*``
+          SPL, which runs standalone in OCM at EL3 (no ATF, no PMU-FW) and
+          exposes an ARM DCC / JTAG-UART console readable directly with xsdb.
+
+        Sequence (proven on ADRV9009-ZU11EG / ADRV2CRR-FMC):
+
+        1. Release the APU from reset without PMU-FW: write an AArch64
+           ``b .`` bootloop to RVBAR (OCM ``0xFFFF0000``) then poke
+           ``CRF_APB.RST_FPD_APU`` (``0xFD1A0104``). ``apu_release_rst_value``
+           defaults to ``0x380E`` which releases A53 #0 while holding
+           A53 #1..3 and L2 in reset -- matching the generated ZU11EG flow.
+        2. (Optional) program the PL bitstream.
+        3. ``source`` the board's generated ``psu_init.tcl`` and run
+           ``psu_init``/``psu_post_config``/``psu_ps_pl_reset_config``/
+           ``psu_ps_pl_isolation_removal`` to bring up clocks, DDR and the
+           SD MIO mux. The psu_init path yields a clean core + DDR; an FSBL +
+           ``rst -processor`` path breaks debugger DDR access (EDITR timeout).
+        4. Clean the A53 (``rst -processor -clear-registers``), ``dow`` the
+           SPL ELF and ``con``.
+        5. If ``dcc_log_path`` is given, capture the DCC console to that file
+           on the xsdb host via ``readjtaguart`` (headless; ``jtagterminal``
+           needs an X server and is avoided).
+
+        Args:
+            psu_init_tcl: Path (on the xsdb host) to the board ``psu_init.tcl``.
+            spl_elf: Path (on the xsdb host) to ``spl/u-boot-spl`` (mini SPL).
+            bitstream_path: Optional PL bitstream to program before psu_init.
+            a53_target_name: xsdb target filter for the boot A53 core.
+            apu_release_rst_value: value written to ``0xFD1A0104`` to release
+                the APU. Use ``0x0`` to release all four A53s (can destabilise
+                later debug); prefer the board's generated per-core value.
+            dcc_log_path: Optional path on the xsdb host to capture the DCC
+                console log. Leave ``None`` to skip console capture.
+            settle_ms: milliseconds to let the SPL run before stopping DCC
+                capture / returning.
+        """
+        self.logger.info(f"JTAG-bootstrapping ZynqMP mini U-Boot SPL from {spl_elf}")
+
+        lines = [
+            "connect -url TCP:127.0.0.1:3121",
+            "after 1000",
+            "configparams force-mem-accesses 1",
+            'targets -set -nocase -filter {name =~ "PSU"}',
+            "mwr 0xffff0000 0x14000000",
+            f"mwr 0xFD1A0104 {apu_release_rst_value}",
+            "after 1000",
+        ]
+        if bitstream_path:
+            lines.append(f"fpga -file {bitstream_path}")
+            lines.append("after 500")
+            lines.append('targets -set -nocase -filter {name =~ "PSU"}')
+        lines += [
+            f"source {psu_init_tcl}",
+            "psu_init",
+            "psu_post_config",
+            "psu_ps_pl_reset_config",
+            "psu_ps_pl_isolation_removal",
+            "after 1500",
+            f'targets -set -nocase -filter {{name =~ "{a53_target_name}"}}',
+            "catch {stop}",
+            "rst -processor -clear-registers",
+            "after 1000",
+            "catch {stop}",
+            f"dow {spl_elf}",
+        ]
+        if dcc_log_path:
+            lines.append(f"catch {{readjtaguart -start -handle [open {dcc_log_path} w]}}")
+        lines.append("con")
+        lines.append('puts "ZynqMP mini U-Boot SPL launched via JTAG"')
+        lines.append(f"after {int(settle_ms)}")
+        if dcc_log_path:
+            lines.append("catch {readjtaguart -stop}")
+        lines.append("disconnect")
+
+        tcl_script = "\n        ".join(lines)
+        tcl_script = f"\n        {tcl_script}\n        "
+        self.logger.debug(f"ZynqMP SPL bootstrap TCL:\n{tcl_script}")
+        stdout, stderr, returncode = self._run_xsdb(tcl_script)
+        if returncode != 0:
+            raise ExecutionError(f"ZynqMP mini U-Boot bootstrap failed: {stderr}")
+        self.logger.info("ZynqMP mini U-Boot bootstrap completed")
+        self.logger.debug(f"Bootstrap output: {stdout}")
+
+    @Driver.check_active
+    @step()
+    def stop_zynqmp_cpu(self, a53_target_name: str = "*Cortex-A53*#0*") -> None:
+        """Halt the ZynqMP A53 #0 core -- used between failed bootstrap attempts."""
+        self.logger.info(f"Stopping ZynqMP A53 CPU ({a53_target_name})")
+        tcl_script = f"""
+        connect -url TCP:127.0.0.1:3121
+        after 500
+        targets -set -nocase -filter {{name =~ "{a53_target_name}"}}
+        catch {{stop}}
+        puts "A53 CPU stopped"
+        disconnect
+        """
+        stdout, stderr, returncode = self._run_xsdb(tcl_script)
+        if returncode != 0:
+            self.logger.warning(f"Stop CPU warning: {stderr}")
+        self.logger.debug(f"Stop CPU output: {stdout}")
