@@ -40,8 +40,11 @@ need Xilinx PM runtime services.
   `psu_init`/`psu_post_config`/…, clean the A53, `dow` the mini SPL, `con`, and
   (optionally) capture the DCC console via `readjtaguart`.
 - **`stop_zynqmp_cpu(...)`** — halt A53 #0 between attempts.
-- **`BootZynqMPJTAG`** strategy — wraps the above in a
-  `powered_off → powered_on → jtag_bootstrap|production_boot` state machine.
+- **`BootZynqMPJTAG`** strategy — exposes evidence-based recovery and production
+  states:
+  `powered_off → powered_on → jtag_bootstrap|recovery_linux|production_boot`,
+  with target-verified `sd_flash_done`, `production_uboot_prompt`, and
+  `kuiper_shell` states above the host-side JTAG operations.
 - **`XilinxJTAGDriver.load_zynqmp_production_uboot(...)`** — verified PMU-ROM
   wake, optional DDR ECC scrub, XilPM configuration-object and PL loads,
   physical payload downloads, and BL31 or direct EL3→EL2 entry into U-Boot.
@@ -106,6 +109,7 @@ every output.
 ./prepare-production-boot.py /mnt/boot/BOOT.BIN /tmp/zynqmp-production
 ./build-production-handoff.sh /tmp/zynqmp-production/el3-to-uboot-el2
 ./build-recovery-uboot.sh /tmp/u-boot-adi /tmp/zynqmp-production/u-boot.bin
+jq . /tmp/zynqmp-production/u-boot.bin.manifest.json
 ```
 
 Stage the output and the board's `psu_init.tcl` on the XSDB host, configure:
@@ -217,6 +221,58 @@ scope, and writes a JSON manifest beside the binary with source/toolchain and
 artifact identity. Two independent output directories must produce identical
 raw `u-boot.bin` files; the ELF is intentionally not published because it
 embeds its build path.
+
+Verify reproducibility against a second clean build, not against an older
+interactive or ad hoc build:
+
+```bash
+rm -rf /tmp/u-boot-repro-a /tmp/u-boot-repro-b /tmp/u-boot-repro-out
+./build-recovery-uboot.sh \
+  /tmp/u-boot-repro-a /tmp/u-boot-repro-out/a/u-boot.bin
+./build-recovery-uboot.sh \
+  /tmp/u-boot-repro-b /tmp/u-boot-repro-out/b/u-boot.bin
+
+cmp /tmp/u-boot-repro-out/a/u-boot.bin \
+    /tmp/u-boot-repro-out/b/u-boot.bin
+sha256sum /tmp/u-boot-repro-out/{a,b}/u-boot.bin
+```
+
+With Vitis 2025.1 on the verified runner, both clean builds produced:
+
+```text
+size:   847864 bytes
+sha256: 8687502e06d3d23d060d988b926250bce51b9b78cd966824f987e5e0561e55ab
+entry:  0x08000000
+```
+
+That exact deterministic binary was physically exercised through
+`kuiper_shell`, including Ethernet, two JESD FSM initializations, and both
+ADRV9009 IIO PHYs. The patch identity is:
+
+```text
+sha256:  6ab17722541229ee7fd6732575a21038127abae46d2622a4a62fb9338e3a8ebb
+patch-id: c03276c742926343751dc392375a8eb1c94a7573
+```
+
+### Recovery U-Boot build troubleshooting
+
+- `scripts/dtc/dtc` failing with a multiple definition of `yylloc` means the
+  old U-Boot host tools were built without `-fcommon`. Use this checked-in
+  script rather than invoking `make` directly; its `HOSTCFLAGS` include the
+  required GCC compatibility option.
+- Warnings from this 2018-era U-Boot under GCC 13 (packed-member alignment,
+  enum/integer declarations, and legacy attributes) are expected. A nonzero
+  command status must be attributed to the first failing command after the
+  build rather than to warning text near the end of the log.
+- A successful build followed by `cmp` exit 1 only proves that the two inputs
+  differ. An older binary may contain a different build timestamp and is not a
+  reproducibility reference. Compare two clean builds made by this recipe.
+- The authoritative identity is the raw `u-boot.bin` plus its generated JSON
+  manifest. Do not compare or publish `u-boot.elf`, because its debug data can
+  contain the output-directory path.
+- Keep `recovery-uboot.patch` recovery-only. Its direct-MMIO fallback is unsafe
+  as a general production policy, and its PM call assumes labgrid loaded a
+  genuine FSBL-derived policy object at `0x00200000`.
 
 If the coordinator advertises an exporter short name or RFC2217 metadata which
 the runner cannot use, set `serial_host_override` and
