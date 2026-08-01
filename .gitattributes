@@ -1,0 +1,4 @@
+# Unified diffs intentionally contain a leading context marker followed by the
+# source line's indentation. Do not flag patch-format whitespace as source
+# whitespace in git diff --check.
+examples/ultrascale_jtag_boot/recovery-uboot.patch whitespace=-blank-at-eol,-space-before-tab
