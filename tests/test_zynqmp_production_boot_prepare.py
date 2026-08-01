@@ -107,6 +107,12 @@ def test_recovery_uboot_recipe_is_pinned_and_complete():
     assert "d244ce5869648a5046e98b917ff4d7ca3fd81dfd" in text
     assert "adi_zynqmp_adrv9009_zu11eg_adrv2crr_fmc_defconfig" in text
     assert "apply --check" in text
+    assert "SOURCE_DATE_EPOCH" in text
+    assert "6ab17722541229ee7fd6732575a21038127abae46d2622a4a62fb9338e3a8ebb" in text
+    assert "PATCH_PATHS" in text
+    assert '"artifact_sha256"' in text
+    assert '"artifact_size"' in text
+    assert '"load_address": "0x08000000"' in text
     assert "arch/arm/cpu/armv8/zynqmp/cpu.c" in diff
     assert "board/xilinx/zynqmp/zynqmp.c" in diff
     assert "drivers/serial/serial_zynq.c" in diff

@@ -212,6 +212,11 @@ emits `RECOVERY_READY` only after `/dev/mmcblk0` appears.
 MMIO fallback after rejected legacy secure calls, UART clock fallback to
 `psu_init`, and submission of the genuine FSBL XilPM policy at `0x00200000`.
 The script checks the expected version string and emits a SHA256 digest.
+It also pins `SOURCE_DATE_EPOCH`, validates the exact patch digest and three-file
+scope, and writes a JSON manifest beside the binary with source/toolchain and
+artifact identity. Two independent output directories must produce identical
+raw `u-boot.bin` files; the ELF is intentionally not published because it
+embeds its build path.
 
 If the coordinator advertises an exporter short name or RFC2217 metadata which
 the runner cannot use, set `serial_host_override` and
