@@ -1,0 +1,92 @@
+diff --git a/arch/arm/cpu/armv8/zynqmp/cpu.c b/arch/arm/cpu/armv8/zynqmp/cpu.c
+index 47b7f3c0ae..82fb8fed20 100644
+--- a/arch/arm/cpu/armv8/zynqmp/cpu.c
++++ b/arch/arm/cpu/armv8/zynqmp/cpu.c
+@@ -236,13 +236,16 @@ int zynqmp_mmio_write(const u32 address,
+ 		      const u32 mask,
+ 		      const u32 value)
+ {
++	int ret;
++
+ 	if (IS_ENABLED(CONFIG_SPL_BUILD) || current_el() == 3)
+ 		return zynqmp_mmio_rawwrite(address, mask, value);
+-	else
+-		return invoke_smc(ZYNQMP_MMIO_WRITE, address, mask,
+-				  value, 0, NULL);
+ 
+-	return -EINVAL;
++	ret = invoke_smc(ZYNQMP_MMIO_WRITE, address, mask, value, 0, NULL);
++	if (ret)
++		ret = zynqmp_mmio_rawwrite(address, mask, value);
++
++	return ret;
+ }
+ 
+ int zynqmp_mmio_read(const u32 address, u32 *value)
+@@ -258,7 +261,10 @@ int zynqmp_mmio_read(const u32 address, u32 *value)
+ 	} else {
+ 		ret = invoke_smc(ZYNQMP_MMIO_READ, address, 0, 0,
+ 				 0, ret_payload);
+-		*value = ret_payload[1];
++		if (ret)
++			ret = zynqmp_mmio_rawread(address, value);
++		else
++			*value = ret_payload[1];
+ 	}
+ 
+ 	return ret;
+diff --git a/board/xilinx/zynqmp/zynqmp.c b/board/xilinx/zynqmp/zynqmp.c
+index 9883ad2deb..57b9207a9a 100644
+--- a/board/xilinx/zynqmp/zynqmp.c
++++ b/board/xilinx/zynqmp/zynqmp.c
+@@ -277,6 +277,11 @@ int board_early_init_f(void)
+ 	int ret = 0;
+ #if !defined(CONFIG_SPL_BUILD) && defined(CONFIG_CLK_ZYNQMP)
+ 	zynqmp_pmufw_version();
++
++	/* Recovery JTAG handoff: submit the production FSBL PM config object. */
++	ret = invoke_smc(0xC2000002, 0x00200000, 0, 0, 0, NULL);
++	if (ret)
++		printf("PM configuration object rejected: %d\n", ret);
+ #endif
+ 
+ #if defined(CONFIG_ZYNQMP_PSU_INIT_ENABLED)
+diff --git a/drivers/serial/serial_zynq.c b/drivers/serial/serial_zynq.c
+index 4e86e5c2a1..5fcdff1c8c 100644
+--- a/drivers/serial/serial_zynq.c
++++ b/drivers/serial/serial_zynq.c
+@@ -115,23 +115,20 @@ int zynq_serial_setbrg(struct udevice *dev, int baudrate)
+ 
+ 	ret = clk_get_by_index(dev, 0, &clk);
+ 	if (ret < 0) {
+-		dev_err(dev, "failed to get clock\n");
+-		return ret;
+-	}
+-
+-	clock = clk_get_rate(&clk);
+-	if (IS_ERR_VALUE(clock)) {
+-		dev_err(dev, "failed to get rate\n");
+-		return clock;
++		/* Recovery JTAG handoff: psu_init has already configured UART1. */
++		clock = CONFIG_DEBUG_UART_CLOCK;
++	} else {
++		clock = clk_get_rate(&clk);
++		if (IS_ERR_VALUE(clock))
++			clock = CONFIG_DEBUG_UART_CLOCK;
++		else {
++			ret = clk_enable(&clk);
++			if (ret && ret != -ENOSYS)
++				clock = CONFIG_DEBUG_UART_CLOCK;
++		}
+ 	}
+ 	debug("%s: CLK %ld\n", __func__, clock);
+ 
+-	ret = clk_enable(&clk);
+-	if (ret && ret != -ENOSYS) {
+-		dev_err(dev, "failed to enable clock\n");
+-		return ret;
+-	}
+-
+ 	_uart_zynq_serial_setbrg(priv->regs, clock, baudrate);
+ 
+ 	return 0;

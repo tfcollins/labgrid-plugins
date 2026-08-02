@@ -1,0 +1,141 @@
+# Example labgrid environment for BootZynqMPJTAG.
+#
+# Reference setup: ADRV9009-ZU11EG on ADRV2CRR-FMC + Vitis 2025.1 +
+# Digilent JTAG-HS3, attached to the 'tron' exporter. Substitute IP
+# addresses, serials, and paths for your own bench.
+#
+# Use when you need to boot an UltraScale+ (ZynqMP) board over JTAG -- e.g.
+# to recover a corrupted/blank SD card -- the way BootZynq7000JTAGRecovery
+# does for Zynq-7000. It JTAG-loads the Xilinx "mini" U-Boot SPL (EL3, no
+# ATF, no PMU-FW) which comes up far enough to own the SD host controller.
+#
+# WHY the mini SPL (and not full U-Boot): in JTAG boot mode the ZynqMP
+# BootROM never loads PMU firmware, so ARM Trusted Firmware (BL31) hangs
+# forever waiting on the PMU IPI mailbox and full U-Boot never runs. See the
+# README in this directory for the full explanation.
+#
+# Host-side prerequisites (one-time, on the exporter that runs xsdb):
+#   - Vitis 2025.1+ with xsdb (source settings64.sh or set xsdb_path below).
+#   - Digilent/FTDI JTAG cable claimed by hw_server (see the
+#     hardware-ci-operations skill for the full cable-driver checklist).
+#   - Build the mini SPL with ./build-mini-uboot.sh and stage it + the board
+#     psu_init.tcl (and optional bitstream) at paths readable by xsdb.
+#
+# NOTE: mode straps must select JTAG boot (BOOT_MODE_USER == 0x0). Mode pins
+# are sampled at power-on reset, which this strategy performs.
+
+targets:
+  main:
+    features:
+      - adrv9009-zu11eg
+      - zynqmp
+      - jtag-boot
+    resources:
+      # Power + serial (serial optional; DCC console is captured via xsdb).
+      HomeAssistantOutlet:
+        url: 'http://YOUR_HA_HOST:8123'
+        token: 'REPLACE_WITH_LONG_LIVED_HA_TOKEN'
+        entity_id: 'switch.your_board_outlet'
+      RawSerialPort:
+        port: /dev/serial/by-id/usb-Silicon_Labs_CP2104_USB_to_UART_Bridge_Controller_XXXX-if00-port0
+        speed: 115200
+
+      # JTAG cable + Vitis/xsdb paths (as seen by the exporter host).
+      XilinxDeviceJTAG:
+        root_target: 1
+      XilinxVivadoTool:
+        vivado_path: /tools/Xilinx/2025.1/Vivado
+        xsdb_path: /tools/Xilinx/2025.1/Vitis/bin/xsdb
+        version: '2025.1'
+
+    drivers:
+      HomeAssistantPowerDriver: {}
+      SerialDriver: {}
+      XilinxJTAGDriver: {}
+      ADIShellDriver:
+        prompt: 'root@.*[#$]'
+        login_prompt: '(analog|zu11eg-recovery) login: ?'
+        username: 'root'
+        password: 'analog'
+
+      BootZynqMPJTAG:
+        # JTAG bootstrap inputs (paths on the host that runs xsdb).
+        # psu_init.tcl comes from your HDL project / XSA; spl_elf is built by
+        # ./build-mini-uboot.sh (spl/u-boot-spl).
+        psu_init_tcl: /home/tcollins/dev/no-os/build-zu11eg-ref/projects/adrv9009/xilinx_bsp/psu_init.tcl
+        spl_elf: /tmp/recovery/u-boot-spl   # built by ./build-mini-uboot.sh
+
+        # After re-flashing, these enable transition("production_boot") even
+        # while physical mode straps remain JTAG. prepare-production-boot.py
+        # extracts the payloads and the production FSBL's XilPM policy.
+        pmufw_bin: /tmp/recovery/production/pmufw.bin
+        uboot_bin: /tmp/recovery/production/u-boot.bin
+        bl31_bin: /tmp/recovery/production/bl31.bin
+        atf_handoff_bin: /tmp/recovery/production/atf-handoff.bin
+        pm_config_bin: /tmp/recovery/production/pm-config-object.bin
+        # BL31 in this image uses UART0; initialize it even when external
+        # console wiring and U-Boot stdout use UART1.
+        bl31_console_uart_base: '0xFF000000'
+        bl31_console_ref_ctrl_address: '0xFF5E0074'
+        bl31_console_reset_mask: '0x2'
+        # Optional board-specific OCM ELF when psu_init enables unscrubbed ECC.
+        ddr_scrub_elf: /tmp/recovery/ddr-ecc-scrub.elf
+        ddr_scrub_done_address: '0xFFFC0054'
+
+        # Fully RAM-rooted recovery path. These files are loaded physically
+        # over JTAG; transition("recovery_linux") requires RECOVERY_READY.
+        recovery_trampoline_elf: /tmp/recovery/el3-to-el2.elf
+        recovery_kernel_image: /tmp/recovery/Image
+        recovery_initramfs: /tmp/recovery/initramfs.cpio.gz
+        recovery_dtb: /tmp/recovery/system-recovery.dtb
+        recovery_ddr_scrub_elf: /tmp/recovery/ddr-ecc-scrub-low-2g.elf
+        recovery_ddr_scrub_done_address: '0xFFFC002C'
+        recovery_ddr_scrub_settle_ms: 30000
+        recovery_bitstream_path: /tmp/recovery/system_top.bit
+        recovery_post_init_mask_writes:
+          - ['0xFF5E0238', '0x00000002', '0x00000000']  # release SDIO1
+        recovery_marker: 'RECOVERY_READY'
+        recovery_prompt: 'root@zu11eg-recovery:.*#'
+
+        # Set only for the destructive transition("sd_flash_done").
+        sd_image_url: 'http://YOUR_IMAGE_SERVER/kuiper-full.img'
+        sd_image_size: 10305404928
+        sd_head_sha256: '58209a250833c0215f2cff2d499f80a5624616fd93584c247c1e08e806bb4956'
+        sd_tail_sha256: '30e14955ebf1352266dc2ff8067e68104607e750abb9d3b36582b8af909fcb58'
+        sd_device: /dev/mmcblk0
+        post_flash_commands:
+          - 'mkdir -p /mnt && mount -t vfat -o rw,sync /dev/mmcblk0p1 /mnt && cp /mnt/zynqmp-adrv9009-zu11eg-revb-adrv2crr-fmc-revb/BOOT.BIN /mnt/BOOT.BIN && cp /mnt/zynqmp-common/Image /mnt/Image && cp /mnt/zynqmp-adrv9009-zu11eg-revb-adrv2crr-fmc-revb/system.dtb /mnt/system.dtb && sync && umount /mnt'
+
+        # Optional PL bitstream, programmed before psu_init. Needed only when
+        # the PS init / design depends on the PL being up first.
+        bitstream_path: /tmp/recovery/production/system-top-xsdb.bin
+
+        # APU release value written to CRF_APB.RST_FPD_APU (0xFD1A0104).
+        # 0x380E releases A53 #0 while holding A53 #1..3 + L2 in reset (the
+        # generated ZU11EG value). Use 0x0 to release all four A53s (can make
+        # later debug state unstable).
+        apu_release_rst_value: '0x380E'
+        a53_target_name: '*Cortex-A53*#0*'
+        # Set this plus LG_FORCE_LOCAL_XSDB=1 when Vitis runs on the labgrid
+        # runner and hw_server runs on a separate exporter.
+        jtag_url: 'TCP:tron.local:3121'
+        # Use this when the coordinator advertises a short exporter name that
+        # the runner cannot resolve (for example, "tron" vs "tron.local").
+        serial_host_override: tron.local
+        # ser2net port 48777 is raw TCP rather than RFC2217.
+        serial_protocol_override: raw
+
+        # Capture the mini-SPL DCC/JTAG-UART console to this file on the xsdb
+        # host (headless; jtagterminal needs an X server and is avoided).
+        dcc_log_path: /tmp/zynqmp-mini-dcc.log
+
+        # Timing.
+        spl_settle_ms: 12000
+        production_settle_ms: 12000
+        pmufw_timeout_ms: 10000
+        ddr_scrub_settle_ms: 120000
+        recovery_timeout: 240
+        production_prompt_timeout: 90
+        kuiper_boot_timeout: 360
+        power_off_settle_s: 5
+        power_on_settle_s: 8
