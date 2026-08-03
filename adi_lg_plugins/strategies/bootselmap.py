@@ -2,6 +2,7 @@
 
 import enum
 import os
+import subprocess
 import time
 
 import attr
@@ -220,7 +221,14 @@ class BootSelMap(Strategy):
             self.target.activate(self.shell)
             address = self.shell.get_ip_addresses(self.ethernet_interface)
             assert address, f"No IP address found on {self.ethernet_interface}"
+            self.logger.info(f"Detected IP address on {self.ethernet_interface}: {address[0].ip}")
+            # Check if the IP address is reachable via ping
             ip = str(address[0].ip)
+            # Subprocess based ping
+            response = subprocess.call(["ping", "-c", "1", "-W", "2", ip], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self.logger.info(f"Ping response for {ip}: {response}")
+            if response != 0:
+                self.logger.warning(f"IP address {ip} is not reachable via ping")
             self.target.deactivate(self.shell)
 
             # Check the same as SSHDriver
