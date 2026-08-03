@@ -343,7 +343,7 @@ class BootSelMap(Strategy):
                 self.logger.warning("-" * 40)
                 self.logger.warning("DEBUG: dmesg output")
                 self.logger.warning("-" * 40)
-                print(f"\n{dmesg_output}\n")
+                self.logger.warning(f"\n{dmesg_output}\n")
                 self.logger.warning("-" * 40)
                 raise StrategyError(
                     "Virtex did not boot successfully within timeout (device not found)"
