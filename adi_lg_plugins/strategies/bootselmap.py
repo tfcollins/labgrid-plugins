@@ -226,13 +226,14 @@ class BootSelMap(Strategy):
             ip = str(address[0].ip)
             # Subprocess based ping
             response = subprocess.call(["ping", "-c", "1", "-W", "2", ip], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-            self.logger.info(f"Ping response for {ip}: {response}")
+            self.logger.info(f"Ping response code for {ip}: {response}")
             if response != 0:
                 self.logger.warning(f"IP address {ip} is not reachable via ping")
             self.target.deactivate(self.shell)
 
             # Check the same as SSHDriver
-            if self.ssh.networkservice.address == ip:
+            if self.ssh.networkservice.address != ip:
+                self.logger.info(f"Syncing SSHDriver IP to {ip}")
                 self.ssh.networkservice.address = ip
 
             # Copy required files to the target device for Virtex boot
