@@ -337,6 +337,9 @@ class BootSelMap(Strategy):
             if not found_device:
                 # Get dmesg output for debugging
                 dmesg_output, _, _ = self.shell.run("dmesg", timeout=10)
+                if isinstance(dmesg_output, list):
+                    dmesg_output = "\n".join(dmesg_output)
+                dmesg_output = str(dmesg_output).strip()
                 self.logger.warning("-" * 40)
                 self.logger.warning("DEBUG: dmesg output")
                 self.logger.warning("-" * 40)
