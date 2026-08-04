@@ -88,23 +88,27 @@ class BootSelMap(Strategy):
         self.local_bitstream_filename = os.environ.get(
             "LG_SM_BITSTREAM", self.local_bitstream_filename
         )
-        self.local_overlay_filename = os.environ.get("LG_SM_OVERLAY", self.local_overlay_filename)
+        self.local_overlay_filename = os.environ.get("LG_SM_DTBO", self.local_overlay_filename)
 
         # Check if files exist
         if self.local_bitstream_filename and not os.path.isfile(self.local_bitstream_filename):
             raise StrategyError(
                 f"Local bitstream file {self.local_bitstream_filename} does not exist"
             )
+        self.logger.info(f"Using local bitstream file: {self.local_bitstream_filename}")
         if self.local_overlay_filename and not os.path.isfile(self.local_overlay_filename):
             raise StrategyError(f"Local overlay file {self.local_overlay_filename} does not exist")
+        self.logger.info(f"Using local overlay file: {self.local_overlay_filename}")
         if self.pre_boot_boot_files:
             for local_path in self.pre_boot_boot_files.keys():
                 if not os.path.isfile(local_path):
                     raise StrategyError(f"Local pre-boot file {local_path} does not exist")
+                self.logger.info(f"Using local pre-boot file: {local_path}")
         if self.post_boot_boot_files:
             for local_path in self.post_boot_boot_files.keys():
                 if not os.path.isfile(local_path):
                     raise StrategyError(f"Local post-boot file {local_path} does not exist")
+                self.logger.info(f"Using local post-boot file: {local_path}")
 
     @never_retry
     @step()
