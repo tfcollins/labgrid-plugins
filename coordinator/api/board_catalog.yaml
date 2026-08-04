@@ -6,6 +6,20 @@
 # This file is shipped into the API image at /app/board_catalog.yaml (the
 # default path). Override the location at runtime via LG_BOARD_CATALOG_PATH.
 boards:
+  ad9081:
+    # mini2 = AD9081 (MxFE) on ZCU102, SD-mux/Kuiper boot (BootFPGASoC).
+    # Added so a live ad9081 place matches; adjust image if 2023_R2_P1 lacks
+    # ad9081/zcu102 boot files.
+    image: 2023_R2_P1
+    carriers:
+      zcu102: {}
+  adrv9009zu11eg:
+    # tron = ADRV9009-ZU11EG (dual Talise) on ADRV2CRR-FMC, JTAG boot (BootZynqMPJTAG).
+    aliases:
+      - adrv9009-zu11eg
+    image: 2023_R2_P1
+    carriers:
+      adrv2crr-fmc: {}
   adrv9002:
     # KuiperRelease.release_version (see kuiperdldriver valid_releases).
     # mini2 = ADRV9002 on ZCU102, SD-mux/Kuiper boot (BootFPGASoC).
