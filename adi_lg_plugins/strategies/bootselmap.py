@@ -354,6 +354,7 @@ class BootSelMap(Strategy):
                 )
 
             # Device available, restart iiod so remote works
+            time.sleep(5)
             self.logger.info("Restarting IIOD service to ensure remote access...")
             self.shell.run("systemctl restart iiod.service")
             time.sleep(3)
