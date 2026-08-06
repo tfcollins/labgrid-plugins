@@ -270,6 +270,31 @@ Requires the ``CLOUDSMITH_API_TOKEN`` environment variable.
 * ``--cache-path <path>``: Cache directory (default ``~/.labgrid/cloudsmith_releases/``).
 * ``--out <path>``: Copy the artifact here after download. If the path is an existing directory the file is copied into it keeping its filename; otherwise the path is used as the destination file.
 
+
+list-hardware
+~~~~~~~~~~~~~
+
+List live places on a coordinator along with their attributes (carrier, daughter-board, strategy, hdl-config, status, exporter).
+
+.. code-block:: bash
+
+    adi-lg list-hardware --coord my-coordinator:20408
+
+    # Filter to show only available (unacquired) zcu102 carriers
+    adi-lg list-hardware --carrier zcu102 --available-only
+
+    # Output in JSON format for scripting
+    adi-lg list-hardware --json
+
+**Options:**
+
+* ``--coord <host:port>``: Coordinator URL (defaults to ``$LG_COORDINATOR`` / ``$ADI_LG_COORDINATOR``).
+* ``--carrier <name>``: Filter places by carrier name.
+* ``--part <name>`` / ``--daughter-board <name>``: Filter places by daughter board name.
+* ``--available-only`` / ``--only-available``: Only list places that are not currently acquired.
+* ``--force-cli``: Skip the REST API and query via the ``labgrid-client`` CLI instead.
+* ``--json``: Output the places as a JSON list on stdout.
+
 The standalone ``cloudsmithdl`` console script (below) exposes the same resolution and download, with a different default cache path.
 
 Standalone download tools

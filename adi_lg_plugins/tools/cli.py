@@ -7,6 +7,11 @@ from labgrid import Environment
 from rich.console import Console
 from rich.logging import RichHandler
 
+from adi_lg_plugins.hw_ci.coordinator import (
+    list_live_places,
+    resolve_coordinator,
+    warn_if_rest_port,
+)
 from adi_lg_plugins.tools.cloudsmithdl import download_cloudsmith_boot_file
 from adi_lg_plugins.tools.config_gen import generate_config
 from adi_lg_plugins.tools.request_cli import request_cmd
@@ -461,6 +466,115 @@ def build_recovery_initramfs_cmd(busybox, output, work_dir, image_name, raw_cpio
         f"  cpio.gz: {sizes['gz']:>10} B"
         + (f"\n  uImage:  {sizes['uimage']:>10} B" if "uimage" in sizes else "")
     )
+
+
+@cli.command(name="list-hardware")
+@click.option("--coord", default=None, help="Coordinator host:port (default: $LG_COORDINATOR)")
+@click.option("--carrier", default=None, help="Filter places by carrier")
+@click.option(
+    "--part",
+    "--daughter-board",
+    "part",
+    default=None,
+    help="Filter places by daughter board / part",
+)
+@click.option(
+    "--available-only",
+    "--only-available",
+    "available_only",
+    is_flag=True,
+    help="Only list available (unacquired) places",
+)
+@click.option(
+    "--force-cli",
+    is_flag=True,
+    help="Force using the labgrid-client CLI path instead of REST API",
+)
+@click.option("--json", "json_output", is_flag=True, help="Output in JSON format")
+def list_hardware(coord, carrier, part, available_only, force_cli, json_output):
+    """List available places on the coordinator."""
+    from dataclasses import asdict
+
+    from rich import box
+    from rich.table import Table
+
+    try:
+        coord_resolved = resolve_coordinator(coord)
+        warn_if_rest_port(coord_resolved)
+    except RuntimeError as e:
+        console.print(f"[bold red]Error:[/bold red] {e}")
+        raise click.ClickException(str(e)) from e
+
+    try:
+        places, skipped = list_live_places(coord_resolved, force_cli=force_cli)
+    except Exception as e:
+        console.print(f"[bold red]Error querying coordinator {coord_resolved}:[/bold red] {e}")
+        raise click.ClickException(f"Failed to list hardware: {e}") from e
+
+    # Filter places
+    filtered_places = []
+    for p in places:
+        if carrier and p.carrier.lower() != carrier.lower():
+            continue
+        if part and p.daughter_board.lower() != part.lower():
+            continue
+        if available_only and p.is_acquired:
+            continue
+        filtered_places.append(p)
+
+    if json_output:
+        serialized = [asdict(p) for p in filtered_places]
+        console.print_json(data=serialized)
+        return
+
+    if skipped:
+        from rich.console import Console as RichConsole
+
+        console_err = RichConsole(stderr=True)
+        console_err.print(
+            f"[yellow]Warning: {len(skipped)} place(s) skipped due to validation errors:[/yellow]"
+        )
+        for name, reason in skipped:
+            console_err.print(f"  - {name}: {reason}")
+
+    if not filtered_places:
+        console.print("No matching places found on the coordinator.")
+        return
+
+    table = Table(
+        title=f"Live Places on Coordinator ({coord_resolved})",
+        box=box.ROUNDED,
+        header_style="bold magenta",
+        title_style="bold cyan",
+    )
+    table.add_column("Place", style="bold white")
+    table.add_column("Carrier")
+    table.add_column("Daughter Board")
+    table.add_column("Strategy")
+    table.add_column("HDL Config")
+    table.add_column("Status")
+    table.add_column("Exporter")
+
+    for p in filtered_places:
+        if p.acquired:
+            status_str = f"[bold red]Acquired ({p.acquired})[/bold red]"
+        else:
+            status_str = "[bold green]Available[/bold green]"
+
+        hdl_cfg = p.hdl_config if p.hdl_config else "-"
+        exporter_str = p.exporter if p.exporter else "-"
+
+        table.add_row(
+            p.name,
+            p.carrier,
+            p.daughter_board,
+            p.boot_strategy,
+            hdl_cfg,
+            status_str,
+            exporter_str,
+        )
+
+    console.print(table)
 
 
 if __name__ == "__main__":

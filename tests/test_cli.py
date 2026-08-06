@@ -317,3 +317,132 @@ def test_recover_runs_strategy_transition(tmp_path, monkeypatch):
     result = CliRunner().invoke(cli_mod.cli, ["recover", "--config", str(cfg)])
     assert result.exit_code == 0, result.output
     assert calls == {"driver": "BootZynq7000JTAGRecovery", "state": "sd_flash_done"}
+
+
+def test_list_hardware_help(runner):
+    result = runner.invoke(cli, ["list-hardware", "--help"])
+    assert result.exit_code == 0
+    assert "List available places on the coordinator." in result.output
+
+
+@patch("adi_lg_plugins.tools.cli.resolve_coordinator")
+@patch("adi_lg_plugins.tools.cli.list_live_places")
+def test_list_hardware_success(mock_list, mock_resolve, runner):
+    from adi_lg_plugins.hw_ci.schema import Place
+
+    mock_resolve.return_value = "localhost:20408"
+    mock_list.return_value = (
+        [
+            Place(
+                name="place-1",
+                carrier="zcu102",
+                daughter_board="adrv9002",
+                boot_strategy="BootFPGASoC",
+                hdl_config="dual",
+                exporter="host-1",
+            ),
+            Place(
+                name="place-2",
+                carrier="zc706",
+                daughter_board="adrv9009",
+                boot_strategy="BootFPGASoC",
+                acquired="user-a",
+            ),
+        ],
+        [("place-bad", "missing carrier tag")],
+    )
+
+    result = runner.invoke(cli, ["list-hardware"])
+    assert result.exit_code == 0
+    assert "place-1" in result.output
+    assert "place-2" in result.output
+    assert "zcu102" in result.output
+    assert "adrv9009" in result.output
+    assert "Available" in result.output
+    assert "Acquired" in result.output
+    assert "user-a" in result.output
+    assert "Warning: 1 place(s) skipped" in result.output
+    assert "place-bad: missing carrier tag" in result.output
+
+
+@patch("adi_lg_plugins.tools.cli.resolve_coordinator")
+@patch("adi_lg_plugins.tools.cli.list_live_places")
+def test_list_hardware_json(mock_list, mock_resolve, runner):
+    import json
+
+    from adi_lg_plugins.hw_ci.schema import Place
+
+    mock_resolve.return_value = "localhost:20408"
+    mock_list.return_value = (
+        [
+            Place(
+                name="place-1",
+                carrier="zcu102",
+                daughter_board="adrv9002",
+                boot_strategy="BootFPGASoC",
+                hdl_config="dual",
+                exporter="host-1",
+            )
+        ],
+        [],
+    )
+
+    result = runner.invoke(cli, ["list-hardware", "--json"])
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert len(data) == 1
+    assert data[0]["name"] == "place-1"
+    assert data[0]["carrier"] == "zcu102"
+
+
+@patch("adi_lg_plugins.tools.cli.resolve_coordinator")
+@patch("adi_lg_plugins.tools.cli.list_live_places")
+def test_list_hardware_filters(mock_list, mock_resolve, runner):
+    from adi_lg_plugins.hw_ci.schema import Place
+
+    mock_resolve.return_value = "localhost:20408"
+    mock_list.return_value = (
+        [
+            Place(
+                name="place-1",
+                carrier="zcu102",
+                daughter_board="adrv9002",
+                boot_strategy="BootFPGASoC",
+            ),
+            Place(
+                name="place-2",
+                carrier="zc706",
+                daughter_board="adrv9009",
+                boot_strategy="BootFPGASoC",
+                acquired="user-a",
+            ),
+        ],
+        [],
+    )
+
+    # test --carrier zcu102
+    result = runner.invoke(cli, ["list-hardware", "--carrier", "zcu102"])
+    assert result.exit_code == 0
+    assert "place-1" in result.output
+    assert "place-2" not in result.output
+
+    # test --part adrv9009
+    result = runner.invoke(cli, ["list-hardware", "--part", "adrv9009"])
+    assert result.exit_code == 0
+    assert "place-1" not in result.output
+    assert "place-2" in result.output
+
+    # test --available-only
+    result = runner.invoke(cli, ["list-hardware", "--available-only"])
+    assert result.exit_code == 0
+    assert "place-1" in result.output
+    assert "place-2" not in result.output
+
+
+@patch("adi_lg_plugins.tools.cli.resolve_coordinator")
+def test_list_hardware_no_coordinator(mock_resolve, runner):
+    mock_resolve.side_effect = RuntimeError("no coordinator URL")
+
+    result = runner.invoke(cli, ["list-hardware"])
+    assert result.exit_code != 0
+    assert "Error: no coordinator URL" in result.output

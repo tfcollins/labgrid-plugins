@@ -87,10 +87,9 @@ class BootSelMap(Strategy):
         self._copied_post_boot_files = False
 
         # Override if environment variable is set
-        self.local_kernel_filename = os.environ.get(
-            "LG_SM_KERNEL", self.local_kernel_filename
-        )
-        self.local_device_tree_filename = os.environ.get("LG_SM_DT", self.local_device_tree_filename
+        self.local_kernel_filename = os.environ.get("LG_SM_KERNEL", self.local_kernel_filename)
+        self.local_device_tree_filename = os.environ.get(
+            "LG_SM_DT", self.local_device_tree_filename
         )
         self.local_bitstream_filename = os.environ.get(
             "LG_SM_BITSTREAM", self.local_bitstream_filename
@@ -266,7 +265,11 @@ class BootSelMap(Strategy):
             # Check if the IP address is reachable via ping
             ip = str(address[0].ip)
             # Subprocess based ping
-            response = subprocess.call(["ping", "-c", "1", "-W", "2", ip], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            response = subprocess.call(
+                ["ping", "-c", "1", "-W", "2", ip],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
             self.logger.info(f"Ping response code for {ip}: {response}")
             if response != 0:
                 self.logger.warning(f"IP address {ip} is not reachable via ping")
@@ -342,7 +345,9 @@ class BootSelMap(Strategy):
                     if returncode != 0:
                         stdout_str = "\n".join(stdout) if isinstance(stdout, list) else str(stdout)
                         stderr_str = "\n".join(stderr) if isinstance(stderr, list) else str(stderr)
-                        self.logger.error(f"Pre-load command '{cmd}' failed with return code {returncode}")
+                        self.logger.error(
+                            f"Pre-load command '{cmd}' failed with return code {returncode}"
+                        )
                         self.logger.error(f"stdout:\n{stdout_str}")
                         self.logger.error(f"stderr:\n{stderr_str}")
                         raise StrategyError(
