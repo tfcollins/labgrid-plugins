@@ -74,6 +74,8 @@ class BootSelMap(Strategy):
     boot_log = attr.ib(default="", init=False)
 
     target_dut_folder = attr.ib(default="/boot/ci")
+    local_kernel_filename = attr.ib(default=None)
+    local_device_tree_filename = attr.ib(default=None)
     selmap_boot_script_name = attr.ib(default="selmap_dtbo.sh")
     local_overlay_filename = attr.ib(default=None)
     local_bitstream_filename = attr.ib(default=None)
@@ -85,6 +87,11 @@ class BootSelMap(Strategy):
         self._copied_post_boot_files = False
 
         # Override if environment variable is set
+        self.local_kernel_filename = os.environ.get(
+            "LG_SM_KERNEL", self.local_kernel_filename
+        )
+        self.local_device_tree_filename = os.environ.get("LG_SM_DT", self.local_device_tree_filename
+        )
         self.local_bitstream_filename = os.environ.get(
             "LG_SM_BITSTREAM", self.local_bitstream_filename
         )
@@ -191,6 +198,36 @@ class BootSelMap(Strategy):
             if self.ssh.networkservice.address == ip:
                 self.logger.info(f"Syncing SSHDriver IP to {ip}")
                 self.ssh.networkservice.address = ip
+
+            if self.local_kernel_filename:
+                if not os.path.isfile(self.local_kernel_filename):
+                    raise StrategyError(
+                        f"Local kernel file {self.local_kernel_filename} does not exist"
+                    )
+                remote_kernel_path = os.path.join(
+                    "/boot", os.path.basename(self.local_kernel_filename)
+                )
+                self.logger.info(
+                    f"Uploading Zynq kernel file {self.local_kernel_filename} to {remote_kernel_path}..."
+                )
+                self.target.activate(self.ssh)
+                self.ssh.put(self.local_kernel_filename, remote_kernel_path)
+                self.target.deactivate(self.ssh)
+
+            if self.local_device_tree_filename:
+                if not os.path.isfile(self.local_device_tree_filename):
+                    raise StrategyError(
+                        f"Local device tree file {self.local_device_tree_filename} does not exist"
+                    )
+                remote_dt_path = os.path.join(
+                    "/boot", os.path.basename(self.local_device_tree_filename)
+                )
+                self.logger.info(
+                    f"Uploading Zynq device tree file {self.local_device_tree_filename} to {remote_dt_path}..."
+                )
+                self.target.activate(self.ssh)
+                self.ssh.put(self.local_device_tree_filename, remote_dt_path)
+                self.target.deactivate(self.ssh)
 
             if not self._copied_pre_boot_files:
                 if self.pre_boot_boot_files:
