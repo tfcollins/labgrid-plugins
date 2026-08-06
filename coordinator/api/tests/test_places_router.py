@@ -102,3 +102,38 @@ def test_add_match(authed_lifespan_client):
 
     resp = c.get("/api/places/vcu118-lab1")
     assert len(resp.json()["matches"]) == 2
+
+
+def test_set_tags_updates_catalog(authed_lifespan_client, tmp_path, monkeypatch):
+    from app.catalog import BoardCatalog
+    from app.config import settings
+
+    # Point catalog path to a temp file
+    catalog_path = tmp_path / "board_catalog.yaml"
+    monkeypatch.setattr(settings, "board_catalog_path", str(catalog_path))
+
+    # Initialize catalog in app state
+    catalog = BoardCatalog(boards={})
+    authed_lifespan_client.app.state.catalog = catalog
+
+    c = authed_lifespan_client
+    c.login("tester")
+
+    # Put tags with a new daughter board and carrier
+    resp = c.put(
+        "/api/places/vcu118-lab1/tags",
+        json={"tags": {"daughter-board": "new-chip", "carrier": "zcu102"}},
+    )
+    assert resp.status_code == 200
+
+    # Verify catalog is updated in memory
+    assert "new-chip" in catalog.boards
+    assert "zcu102" in catalog.boards["new-chip"].carriers
+
+    # Verify catalog is saved to file
+    assert catalog_path.exists()
+    import yaml
+
+    saved = yaml.safe_load(catalog_path.read_text())
+    assert "new-chip" in saved["boards"]
+    assert "zcu102" in saved["boards"]["new-chip"]["carriers"]

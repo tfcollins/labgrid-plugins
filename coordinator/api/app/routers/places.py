@@ -139,6 +139,37 @@ async def set_place_tags(
     name: str, body: SetTagsRequest, request: Request, _user: User = Depends(current_user)
 ):
     await _get_client(request).set_place_tags(name, body.tags)
+
+    # Automatically synchronize catalog if new board or carrier tags are added
+    catalog = getattr(request.app.state, "catalog", None)
+    if catalog is not None:
+        db_board = body.tags.get("daughter-board")
+        carrier = body.tags.get("carrier")
+        if db_board:
+            from ..catalog import BoardCarrier, BoardEntry, save_catalog
+
+            resolved = catalog.lookup(db_board)
+            updated = False
+            if resolved is None:
+                carriers = {}
+                if carrier:
+                    carriers[carrier] = BoardCarrier()
+                entry = BoardEntry(image="2023_R2_P1", carriers=carriers)
+                catalog.boards[db_board] = entry
+                updated = True
+            else:
+                canonical_key, entry = resolved
+                if carrier and carrier not in entry.carriers:
+                    entry.carriers[carrier] = BoardCarrier()
+                    updated = True
+
+            if updated:
+                try:
+                    save_catalog(catalog, settings.board_catalog_path)
+                    logger.info("Automatically updated catalog for new board/carrier: %s", db_board)
+                except Exception as e:
+                    logger.error("Failed to automatically save board catalog: %s", e)
+
     return {"name": name, "tags": body.tags}
 
 

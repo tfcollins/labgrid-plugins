@@ -91,3 +91,11 @@ def resolve_image(entry: BoardEntry, bootfile: str | None) -> str | None:
     """A pinned bootfile wins; otherwise the board's default image (which may
     be None for fabric-load boards that have no downloadable image)."""
     return bootfile or entry.image
+
+
+def save_catalog(catalog: BoardCatalog, path: str) -> None:
+    """Save the catalog to the specified YAML file path."""
+    p = Path(path)
+    p.parent.mkdir(parents=True, exist_ok=True)
+    data = catalog.model_dump(exclude_none=True)
+    p.write_text(yaml.safe_dump(data, sort_keys=False))
