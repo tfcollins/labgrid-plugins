@@ -338,8 +338,16 @@ class BootSelMap(Strategy):
                     self.pre_load_commands = [self.pre_load_commands]
                 for cmd in self.pre_load_commands:
                     self.logger.info(f"Executing pre-load command: {cmd}")
-                    out = self.ssh.run(cmd)
-                    print(f"Pre-load command output:\n{out}")
+                    stdout, stderr, returncode = self.ssh.run(cmd)
+                    if returncode != 0:
+                        stdout_str = "\n".join(stdout) if isinstance(stdout, list) else str(stdout)
+                        stderr_str = "\n".join(stderr) if isinstance(stderr, list) else str(stderr)
+                        self.logger.error(f"Pre-load command '{cmd}' failed with return code {returncode}")
+                        self.logger.error(f"stdout:\n{stdout_str}")
+                        self.logger.error(f"stderr:\n{stderr_str}")
+                        raise StrategyError(
+                            f"Pre-load command '{cmd}' failed with return code {returncode}"
+                        )
             time.sleep(2)
             out = self.ssh.run(
                 f"cd {self.target_dut_folder} && ./selmap_dtbo.sh -d {os.path.basename(self.local_overlay_filename)} -b {os.path.basename(self.local_bitstream_filename)}"
