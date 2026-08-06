@@ -195,7 +195,7 @@ class BootSelMap(Strategy):
             self.target.deactivate(self.shell)
 
             # Check the same as SSHDriver
-            if self.ssh.networkservice.address == ip:
+            if self.ssh.networkservice.address != ip:
                 self.logger.info(f"Syncing SSHDriver IP to {ip}")
                 self.ssh.networkservice.address = ip
 
