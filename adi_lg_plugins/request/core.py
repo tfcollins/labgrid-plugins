@@ -56,7 +56,9 @@ def _concrete_place(coord: str, name: str) -> Place:
     for s_name, reason in skipped:
         if s_name == name:
             raise ProvisionError(
-                f"acquired place '{name}' is invalid and was skipped: {reason}"
+                f"acquired place '{name}' is invalid and was skipped: {reason}.\n"
+                f"To fix this, configure the required tag schema on the coordinator using:\n"
+                f"  labgrid-client -x {coord} -p {name} set-tags carrier=<carrier> daughter-board=<daughter-board> boot-strategy=<strategy>"
             )
     raise ProvisionError(f"acquired place '{name}' not found among live places")
 

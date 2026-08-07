@@ -577,5 +577,5 @@ def test_request_unreachable_api_raises_board_unavailable(monkeypatch):
 
 def test_request_skipped_place_shows_validation_reason(monkeypatch):
     monkeypatch.setattr(core, "list_live_places", lambda c: ([], [("talise", "missing required tag(s) boot-strategy")]))
-    with pytest.raises(ProvisionError, match="acquired place 'talise' is invalid and was skipped: missing required tag\\(s\\) boot-strategy"):
+    with pytest.raises(ProvisionError, match=r"(?s)acquired place 'talise' is invalid and was skipped: missing required tag\(s\) boot-strategy.*To fix this"):
         core._concrete_place("c:20408", "talise")
