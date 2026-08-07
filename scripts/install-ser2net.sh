@@ -86,10 +86,11 @@ echo "Building and installing ser2net $SER2NET_VERSION..."
 cd "ser2net-$SER2NET_VERSION"
 
 # We must set PKG_CONFIG_PATH so configure finds the custom gensio we just built.
-# We also set LDFLAGS to bake the rpath of our prefix's lib directory so the
-# executable can find libgensio at runtime without LD_LIBRARY_PATH.
+# We also set CPPFLAGS and LDFLAGS to prioritize our custom gensio headers and libraries
+# and bake the rpath of our prefix's lib directory so the executable can find libgensio at runtime.
 export PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
-export LDFLAGS="-Wl,-rpath,$PREFIX/lib ${LDFLAGS:-}"
+export CPPFLAGS="-I$PREFIX/include ${CPPFLAGS:-}"
+export LDFLAGS="-L$PREFIX/lib -Wl,-rpath,$PREFIX/lib ${LDFLAGS:-}"
 
 ./configure --prefix="$PREFIX"
 make -j"$(nproc 2>/dev/null || echo 2)"
