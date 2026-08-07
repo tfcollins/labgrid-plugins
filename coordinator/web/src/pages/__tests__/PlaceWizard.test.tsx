@@ -85,10 +85,11 @@ describe("PlaceWizard", () => {
     fireEvent.click(cb);
     fireEvent.click(screen.getByRole("button", { name: /^next$/i }));
 
-    // Step 3: fill the three required tags
+    // Step 3: fill the four required tags
     fireEvent.change(await screen.findByLabelText(/board-location/i), { target: { value: "Munich" } });
     fireEvent.change(screen.getByLabelText(/^carrier/i), { target: { value: "vcu118" } });
     fireEvent.change(screen.getByLabelText(/daughter-board/i), { target: { value: "fmcomms2" } });
+    fireEvent.change(screen.getByLabelText(/boot-strategy/i), { target: { value: "BootFPGASoc" } });
     fireEvent.click(screen.getByRole("button", { name: /^next$/i }));
 
     // Step 4: review + create
@@ -103,6 +104,7 @@ describe("PlaceWizard", () => {
         "board-location": "Munich",
         carrier: "vcu118",
         "daughter-board": "fmcomms2",
+        "boot-strategy": "BootFPGASoc",
       })
     );
     expect(api.setPlaceComment).not.toHaveBeenCalled();
@@ -132,6 +134,8 @@ describe("PlaceWizard", () => {
     fireEvent.change(screen.getByLabelText(/^carrier/i), { target: { value: "zcu102" } });
     expect(next).toBeDisabled();
     fireEvent.change(screen.getByLabelText(/daughter-board/i), { target: { value: "ad9084" } });
+    expect(next).toBeDisabled();
+    fireEvent.change(screen.getByLabelText(/boot-strategy/i), { target: { value: "BootNoOSJTAG" } });
     await waitFor(() => expect(next).toBeEnabled());
   });
 
@@ -152,6 +156,7 @@ describe("PlaceWizard", () => {
     fireEvent.change(await screen.findByLabelText(/board-location/i), { target: { value: "RTP" } });
     fireEvent.change(screen.getByLabelText(/^carrier/i), { target: { value: "vcu118" } });
     fireEvent.change(screen.getByLabelText(/daughter-board/i), { target: { value: "adis16460" } });
+    fireEvent.change(screen.getByLabelText(/boot-strategy/i), { target: { value: "BootFPGASoc" } });
     fireEvent.click(await screen.findByRole("button", { name: /add tag/i }));
     fireEvent.change(await screen.findByLabelText(/tag 0 key/i), { target: { value: "note" } });
     fireEvent.change(screen.getByLabelText(/tag 0 value/i), { target: { value: "demo" } });
@@ -167,6 +172,7 @@ describe("PlaceWizard", () => {
         "board-location": "RTP",
         carrier: "vcu118",
         "daughter-board": "adis16460",
+        "boot-strategy": "BootFPGASoc",
         note: "demo",
       })
     );
@@ -193,6 +199,7 @@ describe("PlaceWizard", () => {
     fireEvent.change(await screen.findByLabelText(/board-location/i), { target: { value: "Wilm" } });
     fireEvent.change(screen.getByLabelText(/^carrier/i), { target: { value: "rpi4" } });
     fireEvent.change(screen.getByLabelText(/daughter-board/i), { target: { value: "fmcomms2" } });
+    fireEvent.change(screen.getByLabelText(/boot-strategy/i), { target: { value: "BootFPGASoc" } });
     fireEvent.click(await screen.findByRole("button", { name: /^next$/i }));
     fireEvent.click(await screen.findByRole("button", { name: /create place/i }));
 

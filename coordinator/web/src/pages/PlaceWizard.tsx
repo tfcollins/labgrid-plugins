@@ -38,7 +38,7 @@ const BOARD_LOCATIONS = [
   "Munich", "Cluj", "GT", "RTP", "Wilm", "Chelm", "US-Home",
 ] as const;
 
-const REQUIRED_TAG_KEYS = ["board-location", "carrier", "daughter-board"] as const;
+const REQUIRED_TAG_KEYS = ["board-location", "carrier", "daughter-board", "boot-strategy"] as const;
 
 export default function PlaceWizard() {
   const nav = useNavigate();
@@ -55,6 +55,7 @@ export default function PlaceWizard() {
   const [boardLocation, setBoardLocation] = useState("");
   const [carrier, setCarrier] = useState("");
   const [daughterBoard, setDaughterBoard] = useState("");
+  const [bootStrategy, setBootStrategy] = useState("");
   const [tags, setTags] = useState<TagRow[]>([]);
   const [comment, setComment] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -116,7 +117,10 @@ export default function PlaceWizard() {
   // ---------- step validation ----------
 
   const requiredTagsComplete =
-    boardLocation.trim() !== "" && carrier.trim() !== "" && daughterBoard.trim() !== "";
+    boardLocation.trim() !== "" &&
+    carrier.trim() !== "" &&
+    daughterBoard.trim() !== "" &&
+    bootStrategy.trim() !== "";
 
   const customTagCollidesWithRequired = tags.some((t) =>
     (REQUIRED_TAG_KEYS as readonly string[]).includes(t.key.trim())
@@ -146,6 +150,7 @@ export default function PlaceWizard() {
       "board-location": boardLocation.trim(),
       carrier: carrier.trim(),
       "daughter-board": daughterBoard.trim(),
+      "boot-strategy": bootStrategy.trim(),
       ...Object.fromEntries(
         tags.filter((t) => t.key.trim() !== "").map((t) => [t.key.trim(), t.value])
       ),
@@ -329,6 +334,15 @@ export default function PlaceWizard() {
                     placeholder="e.g. fmcomms2, ad9084, adis16460"
                   />
                 </FormControl>
+                <FormControl isRequired>
+                  <FormLabel htmlFor="tag-boot-strategy" fontSize="sm">boot-strategy</FormLabel>
+                  <Input
+                    id="tag-boot-strategy"
+                    value={bootStrategy}
+                    onChange={(e) => setBootStrategy(e.target.value)}
+                    placeholder="e.g. BootFPGASoc, BootNoOSJTAG"
+                  />
+                </FormControl>
               </Stack>
             </Box>
             <Box>
@@ -408,6 +422,7 @@ export default function PlaceWizard() {
                 <Tag size="sm" colorScheme="adi"><TagLabel>board-location={boardLocation.trim()}</TagLabel></Tag>
                 <Tag size="sm" colorScheme="adi"><TagLabel>carrier={carrier.trim()}</TagLabel></Tag>
                 <Tag size="sm" colorScheme="adi"><TagLabel>daughter-board={daughterBoard.trim()}</TagLabel></Tag>
+                <Tag size="sm" colorScheme="adi"><TagLabel>boot-strategy={bootStrategy.trim()}</TagLabel></Tag>
                 {tags.filter((t) => t.key.trim()).map((t, i) => (
                   <Tag key={i} size="sm"><TagLabel>{t.key.trim()}={t.value}</TagLabel></Tag>
                 ))}
