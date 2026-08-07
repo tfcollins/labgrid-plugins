@@ -21,26 +21,35 @@ echo "Target Prefix: $PREFIX"
 echo "Build Directory: $WORK_DIR"
 echo "=========================================================="
 
-# 1. Check/Install System Dependencies
-if [ -f /etc/debian_version ]; then
-    echo "Debian/Ubuntu-based system detected."
-    echo "Ensuring required build tools and dependencies are installed..."
-    
-    # We use non-interactive mode. If running as non-root, check if sudo is available.
-    DEPS="build-essential pkg-config libyaml-dev libssl-dev curl tar"
-    
-    if [ "$(id -u)" -eq 0 ]; then
-        apt-get update && apt-get install -y $DEPS
-    elif command -v sudo >/dev/null 2>&1; then
-        echo "Running: sudo apt-get update && sudo apt-get install -y $DEPS"
-        sudo apt-get update && sudo apt-get install -y $DEPS
+# 1. Check System Dependencies
+DEPS_MISSING=()
+if ! pkg-config --exists yaml-0.1 2>/dev/null; then
+    DEPS_MISSING+=("libyaml-dev")
+fi
+if ! pkg-config --exists openssl 2>/dev/null; then
+    DEPS_MISSING+=("libssl-dev")
+fi
+if ! command -v gcc >/dev/null 2>&1; then
+    DEPS_MISSING+=("build-essential")
+fi
+if ! command -v make >/dev/null 2>&1; then
+    DEPS_MISSING+=("make")
+fi
+if ! command -v pkg-config >/dev/null 2>&1; then
+    DEPS_MISSING+=("pkg-config")
+fi
+
+if [ ${#DEPS_MISSING[@]} -ne 0 ]; then
+    echo "ERROR: Missing required build dependencies: ${DEPS_MISSING[*]}"
+    echo "Please install them manually using:"
+    if [ -f /etc/debian_version ]; then
+        echo "  sudo apt-get update && sudo apt-get install -y build-essential pkg-config libyaml-dev libssl-dev curl tar"
     else
-        echo "WARNING: Not running as root and 'sudo' is not available."
-        echo "Please ensure the following packages are installed: $DEPS"
+        echo "  (equivalent build-essential, pkg-config, libyaml-dev, libssl-dev on your package manager)"
     fi
+    exit 1
 else
-    echo "Non-Debian system detected. Please ensure you have equivalent build tools"
-    echo "(gcc, make, pkg-config, libyaml, openssl, curl, tar) installed."
+    echo "All system build dependencies are satisfied."
 fi
 
 # Clean up build dir on exit
@@ -56,8 +65,8 @@ cd "$WORK_DIR"
 echo "----------------------------------------------------------"
 echo "Downloading gensio $GENSIO_VERSION..."
 echo "----------------------------------------------------------"
-curl -LO "https://github.com/cminyard/gensio/archive/refs/tags/v$GENSIO_VERSION.tar.gz"
-tar -xzf "v$GENSIO_VERSION.tar.gz"
+curl -LO "https://downloads.sourceforge.net/project/ser2net/ser2net/gensio-$GENSIO_VERSION.tar.gz"
+tar -xzf "gensio-$GENSIO_VERSION.tar.gz"
 
 echo "Building and installing gensio $GENSIO_VERSION..."
 cd "gensio-$GENSIO_VERSION"
@@ -70,8 +79,8 @@ cd ..
 echo "----------------------------------------------------------"
 echo "Downloading ser2net $SER2NET_VERSION..."
 echo "----------------------------------------------------------"
-curl -LO "https://github.com/cminyard/ser2net/archive/refs/tags/v$SER2NET_VERSION.tar.gz"
-tar -xzf "v$SER2NET_VERSION.tar.gz"
+curl -LO "https://downloads.sourceforge.net/project/ser2net/ser2net/ser2net-$SER2NET_VERSION.tar.gz"
+tar -xzf "ser2net-$SER2NET_VERSION.tar.gz"
 
 echo "Building and installing ser2net $SER2NET_VERSION..."
 cd "ser2net-$SER2NET_VERSION"
