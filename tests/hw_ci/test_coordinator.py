@@ -86,3 +86,25 @@ def test_fetch_raw_places_rest_success_path(monkeypatch, _stub_cli):
 
     assert out == rest_payload
     assert _stub_cli == []
+
+
+def test_resolve_coordinator_port_validation(monkeypatch):
+    # Valid coordinator addresses:
+    assert coord_mod.resolve_coordinator("10.0.0.41:20408") == "10.0.0.41:20408"
+    assert coord_mod.resolve_coordinator("10.0.0.41") == "10.0.0.41"
+    assert coord_mod.resolve_coordinator("[::1]:20408") == "[::1]:20408"
+    assert coord_mod.resolve_coordinator("tcp://10.0.0.41:20408") == "tcp://10.0.0.41:20408"
+
+    # Invalid coordinator addresses (port out of range):
+    with pytest.raises(ValueError, match="Port out of range 0-65535"):
+        coord_mod.resolve_coordinator("10.0.0.41:204008")
+
+    # Invalid coordinator addresses (non-integer port):
+    with pytest.raises(ValueError, match="Port could not be cast to integer value"):
+        coord_mod.resolve_coordinator("10.0.0.41:20408abc")
+
+
+def test_resolve_coordinator_env_port_validation(monkeypatch):
+    monkeypatch.setenv("LG_COORDINATOR", "10.0.0.41:204008")
+    with pytest.raises(ValueError, match="Port out of range 0-65535"):
+        coord_mod.resolve_coordinator(None)

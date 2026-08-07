@@ -310,3 +310,29 @@ def test_request_run_exports_pytest_narrowing_env(monkeypatch):
     # HW_CARRIER optional) — see adi_lg_plugins/pytest_plugin/__init__.py
     assert captured["HW_DAUGHTER"] == "adrv9002"
     assert captured["HW_CARRIER"] == "zcu102"
+
+
+def test_request_no_boot_option(monkeypatch):
+    lease = _fake_lease(uri=None, place="adrv9009-zcu102", carrier="zcu102")
+    lease.env_path = "/tmp/env.yaml"
+    fake = _fake_request_yielding(lease)
+    monkeypatch.setattr(rc_mod, "request", fake)
+    captured = {}
+
+    def fake_run_child(cmd, env):
+        captured.update(env)
+        return 0
+
+    monkeypatch.setattr(rc_mod, "_run_child", fake_run_child)
+    result = CliRunner().invoke(cli, ["request", "--part", "adrv9009", "--no-boot", "--run", "true"])
+    assert result.exit_code == 0
+    assert fake.kwargs["mode"] == "reserve"
+    assert captured["LG_ENV"] == "/tmp/env.yaml"
+
+
+def test_request_no_boot_option_conflicting():
+    result = CliRunner().invoke(
+        cli, ["request", "--part", "adrv9009", "--no-boot", "--mode", "flash"]
+    )
+    assert result.exit_code != 0
+    assert "cannot be used with --mode flash" in result.output

@@ -89,13 +89,10 @@ async def lifespan(app: FastAPI):
     app.state.console_manager = cmgr
 
     if await auth_store.user_count() == 0:
-        from .auth.bootstrap import generate_bootstrap_token
-
-        token = generate_bootstrap_token()
-        app.state.bootstrap_token = token
+        await auth_store.create_user(username="analog", password="analog", role="admin")
+        app.state.bootstrap_token = None
         logger.warning("=" * 70)
-        logger.warning("FIRST RUN: bootstrap token (use POST /api/auth/bootstrap):")
-        logger.warning("    %s", token)
+        logger.warning("FIRST RUN: Created default account: analog:analog (admin)")
         logger.warning("=" * 70)
     else:
         app.state.bootstrap_token = None

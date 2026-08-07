@@ -145,6 +145,21 @@ def list_live_places(
     return places, skipped
 
 
+def _validate_coordinator_port(coord: str) -> None:
+    from urllib.parse import urlparse
+
+    url = coord
+    if "://" not in url:
+        url = "tcp://" + url
+    try:
+        parsed = urlparse(url)
+        port = parsed.port
+        if port is not None and not (0 <= port <= 65535):
+            raise ValueError(f"Port out of range 0-65535: {port}")
+    except ValueError as e:
+        raise ValueError(f"Invalid coordinator address {coord!r}: {e}") from e
+
+
 def resolve_coordinator(explicit: str | None = None) -> str:
     """Resolve the coordinator URL from arg / env, in order:
 
@@ -156,6 +171,7 @@ def resolve_coordinator(explicit: str | None = None) -> str:
     """
     for src in (explicit, os.environ.get("LG_COORDINATOR"), os.environ.get("ADI_LG_COORDINATOR")):
         if src:
+            _validate_coordinator_port(src)
             return src
     raise RuntimeError(
         "no coordinator URL — pass --coord, or set LG_COORDINATOR / "

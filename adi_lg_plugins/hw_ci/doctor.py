@@ -217,7 +217,7 @@ def run_doctor(args) -> int:
     try:
         coord = coord_mod.resolve_coordinator(args.coord)
         coord_mod.warn_if_rest_port(coord)
-    except RuntimeError:
+    except (RuntimeError, ValueError):
         coord = None
     repo = args.repo or _infer_repo()
     fallback = args.runner_label or ""

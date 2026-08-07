@@ -501,7 +501,7 @@ def list_hardware(coord, carrier, part, available_only, force_cli, json_output):
     try:
         coord_resolved = resolve_coordinator(coord)
         warn_if_rest_port(coord_resolved)
-    except RuntimeError as e:
+    except (RuntimeError, ValueError) as e:
         console.print(f"[bold red]Error:[/bold red] {e}")
         raise click.ClickException(str(e)) from e
 

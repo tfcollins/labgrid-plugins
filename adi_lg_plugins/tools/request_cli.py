@@ -96,6 +96,13 @@ def _run_child(run_cmd: str, env: dict) -> int:
         "reserve: acquire + export LG_ENV, no boot — the child drives the board"
     ),
 )
+@click.option(
+    "--no-boot",
+    "no_boot",
+    is_flag=True,
+    default=False,
+    help="Shortcut for --mode reserve: only acquire/reserve the board without booting or provisioning it.",
+)
 @click.option("--bootfile", default=None, help="Pin an image version (default: catalog default)")
 @click.option(
     "--firmware", default=None, help="[flash] no-os firmware .elf to JTAG-load (required)"
@@ -128,6 +135,7 @@ def request_cmd(
     part,
     carrier,
     mode,
+    no_boot,
     bootfile,
     firmware,
     bitstream,
@@ -139,6 +147,11 @@ def request_cmd(
     run_cmd,
 ):
     """Request a board by part, provision it, run a command against it, and release it."""
+    if no_boot:
+        if mode != "uri" and mode != "reserve":
+            raise click.UsageError("--no-boot cannot be used with --mode flash")
+        mode = "reserve"
+
     previous = _install_term_handler()
     try:
         with request(
@@ -206,5 +219,11 @@ def request_cmd(
             reason = " ".join(str(e).split())
             click.echo(f"::error title=boot-failure::part={part} place={e.place} reason={reason}")
         sys.exit(EXIT_PROVISION)
+    except (RuntimeError, ValueError) as e:
+        console.print(f"[bold red]Error: {e}[/bold red]")
+        if os.environ.get("GITHUB_ACTIONS") == "true":
+            reason = " ".join(str(e).split())
+            click.echo(f"::error title=coordinator-error::reason={reason}")
+        sys.exit(EXIT_UNAVAILABLE)
     finally:
         _restore_term_handler(previous)

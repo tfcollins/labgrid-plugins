@@ -213,7 +213,10 @@ def request(
             "(only part + carrier narrow the match)"
         )
 
+    import os
+
     coord = resolve_coordinator(coord)
+    os.environ["LG_COORDINATOR"] = coord
     api = _resolve_api(coord)
     match = match_client.get_match(api, part=part, carrier=carrier, bootfile=bootfile, mode=mode)
     if not match.satisfiable:

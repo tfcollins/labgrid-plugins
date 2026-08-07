@@ -553,3 +553,10 @@ def test_request_provision_error_carries_place(patched, monkeypatch):
         with core.request(part="adrv9002", coord="c:20408"):
             pass  # pragma: no cover
     assert exc_info.value.place == "adrv9002-zcu102"
+
+
+def test_request_exports_lg_coordinator(patched, monkeypatch):
+    monkeypatch.delenv("LG_COORDINATOR", raising=False)
+    with core.request(part="adrv9002"):
+        import os
+        assert os.environ.get("LG_COORDINATOR") == "10.0.0.41:20408"

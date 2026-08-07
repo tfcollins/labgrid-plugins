@@ -29,11 +29,11 @@ def never_retry(func):
     def wrapper(self, *args, **kwargs):
         broken = getattr(self, "broken", None)
         if broken is not None:
-            raise StrategyError(f"{self.__class__.__name__} is in broken state") from broken
+            raise StrategyError(f"{self.__class__.__name__} is in broken state: {broken}") from broken
         try:
             return func(self, *args, **kwargs)
         except Exception as e:
             self.broken = e
-            raise StrategyError(f"{self.__class__.__name__} is in broken state") from e
+            raise StrategyError(f"{self.__class__.__name__} is in broken state: {e}") from e
 
     return wrapper
