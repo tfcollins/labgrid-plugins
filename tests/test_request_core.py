@@ -560,3 +560,16 @@ def test_request_exports_lg_coordinator(patched, monkeypatch):
     with core.request(part="adrv9002"):
         import os
         assert os.environ.get("LG_COORDINATOR") == "10.0.0.41:20408"
+
+
+def test_request_unreachable_api_raises_board_unavailable(monkeypatch):
+    monkeypatch.setattr(core, "resolve_coordinator", lambda c: "localhost:20408")
+
+    def fake_get_match(*a, **k):
+        raise OSError("Connection refused")
+
+    monkeypatch.setattr(core.match_client, "get_match", fake_get_match)
+
+    with pytest.raises(BoardUnavailable, match="Coordinator REST API at localhost:8000 is unreachable"):
+        with core.request(part="adrv9002"):
+            pass

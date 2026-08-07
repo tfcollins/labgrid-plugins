@@ -19,7 +19,7 @@ from ..hw_ci.coordinator import _resolve_api, list_live_places, resolve_coordina
 from ..hw_ci.render_env import render_env_to
 from ..hw_ci.schema import Place
 from . import match_client, reservation
-from .errors import NoMatchingBoard, ProvisionError
+from .errors import BoardUnavailable, NoMatchingBoard, ProvisionError
 from .uri import resolve_uri, verify_iio_context
 
 logger = logging.getLogger(__name__)
@@ -218,7 +218,10 @@ def request(
     coord = resolve_coordinator(coord)
     os.environ["LG_COORDINATOR"] = coord
     api = _resolve_api(coord)
-    match = match_client.get_match(api, part=part, carrier=carrier, bootfile=bootfile, mode=mode)
+    try:
+        match = match_client.get_match(api, part=part, carrier=carrier, bootfile=bootfile, mode=mode)
+    except Exception as e:
+        raise BoardUnavailable(f"Coordinator REST API at {api} is unreachable: {e}") from e
     if not match.satisfiable:
         raise NoMatchingBoard(match.reason or f"no board for part '{part}'")
 
