@@ -573,3 +573,9 @@ def test_request_unreachable_api_raises_board_unavailable(monkeypatch):
     with pytest.raises(BoardUnavailable, match="Coordinator REST API at localhost:8000 is unreachable"):
         with core.request(part="adrv9002"):
             pass
+
+
+def test_request_skipped_place_shows_validation_reason(monkeypatch):
+    monkeypatch.setattr(core, "list_live_places", lambda c: ([], [("talise", "missing required tag(s) boot-strategy")]))
+    with pytest.raises(ProvisionError, match="acquired place 'talise' is invalid and was skipped: missing required tag\\(s\\) boot-strategy"):
+        core._concrete_place("c:20408", "talise")

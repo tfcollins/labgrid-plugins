@@ -49,10 +49,15 @@ class Lease:
 
 def _concrete_place(coord: str, name: str) -> Place:
     """Return the validated hw_ci Place for `name` from the coordinator."""
-    places, _skipped = list_live_places(coord)
+    places, skipped = list_live_places(coord)
     for p in places:
         if p.name == name:
             return p
+    for s_name, reason in skipped:
+        if s_name == name:
+            raise ProvisionError(
+                f"acquired place '{name}' is invalid and was skipped: {reason}"
+            )
     raise ProvisionError(f"acquired place '{name}' not found among live places")
 
 
