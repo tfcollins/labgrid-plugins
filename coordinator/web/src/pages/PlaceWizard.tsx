@@ -38,6 +38,20 @@ const BOARD_LOCATIONS = [
   "Munich", "Cluj", "GT", "RTP", "Wilm", "Chelm", "US-Home",
 ] as const;
 
+const BOOT_STRATEGIES = [
+  "BootFPGASoc",
+  "BootFPGASoCSSH",
+  "BootFPGASoCTFTP",
+  "BootFabric",
+  "BootNoOSJTAG",
+  "BootRPI",
+  "BootSelMap",
+  "BootTickFPGASSH",
+  "BootVPK180",
+  "BootZynq7000JTAGRecovery",
+  "BootZynqMPJTAG",
+] as const;
+
 const REQUIRED_TAG_KEYS = ["board-location", "carrier", "daughter-board", "boot-strategy"] as const;
 
 export default function PlaceWizard() {
@@ -336,12 +350,16 @@ export default function PlaceWizard() {
                 </FormControl>
                 <FormControl isRequired>
                   <FormLabel htmlFor="tag-boot-strategy" fontSize="sm">boot-strategy</FormLabel>
-                  <Input
+                  <Select
                     id="tag-boot-strategy"
+                    placeholder="Select a strategy"
                     value={bootStrategy}
                     onChange={(e) => setBootStrategy(e.target.value)}
-                    placeholder="e.g. BootFPGASoc, BootNoOSJTAG"
-                  />
+                  >
+                    {BOOT_STRATEGIES.map((strat) => (
+                      <option key={strat} value={strat}>{strat}</option>
+                    ))}
+                  </Select>
                 </FormControl>
               </Stack>
             </Box>
