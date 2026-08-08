@@ -31,6 +31,9 @@ URI_BOOTABLE_STRATEGIES: frozenset[str] = frozenset(
         "BootFPGASoCSSH",
         "BootTickFPGASSH",
         "BootRPI",
+        # JTAG-strapped ZynqMP production boot (ADRV9009-ZU11EG on tron):
+        # confirmed to boot Kuiper and serve iiod (validated 2026-08-04).
+        "BootZynqMPJTAG",
     }
 )
 

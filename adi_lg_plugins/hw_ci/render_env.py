@@ -175,6 +175,19 @@ def render_env(
         "firmware_elf": place.extra_tags.get("firmware-elf", ""),
         "boot_marker": place.extra_tags.get("boot-marker", "Successfully initialized"),
         "a9_target_name": place.extra_tags.get("a9-target-name", "*Cortex-A9 MPCore #0"),
+        # BootZynqMPJTAG (JTAG-strapped ZynqMP production boot): boot payloads
+        # live at canonical names under `recovery-root` on the exporter host
+        # (see the template header); serial overrides handle ser2net/pyserial
+        # rfc2217 quirks and coordinator-advertised hosts that don't resolve
+        # from the runner. Lab admin opts a place in, e.g.:
+        #   labgrid-client -p tron set-tags boot-strategy=BootZynqMPJTAG \
+        #       recovery-root=/home/tcollins/zu11eg-recovery \
+        #       bitstream-path=/home/tcollins/zu11eg-recovery/bitstream.bin \
+        #       serial-protocol-override=raw
+        "recovery_root": place.extra_tags.get("recovery-root", "/tmp/recovery"),
+        "jtag_url": place.extra_tags.get("jtag-url", "TCP:127.0.0.1:3121"),
+        "serial_host_override": place.extra_tags.get("serial-host-override", ""),
+        "serial_protocol_override": place.extra_tags.get("serial-protocol-override", ""),
     }
     if extra_subs:
         subs.update({str(k): str(v) for k, v in extra_subs.items()})

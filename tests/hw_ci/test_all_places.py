@@ -163,3 +163,13 @@ def test_host_reachable_false_when_both_forms_fail(monkeypatch):
 
     monkeypatch.setattr(ap.socket, "create_connection", fake_conn)
     assert host_reachable("nuc") is False
+
+
+def test_bootzynqmpjtag_place_becomes_a_uri_leg():
+    # JTAG-strapped ZynqMP production boot (ADRV9009-ZU11EG on tron) boots
+    # Kuiper and serves iiod, so it must get a real boot-verify leg, not a
+    # reserve-only reachability check.
+    legs, _, _ = build_all_places_matrix(
+        [_place("tron", "adrv9009zu11eg", "adrv2crr-fmc", strategy="BootZynqMPJTAG")]
+    )
+    assert legs[0].mode == "uri"
