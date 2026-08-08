@@ -394,3 +394,40 @@ def test_every_template_declares_place_features():
         assert feats == ["ad9081", "zcu102"], (
             f"{strat}: rendered env missing place features (got {feats!r})"
         )
+
+
+# ── BootZynqMPJTAG: daily-bootable production config from place tags ──
+
+
+def test_bootzynqmpjtag_renders_recovery_root_and_serial_overrides():
+    p = _place(
+        "BootZynqMPJTAG",
+        place="tron",
+        extra_tags={
+            "recovery-root": "/home/tcollins/zu11eg-recovery",
+            "bitstream-path": "/home/tcollins/zu11eg-recovery/bitstream.bin",
+            "serial-protocol-override": "raw",
+            "serial-host-override": "tron.local",
+            "power-driver": "HomeAssistantPowerDriver",
+        },
+    )
+    doc = yaml.safe_load(render_env(p))
+    drivers = doc["targets"]["main"]["drivers"]
+    assert "HomeAssistantPowerDriver" in drivers
+    boot = drivers["BootZynqMPJTAG"]
+    assert boot["psu_init_tcl"] == "/home/tcollins/zu11eg-recovery/psu_init.tcl"
+    assert boot["pmufw_bin"] == "/home/tcollins/zu11eg-recovery/pmufw.bin"
+    assert boot["bitstream_path"] == "/home/tcollins/zu11eg-recovery/bitstream.bin"
+    assert boot["serial_protocol_override"] == "raw"
+    assert boot["serial_host_override"] == "tron.local"
+    assert boot["jtag_url"] == "TCP:127.0.0.1:3121"
+    # The shell prompt survives Template substitution ($$ -> $).
+    assert drivers["ADIShellDriver"]["prompt"] == "root@.*[#$]"
+
+
+def test_bootzynqmpjtag_defaults_to_tmp_recovery():
+    doc = yaml.safe_load(render_env(_place("BootZynqMPJTAG")))
+    boot = doc["targets"]["main"]["drivers"]["BootZynqMPJTAG"]
+    assert boot["spl_elf"] == "/tmp/recovery/spl.elf"
+    assert boot["serial_host_override"] == ""
+    assert boot["serial_protocol_override"] == ""

@@ -177,3 +177,45 @@ def test_stage_file_network_resource_uses_managedfile(tmp_path):
     MF.assert_called_once()
     mf_instance.sync_to_resource.assert_called_once()
     assert remote == "/var/cache/abc/boot.scr"
+
+
+# --- mDNS .local fallback --------------------------------------------------
+
+
+def test_exporter_host_falls_back_to_dot_local(monkeypatch):
+    """The coordinator advertises bare exporter names; on mDNS-only lab
+    networks just ``<name>.local`` resolves (live-found: the nemo runner
+    cannot resolve bare ``tron``). Mirror hw_ci.all_places.host_reachable."""
+    _remote._RESOLVED_HOSTS.clear()
+
+    def fake_gai(host, *args, **kwargs):
+        if host == "tron.local":
+            return [("resolved",)]
+        raise OSError("no dns")
+
+    monkeypatch.setattr(_remote.socket, "getaddrinfo", fake_gai)
+    d = _FakeDriver(_proxied_resource("tron"))
+    assert d._exporter_host(d._remote_resource()) == "tron.local"
+    _remote._RESOLVED_HOSTS.clear()
+
+
+def test_exporter_host_keeps_bare_name_when_it_resolves(monkeypatch):
+    _remote._RESOLVED_HOSTS.clear()
+    monkeypatch.setattr(_remote.socket, "getaddrinfo", lambda *a, **kw: [("resolved",)])
+    d = _FakeDriver(_proxied_resource("nemo"))
+    assert d._exporter_host(d._remote_resource()) == "nemo"
+    _remote._RESOLVED_HOSTS.clear()
+
+
+def test_exporter_host_unresolvable_returns_input(monkeypatch):
+    """A host that resolves in no form passes through unchanged so the
+    eventual ssh error names the real host, not a mangled one."""
+    _remote._RESOLVED_HOSTS.clear()
+
+    def fail_gai(*args, **kwargs):
+        raise OSError("no dns")
+
+    monkeypatch.setattr(_remote.socket, "getaddrinfo", fail_gai)
+    d = _FakeDriver(_proxied_resource("ghost"))
+    assert d._exporter_host(d._remote_resource()) == "ghost"
+    _remote._RESOLVED_HOSTS.clear()

@@ -29,6 +29,7 @@ target of this helper — that matches prior behavior.
 
 import hashlib
 import os
+import socket
 import subprocess
 
 from labgrid.resource.common import NetworkResource
@@ -36,6 +37,33 @@ from labgrid.util.managedfile import ManagedFile
 from labgrid.util.ssh import sshmanager
 
 _STAGE_ROOT = "/tmp/adi-lg-stage"
+
+#: host -> resolvable form, memoized (DNS probes are slow and per-run stable).
+_RESOLVED_HOSTS: dict[str, str] = {}
+
+
+def _resolvable_host(host: str) -> str:
+    """Return ``host`` in a form the local resolver can actually resolve.
+
+    The coordinator names exporter hosts by bare name (e.g. ``tron``); on many
+    lab networks only the mDNS ``<name>.local`` form resolves. Mirror
+    ``hw_ci.all_places.host_reachable``: keep the bare name when it resolves,
+    fall back to ``<name>.local`` when only that resolves, and otherwise return
+    the input unchanged so the eventual ssh error names the real host.
+    """
+    cached = _RESOLVED_HOSTS.get(host)
+    if cached is not None:
+        return cached
+    resolved = host
+    for candidate in (host, f"{host}.local"):
+        try:
+            socket.getaddrinfo(candidate, None)
+            resolved = candidate
+            break
+        except OSError:
+            continue
+    _RESOLVED_HOSTS[host] = resolved
+    return resolved
 
 
 def _sha256_file(path: str) -> str:
@@ -78,10 +106,11 @@ class RemoteExecMixin:
         """
         host = getattr(res, "host", None)
         if host:
-            return host
+            return _resolvable_host(host)
         extra = getattr(res, "extra", None) or {}
         if isinstance(extra, dict):
-            return extra.get("proxy")
+            proxy = extra.get("proxy")
+            return _resolvable_host(proxy) if proxy else None
         return None
 
     def _remote_prefix(self):

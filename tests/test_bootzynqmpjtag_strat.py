@@ -253,3 +253,13 @@ def test_kuiper_shell_runs_explicit_sd_boot_and_runtime_checks():
     s.shell._inject_run.assert_called_once()
     s.shell.run_check.assert_any_call("ip link show eth0", timeout=s.kuiper_verify_timeout)
     assert s.status == Status.kuiper_shell
+
+
+def test_transition_shell_aliases_kuiper_shell():
+    """The generic hardware-request flow transitions to "shell"; for this
+    strategy that must mean kuiper_shell (not a KeyError on Status["shell"]).
+    Both spellings hit the same missing-production-inputs validation."""
+    with pytest.raises(StrategyError):
+        _make_strategy().transition("kuiper_shell")
+    with pytest.raises(StrategyError):
+        _make_strategy().transition("shell")

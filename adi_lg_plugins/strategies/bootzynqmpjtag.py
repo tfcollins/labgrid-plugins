@@ -229,6 +229,12 @@ class BootZynqMPJTAG(Strategy):
             >>> strategy.transition("jtag_bootstrap")
         """
         if not isinstance(status, Status):
+            # Fleet-wide convention: "shell" means the booted-Linux shell.
+            # This strategy's Linux state is kuiper_shell; alias it so the
+            # generic hardware-request flow (strategy.transition("shell"))
+            # can boot JTAG-strapped ZynqMP boards like any other place.
+            if status == "shell":
+                status = "kuiper_shell"
             status = Status[status]
 
         # Validate required inputs up-front, before @never_retry mutates any
