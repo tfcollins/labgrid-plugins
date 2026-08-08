@@ -208,6 +208,13 @@ def test_load_zynqmp_production_uboot_programs_pl_and_scrubs_ddr(driver):
 
     assert "dow /tmp/ddr-ecc-scrub.elf" in tcl
     assert "DDR_ECC_SCRUB_COMPLETE" in tcl
+    scrub_download = tcl.index("dow /tmp/ddr-ecc-scrub.elf")
+    scrub_complete = tcl.index("DDR_ECC_SCRUB_COMPLETE")
+    assert tcl.index("catch {stop}", scrub_download, scrub_complete) < tcl.index(
+        'targets -set -nocase -filter {name =~ "*Cortex-A53*#0*"}',
+        scrub_download,
+        scrub_complete,
+    )
     assert "fpga -file /tmp/system_top-xsdb.bin" in tcl
     assert "FPGA_STATE=" in tcl
     assert tcl.index("dow /tmp/ddr-ecc-scrub.elf") < tcl.index("dow -force -data /tmp/u-boot.bin")
