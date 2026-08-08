@@ -324,7 +324,9 @@ def test_request_no_boot_option(monkeypatch):
         return 0
 
     monkeypatch.setattr(rc_mod, "_run_child", fake_run_child)
-    result = CliRunner().invoke(cli, ["request", "--part", "adrv9009", "--no-boot", "--run", "true"])
+    result = CliRunner().invoke(
+        cli, ["request", "--part", "adrv9009", "--no-boot", "--run", "true"]
+    )
     assert result.exit_code == 0
     assert fake.kwargs["mode"] == "reserve"
     assert captured["LG_ENV"] == "/tmp/env.yaml"

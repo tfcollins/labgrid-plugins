@@ -559,6 +559,7 @@ def test_request_exports_lg_coordinator(patched, monkeypatch):
     monkeypatch.delenv("LG_COORDINATOR", raising=False)
     with core.request(part="adrv9002"):
         import os
+
         assert os.environ.get("LG_COORDINATOR") == "10.0.0.41:20408"
 
 
@@ -570,12 +571,21 @@ def test_request_unreachable_api_raises_board_unavailable(monkeypatch):
 
     monkeypatch.setattr(core.match_client, "get_match", fake_get_match)
 
-    with pytest.raises(BoardUnavailable, match="Coordinator REST API at localhost:8000 is unreachable"):
+    with pytest.raises(
+        BoardUnavailable, match="Coordinator REST API at localhost:8000 is unreachable"
+    ):
         with core.request(part="adrv9002"):
             pass
 
 
 def test_request_skipped_place_shows_validation_reason(monkeypatch):
-    monkeypatch.setattr(core, "list_live_places", lambda c: ([], [("talise", "missing required tag(s) boot-strategy")]))
-    with pytest.raises(ProvisionError, match=r"(?s)acquired place 'talise' is invalid and was skipped: missing required tag\(s\) boot-strategy.*To fix this"):
+    monkeypatch.setattr(
+        core,
+        "list_live_places",
+        lambda c: ([], [("talise", "missing required tag(s) boot-strategy")]),
+    )
+    with pytest.raises(
+        ProvisionError,
+        match=r"(?s)acquired place 'talise' is invalid and was skipped: missing required tag\(s\) boot-strategy.*To fix this",
+    ):
         core._concrete_place("c:20408", "talise")

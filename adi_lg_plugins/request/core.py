@@ -226,7 +226,9 @@ def request(
     os.environ["LG_COORDINATOR"] = coord
     api = _resolve_api(coord)
     try:
-        match = match_client.get_match(api, part=part, carrier=carrier, bootfile=bootfile, mode=mode)
+        match = match_client.get_match(
+            api, part=part, carrier=carrier, bootfile=bootfile, mode=mode
+        )
     except Exception as e:
         raise BoardUnavailable(f"Coordinator REST API at {api} is unreachable: {e}") from e
     if not match.satisfiable:
