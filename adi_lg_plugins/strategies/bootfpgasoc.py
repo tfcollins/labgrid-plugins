@@ -90,6 +90,10 @@ class BootFPGASoC(Strategy):
     # again this many times before giving up.  One retry is enough
     # to catch typical flakes without masking real failures.
     kernel_banner_retries = attr.ib(default=1)
+    # iiod snapshots the IIO context when it starts.  Kuiper may start it
+    # before slower converter drivers finish probing, so refresh it once the
+    # interactive shell (and therefore normal userspace boot) is ready.
+    restart_iiod_on_shell = attr.ib(default=True)
     boot_log = attr.ib(default="", init=False)
 
     debug_write_boot_log = attr.ib(default=False)
@@ -290,7 +294,18 @@ class BootFPGASoC(Strategy):
             # self.shell.bypass_login = True
             self.logger.info("Preparing interactive shell...")
             self.target.activate(self.shell)
-            # Post boot stuff...
+            if self.restart_iiod_on_shell:
+                command = (
+                    "if command -v systemctl >/dev/null 2>&1; then "
+                    "systemctl restart iiod.service; "
+                    "elif test -x /etc/init.d/iiod; then /etc/init.d/iiod restart; "
+                    "else exit 127; fi"
+                )
+                stdout, stderr, returncode = self.shell.run(command)
+                if returncode:
+                    detail = "\n".join([*stdout, *stderr]).strip()
+                    raise StrategyError(f"failed to restart iiod after boot: {detail}")
+                self.logger.info("Restarted iiod to refresh the post-probe IIO context")
             self.logger.info("Shell access ready")
 
         elif status == Status.soft_off:
