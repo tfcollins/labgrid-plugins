@@ -44,7 +44,9 @@ tlab:
     release_version: "2023_R2_P1"
     cache_path: "/tmp/kuiper_cache"
     kernel_path: "release:zynqmp-common/Image"
-    # m8_l4 leaves PLL2 unlocked on the lab's AD9081-FMCB-EBZ; m4_l8
-    # is hardware-verified to register both RX and TX converter devices.
-    BOOTBIN_path: "release:zynqmp-zcu102-rev10-ad9081/m4_l8/BOOT.BIN"
-    device_tree_path: "release:zynqmp-zcu102-rev10-ad9081/m4_l8/system.dtb"
+    # The lab's AD9081-FMCB-EBZ has a 122.88 MHz VCXO. Pair the m8_l4
+    # bitstream with Kuiper's dedicated DT override, whose HMC7044 node sets
+    # adi,vcxo-frequency=122880000. The ordinary m8_l4 and m4_l8 DTBs set
+    # 100 MHz and must not be used with this board.
+    BOOTBIN_path: "release:zynqmp-zcu102-rev10-ad9081/m8_l4/BOOT.BIN"
+    device_tree_path: "release:zynqmp-zcu102-rev10-ad9081/m8_l4/m8_l4_vcxo122p88/system.dtb"
