@@ -43,6 +43,8 @@ jobs:
         nox -s tests -- \
           tests/test_cli.py \
           tests/test_mcp.py \
+          tests/test_ad9081_exporter_profile.py \
+          tests/test_bootfpgasoc_shell.py \
           tests/test_vpk180_strat.py \
           tests/test_vpk180_reflash_strat.py \
           tests/test_xilinx_jtag_driver_zynq.py \

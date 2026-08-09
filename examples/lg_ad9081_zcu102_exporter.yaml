@@ -44,5 +44,7 @@ tlab:
     release_version: "2023_R2_P1"
     cache_path: "/tmp/kuiper_cache"
     kernel_path: "release:zynqmp-common/Image"
-    BOOTBIN_path: "release:zynqmp-zcu102-rev10-ad9081/m8_l4/BOOT.BIN"
-    device_tree_path: "release:zynqmp-zcu102-rev10-ad9081/m8_l4/system.dtb"
+    # m8_l4 leaves PLL2 unlocked on the lab's AD9081-FMCB-EBZ; m4_l8
+    # is hardware-verified to register both RX and TX converter devices.
+    BOOTBIN_path: "release:zynqmp-zcu102-rev10-ad9081/m4_l8/BOOT.BIN"
+    device_tree_path: "release:zynqmp-zcu102-rev10-ad9081/m4_l8/system.dtb"
