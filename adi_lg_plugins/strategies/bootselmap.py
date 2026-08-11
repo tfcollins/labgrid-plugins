@@ -85,6 +85,7 @@ class BootSelMap(Strategy):
         super().__attrs_post_init__()
         self._copied_pre_boot_files = False
         self._copied_post_boot_files = False
+        self._rebooted_after_boot_file_update = False
 
         # Override if environment variable is set
         self.local_kernel_filename = os.environ.get("LG_SM_KERNEL", self.local_kernel_filename)
@@ -198,6 +199,8 @@ class BootSelMap(Strategy):
                 self.logger.info(f"Syncing SSHDriver IP to {ip}")
                 self.ssh.networkservice.address = ip
 
+            boot_files_changed = False
+
             if self.local_kernel_filename:
                 if not os.path.isfile(self.local_kernel_filename):
                     raise StrategyError(
@@ -212,6 +215,7 @@ class BootSelMap(Strategy):
                 self.target.activate(self.ssh)
                 self.ssh.put(self.local_kernel_filename, remote_kernel_path)
                 self.target.deactivate(self.ssh)
+                boot_files_changed = True
 
             if self.local_device_tree_filename:
                 if not os.path.isfile(self.local_device_tree_filename):
@@ -227,6 +231,7 @@ class BootSelMap(Strategy):
                 self.target.activate(self.ssh)
                 self.ssh.put(self.local_device_tree_filename, remote_dt_path)
                 self.target.deactivate(self.ssh)
+                boot_files_changed = True
 
             if not self._copied_pre_boot_files:
                 if self.pre_boot_boot_files:
@@ -241,17 +246,28 @@ class BootSelMap(Strategy):
                             f"Uploading Zynq boot file {local_path} to {remote_path}..."
                         )
                         self.ssh.put(local_path, remote_path)
-                    self.ssh.run("sync")
-                    time.sleep(5)  # Allow time for the files to be written
                     self.target.deactivate(self.ssh)
                     self._copied_pre_boot_files = True
-                    # Restart to apply new boot files
-                    self.logger.info("Restarting Zynq to apply new boot files...")
-                    self.transition(Status.powered_off)
-                    self.transition(Status.booting_zynq)
-                    self.transition(Status.booted_zynq)
-                    self.status = Status.powered_off
-                    return  # Exit here to restart the boot process
+                    boot_files_changed = True
+
+            # The board only picks up files staged above on its next boot —
+            # without an explicit reboot here, this run's pre_load_commands /
+            # SelMap boot proceed against whatever was already running before
+            # this transition, and the freshly staged kernel/devicetree only
+            # take effect on some *later* run's power-on. Force that reboot
+            # now so this run tests what it just staged.
+            if boot_files_changed and not self._rebooted_after_boot_file_update:
+                self.target.activate(self.ssh)
+                self.ssh.run("sync")
+                time.sleep(5)  # Allow time for the files to be written
+                self.target.deactivate(self.ssh)
+                self._rebooted_after_boot_file_update = True
+                self.logger.info("Restarting Zynq to apply new boot files...")
+                self.transition(Status.powered_off)
+                self.transition(Status.booting_zynq)
+                self.transition(Status.booted_zynq)
+                self.status = Status.powered_off
+                return  # Exit here to restart the boot process
 
             self.logger.info("Zynq boot files updated successfully")
 
