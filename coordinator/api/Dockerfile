@@ -26,7 +26,7 @@ RUN pip install --no-cache-dir --no-deps /tmp/adi \
         requests \
         tqdm \
         attrs \
-        kasa-python \
+        python-kasa \
         pylibiio \
     && rm -rf /tmp/adi
 
