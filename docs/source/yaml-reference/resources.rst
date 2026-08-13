@@ -20,6 +20,10 @@ Schema
      - ``outlet_names``, ``username``, ``password``
      - ``delay`` (5.0)
      - :ref:`user-guide/drivers:VesyncPowerDriver`
+   * - :ref:`user-guide/resources:APCOutlet`
+     - ``address``, ``outlet``
+     - ``delay`` (5.0)
+     - :ref:`user-guide/drivers:APCDriver`
    * - :ref:`user-guide/resources:CyberPowerOutlet`
      - ``address``, ``outlet``
      - ``delay`` (5.0)
@@ -67,6 +71,12 @@ Power Control
         outlet_names: 'Device Power'
         username: 'user@example.com'
         password: 'secret'
+
+    # APCOutlet
+    resources:
+      APCOutlet:
+        address: '192.168.1.50'
+        outlet: 1
 
     # CyberPowerOutlet
     resources:

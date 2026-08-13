@@ -6,6 +6,7 @@ Resources are configuration descriptors for hardware and network components.
 **On this page:**
 
 - `VesyncOutlet`_
+- `APCOutlet`_
 - `CyberPowerOutlet`_
 - `HomeAssistantOutlet`_
 - `MassStorageDevice`_
@@ -19,6 +20,14 @@ VesyncOutlet
 ------------
 
 .. autoclass:: adi_lg_plugins.resources.vesync.VesyncOutlet
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+APCOutlet
+---------
+
+.. autoclass:: adi_lg_plugins.resources.apcpdu.APCOutlet
    :members:
    :undoc-members:
    :show-inheritance:

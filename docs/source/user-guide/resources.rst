@@ -15,9 +15,10 @@ Resources in labgrid and labgrid-plugins:
 - Are bound to drivers which provide the actual functionality
 - Contain validation logic to ensure configuration correctness
 
-The plugin provides nine resources for different hardware scenarios:
+The plugin provides ten resources for different hardware scenarios:
 
 - **VesyncOutlet** — WiFi smart outlet for power control
+- **APCOutlet** — APC network PDU outlet for SNMP-based power control
 - **CyberPowerOutlet** — Network PDU outlet for power control
 - **HomeAssistantOutlet** — Switch/outlet controlled via Home Assistant REST API
 - **MassStorageDevice** — USB mass storage (typically SD card via mux)
@@ -151,6 +152,48 @@ CyberPowerOutlet
 - PDU must be accessible on network from host
 - Outlet numbering depends on PDU model (check documentation)
 - SNMP v2c protocol with read-write permissions required
+
+APCOutlet
+~~~~~~~~~
+
+**Purpose**: Defines an APC PDU outlet for SNMP-based power control
+
+**Use With**: APCDriver
+
+**Required Parameters**
+
+- **address** (str): IP address or hostname of the APC PDU
+- **outlet** (int): Outlet number to control (typically 1-8 depending on PDU model)
+
+**Optional Parameters**
+
+- **delay** (float, default=5.0): Delay in seconds between power off and on during cycling
+
+**Basic Example**
+
+.. code-block:: yaml
+
+    resources:
+      APCOutlet:
+        address: '192.168.1.50'
+        outlet: 1
+        delay: 3.0
+
+**Hostname Example**
+
+.. code-block:: yaml
+
+    resources:
+      APCOutlet:
+        address: 'lab-apc-01.local'
+        outlet: 4
+
+**Notes**
+
+- Uses the SNMP ``public`` community for status reads and ``private`` for outlet control
+- PDU must be reachable on the network from the labgrid host
+- Outlet numbering and supported state values depend on the APC model
+- SNMP v2c access must be enabled on the PDU
 
 MassStorageDevice
 ~~~~~~~~~~~~~~~~~

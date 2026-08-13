@@ -28,7 +28,7 @@ Prerequisites
 **Optional Dependencies**:
 
 - ``pyvesync``: For VeSync smart outlet control
-- ``pysnmp``: For CyberPower PDU control
+- ``pysnmp``: For APC and CyberPower PDU control
 - ``pytsk3``: For disk image file extraction
 - ``pylibiio``: For IIO device testing
 
@@ -91,9 +91,9 @@ Check that plugins are registered::
 
 List available drivers::
 
-    python -c "from labgrid.factory import target_factory; print([k for k in target_factory.drivers.keys() if 'vesync' in k.lower() or 'cyberpower' in k.lower() or 'kuiper' in k.lower()])"
+    python -c "from labgrid.factory import target_factory; print([k for k in target_factory.drivers.keys() if 'vesync' in k.lower() or 'apc' in k.lower() or 'cyberpower' in k.lower() or 'kuiper' in k.lower()])"
 
-You should see drivers like ``VesyncPowerDriver``, ``ADIShellDriver``, ``CyberPowerDriver``, etc.
+You should see drivers like ``APCDriver``, ``VesyncPowerDriver``, ``ADIShellDriver``, ``CyberPowerDriver``, etc.
 
 Next Steps
 ----------

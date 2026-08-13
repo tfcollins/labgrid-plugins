@@ -137,6 +137,54 @@ Used within the ``BootFPGASoCTFTP`` strategy to serve boot files:
 Power Control Drivers
 ---------------------
 
+APCDriver
+~~~~~~~~~
+
+**Purpose**: Control devices via APC PDUs over SNMP
+
+**Required Resource**: APCOutlet
+
+**Bindings**: Implements ``PowerProtocol`` and ``PowerResetMixin``
+
+**Configuration**
+
+.. code-block:: yaml
+
+    targets:
+      test_device:
+        resources:
+          APCOutlet:
+            address: '192.168.1.50'
+            outlet: 1
+            delay: 5.0
+
+        drivers:
+          APCDriver: {}
+
+**Key Parameters**
+
+- **address** (required): IP address or hostname of the APC PDU
+- **outlet** (required): Outlet number to control on the PDU
+- **delay** (default=5.0): Delay in seconds between power off and on during reset/cycle
+
+**Methods**
+
+.. code-block:: python
+
+    power = target.get_driver("APCDriver")
+    target.activate(power)
+
+    power.on()
+    power.off()
+    power.cycle()
+    power.reset()
+
+**Notes**
+
+- Uses SNMP to issue outlet control commands to the configured APC PDU
+- ``APCPdu.get_outlet_status()`` reads a single outlet's current status code
+- The driver uses the configured outlet from ``APCOutlet``; it does not fan out to multiple outlets
+
 VesyncPowerDriver
 ~~~~~~~~~~~~~~~~~
 

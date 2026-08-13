@@ -57,7 +57,7 @@ labgrid-plugins Documentation
 Features
 --------
 
-- **Power Control**: VeSync smart outlets and CyberPower PDU support
+- **Power Control**: VeSync smart outlets plus APC and CyberPower PDU support
 - **Shell Access**: XMODEM file transfer over serial console
 - **Boot Strategies**: Automated FPGA SoC boot with kernel replacement
 - **Mass Storage**: SD card file management via USB mux

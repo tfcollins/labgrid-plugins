@@ -5,7 +5,7 @@ Drivers provide low-level hardware control and protocol implementations.
 
 **On this page:**
 
-- `Power Drivers`_ — `VesyncPowerDriver`_, `CyberPowerDriver`_, `CyberPowerPdu`_, `HomeAssistantPowerDriver`_, `HomeAssistantClient`_
+- `Power Drivers`_ — `APCDriver`_, `APCPdu`_, `VesyncPowerDriver`_, `CyberPowerDriver`_, `CyberPowerPdu`_, `HomeAssistantPowerDriver`_, `HomeAssistantClient`_
 - `Shell and File Transfer`_ — `ADIShellDriver`_
 - `Storage Drivers`_ — `MassStorageDriver`_
 - `Kuiper Drivers`_ — `KuiperDLDriver`_
@@ -16,6 +16,22 @@ Drivers provide low-level hardware control and protocol implementations.
 
 Power Drivers
 -------------
+
+APCDriver
+~~~~~~~~~
+
+.. autoclass:: adi_lg_plugins.drivers.apcpowerdriver.APCDriver
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+APCPdu
+~~~~~~
+
+.. autoclass:: adi_lg_plugins.drivers.apcpowerdriver.APCPdu
+   :members:
+   :undoc-members:
+   :show-inheritance:
 
 VesyncPowerDriver
 ~~~~~~~~~~~~~~~~~

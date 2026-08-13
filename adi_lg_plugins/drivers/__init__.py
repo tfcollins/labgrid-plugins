@@ -20,6 +20,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 _MODULES = (
+    "apcpowerdriver",
     "cloudsmithdldriver",
     "cyberpowerdriver",
     "homeassistantdriver",
