@@ -226,6 +226,71 @@ CyberPower PDUs provide industrial-grade power distribution with SNMP control. T
     target.deactivate(power_a)
     target.deactivate(power_b)
 
+APC PDU Control
+---------------
+
+Control a single APC outlet over SNMP and verify that it turned off.
+
+**Configuration File** (target.yaml):
+
+.. code-block:: yaml
+
+    imports:
+      - adi_lg_plugins
+
+    targets:
+      apc_device:
+        resources:
+          APCOutlet:
+            address: '10.75.169.99'
+            outlet: 6
+            delay: 5.0
+
+        drivers:
+          APCDriver: {}
+
+**Basic Usage Script**:
+
+.. code-block:: python
+
+    from labgrid import Environment
+
+    env = Environment("target.yaml")
+    target = env.get_target("apc_device")
+
+    power = target.get_driver("APCDriver")
+    target.activate(power)
+
+    print("Powering off APC outlet 6...")
+    power.off()
+
+    is_on = power.get()
+    print(f"Outlet 6 power state after off(): {'on' if is_on else 'off'}")
+
+    if is_on:
+        raise RuntimeError("APC outlet 6 is still on after power.off()")
+
+    target.deactivate(power)
+
+**Direct Status Check**:
+
+.. code-block:: python
+
+    from labgrid import Environment
+
+    env = Environment("target.yaml")
+    target = env.get_target("apc_device")
+    power = target.get_driver("APCDriver")
+    target.activate(power)
+
+    raw_status = power.pdu_dev.get_outlet_status(6)
+    print(f"Raw APC outlet 6 status code: {raw_status}")
+
+    target.deactivate(power)
+
+For APC PDUs in this driver, ``power.get()`` interprets status code ``1`` as on
+and ``2`` as off.
+
 Error Handling Patterns
 -----------------------
 

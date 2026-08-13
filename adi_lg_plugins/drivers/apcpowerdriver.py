@@ -116,7 +116,7 @@ class APCPdu:
         :param on: INVALID ATM True means turn it on, False means turn it off
         """
 
-        oid = ObjectIdentity(f"1.3.6.1.4.1.3808.1.1.3.3.3.1.1.4.{outlet}")
+        oid = ObjectIdentity(f"1.3.6.1.4.1.318.1.1.12.3.3.1.1.4.{outlet}")
         if isinstance(on, bool):
             target_state = "immediateOn" if on else "immediateOff"
         else:
@@ -125,10 +125,10 @@ class APCPdu:
         # Create transport target asynchronously
         ut = await UdpTransportTarget.create((self.host, 161))
 
-        # Use set_cmd and await it (v1arch API for pysnmp >= 7.0.0)
+        # APC PDUs use the APC PowerNet outlet-control OID.
         errorIndication, errorStatus, errorIndex, varBinds = await set_cmd(
             SnmpDispatcher(),
-            CommunityData("private"),
+            CommunityData("public", mpModel=1),
             ut,
             ObjectType(oid, Integer32(self.outlet_state_oids[target_state])),
         )
@@ -186,7 +186,7 @@ class APCPdu:
             return asyncio.run(self.async_set_outlet_on(outlet, on))
         else:
             # For pysnmp < 7.0.0, use synchronous version
-            oid = ObjectIdentity(f"1.3.6.1.4.1.3808.1.1.3.3.3.1.1.4.{outlet}")
+            oid = ObjectIdentity(f"1.3.6.1.4.1.318.1.1.12.3.3.1.1.4.{outlet}")
             if isinstance(on, bool):
                 target_state = "immediateOn" if on else "immediateOff"
             else:
@@ -195,7 +195,7 @@ class APCPdu:
             errorIndication, errorStatus, errorIndex, varBinds = next(
                 setCmd(
                     SnmpEngine(),
-                    CommunityData("private"),
+                    CommunityData("public", mpModel=1),
                     UdpTransportTarget((self.host, 161)),
                     ContextData(),
                     ObjectType(oid, Integer32(self.outlet_state_oids[target_state])),
