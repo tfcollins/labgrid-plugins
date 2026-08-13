@@ -77,6 +77,60 @@ def test_get_outlet_status_raises_on_missing_varbinds(monkeypatch, pdu):
         pdu.get_outlet_status(8)
 
 
+def test_apc_pdu_defaults_to_private_write_community(monkeypatch):
+    async def fake_transport_create(_host):
+        return object()
+
+    async def fake_set_cmd(_dispatcher, _community, _target, _varbind):
+        assert _community.communityName == "private"
+        return (None, None, None, ())
+
+    monkeypatch.setattr(
+        "adi_lg_plugins.drivers.apcpowerdriver.UdpTransportTarget.create",
+        fake_transport_create,
+    )
+    monkeypatch.setattr(
+        "adi_lg_plugins.drivers.apcpowerdriver.set_cmd",
+        fake_set_cmd,
+    )
+
+    APCPdu("10.0.0.42").set_outlet_on(3, True)
+
+
+def test_apc_pdu_uses_configured_read_and_write_communities(monkeypatch):
+    pdu = APCPdu("10.0.0.42", read_community="lab-read", write_community="lab-write")
+
+    async def fake_transport_create(_host):
+        return object()
+
+    async def fake_get_cmd(_dispatcher, _community, _target, _varbind):
+        assert _community.communityName == "lab-read"
+        value = MagicMock()
+        value.prettyPrint.return_value = "1"
+        varbind = (MagicMock(), value)
+        return (None, None, None, (varbind,))
+
+    async def fake_set_cmd(_dispatcher, _community, _target, _varbind):
+        assert _community.communityName == "lab-write"
+        return (None, None, None, ())
+
+    monkeypatch.setattr(
+        "adi_lg_plugins.drivers.apcpowerdriver.UdpTransportTarget.create",
+        fake_transport_create,
+    )
+    monkeypatch.setattr(
+        "adi_lg_plugins.drivers.apcpowerdriver.get_cmd",
+        fake_get_cmd,
+    )
+    monkeypatch.setattr(
+        "adi_lg_plugins.drivers.apcpowerdriver.set_cmd",
+        fake_set_cmd,
+    )
+
+    assert pdu.get_outlet_status(3) == 1
+    pdu.set_outlet_on(3, False)
+
+
 def _active_driver_with_status(status_code: int):
     driver = APCDriver.__new__(APCDriver)
     driver.logger = MagicMock()

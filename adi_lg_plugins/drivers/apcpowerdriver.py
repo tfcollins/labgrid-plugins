@@ -77,8 +77,10 @@ class APCPdu:
         "outletIdentify": 8,
     }
 
-    def __init__(self, host):
+    def __init__(self, host, read_community="public", write_community="private"):
         self.host = host
+        self.read_community = read_community
+        self.write_community = write_community
 
     async def async_get_outlet_status(self, outlet):
         """Return the APC outlet status code for a single outlet."""
@@ -87,7 +89,7 @@ class APCPdu:
 
         errorIndication, errorStatus, errorIndex, varBinds = await get_cmd(
             SnmpDispatcher(),
-            CommunityData("public"),
+            CommunityData(self.read_community),
             ut,
             ObjectType(oid),
         )
@@ -128,7 +130,7 @@ class APCPdu:
         # APC PDUs use the APC PowerNet outlet-control OID.
         errorIndication, errorStatus, errorIndex, varBinds = await set_cmd(
             SnmpDispatcher(),
-            CommunityData("public", mpModel=1),
+            CommunityData(self.write_community, mpModel=1),
             ut,
             ObjectType(oid, Integer32(self.outlet_state_oids[target_state])),
         )
@@ -152,7 +154,7 @@ class APCPdu:
         errorIndication, errorStatus, errorIndex, varBinds = next(
             getCmd(
                 SnmpEngine(),
-                CommunityData("public", mpModel=0),
+                CommunityData(self.read_community, mpModel=0),
                 UdpTransportTarget((self.host, 161)),
                 ContextData(),
                 ObjectType(oid),
@@ -195,7 +197,7 @@ class APCPdu:
             errorIndication, errorStatus, errorIndex, varBinds = next(
                 setCmd(
                     SnmpEngine(),
-                    CommunityData("public", mpModel=1),
+                    CommunityData(self.write_community, mpModel=1),
                     UdpTransportTarget((self.host, 161)),
                     ContextData(),
                     ObjectType(oid, Integer32(self.outlet_state_oids[target_state])),
@@ -226,7 +228,11 @@ class APCDriver(Driver, PowerResetMixin, PowerProtocol):
 
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
-        self.pdu_dev = APCPdu(self.APC_outlet.address)
+        self.pdu_dev = APCPdu(
+            self.APC_outlet.address,
+            read_community=self.APC_outlet.read_community,
+            write_community=self.APC_outlet.write_community,
+        )
         self.outlet = self.APC_outlet.outlet
 
     @Driver.check_active
