@@ -3,8 +3,9 @@
 from unittest.mock import MagicMock
 
 import pytest
+from labgrid.binding import BindingState
 
-from adi_lg_plugins.drivers.apcpowerdriver import APCPdu, APCPduException
+from adi_lg_plugins.drivers.apcpowerdriver import APCDriver, APCPdu, APCPduException
 
 
 @pytest.fixture
@@ -74,3 +75,23 @@ def test_get_outlet_status_raises_on_missing_varbinds(monkeypatch, pdu):
 
     with pytest.raises(APCPduException, match="No SNMP response"):
         pdu.get_outlet_status(8)
+
+
+def _active_driver_with_status(status_code: int):
+    driver = APCDriver.__new__(APCDriver)
+    driver.logger = MagicMock()
+    driver.state = BindingState.active
+    driver.outlet = 2
+    driver.pdu_dev = MagicMock()
+    driver.pdu_dev.get_outlet_status.return_value = status_code
+    return driver
+
+
+def test_apc_driver_get_reports_on_for_on_status():
+    driver = _active_driver_with_status(1)
+    assert driver.get() is True
+
+
+def test_apc_driver_get_reports_off_for_off_status():
+    driver = _active_driver_with_status(2)
+    assert driver.get() is False

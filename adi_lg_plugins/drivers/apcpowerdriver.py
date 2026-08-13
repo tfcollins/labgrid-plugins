@@ -221,6 +221,8 @@ class APCDriver(Driver, PowerResetMixin, PowerProtocol):
     """
 
     bindings = {"APC_outlet": {"APCOutlet"}}
+    # APC status values that should be treated as powered-on by PowerProtocol.get().
+    _ON_STATUS_CODES = {1, 5}
 
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
@@ -288,7 +290,20 @@ class APCDriver(Driver, PowerResetMixin, PowerProtocol):
         time.sleep(self.APC_outlet.delay)
         self.on()
 
-    # @Driver.check_active
-    # @step()
-    # def get(self):
-    #     return all(outlet.is_on for outlet in self.outlets)
+    @Driver.check_active
+    @step()
+    def get(self):
+        """Get the current power state of the configured APC outlet.
+
+        Returns:
+            bool: True when the outlet reports an ON-like state, False otherwise.
+        """
+        status_code = self.pdu_dev.get_outlet_status(self.outlet)
+        is_on = status_code in self._ON_STATUS_CODES
+        self.logger.debug(
+            "APC outlet %s status code %s interpreted as %s",
+            self.outlet,
+            status_code,
+            "ON" if is_on else "OFF",
+        )
+        return is_on
