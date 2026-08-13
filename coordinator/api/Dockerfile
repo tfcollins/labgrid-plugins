@@ -1,6 +1,6 @@
 FROM python:3.12-slim
 
-RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends git libiio0 libiio-dev && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -26,6 +26,8 @@ RUN pip install --no-cache-dir --no-deps /tmp/adi \
         requests \
         tqdm \
         attrs \
+        kasa-python \
+        pylibiio \
     && rm -rf /tmp/adi
 
 # 3. Drop a sitecustomize.py that:

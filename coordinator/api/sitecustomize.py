@@ -35,6 +35,7 @@ def _patch_labgrid_client_power():
         return
 
     PLUGIN_RESOURCE_TO_DRIVER = {
+        "APCOutlet": "APCDriver",
         "VesyncOutlet": "VesyncPowerDriver",
         "CyberPowerOutlet": "CyberPowerDriver",
         "HomeAssistantOutlet": "HomeAssistantPowerDriver",

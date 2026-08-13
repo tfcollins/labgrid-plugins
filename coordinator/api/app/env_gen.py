@@ -19,6 +19,7 @@ DriverConfigFactory = Callable[[ResourceModel], dict[str, Any]]
 RESOURCE_DRIVER_MAP: dict[str, list[tuple[str, DriverConfigFactory]]] = {
     "NetworkSerialPort": [("SerialDriver", lambda _r: {})],
     "NetworkService": [("SSHDriver", lambda _r: {})],
+    "APCOutlet": [("APCDriver", lambda _r: {})],
     "VesyncOutlet": [("VesyncPowerDriver", lambda _r: {})],
     "HomeAssistantOutlet": [("HomeAssistantPowerDriver", lambda _r: {})],
     "NetworkUSBSDMuxDevice": [("USBSDMuxDriver", lambda _r: {})],
@@ -147,7 +148,10 @@ def infer_strategy(resource_classes: set[str]) -> str | None:
     has_jtag = "XilinxDeviceJTAG" in resource_classes
     has_vivado = "XilinxVivadoTool" in resource_classes
     has_net = "NetworkService" in resource_classes
-    has_power = "HomeAssistantOutlet" in resource_classes or "VesyncOutlet" in resource_classes
+    has_power = any(
+        resource_class in resource_classes
+        for resource_class in ("APCOutlet", "HomeAssistantOutlet", "VesyncOutlet")
+    )
     has_tftp = "TFTPServerResource" in resource_classes
 
     # Zynq-7000 boards staged for JTAG-bootstrap + SD-boot have all of

@@ -22,6 +22,7 @@ dependencies = [
     "rich",
     "fastmcp",
     "usbsdmux",
+    "pylibiio",
 ]
 
 [project.optional-dependencies]
