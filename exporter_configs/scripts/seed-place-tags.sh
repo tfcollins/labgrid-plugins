@@ -3,7 +3,9 @@
 # hw-matrix.yml dynamic_mode reads from the coordinator (`board=`, optional
 # `carrier=` / `runner=`).
 #
-# Manifest format (yaml):
+# Manifest format (yaml). A deployed example is maintained at
+# exporter_configs/place-tags.home-lab.yaml so home-lab node metadata can be
+# restored after coordinator rebuilds:
 #   places:
 #     vcu118_lab01:
 #       board: ad9081

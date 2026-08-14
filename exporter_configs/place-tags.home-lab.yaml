@@ -1,0 +1,14 @@
+# Persistent metadata for the home-lab coordinator places used by Tick CI.
+# Apply with:
+#   exporter_configs/scripts/seed-place-tags.sh \
+#     --coordinator 10.0.0.41:20408 \
+#     --manifest exporter_configs/place-tags.home-lab.yaml
+places:
+  mini2:
+    board: mini2
+    board-location: US-Home
+    boot-strategy: BootFPGASoC
+    carrier: zcu102
+    daughter-board: ad9081
+    hdl-config: m8_l4_vcxo122p88
+    runner: hw-bq
