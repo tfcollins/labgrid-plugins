@@ -14,7 +14,7 @@ Drivers in labgrid-plugins:
 - Are activated/deactivated explicitly by strategies or tests
 - Provide high-level methods abstracting hardware complexity
 
-The plugin provides six drivers for different hardware control scenarios:
+The plugin provides fifteen drivers across these hardware-control scenarios:
 
 - **Power Drivers**: Control device power via smart outlets and PDUs
 - **Shell Driver**: Execute commands and transfer files via serial console or SSH
@@ -76,7 +76,8 @@ TFTPServerDriver
 
 **Key Parameters**
 
-- **address** (required): IP address of the interface on the host machine where the TFTP server will bind.
+- **address** (optional, default ``auto``): Host interface address. ``auto`` selects the
+  source address used to reach the target.
 - **port** (optional): UDP port to listen on. Defaults to **3069**.
 - **root** (optional): Local directory to serve files from. Defaults to ``/var/lib/tftpboot``.
 
@@ -447,10 +448,12 @@ ADIShellDriver
 - **prompt** (required): Regex pattern matching the shell prompt after login
 - **login_prompt** (required): Regex pattern matching login prompt
 - **username** (required): Login username
-- **password** (required): Login password
-- **login_timeout** (required): Maximum seconds to wait for login completion
+- **password** (optional, default ``None``): Login password
+- **login_timeout** (optional, default ``60``): Maximum seconds to wait for login completion
 - **console_ready** (optional): Marker string to wait for before attempting login
 - **keyfile** (optional): Path to SSH public key to inject into device
+- **await_login_timeout** (optional, default ``2``): Seconds to detect whether login is needed
+- **post_login_settle_time** (optional, default ``0``): Delay after successful login
 
 **Methods**
 
@@ -885,7 +888,7 @@ cable; see :doc:`hardware-ci-runner-setup` for host setup.
 - **microblaze_target** (default=3): JTAG target ID for the Microblaze processor core
 - **bitstream_path** (optional): Path to ``.bit`` bitstream (required for ``flash_bitstream``)
 - **kernel_path** (optional): Path to Microblaze Linux kernel image (``.strip``), required for ``download_kernel``
-- **vivado_path** (required on ``XilinxVivadoTool``): Root of the Vivado install
+- **vivado_path** (optional, default ``/tools/Xilinx/2025.1/Vivado``): Root of the Vivado install
 - **xsdb_path** (optional): Absolute path to ``xsdb``. If unset, derived as
   ``{dirname(vivado_path)}/Vitis/bin/xsdb`` (the standard 2022.2+ layout).
 

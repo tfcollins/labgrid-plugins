@@ -69,9 +69,9 @@ Complete Configuration
             password: 'your_password'
             delay: 5.0  # Wait 5s between power off and on
 
-          SerialPort:
+          RawSerialPort:
             port: '/dev/ttyUSB0'
-            baudrate: 115200
+            speed: 115200
 
           USBSDMuxDriver:
             serial: '00012345'  # Serial of your SD mux device
@@ -87,8 +87,6 @@ Complete Configuration
           VesyncPowerDriver: {}
 
           ADIShellDriver:
-            bindings:
-              console: SerialPort
             prompt: 'root@.*:.*# '  # Adjust to match your prompt
             login_prompt: 'login:'
             username: 'root'

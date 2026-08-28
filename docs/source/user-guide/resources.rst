@@ -15,7 +15,7 @@ Resources in labgrid and labgrid-plugins:
 - Are bound to drivers which provide the actual functionality
 - Contain validation logic to ensure configuration correctness
 
-The plugin provides ten resources for different hardware scenarios:
+The plugin provides twelve resources for different hardware scenarios:
 
 - **VesyncOutlet** — WiFi smart outlet for power control
 - **APCOutlet** — APC network PDU outlet for SNMP-based power control
@@ -27,6 +27,8 @@ The plugin provides ten resources for different hardware scenarios:
 - **TFTPServerResource** — TFTP server address/port/root configuration
 - **XilinxVivadoTool** — Xilinx Vivado/Vitis install paths
 - **XilinxDeviceJTAG** — Xilinx FPGA JTAG target IDs and firmware paths
+- **KasaOutlet** — TP-Link Kasa plug or named strip outlet
+- **TickArtifacts** — Tick bitstream, overlay, and kernel-module paths
 
 Resource Definition Patterns
 -----------------------------

@@ -728,14 +728,27 @@ Boot strategy for AMD Versal Premium VPK180 with a Zynq system controller.
             name: example-place
         drivers:
           VesyncPowerDriver: {}
-          SerialDriver: {}
-          ADIShellDriver:
+          SerialDriver@sc-console: {}
+          ADIShellDriver@sc-shell:
+            bindings:
+              console: sc-console
+            prompt: root@.*#
+            login_prompt: 'login: '
+            username: root
+            password: analog
+          SerialDriver@target-console: {}
+          ADIShellDriver@target-shell:
+            bindings:
+              console: target-console
             prompt: root@.*#
             login_prompt: 'login: '
             username: root
             password: analog
           SSHDriver: {}
           BootVPK180:
+            bindings:
+              sc_shell: sc-shell
+              target_shell: target-shell
             reached_linux_marker: root@
             kernel_banner_pattern: Starting kernel
             sc_commands:
@@ -1066,8 +1079,18 @@ Re-image the VPK180's Versal SD card from a Kuiper release via QSPI rescue.
             name: example-place
         drivers:
           VesyncPowerDriver: {}
-          SerialDriver: {}
-          ADIShellDriver:
+          SerialDriver@sc-console: {}
+          ADIShellDriver@sc-shell:
+            bindings:
+              console: sc-console
+            prompt: root@.*#
+            login_prompt: 'login: '
+            username: root
+            password: analog
+          SerialDriver@target-console: {}
+          ADIShellDriver@target-shell:
+            bindings:
+              console: target-console
             prompt: root@.*#
             login_prompt: 'login: '
             username: root
@@ -1075,6 +1098,9 @@ Re-image the VPK180's Versal SD card from a Kuiper release via QSPI rescue.
           KuiperDLDriver: {}
           TFTPServerDriver: {}
           ReflashVPK180SD:
+            bindings:
+              sc_shell: sc-shell
+              target_shell: target-shell
             tftp_image_filename: kuiper.img
             target_sd_device: /dev/mmcblk0
             dd_block_size: 4M

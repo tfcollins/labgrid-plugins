@@ -28,18 +28,29 @@ Example environment
    targets:
      main:
        resources:
-         - RemotePlace: {name: mini2}
-         - TickArtifacts:
-             bitstream_path: /run/tick/ad9081_fmca_ebz_zcu102.bit
-             overlay_dtbo_path: /run/tick/tick.dtbo
-             module_ko_path: /run/tick/axi_timed_command_scheduler.ko
+         RemotePlace:
+           name: mini2
+         TickArtifacts:
+           bitstream_path: /run/tick/ad9081_fmca_ebz_zcu102.bit
+           overlay_dtbo_path: /run/tick/tick.dtbo
+           module_ko_path: /run/tick/axi_timed_command_scheduler.ko
        drivers:
-         - VesyncPowerDriver: {}
-         - SSHDriver: {keyfile: ""}
-         - TickFpgaManagerDriver: {}
-         - TickOverlayDriver: {}
-         - TickModuleDriver: {}
-         - BootTickFPGASSH: {}
+         VesyncPowerDriver: {}
+         SerialDriver: {}
+         ADIShellDriver:
+           prompt: 'root@.*#'
+           login_prompt: 'analog login: '
+           username: root
+           password: analog
+         SSHDriver@runtime-ssh: {}
+         TickFpgaManagerDriver:
+           bindings: {command: runtime-ssh, fs: runtime-ssh}
+         TickOverlayDriver:
+           bindings: {command: runtime-ssh, fs: runtime-ssh}
+         TickModuleDriver:
+           bindings: {command: runtime-ssh, fs: runtime-ssh}
+         BootTickFPGASSH:
+           bindings: {ssh: runtime-ssh}
 
 .. note::
 

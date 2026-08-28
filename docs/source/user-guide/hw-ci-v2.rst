@@ -143,7 +143,7 @@ the ``pytest11`` entry point. Any project that ``pip install``\s
    def test_zcu102_only(iio_uri):
        """Only runs on AD9081 attached to a ZCU102 carrier
        (not VCU118 or any other carrier with ad9081)."""
-       …
+       pass
 
 Single-string shorthand is accepted:
 ``@pytest.mark.iio_hardware("ad9081")`` is equivalent to

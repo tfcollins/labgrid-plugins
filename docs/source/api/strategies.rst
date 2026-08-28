@@ -1,18 +1,8 @@
 Strategies API
 ==============
 
-Strategies are high-level state machines managing complex workflows.
-
-**On this page:**
-
-- `BootFPGASoC`_
-- `BootFPGASoCSSH`_
-- `BootFPGASoCTFTP`_
-- `BootZynq7000JTAGRecovery`_
-- `BootSelMap`_
-- `BootFabric`_
-- `BootRPI`_
-- `SoftwareProvisioningStrategy`_
+Strategies are high-level state machines managing complex workflows. The YAML argument
+and binding inventory for every class is in :doc:`../yaml-reference/strategies`.
 
 BootFPGASoC
 -----------
@@ -22,11 +12,6 @@ BootFPGASoC
    :undoc-members:
    :show-inheritance:
 
-.. autoclass:: adi_lg_plugins.strategies.bootfpgasoc.Status
-   :members:
-   :undoc-members:
-   :no-index:
-
 BootFPGASoCSSH
 --------------
 
@@ -34,11 +19,6 @@ BootFPGASoCSSH
    :members:
    :undoc-members:
    :show-inheritance:
-
-.. autoclass:: adi_lg_plugins.strategies.bootfpgasocssh.Status
-   :members:
-   :undoc-members:
-   :no-index:
 
 BootFPGASoCTFTP
 ---------------
@@ -48,10 +28,37 @@ BootFPGASoCTFTP
    :undoc-members:
    :show-inheritance:
 
-.. autoclass:: adi_lg_plugins.strategies.bootfpgasoctftp.Status
+BootTickFPGASSH
+---------------
+
+.. autoclass:: adi_lg_plugins.strategies.boottickfpgassh.BootTickFPGASSH
    :members:
    :undoc-members:
-   :no-index:
+   :show-inheritance:
+
+BootNoOSJTAG
+------------
+
+.. autoclass:: adi_lg_plugins.strategies.bootnoosjtag.BootNoOSJTAG
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+BootVPK180
+----------
+
+.. autoclass:: adi_lg_plugins.strategies.bootvpk180.BootVPK180
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+ReflashVPK180SD
+---------------
+
+.. autoclass:: adi_lg_plugins.strategies.reflashvpk180sd.ReflashVPK180SD
+   :members:
+   :undoc-members:
+   :show-inheritance:
 
 BootZynq7000JTAGRecovery
 ------------------------
@@ -61,10 +68,13 @@ BootZynq7000JTAGRecovery
    :undoc-members:
    :show-inheritance:
 
-.. autoclass:: adi_lg_plugins.strategies.bootzynq7000recovery.Status
+BootZynqMPJTAG
+--------------
+
+.. autoclass:: adi_lg_plugins.strategies.bootzynqmpjtag.BootZynqMPJTAG
    :members:
    :undoc-members:
-   :no-index:
+   :show-inheritance:
 
 BootSelMap
 ----------
@@ -74,11 +84,6 @@ BootSelMap
    :undoc-members:
    :show-inheritance:
 
-.. autoclass:: adi_lg_plugins.strategies.bootselmap.Status
-   :members:
-   :undoc-members:
-   :no-index:
-
 BootFabric
 ----------
 
@@ -86,11 +91,6 @@ BootFabric
    :members:
    :undoc-members:
    :show-inheritance:
-
-.. autoclass:: adi_lg_plugins.strategies.bootfabric.Status
-   :members:
-   :undoc-members:
-   :no-index:
 
 BootRPI
 -------
@@ -100,11 +100,6 @@ BootRPI
    :undoc-members:
    :show-inheritance:
 
-.. autoclass:: adi_lg_plugins.strategies.bootrpi.Status
-   :members:
-   :undoc-members:
-   :no-index:
-
 SoftwareProvisioningStrategy
 ----------------------------
 
@@ -112,8 +107,3 @@ SoftwareProvisioningStrategy
    :members:
    :undoc-members:
    :show-inheritance:
-
-.. autoclass:: adi_lg_plugins.strategies.software_provisioning.Status
-   :members:
-   :undoc-members:
-   :no-index:
