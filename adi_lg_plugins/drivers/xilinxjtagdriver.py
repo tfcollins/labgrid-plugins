@@ -33,9 +33,11 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
     """Program Xilinx FPGAs via JTAG using xsdb.
 
     Bindings:
-        xilinxdevicejtag: XilinxDeviceJTAG resource (JTAG target IDs + bitstream/kernel paths
-            as seen by the host that runs xsdb).
-        xilinxvivado: XilinxVivadoTool resource (vivado_path / xsdb_path).
+
+    * ``xilinxdevicejtag`` — ``XilinxDeviceJTAG`` resource containing JTAG
+      target IDs and bitstream/kernel paths as seen by the xsdb host.
+    * ``xilinxvivado`` — ``XilinxVivadoTool`` resource containing
+      ``vivado_path`` and ``xsdb_path``.
     """
 
     bindings = {

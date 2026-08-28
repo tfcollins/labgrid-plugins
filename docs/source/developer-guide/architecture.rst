@@ -475,9 +475,9 @@ When a target is instantiated, labgrid resolves bindings:
             password: 'pass'
             delay: 5.0
 
-          SerialPort:
+          RawSerialPort:
             port: '/dev/ttyUSB0'
-            baudrate: 115200
+            speed: 115200
 
           MassStorageDevice:
             path: '/dev/sda1'
@@ -488,7 +488,6 @@ When a target is instantiated, labgrid resolves bindings:
 
           # Drivers for serial access
           ADIShellDriver:
-            console: SerialPort
             prompt: 'root@.*:.*#'
             login_prompt: 'login:'
             username: 'root'

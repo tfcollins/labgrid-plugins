@@ -488,14 +488,13 @@ Complete Working Example
             password: 'your_password'
             delay: 5.0
 
-          SerialPort:
+          RawSerialPort:
             port: '/dev/ttyUSB0'
-            baudrate: 115200
+            speed: 115200
 
         drivers:
           VesyncPowerDriver: {}
           ADIShellDriver:
-            console: SerialPort
             prompt: 'root@.*:.*#'
             login_prompt: 'login:'
             username: 'root'

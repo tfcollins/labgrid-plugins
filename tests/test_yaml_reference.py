@@ -140,6 +140,7 @@ def test_reference_yaml_is_unique_parseable_and_uses_real_arguments():
                 )
 
             for class_name, config in _component_configs(document, "resources"):
+                class_name = class_name.split("@", 1)[0]
                 if class_name not in resources:
                     continue
                 valid = {field.name for field in attr.fields(resources[class_name]) if field.init}
@@ -160,6 +161,7 @@ def test_reference_yaml_is_unique_parseable_and_uses_real_arguments():
                 )
 
             for class_name, config in _component_configs(document, "drivers"):
+                class_name = class_name.split("@", 1)[0]
                 if class_name not in drivers:
                     continue
                 valid = {field.name for field in attr.fields(drivers[class_name]) if field.init}

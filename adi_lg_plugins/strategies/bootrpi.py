@@ -41,9 +41,10 @@ class BootRPI(Strategy):
 
     When multiple control methods are available, the strategy uses a cascading
     priority for reboot/shutdown operations:
-        1. Power driver (hard reset via smart outlet/PDU)
-        2. Serial console (reboot/poweroff command via ADIShellDriver)
-        3. SSH (reboot/poweroff command via SSHDriver)
+
+    1. Power driver (hard reset via smart outlet/PDU)
+    2. Serial console (reboot/poweroff command via ADIShellDriver)
+    3. SSH (reboot/poweroff command via SSHDriver)
 
     Bindings:
         ssh: SSHDriver (required) - Primary interface for commands and file transfer

@@ -15,13 +15,12 @@ Execute simple commands and capture output:
     targets:
       device_under_test:
         resources:
-          SerialPort:
+          RawSerialPort:
             port: '/dev/ttyUSB0'
-            baudrate: 115200
+            speed: 115200
 
         drivers:
           ADIShellDriver:
-            console: SerialPort
             prompt: 'root@.*:.*#'
             login_prompt: 'login:'
             username: 'root'
@@ -265,16 +264,15 @@ Enable passwordless SSH access by injecting SSH keys into the device:
     targets:
       ssh_enabled_device:
         resources:
-          SerialPort:
+          RawSerialPort:
             port: '/dev/ttyUSB0'
-            baudrate: 115200
+            speed: 115200
 
           SSHKey:
             keyfile: '~/.ssh/id_rsa.pub'
 
         drivers:
           ADIShellDriver:
-            console: SerialPort
             keyfile: '~/.ssh/id_rsa.pub'  # Inject this key on login
             prompt: 'root@.*:.*#'
             login_prompt: 'login:'
@@ -634,13 +632,12 @@ Complete Working Example
     targets:
       shell_test_device:
         resources:
-          SerialPort:
+          RawSerialPort:
             port: '/dev/ttyUSB0'
-            baudrate: 115200
+            speed: 115200
 
         drivers:
           ADIShellDriver:
-            console: SerialPort
             prompt: 'root@.*:.*#'
             login_prompt: 'login:'
             username: 'root'

@@ -23,8 +23,18 @@ _DRIVERS = [
     "TFTPServerDriver",
     "KasaPowerDriver",
     "BootFPGASoC",
+    "BootFPGASoCSSH",
+    "BootTickFPGASSH",
     "BootFPGASoCTFTP",
     "BootFabric",
+    "BootNoOSJTAG",
+    "BootRPI",
+    "BootSelMap",
+    "BootVPK180",
+    "BootZynq7000JTAGRecovery",
+    "BootZynqMPJTAG",
+    "ReflashVPK180SD",
+    "SoftwareProvisioningStrategy",
 ]
 _RESOURCES = [
     "KuiperRelease",

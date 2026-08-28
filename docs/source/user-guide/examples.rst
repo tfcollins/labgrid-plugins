@@ -50,13 +50,12 @@ Connect to a device's serial console for interactive shell commands:
     targets:
       serial_device:
         resources:
-          SerialPort:
+          RawSerialPort:
             port: '/dev/ttyUSB0'
-            baudrate: 115200
+            speed: 115200
 
         drivers:
           ADIShellDriver:
-            console: SerialPort
             prompt: 'root@.*:.*#'
             login_prompt: 'login:'
             username: 'root'
@@ -94,9 +93,9 @@ Upload/download files using XMODEM protocol over serial:
     targets:
       xmodem_device:
         resources:
-          SerialPort:
+          RawSerialPort:
             port: '/dev/ttyUSB0'
-            baudrate: 115200
+            speed: 115200
 
         drivers:
           ADIShellDriver:
@@ -150,9 +149,9 @@ Boot a device to shell using a strategy:
             password: 'your_password'
             delay: 5.0
 
-          SerialPort:
+          RawSerialPort:
             port: '/dev/ttyUSB0'
-            baudrate: 115200
+            speed: 115200
 
           MassStorageDevice:
             path: '/dev/sda1'
@@ -351,9 +350,9 @@ Manage multiple devices in a single test session:
             password: 'your_password'
             delay: 5.0
 
-          SerialPort:
+          RawSerialPort:
             port: '/dev/ttyUSB0'
-            baudrate: 115200
+            speed: 115200
 
         drivers:
           VesyncPowerDriver: {}
@@ -371,9 +370,9 @@ Manage multiple devices in a single test session:
             password: 'your_password'
             delay: 5.0
 
-          SerialPort:
+          RawSerialPort:
             port: '/dev/ttyUSB1'
-            baudrate: 115200
+            speed: 115200
 
         drivers:
           VesyncPowerDriver: {}

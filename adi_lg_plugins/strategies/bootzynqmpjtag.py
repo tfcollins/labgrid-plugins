@@ -39,7 +39,9 @@ import attr
 import serial
 from labgrid.factory import target_factory
 from labgrid.step import step
-from labgrid.strategy import Strategy, StrategyError, never_retry
+from labgrid.strategy import Strategy, StrategyError
+
+from ._compat import never_retry
 
 
 class Status(enum.Enum):

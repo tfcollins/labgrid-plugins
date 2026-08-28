@@ -220,7 +220,7 @@ See :doc:`web-ui-auth` for the full authentication and user-management guide.
 - ``WS /api/ws`` - Real-time updates. On connect, receives full state snapshot.
   Subsequent messages are incremental updates:
 
-  .. code-block:: json
+  .. code-block:: text
 
      {"type": "place_update", "data": {...}}
      {"type": "resource_delete", "data": {"exporter": "...", "group": "...", "name": "..."}}

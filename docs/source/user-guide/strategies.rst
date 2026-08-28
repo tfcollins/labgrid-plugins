@@ -1,6 +1,14 @@
 Working with Strategies
 =======================
 
+.. important::
+
+   Every complete environment using these plugin classes must include
+   ``imports: [adi_lg_plugins]``. Strategy classes are configured under the target's
+   ``drivers:`` mapping, not under a separate ``strategies:`` mapping. Short snippets
+   on this page omit the repeated ``imports`` line; complete copy/paste forms are in
+   :doc:`../yaml-reference/strategies`.
+
 Strategies are high-level state machines that coordinate multiple drivers to accomplish complex workflows. They abstract away the detailed choreography of hardware interactions, allowing test engineers to focus on the overall boot and test sequence.
 
 Overview
@@ -83,15 +91,16 @@ The strategy manages 9 states:
             password: 'your_password'
             delay: 5.0
 
-          USBSDMuxDriver:
-            serial: '00012345'
+          USBSDMuxDevice:
+            match:
+              ID_SERIAL_SHORT: '00012345'
 
           MassStorageDevice:
             path: '/dev/sda1'
 
-          SerialPort:
+          RawSerialPort:
             port: '/dev/ttyUSB0'
-            baudrate: 115200
+            speed: 115200
 
           KuiperRelease:
             release_version: '2024.r1'
@@ -247,12 +256,12 @@ The strategy manages 9 states with a two-stage boot process:
             username: 'your_email@example.com'
             password: 'your_password'
 
-          SerialPort:
+          RawSerialPort:
             port: '/dev/ttyUSB0'
-            baudrate: 115200
+            speed: 115200
 
-          NetworkInterface:
-            hostname: 'analog.local'
+          NetworkService:
+            address: 'analog.local'
             username: 'root'
             password: 'analog'
 
@@ -266,10 +275,7 @@ The strategy manages 9 states with a two-stage boot process:
             login_prompt: 'login:'
             username: 'root'
             password: 'analog'
-          SSHDriver:
-            hostname: 'analog.local'
-            username: 'root'
-            password: 'analog'
+          SSHDriver: {}
           KuiperDLDriver: {}
 
           BootFPGASoCSSH:
@@ -928,12 +934,12 @@ The strategy manages 11 states with dual-FPGA boot orchestration:
             username: 'your_email@example.com'
             password: 'your_password'
 
-          SerialPort:
+          RawSerialPort:
             port: '/dev/ttyUSB0'
-            baudrate: 115200
+            speed: 115200
 
-          NetworkInterface:
-            hostname: 'zynq.local'
+          NetworkService:
+            address: 'zynq.local'
             username: 'root'
             password: 'analog'
 
@@ -947,10 +953,7 @@ The strategy manages 11 states with dual-FPGA boot orchestration:
             login_prompt: 'login:'
             username: 'root'
             password: 'analog'
-          SSHDriver:
-            hostname: 'zynq.local'
-            username: 'root'
-            password: 'analog'
+          SSHDriver: {}
 
           BootSelMap:
             reached_linux_marker: 'analog'
@@ -1533,7 +1536,10 @@ BootFabric Strategy
 
        drivers:
          SerialDriver: {}
-         ADIShellDriver: {}
+         ADIShellDriver:
+           prompt: "#.*"
+           login_prompt: "buildroot login: "
+           username: "root"
          XilinxJTAGDriver: {}
          NetworkPowerDriver: {}
 

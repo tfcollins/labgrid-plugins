@@ -24,6 +24,9 @@
 # NOTE: mode straps must select JTAG boot (BOOT_MODE_USER == 0x0). Mode pins
 # are sampled at power-on reset, which this strategy performs.
 
+imports:
+  - adi_lg_plugins
+
 targets:
   main:
     features:
