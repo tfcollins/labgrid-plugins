@@ -80,14 +80,15 @@ Complete Configuration
             path: '/dev/sda1'  # Your SD card partition
 
           KuiperRelease:
-            version: '2024.r1'  # Release version to boot
-            cache_dir: '/tmp/kuiper_cache'
+            release_version: '2024.r1'  # Release version to boot
+            cache_path: '/tmp/kuiper_cache'
 
         drivers:
           VesyncPowerDriver: {}
 
           ADIShellDriver:
-            console: SerialPort
+            bindings:
+              console: SerialPort
             prompt: 'root@.*:.*# '  # Adjust to match your prompt
             login_prompt: 'login:'
             username: 'root'
@@ -97,12 +98,10 @@ Complete Configuration
 
           USBSDMuxDriver: {}
 
-          MassStorageDriver:
-            device: MassStorageDevice
+          MassStorageDriver: {}
 
           KuiperDLDriver: {}
 
-        strategies:
           BootFPGASoC:
             reached_linux_marker: 'analog'  # String in login prompt
             update_image: false  # Set to true to flash full image
@@ -236,7 +235,7 @@ When ``update_image: true``, the strategy writes the entire Kuiper image to the 
 
 .. code-block:: yaml
 
-    strategies:
+    drivers:
       BootFPGASoC:
         reached_linux_marker: 'analog'
         update_image: true  # Enable full image flash

@@ -34,4 +34,4 @@ targets:
         username: 'root'
         password: 'analog'
       BootZynq7000JTAGRecovery:
-        wait_for_recovery_prompt_timeout: 240
+        wait_for_recovery_linux_timeout: 240

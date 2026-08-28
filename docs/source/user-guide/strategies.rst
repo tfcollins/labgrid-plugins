@@ -86,14 +86,14 @@ The strategy manages 9 states:
           USBSDMuxDriver:
             serial: '00012345'
 
-          MassStorageDriver:
+          MassStorageDevice:
             path: '/dev/sda1'
 
           SerialPort:
             port: '/dev/ttyUSB0'
             baudrate: 115200
 
-          KuiperDLDriver:
+          KuiperRelease:
             release_version: '2024.r1'
 
         drivers:
@@ -107,7 +107,6 @@ The strategy manages 9 states:
             password: 'analog'
           KuiperDLDriver: {}
 
-        strategies:
           BootFPGASoC:
             reached_linux_marker: 'analog'
             update_image: true  # Flash full image, not just boot files
@@ -257,7 +256,7 @@ The strategy manages 9 states with a two-stage boot process:
             username: 'root'
             password: 'analog'
 
-          KuiperDLDriver:
+          KuiperRelease:
             release_version: '2024.r1'
 
         drivers:
@@ -273,9 +272,7 @@ The strategy manages 9 states with a two-stage boot process:
             password: 'analog'
           KuiperDLDriver: {}
 
-        strategies:
           BootFPGASoCSSH:
-            hostname: 'analog.local'
             reached_linux_marker: 'analog'
 
 **Usage Example**:
@@ -387,8 +384,8 @@ The strategy manages 7 states:
             root: '/var/lib/tftpboot'
 
           KuiperRelease:
-            release: '2023_R2_P1'
-            cache_dir: '/var/cache/kuiper'
+            release_version: '2023_R2_P1'
+            cache_path: '/var/cache/kuiper'
 
         drivers:
           SerialDriver: {}
@@ -940,7 +937,7 @@ The strategy manages 11 states with dual-FPGA boot orchestration:
             username: 'root'
             password: 'analog'
 
-          KuiperDLDriver:
+          KuiperRelease:
             release_version: '2024.r1'
 
         drivers:
@@ -955,7 +952,6 @@ The strategy manages 11 states with dual-FPGA boot orchestration:
             username: 'root'
             password: 'analog'
 
-        strategies:
           BootSelMap:
             reached_linux_marker: 'analog'
             ethernet_interface: 'eth0'
@@ -1015,7 +1011,7 @@ trigger command:
 
 .. code-block:: yaml
 
-    strategies:
+    drivers:
       BootSelMap:
         local_bitstream_filename: '/path/to/vu11p.bin'
         local_overlay_filename: '/path/to/vu11p.dtbo'

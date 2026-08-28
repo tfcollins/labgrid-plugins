@@ -138,10 +138,9 @@ CyberPower PDUs provide industrial-grade power distribution with SNMP control. T
       lab_device:
         resources:
           CyberPowerOutlet:
-            hostname: '192.168.1.100'
-            outlet_number: 1  # Outlet 1-8
-            snmp_version: '2c'
-            community: 'public'
+            address: '192.168.1.100'
+            outlet: 1  # Outlet 1-8
+            delay: 5.0
 
         drivers:
           CyberPowerDriver: {}
@@ -182,21 +181,20 @@ CyberPower PDUs provide industrial-grade power distribution with SNMP control. T
       multi_outlet_system:
         resources:
           CyberPowerOutlet:
-            hostname: '192.168.1.100'
-            outlet_number: 1  # Can create multiple resources for different outlets
-            snmp_version: '2c'
-            community: 'public'
+            address: '192.168.1.100'
+            outlet: 1  # Can create multiple resources for different outlets
+            delay: 5.0
 
           CyberPowerOutlet@board_b_power:
-            hostname: '192.168.1.100'
-            outlet_number: 2
-            snmp_version: '2c'
-            community: 'public'
+            address: '192.168.1.100'
+            outlet: 2
+            delay: 5.0
 
         drivers:
           CyberPowerDriver: {}
           CyberPowerDriver@board_b:
-            cyberpoweroutlet: CyberPowerOutlet@board_b_power
+            bindings:
+              cyberpower_outlet: CyberPowerOutlet@board_b_power
 
 .. code-block:: python
 

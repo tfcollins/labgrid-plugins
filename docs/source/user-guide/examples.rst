@@ -158,7 +158,7 @@ Boot a device to shell using a strategy:
             path: '/dev/sda1'
 
           KuiperRelease:
-            version: '2024.r1'
+            release_version: '2024.r1'
 
         drivers:
           VesyncPowerDriver: {}
@@ -170,7 +170,6 @@ Boot a device to shell using a strategy:
           MassStorageDriver: {}
           KuiperDLDriver: {}
 
-        strategies:
           BootFPGASoC:
             reached_linux_marker: 'analog'
             update_image: false
@@ -211,8 +210,7 @@ Mount SD card, copy files, prepare for device boot:
             path: '/dev/sda1'
 
         drivers:
-          MassStorageDriver:
-            device: MassStorageDevice
+          MassStorageDriver: {}
 
 **Usage**:
 
@@ -251,12 +249,11 @@ Download and manage Kuiper release boot files:
       kuiper_device:
         resources:
           KuiperRelease:
-            version: '2024.r1'
-            cache_dir: '/tmp/kuiper_cache'
+            release_version: '2024.r1'
+            cache_path: '/tmp/kuiper_cache'
 
         drivers:
-          KuiperDLDriver:
-            kuiper_release: KuiperRelease
+          KuiperDLDriver: {}
 
 **Usage**:
 
@@ -431,10 +428,9 @@ Control power via CyberPower PDU with SNMP:
       cyberpower_device:
         resources:
           CyberPowerOutlet:
-            hostname: '192.168.1.100'
-            outlet_number: 1
-            snmp_version: '2c'
-            community: 'public'
+            address: '192.168.1.100'
+            outlet: 1
+            delay: 5.0
 
         drivers:
           CyberPowerDriver: {}

@@ -571,16 +571,19 @@ MassStorageDriver
 
     resources:
       MassStorageDevice:
-        device: '/dev/sdb'              # Block device path
-        partition: 1                     # Partition number to mount
+        path: '/dev/disk/by-partuuid/0123-4567'
+        use_with_sdmux: true
 
     drivers:
-      MassStorageDriver: {}
+      MassStorageDriver:
+        partition: '1'
+        mount_label: 'lg_mass_storage'
 
 **Key Parameters**
 
-- **device** (required): Block device path (e.g., /dev/sdb, /dev/sdc)
-- **partition** (required): Partition number to mount (typically 1 for boot partition)
+- Resource **path** (required): Block device or partition path.
+- Driver **partition** (optional): Partition suffix when ``path`` names a whole device.
+- Driver **mount_label** (default ``lg_mass_storage``): Label passed to ``pmount``.
 
 **Methods**
 
@@ -674,8 +677,8 @@ KuiperDLDriver
 
     resources:
       KuiperRelease:
-        release: '2023_R2_P1'               # Release version
-        cache_dir: '/var/cache/kuiper'    # Download cache directory
+        release_version: '2023_R2_P1'               # Release version
+        cache_path: '/var/cache/kuiper'    # Download cache directory
 
     drivers:
       KuiperDLDriver: {}
