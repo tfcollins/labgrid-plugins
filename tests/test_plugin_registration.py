@@ -13,6 +13,8 @@ If either breaks, ADI components stop resolving by name in configs.
 
 from __future__ import annotations
 
+import subprocess
+import sys
 import textwrap
 
 _DRIVERS = [
@@ -71,6 +73,27 @@ def test_never_retry_shim_importable():
     from adi_lg_plugins.strategies._compat import never_retry
 
     assert callable(never_retry)
+
+
+def test_registry_import_does_not_require_libiio():
+    """BootSelMap registers even on hosts where the libiio extension cannot load."""
+    code = textwrap.dedent(
+        """
+        import builtins
+        original_import = builtins.__import__
+
+        def without_iio(name, *args, **kwargs):
+            if name == "iio":
+                raise ImportError("simulated unavailable libiio")
+            return original_import(name, *args, **kwargs)
+
+        builtins.__import__ = without_iio
+        import adi_lg_plugins
+        from labgrid.factory import target_factory
+        assert "BootSelMap" in target_factory.drivers
+        """
+    )
+    subprocess.run([sys.executable, "-c", code], check=True)
 
 
 def test_imports_key_registers_via_environment(tmp_path):

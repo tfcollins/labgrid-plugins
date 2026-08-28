@@ -6,7 +6,6 @@ import subprocess
 import time
 
 import attr
-import iio
 from labgrid.factory import target_factory
 from labgrid.step import step
 from labgrid.strategy import Strategy, StrategyError
@@ -429,6 +428,10 @@ class BootSelMap(Strategy):
             self.logger.info("Waiting for JESD FSM to reach post_running_stage...")
             data_mode_ready = False
             fsm_links_up_delay = 200
+
+            # Import lazily: loading the strategy registry must not require a
+            # working host libiio shared library when SelMap is unused.
+            import iio
 
             ctx = iio.Context(f"ip:{self.ssh.networkservice.address}")
             if not ctx:
