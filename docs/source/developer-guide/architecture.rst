@@ -496,9 +496,9 @@ When a target is instantiated, labgrid resolves bindings:
 
           # Storage driver
           MassStorageDriver:
-            device: MassStorageDevice
+            bindings:
+              mass_storage: MassStorageDevice
 
-        strategies:
           # Strategy bindings are all satisfied:
           BootFPGASoC:
             reached_linux_marker: 'analog'

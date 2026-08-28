@@ -204,8 +204,13 @@ MassStorageDevice
 
 **Required Parameters**
 
-- **device** (str): Linux block device path (e.g., '/dev/sdb', '/dev/sdc')
-- **partition** (int): Partition number to mount (typically 1 for boot partition)
+- **path** (str): Linux block-device or partition path. Prefer a stable
+  ``/dev/disk/by-*`` path over an enumeration-dependent ``/dev/sdX`` name.
+
+**Optional Parameters**
+
+- **file_updates** (dict, default ``{}``): Mapping of destination names to local files.
+- **use_with_sdmux** (bool, default ``False``): Mark the device as SD-mux managed.
 
 **Basic Example**
 
@@ -213,18 +218,19 @@ MassStorageDevice
 
     resources:
       MassStorageDevice:
-        device: '/dev/sdb'
-        partition: 1
+        path: '/dev/disk/by-partuuid/0123-4567'
+        use_with_sdmux: true
 
-**Multiple Partition Example**
+**File Update Example**
 
 .. code-block:: yaml
 
-    # For SD card with separate boot and rootfs partitions
     resources:
       MassStorageDevice:
-        device: '/dev/sdb'
-        partition: 1
+        path: '/dev/disk/by-partuuid/0123-4567'
+        file_updates:
+          BOOT.BIN: '/srv/boot/BOOT.BIN'
+          Image: '/srv/boot/Image'
 
 **Important Notes**
 
@@ -251,8 +257,13 @@ KuiperRelease
 
 **Required Parameters**
 
-- **release** (str): Release version identifier
-- **cache_dir** (str): Directory path for caching downloaded files
+- **release_version** (str): Release version identifier.
+
+**Optional Parameters**
+
+- **cache_path** (str, default ``~/.labgrid/kuiper_releases/``): Download cache.
+- **kernel_path**, **BOOTBIN_path**, **device_tree_path** (str or ``None``):
+  Explicit paths or ``release:`` selectors for boot files.
 
 **Supported Releases**
 
@@ -266,8 +277,8 @@ KuiperRelease
 
     resources:
       KuiperRelease:
-        release: '2023_R2_P1'
-        cache_dir: '/var/cache/kuiper'
+        release_version: '2023_R2_P1'
+        cache_path: '/var/cache/kuiper'
 
 **System-Wide Cache Example**
 
@@ -275,8 +286,8 @@ KuiperRelease
 
     resources:
       KuiperRelease:
-        release: '2023_R2_P1'
-        cache_dir: '/opt/labgrid/kuiper-cache'
+        release_version: '2023_R2_P1'
+        cache_path: '/opt/labgrid/kuiper-cache'
 
 **Notes**
 
@@ -537,8 +548,7 @@ Then use in configuration:
 
     resources:
       MassStorageDevice:
-        device: '/dev/sd-mux-labgrid'
-        partition: 1
+        path: '/dev/sd-mux-labgrid1'
 
 Reload udev rules:
 
@@ -565,8 +575,7 @@ Create `common-resources.yaml`:
 
       lab_storage:
         MassStorageDevice:
-          device: '/dev/sdb'
-          partition: 1
+          path: '/dev/sdb1'
 
 Then reference in target files:
 
@@ -605,8 +614,7 @@ Configuration Documentation
             delay: 3.0             # Device needs 3 sec before boot
 
           MassStorageDevice:
-            device: '/dev/sdb'     # USB SD card reader
-            partition: 1           # Boot partition
+            path: '/dev/sdb1'      # USB SD card boot partition
 
 **Document Special Considerations**
 
@@ -667,12 +675,11 @@ Single Target Example
             password: 'password'
 
           MassStorageDevice:
-            device: '/dev/sdb'
-            partition: 1
+            path: '/dev/sdb1'
 
           KuiperRelease:
-            release: '2023_R2_P1'
-            cache_dir: '/var/cache/kuiper'
+            release_version: '2023_R2_P1'
+            cache_path: '/var/cache/kuiper'
 
         drivers:
           VesyncPowerDriver: {}
@@ -693,8 +700,8 @@ Multiple Targets Sharing Resources
 
       shared_kuiper:
         KuiperRelease:
-          release: '2023_R2_P1'
-          cache_dir: '/var/cache/kuiper'
+          release_version: '2023_R2_P1'
+          cache_path: '/var/cache/kuiper'
 
     # target1.yaml
     includes:
@@ -731,15 +738,13 @@ Environment Variable Integration
     resources:
       storage:
         MassStorageDevice:
-          device: !env STORAGE_DEVICE
-          partition: !env STORAGE_PARTITION
+          path: !env STORAGE_DEVICE
 
 Set before use:
 
 .. code-block:: bash
 
-    export STORAGE_DEVICE="/dev/sdb"
-    export STORAGE_PARTITION="1"
+    export STORAGE_DEVICE="/dev/sdb1"
     labgrid-client -c template.yaml ...
 
 Common Configuration Issues

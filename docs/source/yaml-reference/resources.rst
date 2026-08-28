@@ -1,140 +1,484 @@
 Resources
 =========
 
-Schema-level lookup for every resource registered by ``labgrid-plugins``. For full
-prose, troubleshooting, and examples, follow the link on each resource name into the
-:doc:`User Guide <../user-guide/resources>`.
+Canonical, implementation-checked YAML arguments for every resource registered by
+``labgrid-plugins``. Every example includes the required plugin import and a complete
+target wrapper, so it can be copied into an environment file.
 
-Schema
-------
+.. note::
+
+   ``name`` is the universal labgrid instance selector and may be added to any resource.
+   Class-specific arguments and defaults are listed below. Secrets shown as ``${...}``
+   are illustrative strings; use your normal secret injection mechanism.
+
+APCOutlet
+~~~~~~~~~
+
+The APCOutlet describes an APC smart PDU outlet.
+
+**Arguments**
 
 .. list-table::
    :header-rows: 1
-   :widths: 22 26 30 22
+   :widths: 38 62
 
-   * - Name
-     - Required
-     - Optional (defaults)
-     - Pairs with
-   * - :ref:`user-guide/resources:VesyncOutlet`
-     - ``outlet_names``, ``username``, ``password``
-     - ``delay`` (5.0)
-     - :ref:`user-guide/drivers:VesyncPowerDriver`
-   * - :ref:`user-guide/resources:APCOutlet`
-     - ``address``, ``outlet``
-     - ``delay`` (5.0)
-     - :ref:`user-guide/drivers:APCDriver`
-   * - :ref:`user-guide/resources:CyberPowerOutlet`
-     - ``address``, ``outlet``
-     - ``delay`` (5.0)
-     - :ref:`user-guide/drivers:CyberPowerDriver`
-   * - :ref:`user-guide/resources:HomeAssistantOutlet`
-     - ``url``, ``token``, ``entity_id``
-     - ``delay`` (5.0)
-     - :ref:`user-guide/drivers:HomeAssistantPowerDriver`
-   * - :ref:`user-guide/resources:MassStorageDevice`
-     - ``device``, ``partition``
-     - —
-     - :ref:`user-guide/drivers:MassStorageDriver`
-   * - :ref:`user-guide/resources:KuiperRelease`
-     - ``release``, ``cache_dir``
-     - —
-     - :ref:`user-guide/drivers:KuiperDLDriver`
-   * - :ref:`user-guide/resources:CloudsmithRelease`
-     - ``fpga_carrier``, ``daughter_card``
-     - ``owner`` (``adi``), ``repo`` (``sdg-boot-partition``), ``filename`` (``BOOT.BIN``), ``version`` (latest), ``api_token`` (``$CLOUDSMITH_API_TOKEN``), ``cache_path``
-     - :ref:`user-guide/drivers:CloudsmithDLDriver`
-   * - :ref:`user-guide/resources:TFTPServerResource`
-     - —
-     - ``address`` (``'auto'``), ``port`` (3069), ``root`` (``/var/lib/tftpboot``)
-     - :ref:`user-guide/drivers:TFTPServerDriver`, :ref:`user-guide/strategies:BootFPGASoCTFTP Strategy`
-   * - :ref:`user-guide/resources:XilinxVivadoTool`
-     - —
-     - ``vivado_path``, ``version``, ``xsdb_path`` (derived)
-     - :ref:`user-guide/drivers:XilinxJTAGDriver`
-   * - :ref:`user-guide/resources:XilinxDeviceJTAG`
-     - —
-     - ``root_target`` (1), ``microblaze_target`` (3), ``bitstream_path``, ``kernel_path``, ``devicetree_path``
-     - :ref:`user-guide/drivers:XilinxJTAGDriver`, :ref:`user-guide/strategies:BootFabric Strategy`
+   * - Argument
+     - Requirement / default
+   * - ``address``
+     - **required**
+   * - ``outlet``
+     - **required**
+   * - ``delay``
+     - ``5.0``
+   * - ``read_community``
+     - ``'public'``
+   * - ``write_community``
+     - ``'private'``
 
-Minimal YAML
-------------
+**Example**
 
-Power Control
+.. code-block:: yaml
+
+    imports:
+      - adi_lg_plugins
+    targets:
+      main:
+        resources:
+          APCOutlet:
+            address: pdu.example.test
+            outlet: 1
+            delay: 5.0
+            read_community: public
+            write_community: private
+
+VesyncOutlet
+~~~~~~~~~~~~
+
+The VeSyncOutlet describes a smart outlet controlled with VeSync.
+
+**Arguments**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 38 62
+
+   * - Argument
+     - Requirement / default
+   * - ``outlet_names``
+     - **required**
+   * - ``username``
+     - **required**
+   * - ``password``
+     - **required**
+   * - ``delay``
+     - ``5.0``
+
+**Example**
+
+.. code-block:: yaml
+
+    imports:
+      - adi_lg_plugins
+    targets:
+      main:
+        resources:
+          VesyncOutlet:
+            outlet_names: Device Power
+            username: user@example.test
+            password: secret
+            delay: 5.0
+
+MassStorageDevice
+~~~~~~~~~~~~~~~~~
+
+The MassStorageDevice describes a USB mass storage device.
+
+**Arguments**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 38 62
+
+   * - Argument
+     - Requirement / default
+   * - ``path``
+     - **required**
+   * - ``file_updates``
+     - ``{}``
+   * - ``use_with_sdmux``
+     - ``False``
+
+**Example**
+
+.. code-block:: yaml
+
+    imports:
+      - adi_lg_plugins
+    targets:
+      main:
+        resources:
+          MassStorageDevice:
+            path: /dev/disk/by-partuuid/0123-4567
+            file_updates:
+              BOOT.BIN: /srv/boot/BOOT.BIN
+              Image: /srv/boot/Image
+            use_with_sdmux: true
+
+KuiperRelease
 ~~~~~~~~~~~~~
 
+The KuiperRelease describes a Kuiper release resource.
+
+**Arguments**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 38 62
+
+   * - Argument
+     - Requirement / default
+   * - ``release_version``
+     - **required**
+   * - ``cache_path``
+     - ``'~/.labgrid/kuiper_releases/'``
+   * - ``kernel_path``
+     - ``None``
+   * - ``BOOTBIN_path``
+     - ``None``
+   * - ``device_tree_path``
+     - ``None``
+
+**Example**
+
 .. code-block:: yaml
 
-    # VesyncOutlet
-    resources:
-      VesyncOutlet:
-        outlet_names: 'Device Power'
-        username: 'user@example.com'
-        password: 'secret'
+    imports:
+      - adi_lg_plugins
+    targets:
+      main:
+        resources:
+          KuiperRelease:
+            release_version: 2023_R2_P1
+            cache_path: ~/.labgrid/kuiper_releases/
+            kernel_path: release:zynqmp-common/Image
+            BOOTBIN_path: release:zynqmp-zcu102-rev10-ad9081/BOOT.BIN
+            device_tree_path: release:zynqmp-zcu102-rev10-ad9081/system.dtb
 
-    # APCOutlet
-    resources:
-      APCOutlet:
-        address: '192.168.1.50'
-        outlet: 1
+CloudsmithRelease
+~~~~~~~~~~~~~~~~~
 
-    # CyberPowerOutlet
-    resources:
-      CyberPowerOutlet:
-        address: '192.168.1.100'
-        outlet: 3
+The CloudsmithRelease describes a Cloudsmith-hosted boot artifact.
 
-    # HomeAssistantOutlet
-    resources:
-      HomeAssistantOutlet:
-        url: 'http://homeassistant.local:8123'
-        token: 'eyJhbGciOiJI...'
-        entity_id: 'switch.lab_outlet_1'
+**Arguments**
 
-Storage & Images
+.. list-table::
+   :header-rows: 1
+   :widths: 38 62
+
+   * - Argument
+     - Requirement / default
+   * - ``fpga_carrier``
+     - ``None``
+   * - ``daughter_card``
+     - ``None``
+   * - ``vfilter``
+     - ``None``
+   * - ``vnot``
+     - ``None``
+   * - ``owner``
+     - ``'adi'``
+   * - ``repo``
+     - ``'sdg-boot-partition'``
+   * - ``filename``
+     - ``'BOOT.BIN'``
+   * - ``version``
+     - ``None``
+   * - ``api_token``
+     - ``environment-derived``
+   * - ``cache_path``
+     - ``'~/.labgrid/cloudsmith_releases/'``
+
+**Example**
+
+.. code-block:: yaml
+
+    imports:
+      - adi_lg_plugins
+    targets:
+      main:
+        resources:
+          CloudsmithRelease:
+            fpga_carrier: zcu102
+            daughter_card: adrv9009
+            vfilter:
+              - main
+            vnot:
+              - deprecated
+            owner: adi
+            repo: sdg-boot-partition
+            filename: BOOT.BIN
+            version: 2025.1.0
+            api_token: ${CLOUDSMITH_API_TOKEN}
+            cache_path: ~/.labgrid/cloudsmith_releases/
+
+CyberPowerOutlet
 ~~~~~~~~~~~~~~~~
 
-.. code-block:: yaml
+The CyberPowerOutlet describes a smart outlet controlled with CyberPower.
 
-    # MassStorageDevice
-    resources:
-      MassStorageDevice:
-        device: '/dev/sdb'
-        partition: 1
+**Arguments**
 
-    # KuiperRelease
-    resources:
-      KuiperRelease:
-        release: '2023_R2_P1'
-        cache_dir: '/var/cache/kuiper'
+.. list-table::
+   :header-rows: 1
+   :widths: 38 62
 
-    # CloudsmithRelease (latest BOOT.BIN for the carrier + daughter card)
-    resources:
-      CloudsmithRelease:
-        fpga_carrier: 'zcu102'
-        daughter_card: 'adrv9009'
+   * - Argument
+     - Requirement / default
+   * - ``address``
+     - **required**
+   * - ``outlet``
+     - **required**
+   * - ``delay``
+     - ``5.0``
 
-Boot / Network Services
-~~~~~~~~~~~~~~~~~~~~~~~
+**Example**
 
 .. code-block:: yaml
 
-    # TFTPServerResource — all fields optional
-    resources:
-      TFTPServerResource: {}
+    imports:
+      - adi_lg_plugins
+    targets:
+      main:
+        resources:
+          CyberPowerOutlet:
+            address: pdu.example.test
+            outlet: 3
+            delay: 5.0
 
-FPGA JTAG
-~~~~~~~~~
+XilinxDeviceJTAG
+~~~~~~~~~~~~~~~~
+
+Xilinx FPGA device JTAG configuration.
+
+**Arguments**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 38 62
+
+   * - Argument
+     - Requirement / default
+   * - ``root_target``
+     - ``1``
+   * - ``microblaze_target``
+     - ``3``
+   * - ``bitstream_path``
+     - ``None``
+   * - ``kernel_path``
+     - ``None``
+   * - ``devicetree_path``
+     - ``None``
+
+**Example**
 
 .. code-block:: yaml
 
-    # XilinxVivadoTool
-    resources:
-      XilinxVivadoTool:
-        vivado_path: '/tools/Xilinx/2025.1/Vivado'
+    imports:
+      - adi_lg_plugins
+    targets:
+      main:
+        resources:
+          XilinxDeviceJTAG:
+            root_target: 1
+            microblaze_target: 3
+            bitstream_path: /srv/images/system_top.bit
+            kernel_path: /srv/images/simpleImage.vcu118.strip
+            devicetree_path: /srv/images/system.dtb
 
-    # XilinxDeviceJTAG
-    resources:
-      XilinxDeviceJTAG:
-        bitstream_path: '/builds/system_top.bit'
-        kernel_path:    '/builds/simpleImage.vcu118.strip'
+XilinxVivadoTool
+~~~~~~~~~~~~~~~~
+
+Xilinx Vivado/Vitis tool installation configuration.
+
+**Arguments**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 38 62
+
+   * - Argument
+     - Requirement / default
+   * - ``vivado_path``
+     - ``'/tools/Xilinx/2025.1/Vivado'``
+   * - ``version``
+     - ``None``
+   * - ``xsdb_path``
+     - ``None``
+
+**Example**
+
+.. code-block:: yaml
+
+    imports:
+      - adi_lg_plugins
+    targets:
+      main:
+        resources:
+          XilinxVivadoTool:
+            vivado_path: /opt/Xilinx/2025.1/Vivado
+            version: '2025.1'
+            xsdb_path: /opt/Xilinx/2025.1/Vivado/bin/xsdb
+
+TFTPServerResource
+~~~~~~~~~~~~~~~~~~
+
+Resource to configure or discover the TFTP server address.
+
+**Arguments**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 38 62
+
+   * - Argument
+     - Requirement / default
+   * - ``address``
+     - ``'auto'``
+   * - ``port``
+     - ``3069``
+   * - ``root``
+     - ``'/var/lib/tftpboot'``
+
+**Example**
+
+.. code-block:: yaml
+
+    imports:
+      - adi_lg_plugins
+    targets:
+      main:
+        resources:
+          TFTPServerResource:
+            address: auto
+            port: 3069
+            root: /var/lib/tftpboot
+
+HomeAssistantOutlet
+~~~~~~~~~~~~~~~~~~~
+
+The HomeAssistantOutlet describes a switch/outlet controlled via Home Assistant REST API.
+
+**Arguments**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 38 62
+
+   * - Argument
+     - Requirement / default
+   * - ``url``
+     - **required**
+   * - ``token``
+     - **required**
+   * - ``entity_id``
+     - **required**
+   * - ``delay``
+     - ``5.0``
+
+**Example**
+
+.. code-block:: yaml
+
+    imports:
+      - adi_lg_plugins
+    targets:
+      main:
+        resources:
+          HomeAssistantOutlet:
+            url: http://homeassistant.example.test:8123
+            token: ${HOME_ASSISTANT_TOKEN}
+            entity_id: switch.lab_outlet_1
+            delay: 5.0
+
+TickArtifacts
+~~~~~~~~~~~~~
+
+Paths and names for the Tick runtime deploy.
+
+**Arguments**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 38 62
+
+   * - Argument
+     - Requirement / default
+   * - ``bitstream_path``
+     - **required**
+   * - ``overlay_dtbo_path``
+     - **required**
+   * - ``module_ko_path``
+     - **required**
+   * - ``firmware_name``
+     - ``'tick.bit'``
+   * - ``overlay_name``
+     - ``'tick'``
+   * - ``remote_dir``
+     - ``'/tmp/tick'``
+
+**Example**
+
+.. code-block:: yaml
+
+    imports:
+      - adi_lg_plugins
+    targets:
+      main:
+        resources:
+          TickArtifacts:
+            bitstream_path: /run/tick/system.bit
+            overlay_dtbo_path: /run/tick/tick.dtbo
+            module_ko_path: /run/tick/axi_timed_command_scheduler.ko
+            firmware_name: tick.bit
+            overlay_name: tick
+            remote_dir: /tmp/tick
+
+KasaOutlet
+~~~~~~~~~~
+
+The KasaOutlet describes a TP-Link Kasa smart plug or power strip.
+
+**Arguments**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 38 62
+
+   * - Argument
+     - Requirement / default
+   * - ``host``
+     - **required**
+   * - ``outlets``
+     - ``None``
+   * - ``username``
+     - ``environment-derived``
+   * - ``password``
+     - ``environment-derived``
+   * - ``delay``
+     - ``5.0``
+
+**Example**
+
+.. code-block:: yaml
+
+    imports:
+      - adi_lg_plugins
+    targets:
+      main:
+        resources:
+          KasaOutlet:
+            host: kasa-plug.example.test
+            outlets: Bench DUT
+            username: ${KASA_USERNAME}
+            password: ${KASA_PASSWORD}
+            delay: 5.0
