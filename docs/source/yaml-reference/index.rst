@@ -2,9 +2,10 @@ YAML Reference
 ==============
 
 Quick schema lookup for every resource, driver, and strategy registered by
-``labgrid-plugins``. Use this section as a cheat sheet when authoring a target
-YAML; each component name links back to its full user-guide entry for prose and
-troubleshooting.
+``labgrid-plugins``. Use this section when authoring a target YAML. Each argument
+entry states whether it is required, shows its implementation default, explains
+what behavior it controls, and gives a representative value. The complete YAML
+beneath each component demonstrates where that value belongs in a real environment.
 
 .. grid:: 3
 
