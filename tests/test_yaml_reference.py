@@ -90,6 +90,22 @@ def _component_configs(document, section):
             yield class_name, config or {}
 
 
+def _argument_row_cells(section: str, argument: str) -> list[str]:
+    """Return the cells from one argument row in an RST list-table."""
+    marker = f"   * - ``{argument}``"
+    lines = section.splitlines()
+    start = lines.index(marker)
+    row = [lines[start].removeprefix("   * - ")]
+    for line in lines[start + 1 :]:
+        if line.startswith("   * - "):
+            break
+        if line.startswith("     - "):
+            row.append(line.removeprefix("     - "))
+        elif line.startswith("       ") and row:
+            row[-1] = f"{row[-1]} {line.strip()}"
+    return row
+
+
 def test_reference_covers_every_registered_component_and_argument():
     classes = _entrypoint_classes()
     for group, page in GROUP_PAGES.items():
@@ -105,11 +121,30 @@ def test_reference_covers_every_registered_component_and_argument():
             else:
                 end = len(text)
             section = text[start:end]
-            for field in attr.fields(cls):
-                if field.init and field.name not in IGNORED_ATTRS:
-                    assert f"``{field.name}``" in section, (
-                        f"{page.name} does not document {class_name}.{field.name}"
-                    )
+            arguments = [
+                field
+                for field in attr.fields(cls)
+                if field.init and field.name not in IGNORED_ATTRS
+            ]
+            if arguments:
+                assert "     - Description and example" in section, (
+                    f"{page.name} {class_name} needs a Description and example column"
+                )
+            for field in arguments:
+                assert f"``{field.name}``" in section, (
+                    f"{page.name} does not document {class_name}.{field.name}"
+                )
+                cells = _argument_row_cells(section, field.name)
+                assert len(cells) >= 3, (
+                    f"{page.name} {class_name}.{field.name} needs a description cell"
+                )
+                description = cells[2]
+                assert len(description) >= 40, (
+                    f"{page.name} {class_name}.{field.name} description is too short"
+                )
+                assert "For example," in description and "``" in description, (
+                    f"{page.name} {class_name}.{field.name} needs an inline example"
+                )
             assert list(_yaml_blocks(section)), f"{page.name} has no example for {class_name}"
 
 

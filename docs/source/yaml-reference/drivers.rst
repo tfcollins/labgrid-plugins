@@ -26,7 +26,8 @@ This component has no class-specific YAML arguments. Use ``{}``.
    * - Binding
      - Provider
    * - ``APC_outlet``
-     - ``APCOutlet``
+     - ``APCOutlet`` supplies the PDU address, outlet number, SNMP
+       communities, and switching delay.
 
 **Example**
 
@@ -62,7 +63,8 @@ This component has no class-specific YAML arguments. Use ``{}``.
    * - Binding
      - Provider
    * - ``vesync_outlet``
-     - ``VesyncOutlet``
+     - ``VesyncOutlet`` supplies VeSync account credentials, the outlet name,
+       and switching delay.
 
 **Example**
 
@@ -90,18 +92,28 @@ Mount and copy files to a USB mass storage device.
 
 .. list-table::
    :header-rows: 1
-   :widths: 38 62
+   :widths: 24 24 52
 
    * - Argument
-     - Requirement / default
+     - Requirement/default
+     - Description and example
    * - ``partition``
      - ``None``
+     - Overrides the bound resource's device path with an absolute partition
+       path on the exporter host. For example,
+       ``/dev/disk/by-partuuid/0123-4567``.
    * - ``mount_label``
      - ``'lg_mass_storage'``
+     - Names the ``pmount`` mount, whose resulting directory is
+       ``/media/<mount_label>``. For example, ``lg_mass_storage``.
    * - ``unmount_retries``
      - ``3``
+     - Sets the number of ``pumount`` attempts before a lazy-unmount fallback.
+       For example, ``3``.
    * - ``unmount_retry_delay``
      - ``2.0``
+     - Sets the seconds to wait between unsuccessful unmount attempts.
+       For example, ``2.0``.
 
 **Bindings**
 
@@ -112,7 +124,8 @@ Mount and copy files to a USB mass storage device.
    * - Binding
      - Provider
    * - ``mass_storage``
-     - ``MassStorageDevice``
+     - ``MassStorageDevice`` identifies the block device and exporter host and
+       supplies the source-to-destination file update map.
 
 **Example**
 
@@ -124,14 +137,14 @@ Mount and copy files to a USB mass storage device.
       main:
         resources:
           MassStorageDevice:
-            path: /dev/disk/by-partuuid/0123-4567
+            path: /dev/sdb
             file_updates:
-              BOOT.BIN: /srv/boot/BOOT.BIN
-              Image: /srv/boot/Image
+              /srv/boot/BOOT.BIN: BOOT.BIN
+              /srv/boot/Image: Image
             use_with_sdmux: true
         drivers:
           MassStorageDriver:
-            partition: '1'
+            partition: /dev/disk/by-partuuid/0123-4567
             mount_label: lg_mass_storage
             unmount_retries: 3
             unmount_retry_delay: 2.0
@@ -145,28 +158,50 @@ ADIShellDriver - Driver to execute commands on the shell ADIShellDriver binds on
 
 .. list-table::
    :header-rows: 1
-   :widths: 38 62
+   :widths: 24 24 52
 
    * - Argument
-     - Requirement / default
+     - Requirement/default
+     - Description and example
    * - ``prompt``
      - **required**
+     - Regular expression used to recognize an interactive shell prompt.
+       For example, ``root@analog:.*#``.
    * - ``login_prompt``
      - **required**
+     - Regular expression that triggers submission of ``username``.
+       For example, ``'analog login: '``.
    * - ``username``
      - **required**
+     - Login name sent when ``login_prompt`` is matched. For example,
+       ``root``.
    * - ``password``
      - ``None``
+     - Password sent when the console requests ``Password:``; leaving it unset
+       makes such a request fail. For example, ``analog``.
    * - ``keyfile``
      - ``''``
+     - Local public-key file installed in the target user's
+       ``authorized_keys`` after login; an empty string disables installation.
+       For example, ``/home/lab/.ssh/id_ed25519.pub``.
    * - ``login_timeout``
      - ``60``
+     - Overall seconds allowed to reach a usable shell during activation.
+       For example, ``60``.
    * - ``console_ready``
      - ``''``
+     - Optional regular expression for a message requesting Enter to activate
+       the console; a match sends a newline. For example,
+       ``'Press Enter to activate this console'``.
    * - ``await_login_timeout``
      - ``2``
+     - Per-read idle timeout in seconds; after unchanged console input, the
+       driver sends a newline to probe for login or shell prompts. For example,
+       ``2``.
    * - ``post_login_settle_time``
      - ``0``
+     - Seconds of console silence required after login before validating the
+       prompt, useful while boot messages continue. For example, ``5``.
 
 **Bindings**
 
@@ -177,7 +212,8 @@ ADIShellDriver - Driver to execute commands on the shell ADIShellDriver binds on
    * - Binding
      - Provider
    * - ``console``
-     - ``ConsoleProtocol``
+     - ``ConsoleProtocol`` carries login interaction, shell commands, and
+       XMODEM file data; ``SerialDriver`` commonly provides it.
 
 **Example**
 
@@ -220,7 +256,8 @@ This component has no class-specific YAML arguments. Use ``{}``.
    * - Binding
      - Provider
    * - ``kuiper_resource``
-     - ``KuiperRelease``
+     - ``KuiperRelease`` selects the release and names its boot artifacts and
+       local cache directory.
 
 **Example**
 
@@ -256,7 +293,8 @@ This component has no class-specific YAML arguments. Use ``{}``.
    * - Binding
      - Provider
    * - ``cloudsmith_resource``
-     - ``CloudsmithRelease``
+     - ``CloudsmithRelease`` supplies package filters, repository credentials,
+       artifact name, optional version pin, and cache directory.
 
 **Example**
 
@@ -299,7 +337,8 @@ This component has no class-specific YAML arguments. Use ``{}``.
    * - Binding
      - Provider
    * - ``cyberpower_outlet``
-     - ``CyberPowerOutlet``
+     - ``CyberPowerOutlet`` supplies the PDU address, outlet number, and
+       switching delay used for SNMP power control.
 
 **Example**
 
@@ -333,9 +372,11 @@ This component has no class-specific YAML arguments. Use ``{}``.
    * - Binding
      - Provider
    * - ``xilinxdevicejtag``
-     - ``XilinxDeviceJTAG``
+     - ``XilinxDeviceJTAG`` supplies JTAG target IDs, boot artifact paths, and
+       the exporter host on which those paths are visible.
    * - ``xilinxvivado``
-     - ``XilinxVivadoTool``
+     - ``XilinxVivadoTool`` locates the Vivado installation and ``xsdb``
+       executable used to run programming scripts.
 
 **Example**
 
@@ -375,7 +416,8 @@ This component has no class-specific YAML arguments. Use ``{}``.
    * - Binding
      - Provider
    * - ``resource``
-     - ``TFTPServerResource``
+     - ``TFTPServerResource`` supplies the listening address and port and the
+       root directory from which files are served.
 
 **Example**
 
@@ -409,9 +451,11 @@ This component has no class-specific YAML arguments. Use ``{}``.
    * - Binding
      - Provider
    * - ``command``
-     - ``CommandProtocol``
+     - ``CommandProtocol`` executes package, repository, build, and test
+       commands on the DUT; ``SSHDriver`` commonly provides it.
    * - ``file_transfer``
-     - ``FileTransferProtocol``
+     - ``FileTransferProtocol`` copies local source trees to the DUT;
+       ``SSHDriver`` can provide it alongside ``CommandProtocol``.
 
 **Example**
 
@@ -445,7 +489,8 @@ This component has no class-specific YAML arguments. Use ``{}``.
    * - Binding
      - Provider
    * - ``ha_outlet``
-     - ``HomeAssistantOutlet``
+     - ``HomeAssistantOutlet`` supplies the REST endpoint, access token,
+       switch entity ID, and switching delay.
 
 **Example**
 
@@ -480,11 +525,14 @@ This component has no class-specific YAML arguments. Use ``{}``.
    * - Binding
      - Provider
    * - ``command``
-     - ``CommandProtocol``
+     - ``CommandProtocol`` creates firmware directories and programs the FPGA
+       through sysfs; ``SSHDriver`` commonly provides it.
    * - ``fs``
-     - ``FileTransferProtocol``
+     - ``FileTransferProtocol`` transfers the bitstream to the DUT;
+       ``SSHDriver`` commonly provides it.
    * - ``artifacts``
-     - ``TickArtifacts``
+     - ``TickArtifacts`` supplies the local bitstream path, firmware name, and
+       remote staging directory.
 
 **Example**
 
@@ -518,14 +566,20 @@ Insert/remove ``axi_timed_command_scheduler.ko`` over SSH.
 
 .. list-table::
    :header-rows: 1
-   :widths: 38 62
+   :widths: 24 24 52
 
    * - Argument
-     - Requirement / default
+     - Requirement/default
+     - Description and example
    * - ``restart_iiod``
      - ``True``
+     - Restarts ``iiod`` after inserting the module so its IIO context sees the
+       new device. For example, ``true``.
    * - ``force_on_vermagic_mismatch``
      - ``True``
+     - Retries a failed ``insmod`` with the module parameter ``force=y``;
+       disabling it surfaces the original insertion error. For example,
+       ``false``.
 
 **Bindings**
 
@@ -536,11 +590,14 @@ Insert/remove ``axi_timed_command_scheduler.ko`` over SSH.
    * - Binding
      - Provider
    * - ``command``
-     - ``CommandProtocol``
+     - ``CommandProtocol`` checks module metadata, inserts or removes the
+       module, and optionally restarts ``iiod``.
    * - ``fs``
-     - ``FileTransferProtocol``
+     - ``FileTransferProtocol`` transfers the kernel module to the DUT;
+       ``SSHDriver`` commonly provides both Tick protocols.
    * - ``artifacts``
-     - ``TickArtifacts``
+     - ``TickArtifacts`` supplies the local module path and remote staging
+       directory.
 
 **Example**
 
@@ -583,11 +640,14 @@ This component has no class-specific YAML arguments. Use ``{}``.
    * - Binding
      - Provider
    * - ``command``
-     - ``CommandProtocol``
+     - ``CommandProtocol`` manages the configfs overlay directory and reads
+       overlay status.
    * - ``fs``
-     - ``FileTransferProtocol``
+     - ``FileTransferProtocol`` transfers the compiled overlay to the DUT;
+       ``SSHDriver`` commonly provides both Tick protocols.
    * - ``artifacts``
-     - ``TickArtifacts``
+     - ``TickArtifacts`` supplies the local ``.dtbo`` path, overlay name, and
+       remote staging directory.
 
 **Example**
 
@@ -628,7 +688,8 @@ This component has no class-specific YAML arguments. Use ``{}``.
    * - Binding
      - Provider
    * - ``kasa_outlet``
-     - ``KasaOutlet``
+     - ``KasaOutlet`` supplies the plug host, optional cloud credentials,
+       child-outlet selector, and switching delay.
 
 **Example**
 
