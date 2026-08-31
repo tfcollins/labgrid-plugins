@@ -296,6 +296,7 @@ class BootFPGASoC(Strategy):
             self.transition(Status.booted)
             if self.ssh:
                 # Update IP address through serial console
+                self.target.activate(self.shell)
                 address = self.shell.get_ip_addresses(self.ethernet_interface)
                 assert address, f"No IP address found on {self.ethernet_interface}"
                 self.logger.info(f"Detected IP address on {self.ethernet_interface}: {address[0].ip}")
