@@ -52,3 +52,52 @@ def test_shell_transition_can_leave_iiod_untouched():
     strategy.transition(Status.shell)
 
     strategy.shell.run.assert_not_called()
+
+
+def test_net_refresh_syncs_ssh_ip_with_dhcp():
+    strategy = _strategy()
+    strategy.ssh = MagicMock()
+    strategy.ssh.networkservice.address = "192.168.1.50"
+
+    mock_ip = MagicMock()
+    mock_ip.ip = "192.168.1.100"
+    strategy.shell.get_ip_addresses.return_value = [mock_ip]
+    strategy.trigger_dhcp_request = True
+    strategy.ethernet_interface = "eth0"
+
+    strategy.transition(Status.net_refresh)
+
+    calls = [call[0][0] for call in strategy.shell.run.call_args_list]
+    assert any("dhclient -r eth0" in c for c in calls)
+    assert any("dhclient eth0" in c for c in calls)
+    assert strategy.ssh.networkservice.address == "192.168.1.100"
+    assert strategy.status is Status.net_refresh
+
+
+def test_net_refresh_skips_dhcp_when_disabled():
+    strategy = _strategy()
+    strategy.ssh = MagicMock()
+    strategy.ssh.networkservice.address = "192.168.1.50"
+
+    mock_ip = MagicMock()
+    mock_ip.ip = "192.168.1.100"
+    strategy.shell.get_ip_addresses.return_value = [mock_ip]
+    strategy.trigger_dhcp_request = False
+
+    strategy.transition(Status.net_refresh)
+
+    strategy.shell.run.assert_not_called()
+    assert strategy.ssh.networkservice.address == "192.168.1.100"
+    assert strategy.status is Status.net_refresh
+
+
+def test_net_refresh_no_ssh_skips_sync():
+    strategy = _strategy()
+    strategy.ssh = None
+
+    strategy.transition(Status.net_refresh)
+
+    strategy.shell.run.assert_not_called()
+    strategy.shell.get_ip_addresses.assert_not_called()
+    assert strategy.status is Status.net_refresh
+

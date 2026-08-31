@@ -7,7 +7,11 @@ from pathlib import Path
 
 import attr
 import labgrid.strategy
-import tomli
+
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib
 import yaml
 
 ROOT = Path(__file__).parents[1]
@@ -51,7 +55,7 @@ def _entrypoint_classes():
     if not hasattr(labgrid.strategy, "never_retry"):
         labgrid.strategy.__dict__["never_retry"] = lambda function: function
 
-    project = tomli.loads((ROOT / "pyproject.toml").read_text())["project"]
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]
     result = {}
     for group in GROUP_PAGES:
         classes = {}

@@ -53,6 +53,14 @@ BootFPGASoC strategy for FPGA SoC devices using Kuiper releases.
      - ``True``
      - Restarts iiod after the shell is ready so it discovers devices that probed late. For example,
        ``true``.
+   * - ``ethernet_interface``
+     - ``'eth0'``
+     - Ethernet interface queried for IP address detection and DHCP refresh during network sync.
+       For example, ``eth0``.
+   * - ``trigger_dhcp_request``
+     - ``True``
+     - Releases and requests a fresh DHCP lease via dhclient during network refresh. For example,
+       ``true``.
    * - ``debug_write_boot_log``
      - ``False``
      - Writes captured UART boot output to a local debug log when enabled. For example, ``true``.
@@ -79,6 +87,8 @@ BootFPGASoC strategy for FPGA SoC devices using Kuiper releases.
    * - ``kuiper``
      - ``CloudsmithDLDriver`` or ``KuiperDLDriver`` — downloads or exposes Kuiper images and
        extracted boot files.
+   * - ``ssh``
+     - ``SSHDriver`` (optional) — synchronizes the target's IP address discovered via the serial console.
 
 **Example**
 
@@ -102,6 +112,7 @@ BootFPGASoC strategy for FPGA SoC devices using Kuiper releases.
             password: analog
           KuiperDLDriver: {}
           MassStorageDriver: {}
+          SSHDriver: {}
           BootFPGASoC:
             reached_linux_marker: analog
             update_image: false
@@ -109,6 +120,8 @@ BootFPGASoC strategy for FPGA SoC devices using Kuiper releases.
             wait_for_kernel_banner_timeout: 120
             kernel_banner_retries: 1
             restart_iiod_on_shell: true
+            ethernet_interface: eth0
+            trigger_dhcp_request: true
             debug_write_boot_log: true
 
 BootFPGASoCSSH
