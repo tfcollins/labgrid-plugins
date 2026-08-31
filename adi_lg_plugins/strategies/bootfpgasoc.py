@@ -31,8 +31,9 @@ class Status(enum.Enum):
     sd_mux_to_dut = 4
     booting = 5
     booted = 6
-    shell = 7
-    soft_off = 8
+    net_refresh = 7
+    shell = 8
+    soft_off = 9
 
 
 @target_factory.reg_driver
@@ -72,6 +73,7 @@ class BootFPGASoC(Strategy):
         "mass_storage": "MassStorageDriver",
         "image_writer": {"USBStorageDriver", None},
         "kuiper": {"KuiperDLDriver", "CloudsmithDLDriver"},
+        "ssh": {"SSHDriver", None}
     }
 
     status = attr.ib(default=Status.unknown)
@@ -95,6 +97,7 @@ class BootFPGASoC(Strategy):
     # interactive shell (and therefore normal userspace boot) is ready.
     restart_iiod_on_shell = attr.ib(default=True)
     boot_log = attr.ib(default="", init=False)
+    ethernet_interface = attr.ib(default="eth0")
 
     debug_write_boot_log = attr.ib(default=False)
 
@@ -289,8 +292,27 @@ class BootFPGASoC(Strategy):
             self.target.deactivate(self.shell)
             self.logger.info("Device booted successfully")
 
-        elif status == Status.shell:
+        elif status == Status.net_refresh:
             self.transition(Status.booted)
+            if self.ssh:
+                # Update IP address through serial console
+                address = self.shell.get_ip_addresses(self.ethernet_interface)
+                assert address, f"No IP address found on {self.ethernet_interface}"
+                self.logger.info(f"Detected IP address on {self.ethernet_interface}: {address[0].ip}")
+                # Check if the IP address is reachable via ping
+                ip = str(address[0].ip)
+                self.target.deactivate(self.shell)
+
+                # Check the same as SSHDriver
+                if self.ssh.networkservice.address != ip:
+                    self.logger.info(f"Syncing SSHDriver IP to {ip}")
+                    self.ssh.networkservice.address = ip
+            else:
+                self.logger.info("SSH is not available, skipping IP address sync")
+
+
+        elif status == Status.shell:
+            self.transition(Status.net_refresh)
             # self.shell.bypass_login = True
             self.logger.info("Preparing interactive shell...")
             self.target.activate(self.shell)
