@@ -100,4 +100,3 @@ def test_net_refresh_no_ssh_skips_sync():
     strategy.shell.run.assert_not_called()
     strategy.shell.get_ip_addresses.assert_not_called()
     assert strategy.status is Status.net_refresh
-

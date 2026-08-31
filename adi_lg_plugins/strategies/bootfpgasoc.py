@@ -82,7 +82,7 @@ class BootFPGASoC(Strategy):
         "mass_storage": "MassStorageDriver",
         "image_writer": {"USBStorageDriver", None},
         "kuiper": {"KuiperDLDriver", "CloudsmithDLDriver"},
-        "ssh": {"SSHDriver", None}
+        "ssh": {"SSHDriver", None},
     }
 
     status = attr.ib(default=Status.unknown)
@@ -315,7 +315,9 @@ class BootFPGASoC(Strategy):
 
                 address = self.shell.get_ip_addresses(self.ethernet_interface)
                 assert address, f"No IP address found on {self.ethernet_interface}"
-                self.logger.info(f"Detected IP address on {self.ethernet_interface}: {address[0].ip}")
+                self.logger.info(
+                    f"Detected IP address on {self.ethernet_interface}: {address[0].ip}"
+                )
                 # Check if the IP address is reachable via ping
                 ip = str(address[0].ip)
                 self.target.deactivate(self.shell)
@@ -326,7 +328,6 @@ class BootFPGASoC(Strategy):
                     self.ssh.networkservice.address = ip
             else:
                 self.logger.info("SSH is not available, skipping IP address sync")
-
 
         elif status == Status.shell:
             self.transition(Status.net_refresh)
