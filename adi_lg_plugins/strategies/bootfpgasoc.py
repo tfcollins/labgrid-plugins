@@ -98,6 +98,7 @@ class BootFPGASoC(Strategy):
     restart_iiod_on_shell = attr.ib(default=True)
     boot_log = attr.ib(default="", init=False)
     ethernet_interface = attr.ib(default="eth0")
+    trigger_dhcp_request = attr.ib(default=True)
 
     debug_write_boot_log = attr.ib(default=False)
 
@@ -297,6 +298,12 @@ class BootFPGASoC(Strategy):
             if self.ssh:
                 # Update IP address through serial console
                 self.target.activate(self.shell)
+
+                if self.trigger_dhcp_request:
+                    self.shell.run(f"dhclient -r {self.ethernet_interface}")
+                    time.sleep(3)
+                    self.shell.run(f"dhclient {self.ethernet_interface}")
+
                 address = self.shell.get_ip_addresses(self.ethernet_interface)
                 assert address, f"No IP address found on {self.ethernet_interface}"
                 self.logger.info(f"Detected IP address on {self.ethernet_interface}: {address[0].ip}")
