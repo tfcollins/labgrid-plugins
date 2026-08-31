@@ -20,6 +20,7 @@ class Status(enum.Enum):
         sd_mux_to_dut: SD card muxed to device for booting.
         booting: Device powered on, boot in progress.
         booted: Linux kernel has booted, waiting for user space.
+        net_refresh: Refresh network/DHCP lease and sync IP address to SSHDriver if bound.
         shell: Interactive shell session available.
         soft_off: Device being shut down gracefully.
     """
@@ -50,10 +51,12 @@ class BootFPGASoC(Strategy):
     - SDMuxDriver (to switch SD card between host and DUT)
     - MassStorageDriver (to copy boot files to the SD card)
     - ADIShellDriver (to interact with the device shell after boot)
-    - KuiperDLDriver (to download and manage Kuiper release files)
+    - KuiperDLDriver or CloudsmithDLDriver (to download and manage Kuiper release files)
 
     Optionally, an ImageWriter driver can be used to flash the full image.
     This is controlled by the `update_image` attribute.
+    Optionally, an SSHDriver can be bound to synchronize the target's IP address
+    detected over the serial console.
 
     Therefore, physical connections must be set up to allow:
     - Power control of the device
@@ -64,6 +67,12 @@ class BootFPGASoC(Strategy):
         reached_linux_marker (str): String to expect in the shell to confirm Linux has booted.
         update_image (bool): Whether to flash the full Kuiper image to the SD card.
         wait_for_linux_prompt_timeout (int): Timeout in seconds to wait for Linux prompt after boot.
+        wait_for_kernel_banner_timeout (int): Timeout in seconds to wait after power-on for the first kernel banner.
+        kernel_banner_retries (int): Number of power-cycle retries if no kernel banner is observed on serial console.
+        restart_iiod_on_shell (bool): Whether to restart the iiod service upon reaching interactive shell.
+        ethernet_interface (str): Name of the Ethernet interface to query/refresh (default: "eth0").
+        trigger_dhcp_request (bool): Whether to release and renew DHCP lease via dhclient during network refresh.
+        debug_write_boot_log (bool): Whether to write captured UART boot output to local debug log files.
     """
 
     bindings = {
@@ -73,7 +82,7 @@ class BootFPGASoC(Strategy):
         "mass_storage": "MassStorageDriver",
         "image_writer": {"USBStorageDriver", None},
         "kuiper": {"KuiperDLDriver", "CloudsmithDLDriver"},
-        "ssh": {"SSHDriver", None}
+        "ssh": {"SSHDriver", None},
     }
 
     status = attr.ib(default=Status.unknown)
@@ -306,7 +315,9 @@ class BootFPGASoC(Strategy):
 
                 address = self.shell.get_ip_addresses(self.ethernet_interface)
                 assert address, f"No IP address found on {self.ethernet_interface}"
-                self.logger.info(f"Detected IP address on {self.ethernet_interface}: {address[0].ip}")
+                self.logger.info(
+                    f"Detected IP address on {self.ethernet_interface}: {address[0].ip}"
+                )
                 # Check if the IP address is reachable via ping
                 ip = str(address[0].ip)
                 self.target.deactivate(self.shell)
@@ -317,7 +328,6 @@ class BootFPGASoC(Strategy):
                     self.ssh.networkservice.address = ip
             else:
                 self.logger.info("SSH is not available, skipping IP address sync")
-
 
         elif status == Status.shell:
             self.transition(Status.net_refresh)

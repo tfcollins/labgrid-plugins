@@ -32,7 +32,7 @@ BootFPGASoC Strategy
 
 **State Machine**:
 
-The strategy manages 9 states:
+The strategy manages 10 states:
 
 .. mermaid::
 
@@ -51,7 +51,8 @@ The strategy manages 9 states:
 
        sd_mux_to_dut --> booting: Mux SD to device
        booting --> booted: Power on device
-       booted --> shell: Wait for kernel + marker
+       booted --> net_refresh: Wait for kernel + marker
+       net_refresh --> shell: DHCP refresh + sync SSH IP (if SSH bound)
 
        shell --> soft_off: Graceful shutdown
        soft_off --> [*]
@@ -68,6 +69,11 @@ The strategy manages 9 states:
            Wait for Linux kernel + marker
        end note
 
+       note right of net_refresh
+           Optional: DHCP release/request and
+           sync IP address to SSHDriver
+       end note
+
 **Hardware Requirements**:
 
 - Power control (VeSync, CyberPower, or other PowerProtocol implementation)
@@ -77,6 +83,19 @@ The strategy manages 9 states:
 - Boot artifacts via ``KuiperDLDriver`` or ``CloudsmithDLDriver`` (the
   ``kuiper`` binding accepts either)
 - Optional: USB storage writer (USBStorageDriver) for full image flashing
+- Optional: SSH driver (SSHDriver) for target IP address synchronization
+
+**Attributes**:
+
+- ``reached_linux_marker`` (str, default ``'analog'``): Console pattern that confirms Linux has reached the expected login or shell prompt.
+- ``update_image`` (bool, default ``False``): Whether to flash the full Kuiper disk image to the SD card instead of copying only boot files.
+- ``wait_for_linux_prompt_timeout`` (int, default ``60``): Maximum seconds to wait for the Linux marker prompt after the kernel starts.
+- ``wait_for_kernel_banner_timeout`` (int, default ``120``): Maximum seconds to wait after power-on for the first kernel boot banner on UART.
+- ``kernel_banner_retries`` (int, default ``1``): Number of power-cycle retries if no kernel banner is observed on the serial console.
+- ``restart_iiod_on_shell`` (bool, default ``True``): Restarts the iiod service upon reaching the interactive shell to ensure late-probing IIO devices are discovered.
+- ``ethernet_interface`` (str, default ``'eth0'``): Ethernet network interface queried for IP address detection and DHCP refresh.
+- ``trigger_dhcp_request`` (bool, default ``True``): Whether to release and renew the DHCP lease via ``dhclient`` on the target during network refresh.
+- ``debug_write_boot_log`` (bool, default ``False``): Writes captured UART boot output to local debug files on failure or retry attempts.
 
 **Configuration Example**:
 
@@ -115,10 +134,14 @@ The strategy manages 9 states:
             username: 'root'
             password: 'analog'
           KuiperDLDriver: {}
+          SSHDriver: {}
 
           BootFPGASoC:
             reached_linux_marker: 'analog'
             update_image: true  # Flash full image, not just boot files
+            ethernet_interface: 'eth0'
+            trigger_dhcp_request: true
+            restart_iiod_on_shell: true
 
 **Usage Example**:
 
