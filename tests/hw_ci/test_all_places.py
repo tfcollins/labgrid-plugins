@@ -69,7 +69,9 @@ def test_missing_runner_tag_yields_none_runner():
 
 
 def test_as_matrix_dict_shape():
-    legs, _, _, _ = build_all_places_matrix([_place("mini2", "adrv9002", "zcu102", runner="hw-mini2")])
+    legs, _, _, _ = build_all_places_matrix(
+        [_place("mini2", "adrv9002", "zcu102", runner="hw-mini2")]
+    )
     assert legs[0].as_matrix_dict() == {
         "place": "mini2",
         "part": "adrv9002",
@@ -95,7 +97,9 @@ def test_unreachable_place_is_dropped_when_predicate_rejects_it():
         _place("up", "adrv9002", "zcu102", exporter="up"),
         _place("down", "daq3", "vcu118", exporter="down"),
     ]
-    legs, _, unreachable, _ = build_all_places_matrix(places, reachable=lambda p: p.exporter != "down")
+    legs, _, unreachable, _ = build_all_places_matrix(
+        places, reachable=lambda p: p.exporter != "down"
+    )
     assert [leg.place for leg in legs] == ["up"]
     assert unreachable == ["down"]
 

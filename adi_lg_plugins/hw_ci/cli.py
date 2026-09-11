@@ -291,9 +291,7 @@ def _cmd_all_places_matrix(args: argparse.Namespace) -> int:
         return 3
 
     reachable = default_reachable if args.check_reachability else None
-    legs, acquired, unreachable, disabled = build_all_places_matrix(
-        places, reachable=reachable
-    )
+    legs, acquired, unreachable, disabled = build_all_places_matrix(places, reachable=reachable)
     matrix = {"include": [leg.as_matrix_dict() for leg in legs]}
     _emit_matrix(
         matrix,
