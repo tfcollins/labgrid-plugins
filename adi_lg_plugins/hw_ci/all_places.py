@@ -91,7 +91,7 @@ def build_all_places_matrix(
     places: Iterable[Place],
     *,
     reachable: Callable[[Place], bool] | None = None,
-) -> tuple[list[BootLeg], list[str], list[str]]:
+) -> tuple[list[BootLeg], list[str], list[str], list[tuple[str, str]]]:
     """Split live places into boot legs + skipped-acquired + skipped-unreachable.
 
     One leg per FREE, reachable place. Acquired places are returned in ``acquired``
@@ -100,11 +100,23 @@ def build_all_places_matrix(
     this keeps a board whose host is offline from producing a leg that would queue
     forever on a runner that will never come online. When ``reachable`` is ``None``,
     no reachability filtering happens (every free place gets a leg).
+
+    A place tagged ``disabled=<reason>`` is operator-quarantined: it emits no
+    leg and is returned in ``disabled`` as ``(name, reason)``. This mirrors the
+    filter ``hw-matrix.yml`` already applies in dynamic mode, so a known-broken
+    rig can be parked without failing every consumer's boot smoke. The check
+    runs before the acquired/reachable ones — a quarantined place should report
+    as quarantined even while someone is holding it.
     """
     legs: list[BootLeg] = []
     acquired: list[str] = []
     unreachable: list[str] = []
+    disabled: list[tuple[str, str]] = []
     for place in places:
+        reason = place.extra_tags.get("disabled")
+        if reason:
+            disabled.append((place.name, str(reason)))
+            continue
         if place.is_acquired:
             acquired.append(place.name)
             continue
@@ -122,4 +134,4 @@ def build_all_places_matrix(
                 mode=mode,
             )
         )
-    return legs, acquired, unreachable
+    return legs, acquired, unreachable, disabled

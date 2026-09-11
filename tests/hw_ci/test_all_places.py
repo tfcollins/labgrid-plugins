@@ -23,7 +23,7 @@ def _place(
 
 
 def test_uri_bootable_place_becomes_a_uri_leg():
-    legs, acquired, unreachable = build_all_places_matrix(
+    legs, acquired, unreachable, _ = build_all_places_matrix(
         [_place("mini2", "adrv9002", "zcu102", runner="hw-mini2")]
     )
     assert acquired == []
@@ -41,21 +41,21 @@ def test_uri_bootable_place_becomes_a_uri_leg():
 
 
 def test_noos_place_becomes_a_reserve_leg():
-    legs, _, _ = build_all_places_matrix(
+    legs, _, _, _ = build_all_places_matrix(
         [_place("jtagbox", "adrv9371", "zc706", strategy="BootNoOSJTAG")]
     )
     assert legs[0].mode == "reserve"
 
 
 def test_unknown_strategy_defaults_to_reserve():
-    legs, _, _ = build_all_places_matrix(
+    legs, _, _, _ = build_all_places_matrix(
         [_place("fabricbox", "adrv9371", "zc706", strategy="BootFabric")]
     )
     assert legs[0].mode == "reserve"
 
 
 def test_acquired_place_is_skipped_and_reported():
-    legs, acquired, unreachable = build_all_places_matrix(
+    legs, acquired, unreachable, _ = build_all_places_matrix(
         [_place("busy", "ad9081", "vcu118", acquired="someone")]
     )
     assert legs == []
@@ -64,12 +64,14 @@ def test_acquired_place_is_skipped_and_reported():
 
 
 def test_missing_runner_tag_yields_none_runner():
-    legs, _, _ = build_all_places_matrix([_place("x", "adrv9002", "zcu102", runner=None)])
+    legs, _, _, _ = build_all_places_matrix([_place("x", "adrv9002", "zcu102", runner=None)])
     assert legs[0].runner is None
 
 
 def test_as_matrix_dict_shape():
-    legs, _, _ = build_all_places_matrix([_place("mini2", "adrv9002", "zcu102", runner="hw-mini2")])
+    legs, _, _, _ = build_all_places_matrix(
+        [_place("mini2", "adrv9002", "zcu102", runner="hw-mini2")]
+    )
     assert legs[0].as_matrix_dict() == {
         "place": "mini2",
         "part": "adrv9002",
@@ -83,7 +85,7 @@ def test_as_matrix_dict_shape():
 def test_no_reachable_predicate_keeps_every_place():
     # reachable=None (the default) means no probing — an unreachable-looking place
     # still gets a leg. This preserves behavior for callers that don't opt in.
-    legs, _, unreachable = build_all_places_matrix(
+    legs, _, unreachable, _ = build_all_places_matrix(
         [_place("down", "daq3", "vcu118", exporter="down")]
     )
     assert unreachable == []
@@ -95,7 +97,9 @@ def test_unreachable_place_is_dropped_when_predicate_rejects_it():
         _place("up", "adrv9002", "zcu102", exporter="up"),
         _place("down", "daq3", "vcu118", exporter="down"),
     ]
-    legs, _, unreachable = build_all_places_matrix(places, reachable=lambda p: p.exporter != "down")
+    legs, _, unreachable, _ = build_all_places_matrix(
+        places, reachable=lambda p: p.exporter != "down"
+    )
     assert [leg.place for leg in legs] == ["up"]
     assert unreachable == ["down"]
 
@@ -108,7 +112,7 @@ def test_acquired_takes_precedence_over_reachability_check():
         probed.append(p.name)
         return True
 
-    legs, acquired, unreachable = build_all_places_matrix(
+    legs, acquired, unreachable, _ = build_all_places_matrix(
         [_place("busy", "ad9081", "vcu118", acquired="someone", exporter="busy")],
         reachable=reachable,
     )
@@ -169,7 +173,36 @@ def test_bootzynqmpjtag_place_becomes_a_uri_leg():
     # JTAG-strapped ZynqMP production boot (ADRV9009-ZU11EG on tron) boots
     # Kuiper and serves iiod, so it must get a real boot-verify leg, not a
     # reserve-only reachability check.
-    legs, _, _ = build_all_places_matrix(
+    legs, _, _, _ = build_all_places_matrix(
         [_place("tron", "adrv9009zu11eg", "adrv2crr-fmc", strategy="BootZynqMPJTAG")]
     )
     assert legs[0].mode == "uri"
+
+
+def test_disabled_place_is_quarantined_and_emits_no_leg():
+    """`disabled=<reason>` parks a known-broken rig without failing the run."""
+    place = _place("lablp", "adrv9361z7035", "adrv1crr-fmc", runner="hw-bq")
+    place.extra_tags["disabled"] = "no rootfs; see pyadi-dt test/hw/README.md"
+    legs, acquired, unreachable, disabled = build_all_places_matrix([place])
+    assert legs == []
+    assert acquired == []
+    assert unreachable == []
+    assert disabled == [("lablp", "no rootfs; see pyadi-dt test/hw/README.md")]
+
+
+def test_disabled_beats_acquired_so_quarantine_is_always_reported():
+    """A quarantined place reports as quarantined even while held."""
+    place = _place("lablp", "adrv9361z7035", "adrv1crr-fmc", acquired="bq/tcollins")
+    place.extra_tags["disabled"] = "rig down"
+    legs, acquired, unreachable, disabled = build_all_places_matrix([place])
+    assert legs == []
+    assert acquired == []
+    assert disabled == [("lablp", "rig down")]
+
+
+def test_untagged_places_are_unaffected_by_the_disabled_filter():
+    legs, _, _, disabled = build_all_places_matrix(
+        [_place("mini2", "adrv9002", "zcu102", runner="hw-mini2")]
+    )
+    assert disabled == []
+    assert [leg.place for leg in legs] == ["mini2"]
