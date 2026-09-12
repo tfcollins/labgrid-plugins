@@ -108,3 +108,52 @@ pre {
 .topology-matrix th:nth-child(4) {
     color: var(--topology-local-accent);
 }
+
+/* Editorial diagrams use paired assets so Furo's manual theme switch is exact. */
+.editorial-diagram {
+    margin: 1.5rem 0 0.5rem;
+    overflow-x: auto;
+    border-block: 1px solid color-mix(in srgb, currentColor 14%, transparent);
+    padding: 1rem 0;
+}
+
+.editorial-diagram img {
+    display: block;
+    min-width: 46rem;
+    width: 100%;
+    height: auto;
+}
+
+.editorial-diagram .diagram-dark {
+    display: none;
+}
+
+body[data-theme="dark"] .editorial-diagram .diagram-light {
+    display: none;
+}
+
+body[data-theme="dark"] .editorial-diagram .diagram-dark {
+    display: block;
+}
+
+@media (prefers-color-scheme: dark) {
+    body:not([data-theme="light"]) .editorial-diagram .diagram-light {
+        display: none;
+    }
+
+    body:not([data-theme="light"]) .editorial-diagram .diagram-dark {
+        display: block;
+    }
+}
+
+.diagram-caption {
+    margin-top: 0.25rem;
+    color: var(--color-foreground-muted);
+    font-size: 0.875rem;
+}
+
+@media (max-width: 52rem) {
+    .editorial-diagram img {
+        min-width: 42rem;
+    }
+}

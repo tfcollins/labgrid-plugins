@@ -12,25 +12,23 @@ Component Overview
 
 **Strategies**: High-level state machines that coordinate multiple drivers to accomplish complex workflows. Strategies manage the lifecycle of drivers and handle multi-step procedures.
 
-**Relationship Diagram**:
+**Relationship diagram**
 
-.. code-block:: text
+.. container:: editorial-diagram
 
-    Target Configuration (YAML)
-    │
-    ├─ Resources
-    │  └─ VesyncOutlet (credentials, outlet names)
-    │  └─ SerialPort (port, baudrate)
-    │  └─ MassStorageDevice (device path)
-    │
-    ├─ Drivers (bind to resources, implement protocols)
-    │  └─ VesyncPowerDriver (PowerProtocol)
-    │  └─ ADIShellDriver (CommandProtocol, ConsoleProtocol)
-    │  └─ MassStorageDriver (FileTransferProtocol)
-    │
-    └─ Strategies (coordinate drivers)
-       └─ BootFPGASoC
-          └─ Manages: Power, SDMux, MassStorage, Shell, Kuiper
+   .. image:: /_static/diagrams/exporter-execution-light.svg
+      :alt: Exporter execution topology showing the client, coordinator, exporter execution plane, tools and credentials, LAN services, and DUT
+      :class: diagram-light
+
+   .. image:: /_static/diagrams/exporter-execution-dark.svg
+      :alt: Exporter execution topology showing the client, coordinator, exporter execution plane, tools and credentials, LAN services, and DUT
+      :class: diagram-dark
+
+.. rst-class:: diagram-caption
+
+Resources describe placement; drivers and their bound providers determine where
+work runs. Editorial style adapted from `Diagram Design
+<https://github.com/cathrynlavery/diagram-design>`_ (MIT).
 
 Resources
 ---------

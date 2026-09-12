@@ -38,6 +38,21 @@ Calling it
 What happens
 ------------
 
+.. container:: editorial-diagram
+
+   .. image:: /_static/diagrams/hardware-request-flow-light.svg
+      :alt: Hardware request flow from static marker scan through matching, reservation, boot verification, test execution, release, and JUnit reporting
+      :class: diagram-light
+
+   .. image:: /_static/diagrams/hardware-request-flow-dark.svg
+      :alt: Hardware request flow from static marker scan through matching, reservation, boot verification, test execution, release, and JUnit reporting
+      :class: diagram-dark
+
+.. rst-class:: diagram-caption
+
+Every exit path converges on release and reporting. Editorial style adapted
+from `Diagram Design <https://github.com/cathrynlavery/diagram-design>`_ (MIT).
+
 #. **preflight** harvests the parts the suite wants from its
    ``iio_hardware`` markers (statically, via ``adi-lg-hw-ci request-matrix`` —
    it never imports test modules), probes ``GET /api/match`` for each, and

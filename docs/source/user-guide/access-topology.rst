@@ -72,6 +72,25 @@ sets ``proxy_required``, these drivers fail before starting an agent; configure
 an SSH ``ProxyJump`` for the advertised exporter hostname. The coordinator
 proxy metadata alone cannot tunnel ``AgentWrapper``.
 
+Artifact placement at a glance
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. container:: editorial-diagram
+
+   .. image:: /_static/diagrams/artifact-handoff-light.svg
+      :alt: Location-aware artifact flow from release service through exporter cache and ArtifactRef to JTAG, TFTP, and mass-storage consumers
+      :class: diagram-light
+
+   .. image:: /_static/diagrams/artifact-handoff-dark.svg
+      :alt: Location-aware artifact flow from release service through exporter cache and ArtifactRef to JTAG, TFTP, and mass-storage consumers
+      :class: diagram-dark
+
+.. rst-class:: diagram-caption
+
+Same-host handoffs retain exporter-local paths; compatibility APIs materialize
+an explicit client copy. Editorial style adapted from `Diagram Design
+<https://github.com/cathrynlavery/diagram-design>`_ (MIT).
+
 .. container:: topology-legend
 
    :topology-exporter-label:`Exporter path` marks work executed on or through
