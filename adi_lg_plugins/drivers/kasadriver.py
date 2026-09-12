@@ -23,13 +23,31 @@ from labgrid.factory import target_factory
 from labgrid.protocol import PowerProtocol
 from labgrid.step import step
 
+from ._power_agent import ExporterPowerAgentMixin
+
 
 @target_factory.reg_driver
 @attr.s(eq=False)
-class KasaPowerDriver(Driver, PowerResetMixin, PowerProtocol):
+class KasaPowerDriver(ExporterPowerAgentMixin, Driver, PowerResetMixin, PowerProtocol):
     """Driver controlling a target's power via a TP-Link Kasa device."""
 
     bindings = {"kasa_outlet": {"KasaOutlet"}}
+    _remote_binding = "kasa_outlet"
+
+    def __attrs_post_init__(self):
+        super().__attrs_post_init__()
+        self._init_exporter_agent()
+
+    def _exporter_kasa(self, action):
+        resource = self.kasa_outlet
+        return self._exporter_call(
+            "kasa",
+            action,
+            resource.host,
+            resource.outlets,
+            resource.username,
+            resource.password,
+        )
 
     async def _connect(self):
         """Discover and return a connected, updated Kasa device."""
@@ -101,14 +119,20 @@ class KasaPowerDriver(Driver, PowerResetMixin, PowerProtocol):
     @step()
     def on(self):
         """Turn on all configured Kasa outlets."""
-        asyncio.run(self._apply("turn_on"))
+        if self._is_remote:
+            self._exporter_kasa("on")
+        else:
+            asyncio.run(self._apply("turn_on"))
         self.logger.debug("Powered ON via Kasa outlet")
 
     @Driver.check_active
     @step()
     def off(self):
         """Turn off all configured Kasa outlets."""
-        asyncio.run(self._apply("turn_off"))
+        if self._is_remote:
+            self._exporter_kasa("off")
+        else:
+            asyncio.run(self._apply("turn_off"))
         self.logger.debug("Powered OFF via Kasa outlet")
 
     @Driver.check_active
@@ -130,4 +154,6 @@ class KasaPowerDriver(Driver, PowerResetMixin, PowerProtocol):
     @step()
     def get(self):
         """Return True if all configured Kasa outlets are on."""
+        if self._is_remote:
+            return self._exporter_kasa("get")
         return asyncio.run(self._is_on())

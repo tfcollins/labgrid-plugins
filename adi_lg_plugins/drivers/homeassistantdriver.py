@@ -12,6 +12,8 @@ from labgrid.factory import target_factory
 from labgrid.protocol import PowerProtocol
 from labgrid.step import step
 
+from ._power_agent import ExporterPowerAgentMixin
+
 
 class HomeAssistantException(Exception):
     pass
@@ -95,28 +97,50 @@ class HomeAssistantClient:
 
 @target_factory.reg_driver
 @attr.s(eq=False)
-class HomeAssistantPowerDriver(Driver, PowerResetMixin, PowerProtocol):
+class HomeAssistantPowerDriver(ExporterPowerAgentMixin, Driver, PowerResetMixin, PowerProtocol):
     """HomeAssistantPowerDriver - Driver using a Home Assistant switch/outlet
     to control a target's power via the Home Assistant REST API."""
 
     bindings = {"ha_outlet": {"HomeAssistantOutlet"}}
+    _remote_binding = "ha_outlet"
 
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
-        self.client = HomeAssistantClient(self.ha_outlet.url, self.ha_outlet.token)
+        self._init_exporter_agent()
+        self.client = None
+        if not self._is_remote:
+            self.client = HomeAssistantClient(self.ha_outlet.url, self.ha_outlet.token)
 
     @Driver.check_active
     @step()
     def on(self):
         """Turn on the configured Home Assistant switch."""
-        self.client.turn_on(self.ha_outlet.entity_id)
+        if self._is_remote:
+            self._exporter_call(
+                "homeassistant",
+                "on",
+                self.ha_outlet.url,
+                self.ha_outlet.token,
+                self.ha_outlet.entity_id,
+            )
+        else:
+            self.client.turn_on(self.ha_outlet.entity_id)
         self.logger.debug("Powered ON via Home Assistant entity %s", self.ha_outlet.entity_id)
 
     @Driver.check_active
     @step()
     def off(self):
         """Turn off the configured Home Assistant switch."""
-        self.client.turn_off(self.ha_outlet.entity_id)
+        if self._is_remote:
+            self._exporter_call(
+                "homeassistant",
+                "off",
+                self.ha_outlet.url,
+                self.ha_outlet.token,
+                self.ha_outlet.entity_id,
+            )
+        else:
+            self.client.turn_off(self.ha_outlet.entity_id)
         self.logger.debug("Powered OFF via Home Assistant entity %s", self.ha_outlet.entity_id)
 
     @Driver.check_active
@@ -144,4 +168,12 @@ class HomeAssistantPowerDriver(Driver, PowerResetMixin, PowerProtocol):
         Returns:
             bool: True if the switch is on, False otherwise.
         """
+        if self._is_remote:
+            return self._exporter_call(
+                "homeassistant",
+                "get",
+                self.ha_outlet.url,
+                self.ha_outlet.token,
+                self.ha_outlet.entity_id,
+            )
         return self.client.get_state(self.ha_outlet.entity_id)
