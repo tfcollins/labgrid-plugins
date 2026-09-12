@@ -7,6 +7,8 @@ import attr
 from labgrid.driver.common import Driver
 from labgrid.factory import target_factory
 
+from adi_lg_plugins.artifacts import ArtifactRef
+
 from ._remote import RemoteExecMixin
 
 
@@ -188,6 +190,26 @@ class MassStorageDriver(RemoteExecMixin, Driver):
         else:
             shutil.copy(src, full_dst)
         self.logger.info(f"Copied {src} to {full_dst}")
+
+    def copy_artifact(self, artifact: ArtifactRef, dst):
+        """Copy an artifact without relaying it when producer and storage share an exporter."""
+        if not self.mounted:
+            raise RuntimeError("Mass storage device is not mounted. Cannot copy artifact.")
+        full_dst = os.path.join(self._mount_dir(), dst.lstrip("/"))
+        self._remote_check(["mkdir", "-p", os.path.dirname(full_dst)])
+        if artifact.host == self._exporter_host(self.mass_storage):
+            self._remote_check(["cp", artifact.path, full_dst])
+            self.logger.info("Copied exporter artifact %s to %s", artifact.path, full_dst)
+            return
+        local_path = artifact.path
+        if artifact.host is not None:
+            cache = os.path.join(
+                os.path.expanduser("~/.cache/labgrid/artifacts"),
+                artifact.sha256,
+                os.path.basename(artifact.path),
+            )
+            local_path = artifact.materialize_on_client(cache)
+        self.copy_file(local_path, dst)
 
     def update_files(self):
         """Batch-copy files listed in mass_storage.file_updates (local-only path mapping)."""

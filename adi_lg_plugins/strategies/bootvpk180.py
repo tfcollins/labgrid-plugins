@@ -188,7 +188,7 @@ class BootVPK180(Strategy):
         if kuiper:
             self.logger.info("Preloading Kuiper boot files")
             self.target.activate(kuiper)
-            kuiper.get_boot_files_from_release()
+            self._boot_artifacts = kuiper.get_boot_artifacts()
             self.target.deactivate(kuiper)
 
     def _cold_cycle(self):
@@ -284,9 +284,9 @@ class BootVPK180(Strategy):
         self.logger.info("Updating boot files on SD card via SD-mux...")
         self.target.activate(self.mass_storage)
         self.mass_storage.mount_partition()
-        for boot_file in self.kuiper._boot_files:
-            self.logger.info("Copying %s to SD card...", boot_file)
-            self.mass_storage.copy_file(boot_file, "/")
+        for artifact in self._boot_artifacts:
+            self.logger.info("Copying %s to SD card...", artifact.path)
+            self.mass_storage.copy_artifact(artifact, "/")
         self.mass_storage.unmount_partition()
         self.target.deactivate(self.mass_storage)
         self.logger.info("Boot files updated via SD-mux")

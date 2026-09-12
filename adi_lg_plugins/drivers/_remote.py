@@ -105,12 +105,12 @@ class RemoteExecMixin:
         proxied from a coordinator carries it in ``extra['proxy']``.
         """
         host = getattr(res, "host", None)
-        if host:
+        if isinstance(host, str) and host:
             return _resolvable_host(host)
         extra = getattr(res, "extra", None) or {}
         if isinstance(extra, dict):
             proxy = extra.get("proxy")
-            return _resolvable_host(proxy) if proxy else None
+            return _resolvable_host(proxy) if isinstance(proxy, str) and proxy else None
         return None
 
     def _remote_prefix(self):
