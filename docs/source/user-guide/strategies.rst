@@ -11,6 +11,10 @@ Working with Strategies
 
 Strategies are high-level state machines that coordinate multiple drivers to accomplish complex workflows. They abstract away the detailed choreography of hardware interactions, allowing test engineers to focus on the overall boot and test sequence.
 
+See :doc:`access-topology` for the end-to-end exporter, LAN, DUT-return, and
+client-local requirements of every strategy.  A strategy is not necessarily
+exporter-only just because one of its bound drivers is exporter-capable.
+
 Overview
 --------
 

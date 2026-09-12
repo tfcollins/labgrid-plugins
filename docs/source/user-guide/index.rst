@@ -10,6 +10,7 @@ Comprehensive guides for using labgrid-plugins.
    drivers
    resources
    strategies
+   access-topology
    cli
    mcp
    tick
