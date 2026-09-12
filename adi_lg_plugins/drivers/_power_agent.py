@@ -49,6 +49,13 @@ class ExporterPowerAgentMixin(RemoteExecMixin):
     def on_activate(self):
         host = self._power_exporter_host()
         if host is not None:
+            resource = self._remote_resource()
+            extra = getattr(resource, "extra", None) or {}
+            if isinstance(extra, dict) and extra.get("proxy_required"):
+                raise RuntimeError(
+                    "exporter requires a proxy, but labgrid AgentWrapper needs direct SSH; "
+                    "configure an SSH ProxyJump for the exporter host"
+                )
             self._agent_wrapper, self._agent_module = create_power_agent(host)
 
     def on_deactivate(self):

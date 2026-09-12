@@ -5,6 +5,34 @@ It must not use relative imports or depend on state in the controlling process.
 """
 
 import asyncio
+import os
+
+
+def _secret(name, required=True):
+    value = os.environ.get(name)
+    if value:
+        return value
+    path = os.path.expanduser(
+        os.environ.get("ADI_LG_CREDENTIAL_FILE", "~/.config/adi-lg/credentials.env")
+    )
+    try:
+        if os.stat(path).st_mode & 0o077:
+            raise RuntimeError(f"exporter credential file {path} must have mode 0600")
+        with open(path) as stream:
+            for line in stream:
+                key, separator, candidate = line.rstrip("\n").partition("=")
+                if separator and key == name:
+                    value = candidate
+                    break
+    except FileNotFoundError:
+        pass
+    if not value:
+        if not required:
+            return None
+        raise RuntimeError(
+            f"exporter credential {name} is required in the environment or credential file"
+        )
+    return value
 
 
 def handle_probe():
@@ -12,16 +40,24 @@ def handle_probe():
     return ["apc", "cyberpower", "homeassistant", "kasa", "vesync"]
 
 
-def handle_apc_set(address, outlet, on, read_community, write_community):
+def handle_apc_set(address, outlet, on):
     from adi_lg_plugins.drivers.apcpowerdriver import APCPdu
 
-    APCPdu(address, read_community, write_community).set_outlet_on(outlet, on)
+    APCPdu(
+        address,
+        _secret("ADI_LG_APC_READ_COMMUNITY"),
+        _secret("ADI_LG_APC_WRITE_COMMUNITY"),
+    ).set_outlet_on(outlet, on)
 
 
-def handle_apc_get(address, outlet, read_community, write_community):
+def handle_apc_get(address, outlet):
     from adi_lg_plugins.drivers.apcpowerdriver import APCPdu
 
-    return APCPdu(address, read_community, write_community).get_outlet_status(outlet)
+    return APCPdu(
+        address,
+        _secret("ADI_LG_APC_READ_COMMUNITY"),
+        _secret("ADI_LG_APC_WRITE_COMMUNITY"),
+    ).get_outlet_status(outlet)
 
 
 def handle_cyberpower_set(address, outlet, on):
@@ -30,10 +66,10 @@ def handle_cyberpower_set(address, outlet, on):
     CyberPowerPdu(address).set_outlet_on(outlet, on)
 
 
-def handle_homeassistant(action, url, token, entity_id):
+def handle_homeassistant(action, url, entity_id):
     from adi_lg_plugins.drivers.homeassistantdriver import HomeAssistantClient
 
-    client = HomeAssistantClient(url, token)
+    client = HomeAssistantClient(url, _secret("ADI_LG_HOMEASSISTANT_TOKEN"))
     if action == "on":
         client.turn_on(entity_id)
         return None
@@ -93,14 +129,25 @@ async def _kasa_operation(action, host, selector, username, password):
         await device.disconnect()
 
 
-def handle_kasa(action, host, selector, username, password):
-    return asyncio.run(_kasa_operation(action, host, selector, username, password))
+def handle_kasa(action, host, selector):
+    return asyncio.run(
+        _kasa_operation(
+            action,
+            host,
+            selector,
+            _secret("ADI_LG_KASA_USERNAME", required=False),
+            _secret("ADI_LG_KASA_PASSWORD", required=False),
+        )
+    )
 
 
-def handle_vesync(action, outlet_names, username, password):
+def handle_vesync(action, outlet_names):
     from pyvesync import VeSync
 
-    manager = VeSync(username, password)
+    manager = VeSync(
+        _secret("ADI_LG_VESYNC_USERNAME"),
+        _secret("ADI_LG_VESYNC_PASSWORD"),
+    )
     manager.login()
     if not manager.enabled:
         raise RuntimeError("Failed to login to VeSync account")

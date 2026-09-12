@@ -680,9 +680,9 @@ class BootZynq7000JTAGRecovery(Strategy):
             commands = [
                 "setenv autoload no",
                 "dhcp",
-                f"setenv serverip {self.tftp_server.get_ip()}",
-                f"setenv tftpdstport {self.tftp_driver.resource.port}",
-                f"setenv tftpport {self.tftp_driver.resource.port}",
+                f"setenv serverip {self.tftp_driver.get_server_ip()}",
+                f"setenv tftpdstport {self.tftp_driver.get_server_port()}",
+                f"setenv tftpport {self.tftp_driver.get_server_port()}",
                 f"setenv bootargs {self.bootargs}",
                 f"tftpboot {self.kernel_addr} {kernel}",
                 f"tftpboot {self.dtb_addr} {dtb}",

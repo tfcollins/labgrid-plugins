@@ -1,12 +1,15 @@
 """Strategy to boot AMD Versal Premium VPK180 boards via the Zynq system controller."""
 
 import enum
+import os
 import time
 
 import attr
 from labgrid.factory import target_factory
 from labgrid.step import step
 from labgrid.strategy import Strategy, StrategyError
+
+from adi_lg_plugins.artifacts import local_artifact
 
 from ._compat import never_retry
 
@@ -188,8 +191,10 @@ class BootVPK180(Strategy):
         if kuiper:
             self.logger.info("Preloading Kuiper boot files")
             self.target.activate(kuiper)
-            self._boot_artifacts = kuiper.get_boot_artifacts()
-            self.target.deactivate(kuiper)
+            try:
+                self._boot_artifacts = kuiper.get_boot_artifacts()
+            finally:
+                self.target.deactivate(kuiper)
 
     def _cold_cycle(self):
         """Hard power off → settle → on, deactivating any active shells first."""
@@ -301,7 +306,18 @@ class BootVPK180(Strategy):
         self.logger.info("Updating boot files on Versal via SSH...")
         self.target.activate(self.ssh)
         try:
-            for boot_file in self.kuiper._boot_files:
+            artifacts = getattr(self, "_boot_artifacts", None)
+            if artifacts is None:
+                artifacts = [local_artifact(path) for path in self.kuiper._boot_files]
+            for artifact in artifacts:
+                boot_file = artifact.path
+                if artifact.host is not None:
+                    cache = os.path.join(
+                        os.path.expanduser("~/.cache/labgrid/artifacts"),
+                        artifact.sha256,
+                        os.path.basename(artifact.path),
+                    )
+                    boot_file = artifact.materialize_on_client(cache)
                 self.logger.info("scp %s -> %s/", boot_file, self.boot_partition_path)
                 self.ssh.put(boot_file, f"{self.boot_partition_path}/")
             self.ssh.run_check("sync")

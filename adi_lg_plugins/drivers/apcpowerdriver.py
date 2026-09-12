@@ -258,8 +258,6 @@ class APCDriver(ExporterPowerAgentMixin, Driver, PowerResetMixin, PowerProtocol)
                 self.APC_outlet.address,
                 self.outlet,
                 True,
-                self.APC_outlet.read_community,
-                self.APC_outlet.write_community,
             )
         else:
             self.pdu_dev.set_outlet_on(self.outlet, True)
@@ -282,8 +280,6 @@ class APCDriver(ExporterPowerAgentMixin, Driver, PowerResetMixin, PowerProtocol)
                 self.APC_outlet.address,
                 self.outlet,
                 False,
-                self.APC_outlet.read_community,
-                self.APC_outlet.write_community,
             )
         else:
             self.pdu_dev.set_outlet_on(self.outlet, False)
@@ -335,8 +331,6 @@ class APCDriver(ExporterPowerAgentMixin, Driver, PowerResetMixin, PowerProtocol)
                 "apc_get",
                 self.APC_outlet.address,
                 self.outlet,
-                self.APC_outlet.read_community,
-                self.APC_outlet.write_community,
             )
         else:
             status_code = self.pdu_dev.get_outlet_status(self.outlet)

@@ -13,6 +13,9 @@ from adi_lg_plugins.artifacts import ArtifactRef
 from adi_lg_plugins.resources.tftpserver import TFTPServerResource
 
 from ._remote import RemoteExecMixin
+from .agents.tftp import TFTPServer as SimpleTFTPServer
+
+__all__ = ["SimpleTFTPServer", "TFTPServerDriver"]
 
 _AGENT_PATH = os.path.join(os.path.dirname(__file__), "agents")
 _UPLOAD_CHUNK_SIZE = 64 * 1024
@@ -43,6 +46,12 @@ class TFTPServerDriver(RemoteExecMixin, Driver):
     def on_activate(self):
         if self.wrapper is not None:
             return
+        extra = getattr(self.resource, "extra", None) or {}
+        if isinstance(extra, dict) and extra.get("proxy_required"):
+            raise RuntimeError(
+                "exporter requires a proxy, but labgrid AgentWrapper needs direct SSH; "
+                "configure an SSH ProxyJump for the exporter host"
+            )
         wrapper = AgentWrapper(self._exporter_host(self.resource))
         try:
             proxy = wrapper.load("tftp", path=_AGENT_PATH)

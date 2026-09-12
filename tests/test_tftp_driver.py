@@ -214,3 +214,17 @@ def test_auto_address_derivation_failure_does_not_advertise_client(tmp_path):
 
     assert driver.resource.address == "auto"
     wrapper.close.assert_called_once_with()
+
+
+def test_concurrent_server_cannot_claim_same_endpoint(tmp_path):
+    from adi_lg_plugins.drivers.tftpserverdriver import SimpleTFTPServer
+
+    first = SimpleTFTPServer("127.0.0.1", 0, str(tmp_path / "first"))
+    first.start()
+    second = SimpleTFTPServer("127.0.0.1", first.port, str(tmp_path / "second"))
+    try:
+        with pytest.raises(OSError):
+            second.start()
+    finally:
+        second.stop()
+        first.stop()

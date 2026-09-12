@@ -40,6 +40,12 @@ class ExporterAgentMixin:
     def _exporter_agent_activate(self):
         if not self._runs_on_exporter:
             return
+        extra = getattr(self._exporter_resource(), "extra", None) or {}
+        if isinstance(extra, dict) and extra.get("proxy_required"):
+            raise RuntimeError(
+                "exporter requires a proxy, but labgrid AgentWrapper needs direct SSH; "
+                "configure an SSH ProxyJump for the exporter host"
+            )
         if not self._exporter_agent:
             raise AttributeError(f"{type(self).__name__} must set _exporter_agent")
         self._agent_wrapper = AgentWrapper(self._exporter_host)

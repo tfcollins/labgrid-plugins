@@ -373,7 +373,7 @@ class CloudsmithDLDriver(ExporterAgentMixin, Driver):
             "repo": resource.repo,
             "filename": resource.filename,
             "version": resource.version,
-            "api_token": resource.api_token,
+            "api_token": None,
             "cache_path": resource.cache_path,
             "boot_file_path": resource.boot_file_path,
         }

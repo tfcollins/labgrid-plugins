@@ -50,6 +50,8 @@ def _make_strategy(**overrides):
     s.tftp_server.get_ip.return_value = "10.0.0.1"
     s.tftp_server.root = "/tmp/tftp"
     s.tftp_driver = MagicMock()
+    s.tftp_driver.get_server_ip.return_value = "10.0.0.1"
+    s.tftp_driver.get_server_port.return_value = 3069
     s.tftp_driver.resource.port = 3069
     s.tftp_driver.resource.root = "/tmp/tftp"
     s.ssh = None

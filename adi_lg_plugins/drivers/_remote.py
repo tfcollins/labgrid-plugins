@@ -174,4 +174,26 @@ class RemoteExecMixin:
         conn.run_check(f"mkdir -p {rdir}")
         rpath = f"{rdir}/{os.path.basename(local_path)}"
         conn.put_file(local_path, rpath)
+        self.__dict__.setdefault("_remote_stage_dirs", set()).add(rdir)
         return rpath
+
+    def _cleanup_remote_stage(self):
+        """Remove temporary content staged by this driver instance."""
+        dirs = self.__dict__.pop("_remote_stage_dirs", set())
+        if not dirs:
+            return
+        host = self._exporter_host(self._remote_resource())
+        if not host:
+            return
+        conn = sshmanager.get(host)
+        for directory in sorted(dirs):
+            # Every directory is formed from the fixed root plus a SHA-256 hex
+            # digest, so no caller-controlled shell syntax reaches this command.
+            try:
+                conn.run_check(f"rm -rf {directory}")
+            except Exception as exc:
+                logger = getattr(self, "logger", None)
+                if logger is not None:
+                    logger.warning(
+                        "failed to remove exporter staging directory %s: %s", directory, exc
+                    )

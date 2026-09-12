@@ -45,8 +45,6 @@ class KasaPowerDriver(ExporterPowerAgentMixin, Driver, PowerResetMixin, PowerPro
             action,
             resource.host,
             resource.outlets,
-            resource.username,
-            resource.password,
         )
 
     async def _connect(self):

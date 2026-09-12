@@ -32,7 +32,8 @@ class TFTPServer:
     def start(self):
         os.makedirs(self.root, exist_ok=True)
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        # Exclusive ownership is required: concurrent roots on one endpoint
+        # must fail instead of receiving an arbitrary subset of requests.
         try:
             sock.bind((self.address, self.port))
         except Exception:
@@ -46,20 +47,24 @@ class TFTPServer:
 
     def stop(self):
         self.running = False
-        if self.socket is not None:
-            self.socket.close()
-            self.socket = None
+        sock = self.socket
+        if sock is not None:
+            sock.close()
         if self.thread is not None:
             self.thread.join(timeout=2.0)
             self.thread = None
+        self.socket = None
 
     def _run(self):
         while self.running:
+            sock = self.socket
+            if sock is None:
+                return
             try:
-                ready, _, _ = select.select([self.socket], [], [], 0.2)
+                ready, _, _ = select.select([sock], [], [], 0.2)
                 if not ready:
                     continue
-                data, peer = self.socket.recvfrom(1024)
+                data, peer = sock.recvfrom(1024)
                 threading.Thread(
                     target=self._handle_request, args=(data, peer), daemon=True
                 ).start()

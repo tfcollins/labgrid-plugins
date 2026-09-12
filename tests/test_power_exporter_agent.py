@@ -47,9 +47,9 @@ def test_apc_remote_operations_use_exporter_agent():
     driver.off()
     assert driver.get() is True
 
-    driver._agent_module.apc_set.assert_any_call("10.0.0.10", 3, True, "reader", "writer")
-    driver._agent_module.apc_set.assert_any_call("10.0.0.10", 3, False, "reader", "writer")
-    driver._agent_module.apc_get.assert_called_once_with("10.0.0.10", 3, "reader", "writer")
+    driver._agent_module.apc_set.assert_any_call("10.0.0.10", 3, True)
+    driver._agent_module.apc_set.assert_any_call("10.0.0.10", 3, False)
+    driver._agent_module.apc_get.assert_called_once_with("10.0.0.10", 3)
 
 
 def test_cyberpower_remote_operations_use_exporter_agent():
@@ -80,14 +80,12 @@ def test_homeassistant_remote_operations_use_exporter_agent():
     driver.off()
     assert driver.get() is True
 
+    driver._agent_module.homeassistant.assert_any_call("on", "http://ha.local:8123", "switch.bench")
     driver._agent_module.homeassistant.assert_any_call(
-        "on", "http://ha.local:8123", "token", "switch.bench"
+        "off", "http://ha.local:8123", "switch.bench"
     )
     driver._agent_module.homeassistant.assert_any_call(
-        "off", "http://ha.local:8123", "token", "switch.bench"
-    )
-    driver._agent_module.homeassistant.assert_any_call(
-        "get", "http://ha.local:8123", "token", "switch.bench"
+        "get", "http://ha.local:8123", "switch.bench"
     )
 
 
@@ -107,7 +105,7 @@ def test_kasa_remote_operations_use_exporter_agent():
     driver.off()
     assert driver.get() is True
 
-    common = ("10.0.0.12", "left,right", "user@example.com", "secret")
+    common = ("10.0.0.12", "left,right")
     driver._agent_module.kasa.assert_any_call("on", *common)
     driver._agent_module.kasa.assert_any_call("off", *common)
     driver._agent_module.kasa.assert_any_call("get", *common)
@@ -128,7 +126,7 @@ def test_vesync_remote_operations_use_exporter_agent():
     driver.off()
     assert driver.get() is True
 
-    common = ("bench, dut", "user@example.com", "secret")
+    common = ("bench, dut",)
     driver._agent_module.vesync.assert_any_call("on", *common)
     driver._agent_module.vesync.assert_any_call("off", *common)
     driver._agent_module.vesync.assert_any_call("get", *common)
@@ -182,6 +180,20 @@ def test_uploaded_helper_executes_through_real_agentwrapper():
         } <= set(wrapper.list())
     finally:
         wrapper.close()
+
+
+def test_proxy_required_fails_before_agent_creation():
+    driver = APCDriver.__new__(APCDriver)
+    driver.APC_outlet = SimpleNamespace(
+        extra={"proxy": "isolated.example.com", "proxy_required": True}
+    )
+    driver._init_exporter_agent()
+    with (
+        patch("adi_lg_plugins.drivers._power_agent.AgentWrapper") as wrapper_type,
+        pytest.raises(RuntimeError, match="ProxyJump"),
+    ):
+        driver.on_activate()
+    wrapper_type.assert_not_called()
 
 
 @pytest.mark.parametrize(

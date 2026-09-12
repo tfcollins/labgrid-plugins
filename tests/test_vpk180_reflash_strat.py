@@ -43,6 +43,8 @@ def _make_strategy(tmp_path=None, **bindings):
         strategy.tftp.resource.root = str(tmp_path)
         strategy.tftp.resource.port = 3069
         strategy.tftp.resource.get_ip.return_value = "10.0.0.71"
+        strategy.tftp.get_server_ip.return_value = "10.0.0.71"
+        strategy.tftp.get_server_port.return_value = 3069
     return strategy
 
 

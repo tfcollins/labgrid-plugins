@@ -66,9 +66,7 @@ class VesyncPowerDriver(ExporterPowerAgentMixin, Driver, PowerResetMixin, PowerP
 
     def _exporter_vesync(self, action):
         resource = self.vesync_outlet
-        return self._exporter_call(
-            "vesync", action, resource.outlet_names, resource.username, resource.password
-        )
+        return self._exporter_call("vesync", action, resource.outlet_names)
 
     @Driver.check_active
     @step()

@@ -221,8 +221,10 @@ class BootFPGASoCTFTP(Strategy):
         if self.kuiper:
             self.target.activate(self.kuiper)
             self.logger.info("KuiperDLDriver activated")
-            self._boot_artifacts = self.kuiper.get_boot_artifacts()
-            self.target.deactivate(self.kuiper)
+            try:
+                self._boot_artifacts = self.kuiper.get_boot_artifacts()
+            finally:
+                self.target.deactivate(self.kuiper)
 
     @never_retry
     @step()

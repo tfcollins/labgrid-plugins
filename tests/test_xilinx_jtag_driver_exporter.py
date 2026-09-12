@@ -230,6 +230,17 @@ def test_resource_exporter_path_marker_bypasses_staging(driver):
     assert "dow /srv/jtag/kernel.elf" in driver.scripts[-1]
 
 
+def test_legacy_absolute_exporter_path_bypasses_staging(driver):
+    driver.xilinxdevicejtag.extra = {"proxy": "exporter.example.com"}
+    missing = "/srv/recovery/system.bit"
+    assert not os.path.exists(missing)
+
+    driver.load_and_run_elf(missing)
+
+    assert driver.staged == []
+    assert missing in driver.scripts[-1]
+
+
 def test_empty_exporter_path_marker_is_rejected(driver):
     with pytest.raises(ValueError, match="must not be empty"):
         driver.load_and_run_elf("exporter:")

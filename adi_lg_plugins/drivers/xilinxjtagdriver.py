@@ -82,6 +82,10 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
             if not exporter_path:
                 raise ValueError("exporter: payload path must not be empty")
             return exporter_path
+        if self._is_remote and os.path.isabs(path) and not os.path.isfile(path):
+            # Backward compatibility: before automatic staging, absolute paths
+            # in exporter YAML were interpreted directly by exporter-side xsdb.
+            return path
         return self._stage_file(os.path.abspath(path))
 
     def _stage_optional_payload(self, path: str | None) -> str | None:
@@ -115,6 +119,7 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
                 os.unlink(local_tcl)
             except FileNotFoundError:
                 pass
+            self._cleanup_remote_stage()
 
     @Driver.check_active
     @step()

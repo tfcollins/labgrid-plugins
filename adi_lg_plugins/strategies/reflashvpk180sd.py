@@ -408,7 +408,7 @@ class ReflashVPK180SD(Strategy):
 
     def _write_sd_from_recovery(self):
         """Issue the dd command on the recovery shell and verify if requested."""
-        server_ip = self.tftp.resource.get_ip()
+        server_ip = self.tftp.get_server_ip()
         server_port = self.tftp.resource.port
         cmd = self.dd_command_template.format(
             filename=self.tftp_image_filename,

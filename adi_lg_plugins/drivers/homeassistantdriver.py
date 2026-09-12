@@ -120,7 +120,6 @@ class HomeAssistantPowerDriver(ExporterPowerAgentMixin, Driver, PowerResetMixin,
                 "homeassistant",
                 "on",
                 self.ha_outlet.url,
-                self.ha_outlet.token,
                 self.ha_outlet.entity_id,
             )
         else:
@@ -136,7 +135,6 @@ class HomeAssistantPowerDriver(ExporterPowerAgentMixin, Driver, PowerResetMixin,
                 "homeassistant",
                 "off",
                 self.ha_outlet.url,
-                self.ha_outlet.token,
                 self.ha_outlet.entity_id,
             )
         else:
@@ -173,7 +171,6 @@ class HomeAssistantPowerDriver(ExporterPowerAgentMixin, Driver, PowerResetMixin,
                 "homeassistant",
                 "get",
                 self.ha_outlet.url,
-                self.ha_outlet.token,
                 self.ha_outlet.entity_id,
             )
         return self.client.get_state(self.ha_outlet.entity_id)

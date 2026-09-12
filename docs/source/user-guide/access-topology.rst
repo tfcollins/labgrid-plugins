@@ -48,6 +48,30 @@ Terminology
 plain plugin resources may contain ``extra["proxy"]`` after coordinator
 resolution, but only code which consumes that field relocates its work.
 
+Exporter credentials
+~~~~~~~~~~~~~~~~~~~~
+
+Resource parameters and ``extra`` are coordinator-visible. Do not put secrets
+in exporter resource YAML. Exporter-executed helpers read credentials only from the exporter environment
+or ``~/.config/adi-lg/credentials.env`` on the exporter:
+
+* ``ADI_LG_APC_READ_COMMUNITY`` and ``ADI_LG_APC_WRITE_COMMUNITY``
+* ``ADI_LG_HOMEASSISTANT_TOKEN``
+* ``ADI_LG_KASA_USERNAME`` and ``ADI_LG_KASA_PASSWORD`` (both optional)
+* ``ADI_LG_VESYNC_USERNAME`` and ``ADI_LG_VESYNC_PASSWORD``
+* ``CLOUDSMITH_API_TOKEN``
+
+The credential file uses one ``NAME=value`` per line and must have mode 0600.
+Set exporter-local ``ADI_LG_CREDENTIAL_FILE`` to select another protected path.
+The legacy resource credential fields remain available for local execution,
+but exporter execution never sends those values from the client. Protect the
+exporter environment with the same controls as other service credentials.
+
+``AgentWrapper`` opens direct SSH/rsync connections. If coordinator metadata
+sets ``proxy_required``, these drivers fail before starting an agent; configure
+an SSH ``ProxyJump`` for the advertised exporter hostname. The coordinator
+proxy metadata alone cannot tunnel ``AgentWrapper``.
+
 .. container:: topology-legend
 
    :topology-exporter-label:`Exporter path` marks work executed on or through
@@ -98,9 +122,9 @@ Driver transport matrix
      - Client → exporter SSH; exporter → CyberPower PDU, UDP/161.
      - ``pysnmp`` and PDU LAN reachability are required on the exporter.
    * - ``XilinxJTAGDriver``
-     - **Yes.** ``xsdb`` runs on the exporter selected by ``XilinxDeviceJTAG``; generated Tcl and every xsdb input payload are staged automatically.
+     - **Yes.** ``xsdb`` runs on the exporter selected by ``XilinxDeviceJTAG``; generated Tcl and client-readable xsdb payloads are staged automatically.
      - Client → exporter SSH; ``jtag_url`` is resolved by the exporter-side ``xsdb`` process. ProxyJump-only exporters are not supported by the current Tcl staging helper.
-     - Xilinx tools and JTAG/hw_server access must be on the exporter. Prefix a payload with ``exporter:`` only when it already exists there. ``dcc_log_path`` is an exporter-side output path and is not copied back to the client.
+     - Xilinx tools and JTAG/hw_server access must be on the exporter. Prefix a payload with ``exporter:`` when it already exists there. For compatibility, an absolute path absent on the client is also treated as exporter-local. ``dcc_log_path`` is an exporter-side output path and is not copied back to the client.
    * - ``TFTPServerDriver``
      - **Yes.** A stateful ``AgentWrapper`` helper owns the UDP service and root on the resource exporter.
      - Client → exporter SSH; DUT → exporter UDP on the configured port (3069 by default).

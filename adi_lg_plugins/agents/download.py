@@ -10,6 +10,26 @@ import os
 from types import SimpleNamespace
 
 
+def _exporter_secret(name):
+    value = os.environ.get(name)
+    if value:
+        return value
+    path = os.path.expanduser(
+        os.environ.get("ADI_LG_CREDENTIAL_FILE", "~/.config/adi-lg/credentials.env")
+    )
+    try:
+        if os.stat(path).st_mode & 0o077:
+            raise RuntimeError(f"exporter credential file {path} must have mode 0600")
+        with open(path) as stream:
+            for line in stream:
+                key, separator, candidate = line.rstrip("\n").partition("=")
+                if separator and key == name:
+                    return candidate
+    except FileNotFoundError:
+        pass
+    return None
+
+
 def _artifact(path):
     path = os.path.abspath(os.path.expanduser(path))
     digest = hashlib.sha256()
@@ -29,6 +49,7 @@ def _driver(kind, config):
         from adi_lg_plugins.drivers.cloudsmithdldriver import CloudsmithDLDriver
 
         driver = CloudsmithDLDriver.__new__(CloudsmithDLDriver)
+        config = {**config, "api_token": _exporter_secret("CLOUDSMITH_API_TOKEN")}
         driver.cloudsmith_resource = SimpleNamespace(**config)
     else:
         raise ValueError(f"unsupported downloader kind: {kind!r}")
