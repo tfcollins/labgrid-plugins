@@ -1,233 +1,130 @@
-import logging
+"""TFTP server driver whose service runs on the bound resource's exporter."""
+
+import base64
 import os
-import select
-import socket
-import struct
-import threading
+from types import SimpleNamespace
 
 import attr
 from labgrid.driver.common import Driver
 from labgrid.factory import target_factory
+from labgrid.util.agentwrapper import AgentWrapper
 
 from adi_lg_plugins.resources.tftpserver import TFTPServerResource
 
-# TFTP Opcodes
-OP_RRQ = 1
-OP_WRQ = 2
-OP_DATA = 3
-OP_ACK = 4
-OP_ERROR = 5
+from ._remote import RemoteExecMixin
 
-
-class SimpleTFTPServer:
-    def __init__(self, address, port, root, logger=None):
-        self.address = address
-        self.port = port
-        self.root = root
-        self.logger = logger or logging.getLogger("SimpleTFTPServer")
-        self.sock = None
-        self.running = False
-        self.thread = None
-
-    def start(self):
-        if self.running:
-            return
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        # Allow reuse address to avoid "Address already in use" on restarts
-        self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try:
-            self.sock.bind((self.address, self.port))
-            self.logger.info(
-                f"TFTP Server started on {self.address}:{self.port}, root: {self.root}"
-            )
-            self.running = True
-            self.thread = threading.Thread(target=self._run_server, daemon=True)
-            self.thread.start()
-        except Exception as e:
-            self.logger.error(f"Failed to bind TFTP server: {e}")
-            raise
-
-    def stop(self):
-        self.running = False
-        if self.sock:
-            self.sock.close()
-        if self.thread:
-            self.thread.join()
-        self.logger.info("TFTP Server stopped")
-
-    def _run_server(self):
-        while self.running:
-            try:
-                r, _, _ = select.select([self.sock], [], [], 0.5)
-                if not r:
-                    continue
-                data, addr = self.sock.recvfrom(1024)
-                threading.Thread(
-                    target=self._handle_request, args=(data, addr), daemon=True
-                ).start()
-            except OSError:
-                if self.running:
-                    self.logger.error("Socket error in main loop")
-                break
-            except Exception as e:
-                self.logger.exception(f"Error in TFTP server loop: {e}")
-
-    def _send_error(self, sock, addr, code, message):
-        # Opcode 5, ErrorCode, ErrMsg, 0
-        pkt = struct.pack("!HH", OP_ERROR, code) + message.encode("ascii") + b"\x00"
-        try:
-            sock.sendto(pkt, addr)
-        except Exception:
-            pass
-
-    def _handle_request(self, data, addr):
-        if len(data) < 2:
-            return
-        opcode = struct.unpack("!H", data[:2])[0]
-        if opcode == OP_RRQ:
-            self._handle_rrq(data, addr)
-        elif opcode == OP_WRQ:
-            self.logger.warning(f"Write request from {addr} rejected")
-            temp_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            self._send_error(temp_sock, addr, 2, "Access violation (Writes not supported)")
-            temp_sock.close()
-        else:
-            # Ignore other opcodes on main port
-            pass
-
-    def _handle_rrq(self, data, addr):
-        try:
-            parts = data[2:].split(b"\x00")
-            filename = parts[0].decode("ascii")
-            # mode = parts[1].decode('ascii').lower() # mode is usually 'octet' or 'netascii'
-        except Exception:
-            self.logger.error(f"Malformed RRQ from {addr}")
-            return
-
-        # Security check: Prevent directory traversal
-        if ".." in filename or filename.startswith("/"):
-            # We treat filenames as relative to root.
-            # Some clients send absolute paths (e.g. /boot/image).
-            # We strip leading / to map to our root.
-            clean_filename = filename.lstrip("/")
-            if ".." in clean_filename:
-                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                self._send_error(s, addr, 2, "Access violation")
-                s.close()
-                return
-            full_path = os.path.join(self.root, clean_filename)
-        else:
-            full_path = os.path.join(self.root, filename)
-
-        full_path = os.path.abspath(full_path)
-        if not full_path.startswith(os.path.abspath(self.root)):
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            self._send_error(s, addr, 2, "Access violation")
-            s.close()
-            return
-
-        if not os.path.exists(full_path):
-            self.logger.warning(f"File not found: {full_path}")
-            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            self._send_error(s, addr, 1, "File not found")
-            s.close()
-            return
-
-        self.logger.info(f"Sending {filename} to {addr}")
-
-        client_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        try:
-            with open(full_path, "rb") as f:
-                block_num = 1
-                while True:
-                    chunk = f.read(512)
-                    pkt = struct.pack("!HH", OP_DATA, block_num) + chunk
-
-                    retries = 5
-                    ack_received = False
-                    while retries > 0:
-                        client_sock.sendto(pkt, addr)
-
-                        r, _, _ = select.select([client_sock], [], [], 2.0)
-                        if r:
-                            try:
-                                ack_data, ack_addr = client_sock.recvfrom(1024)
-                            except ConnectionRefusedError:
-                                # Client closed port?
-                                return
-
-                            if ack_addr != addr:
-                                continue
-
-                            if len(ack_data) < 4:
-                                continue
-
-                            ack_op, ack_block = struct.unpack("!HH", ack_data[:4])
-                            if ack_op == OP_ACK and ack_block == block_num:
-                                ack_received = True
-                                break
-                            elif ack_op == OP_ERROR:
-                                self.logger.error(f"Received error from client: {ack_data}")
-                                return
-                        retries -= 1
-
-                    if not ack_received:
-                        self.logger.error(f"Timeout waiting for ACK {block_num} from {addr}")
-                        return
-
-                    if len(chunk) < 512:
-                        break  # EOF
-
-                    block_num = (block_num + 1) % 65536
-                    if block_num == 0:
-                        # RFC 1350 doesn't handle wrap-around, but some extensions do.
-                        # For strictly RFC 1350, transfer fails after 32MB.
-                        # Many u-boots handle wrap to 0 or 1. We'll wrap to 0.
-                        pass
-        except Exception as e:
-            self.logger.error(f"Error during transfer: {e}")
-        finally:
-            client_sock.close()
+_AGENT_PATH = os.path.join(os.path.dirname(__file__), "agents")
+_UPLOAD_CHUNK_SIZE = 64 * 1024
 
 
 @target_factory.reg_driver
 @attr.s(eq=False)
-class TFTPServerDriver(Driver):
-    """
-    TFTPServerDriver provides a pure Python TFTP server.
+class TFTPServerDriver(RemoteExecMixin, Driver):
+    """Run and populate a read-only TFTP server on the resource exporter.
+
+    Local resources use the same AgentWrapper service with ``host=None``. For a
+    resource reconstructed through a ``RemotePlace``, the exporter host is read
+    from ``resource.extra['proxy']`` and the agent, UDP socket, root directory,
+    and uploads all live on that exporter.
     """
 
-    bindings = {
-        "resource": TFTPServerResource,
-    }
+    bindings = {"resource": TFTPServerResource}
+    _remote_binding = "resource"
 
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
+        self.wrapper = None
+        self.proxy = None
+        # Kept as metadata for callers which historically inspected
+        # ``driver.server.address/port/root``.
         self.server = None
 
     def on_activate(self):
-        ip = self.resource.get_ip()
-
-        # Ensure root directory exists
-        if not os.path.exists(self.resource.root):
-            try:
-                os.makedirs(self.resource.root)
-            except OSError as e:
-                self.logger.warning(f"Could not create TFTP root {self.resource.root}: {e}")
-
-        # Bind to all interfaces to avoid issues with multi-homed setups
-        self.server = SimpleTFTPServer(
-            ip, self.resource.port, self.resource.root, logger=self.logger
-        )
-        self.server.start()
+        if self.wrapper is not None:
+            return
+        wrapper = AgentWrapper(self._exporter_host(self.resource))
+        try:
+            proxy = wrapper.load("tftp", path=_AGENT_PATH)
+            info = proxy.start(self.resource.address, self.resource.port, self.resource.root)
+        except Exception:
+            wrapper.close()
+            raise
+        self.wrapper = wrapper
+        self.proxy = proxy
+        self.server = SimpleNamespace(**info)
 
     def on_deactivate(self):
-        if self.server:
-            self.server.stop()
-            self.server = None
+        wrapper = self.wrapper
+        proxy = self.proxy
+        self.wrapper = None
+        self.proxy = None
+        self.server = None
+        if wrapper is None:
+            return
+        try:
+            if proxy is not None:
+                proxy.stop()
+        finally:
+            wrapper.close()
+
+    def _require_server(self):
+        if self.proxy is None or self.server is None:
+            raise RuntimeError("TFTPServerDriver is not active")
+
+    def _server_address(self):
+        self._require_server()
+        return f"{self.server.address}:{self.server.port}"
 
     @Driver.check_active
     def get_server_address(self):
-        if self.server:
-            return f"{self.server.address}:{self.server.port}"
-        return None
+        """Return the DUT-visible ``address:port`` advertised by the exporter."""
+        return self._server_address()
+
+    @Driver.check_active
+    def get_server_ip(self):
+        """Return the DUT-visible IPv4 address advertised by the exporter."""
+        self._require_server()
+        return self.server.address
+
+    @Driver.check_active
+    def get_server_port(self):
+        """Return the UDP port bound by the exporter-side server."""
+        self._require_server()
+        return self.server.port
+
+    def publish(self, client_path, destination=None):
+        """Atomically publish a client file into the exporter-side TFTP root.
+
+        Args:
+            client_path: Path readable by the labgrid client.
+            destination: Relative POSIX filename visible to the DUT. Defaults to
+                the source basename. Dot components are normalized by the
+                exporter; absolute paths, backslashes, and traversal are rejected.
+
+        Returns:
+            A mapping with normalized ``filename`` and DUT-visible ``address``.
+        """
+        self._require_server()
+        client_path = os.fspath(client_path)
+        if not os.path.isfile(client_path):
+            raise FileNotFoundError(client_path)
+        if destination is None:
+            destination = os.path.basename(client_path)
+        if not isinstance(destination, str):
+            destination = os.fspath(destination)
+
+        token = self.proxy.begin_upload(destination)
+        try:
+            with open(client_path, "rb") as source:
+                for chunk in iter(lambda: source.read(_UPLOAD_CHUNK_SIZE), b""):
+                    encoded = base64.b85encode(chunk).decode("ascii")
+                    self.proxy.write_upload(token, encoded)
+            filename = self.proxy.finish_upload(token)
+        except Exception:
+            self.proxy.abort_upload(token)
+            raise
+        return {"filename": filename, "address": self._server_address()}
+
+    def stage_file(self, client_path, destination=None):
+        """Backward-friendly alias for :meth:`publish`."""
+        return self.publish(client_path, destination)
