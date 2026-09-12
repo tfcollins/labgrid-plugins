@@ -13,6 +13,7 @@ except ModuleNotFoundError:
 
 ROOT = Path(__file__).parents[1]
 MATRIX = ROOT / "docs" / "source" / "user-guide" / "access-topology.rst"
+STYLES = ROOT / "docs" / "source" / "_static" / "custom.css"
 ROW_RE = re.compile(r"^   \* - ``([^`]+)``$", re.MULTILINE)
 
 
@@ -59,3 +60,24 @@ def test_transport_guide_defines_each_execution_boundary():
 
     assert 'extra["proxy"]' in text
     assert "ProxyJump" in text
+
+
+def test_transport_matrices_have_accessible_semantic_color_classes():
+    text = MATRIX.read_text()
+    styles = STYLES.read_text()
+
+    for class_name in (
+        "topology-driver-matrix",
+        "topology-strategy-matrix",
+        "topology-exporter-label",
+        "topology-network-label",
+        "topology-local-label",
+    ):
+        assert class_name in text
+        assert f".{class_name}" in styles
+
+    # Color supplements the existing text labels; it must not be the only key.
+    for label in ("Exporter path", "Network path", "Local placement"):
+        assert label in text
+
+    assert 'body[data-theme="dark"]' in styles

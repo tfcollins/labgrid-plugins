@@ -4,6 +4,21 @@
 :root {
     --adi-blue: #0071ba;
     --adi-dark-blue: #003d71;
+    --topology-exporter-accent: #0875c1;
+    --topology-exporter-bg: rgba(8, 117, 193, 0.11);
+    --topology-network-accent: #b76700;
+    --topology-network-bg: rgba(226, 132, 0, 0.13);
+    --topology-local-accent: #7c4db2;
+    --topology-local-bg: rgba(124, 77, 178, 0.12);
+}
+
+body[data-theme="dark"] {
+    --topology-exporter-accent: #66bfff;
+    --topology-exporter-bg: rgba(72, 166, 232, 0.18);
+    --topology-network-accent: #ffc266;
+    --topology-network-bg: rgba(230, 151, 38, 0.19);
+    --topology-local-accent: #d0a7ff;
+    --topology-local-bg: rgba(172, 116, 232, 0.19);
 }
 
 /* Slightly larger code font for readability */
@@ -20,4 +35,76 @@ pre {
 /* Highlight important admonitions */
 .admonition.important {
     border-left: 4px solid var(--adi-blue);
+}
+
+/* Execution/access topology: color reinforces the text headings and legend. */
+.topology-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+    margin: 1rem 0 1.25rem;
+}
+
+.topology-legend p {
+    margin: 0;
+}
+
+.topology-exporter-label,
+.topology-network-label,
+.topology-local-label {
+    display: inline-block;
+    border-left: 0.25rem solid;
+    border-radius: 0.25rem;
+    padding: 0.12rem 0.42rem;
+    font-weight: 650;
+}
+
+.topology-exporter-label {
+    border-color: var(--topology-exporter-accent);
+    background: var(--topology-exporter-bg);
+}
+
+.topology-network-label {
+    border-color: var(--topology-network-accent);
+    background: var(--topology-network-bg);
+}
+
+.topology-local-label {
+    border-color: var(--topology-local-accent);
+    background: var(--topology-local-bg);
+}
+
+.topology-driver-matrix caption,
+.topology-strategy-matrix caption {
+    font-weight: 650;
+}
+
+.topology-matrix th:nth-child(2),
+.topology-matrix td:nth-child(2) {
+    border-left: 0.25rem solid var(--topology-exporter-accent);
+    background: var(--topology-exporter-bg);
+}
+
+.topology-matrix th:nth-child(3),
+.topology-matrix td:nth-child(3) {
+    border-left: 0.25rem solid var(--topology-network-accent);
+    background: var(--topology-network-bg);
+}
+
+.topology-matrix th:nth-child(4),
+.topology-matrix td:nth-child(4) {
+    border-left: 0.25rem solid var(--topology-local-accent);
+    background: var(--topology-local-bg);
+}
+
+.topology-matrix th:nth-child(2) {
+    color: var(--topology-exporter-accent);
+}
+
+.topology-matrix th:nth-child(3) {
+    color: var(--topology-network-accent);
+}
+
+.topology-matrix th:nth-child(4) {
+    color: var(--topology-local-accent);
 }
