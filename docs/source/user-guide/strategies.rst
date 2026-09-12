@@ -395,6 +395,14 @@ The strategy manages 7 states:
 - ``KuiperDLDriver`` or ``CloudsmithDLDriver`` (optional — source of boot files)
 - ``SSHDriver`` (optional — not used by this strategy itself, accepted for composition)
 
+The driver starts the server and publishes boot files on the resource exporter, including
+when the target is acquired through a ``RemotePlace``. Set ``address`` to an address the DUT
+can route to. ``address: auto`` derives that address on the exporter and fails activation if
+no non-loopback IPv4 address can be derived; it never advertises the labgrid client's address.
+The driver APIs ``publish(client_path, destination=None)`` and its ``stage_file`` alias copy a
+client-side file atomically into the exporter root and return its normalized DUT-visible
+filename and server address. Destinations must be relative POSIX paths without traversal.
+
 **Configuration Example**
 
 .. code-block:: yaml

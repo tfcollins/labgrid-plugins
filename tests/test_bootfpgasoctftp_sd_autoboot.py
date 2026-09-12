@@ -172,3 +172,20 @@ def test_no_ethaddr_command_when_empty():
     cmds = _uboot_commands(s)
     assert not any(c.startswith("setenv ethaddr") for c in cmds)
     assert "dhcp" in cmds
+
+
+def test_update_boot_files_publishes_through_tftp_driver(tmp_path):
+    image = tmp_path / "Image"
+    dtb = tmp_path / "system.dtb"
+    image.write_bytes(b"kernel")
+    dtb.write_bytes(b"dtb")
+    s = _make_strategy()
+    s.kuiper = MagicMock()
+    s.kuiper._boot_files = [str(image), str(dtb)]
+
+    s.transition(Status.update_boot_files)
+
+    assert [call.args[0] for call in s.tftp_driver.publish.call_args_list] == [
+        str(image),
+        str(dtb),
+    ]

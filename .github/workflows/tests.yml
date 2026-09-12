@@ -59,6 +59,7 @@ jobs:
           tests/test_discover_places.py \
           tests/test_bootfpgasocssh_helpers.py \
           tests/test_bootfpgasoctftp_sd_autoboot.py \
+          tests/test_tftp_driver.py \
           tests/hw_ci/test_resolve.py \
           tests/hw_ci/test_markers_ast.py \
           tests/hw_ci/test_markers_rejections.py \

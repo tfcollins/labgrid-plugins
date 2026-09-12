@@ -1,6 +1,5 @@
 import enum
 import os
-import shutil
 import time
 
 import attr
@@ -267,8 +266,7 @@ class BootFPGASoCTFTP(Strategy):
                     self.logger.info(f"Copying {os.path.basename(boot_file)} to TFTP root...")
                     if not os.path.exists(boot_file):
                         raise StrategyError(f"Boot file {boot_file} does not exist")
-                    target = os.path.join(self.tftp_root_folder, os.path.basename(boot_file))
-                    shutil.copyfile(boot_file, target)
+                    self.tftp_driver.publish(boot_file)
                 self.logger.info("TFTP boot files prepared successfully")
 
         elif status == Status.booting:
@@ -427,11 +425,11 @@ class BootFPGASoCTFTP(Strategy):
                 # board's own MAC alone.
                 *([f"setenv ethaddr {self.ethaddr}"] if self.ethaddr else []),
                 "dhcp",
-                f"setenv serverip {self.tftp_server.get_ip()}",
-                f"setenv tftpdstport {self.tftp_driver.resource.port}",
-                f"setenv tftpport {self.tftp_driver.resource.port}",
+                f"setenv serverip {self.tftp_driver.get_server_ip()}",
+                f"setenv tftpdstport {self.tftp_driver.get_server_port()}",
+                f"setenv tftpport {self.tftp_driver.get_server_port()}",
                 "printenv tftpdstport",
-                f"ping {self.tftp_server.get_ip()}",
+                f"ping {self.tftp_driver.get_server_ip()}",
                 # Default bootargs if not set
                 f"setenv bootargs {self.bootargs}",
                 f"tftpboot {self.kernel_addr} {self.kernel_image_name}",
