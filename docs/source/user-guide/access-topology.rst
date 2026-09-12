@@ -1,6 +1,15 @@
 Execution and Access Topology
 =============================
 
+.. role:: topology-exporter-label
+   :class: topology-exporter-label
+
+.. role:: topology-network-label
+   :class: topology-network-label
+
+.. role:: topology-local-label
+   :class: topology-local-label
+
 A coordinator can make a resource *discoverable* without making every driver
 operation run on the exporter.  Use this page when deciding where to install a
 tool, which host must hold a file, and which network paths must be open.
@@ -39,6 +48,13 @@ Terminology
 plain plugin resources may contain ``extra["proxy"]`` after coordinator
 resolution, but only code which consumes that field relocates its work.
 
+.. container:: topology-legend
+
+   :topology-exporter-label:`Exporter path` marks work executed on or through
+   the exporter. :topology-network-label:`Network path` marks client-to-service
+   or DUT-to-client traffic. :topology-local-label:`Local placement` marks
+   tools, files, or physical access that must exist on a named host.
+
 .. _driver-transport-matrix:
 
 Driver transport matrix
@@ -47,6 +63,7 @@ Driver transport matrix
 .. list-table:: Driver transport matrix
    :header-rows: 1
    :widths: 20 20 25 35
+   :class: topology-matrix topology-driver-matrix
 
    * - Driver
      - Exporter path
@@ -130,6 +147,7 @@ branches are called out explicitly.
 .. list-table:: Strategy transport matrix
    :header-rows: 1
    :widths: 20 25 25 30
+   :class: topology-matrix topology-strategy-matrix
 
    * - Strategy
      - Exporter-capable portions
