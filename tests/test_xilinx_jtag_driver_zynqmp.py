@@ -24,7 +24,7 @@ def driver():
     d.name = "jtag"
     d.logger = logging.getLogger("test_xilinx_jtag_zynqmp")
     d.xilinxvivado = MagicMock(xsdb_path="xsdb")
-    d.xilinxdevicejtag = MagicMock()
+    d.xilinxdevicejtag = MagicMock(host=None, extra={})
     d.state = BindingState.active
     d._captured = []
     d._timeouts = []

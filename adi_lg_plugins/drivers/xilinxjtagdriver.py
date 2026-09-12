@@ -5,13 +5,10 @@ execution (a client acquiring the place through a coordinator runs xsdb
 on the exporter host). Remote detection and ssh are unified in
 :class:`~adi_lg_plugins.drivers._remote.RemoteExecMixin`, keyed off the
 bound ``xilinxdevicejtag`` resource: when it carries exporter-host info
-(``host`` or ``extra['proxy']``), the generated TCL script is staged to
-the exporter and xsdb runs there over a single reused ssh connection;
-otherwise xsdb runs locally.
-
-Note: bitstream / kernel / ELF / ps7_init paths embedded in the TCL are
-"as seen by the host that runs xsdb" — they are assumed to already exist
-on the exporter and are NOT auto-staged by this driver.
+(``host`` or ``extra['proxy']``), generated TCL and every input payload are
+staged to the exporter and xsdb runs there over a reused ssh connection;
+otherwise xsdb runs locally. Prefix a path with ``exporter:`` to explicitly
+refer to a file which already exists on the xsdb host and skip staging.
 """
 
 import os
@@ -26,6 +23,19 @@ from labgrid.step import step
 
 from ._remote import RemoteExecMixin
 
+_EXPORTER_PATH_PREFIX = "exporter:"
+_TCL_BARE_PATH_CHARS = frozenset(
+    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_./:+,@%=-"
+)
+
+
+def _tcl_quote_path(path: str) -> str:
+    """Return one Tcl word which evaluates to ``path`` without substitutions."""
+    if path and all(char in _TCL_BARE_PATH_CHARS for char in path):
+        return path
+    encoded = path.encode("utf-8").hex()
+    return f"[encoding convertfrom utf-8 [binary decode hex {encoded}]]"
+
 
 @target_factory.reg_driver
 @attr.s(eq=False)
@@ -35,7 +45,8 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
     Bindings:
 
     * ``xilinxdevicejtag`` — ``XilinxDeviceJTAG`` resource containing JTAG
-      target IDs and bitstream/kernel paths as seen by the xsdb host.
+      target IDs and caller-local bitstream/kernel paths. Payloads are staged
+      automatically; ``exporter:/path`` denotes a pre-existing exporter file.
     * ``xilinxvivado`` — ``XilinxVivadoTool`` resource containing
       ``vivado_path`` and ``xsdb_path``.
     """
@@ -57,6 +68,24 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
         if os.environ.get("LG_FORCE_LOCAL_XSDB", "").lower() in ("1", "true", "yes", "on"):
             return None
         return super()._exporter_host(res)
+
+    def _stage_payload(self, path: str) -> str:
+        """Return an xsdb-host path, staging caller-local files as needed.
+
+        ``exporter:/path`` is the explicit compatibility form for a payload
+        which already exists on the exporter. All other paths are made
+        absolute on the caller before passing through ``_stage_file``.
+        """
+        path = os.fspath(path)
+        if path.startswith(_EXPORTER_PATH_PREFIX):
+            exporter_path = path.removeprefix(_EXPORTER_PATH_PREFIX)
+            if not exporter_path:
+                raise ValueError("exporter: payload path must not be empty")
+            return exporter_path
+        return self._stage_file(os.path.abspath(path))
+
+    def _stage_optional_payload(self, path: str | None) -> str | None:
+        return self._stage_payload(path) if path else None
 
     def _run_xsdb(self, tcl_script: str, timeout: int = 300):
         """Execute ``tcl_script`` through xsdb, locally or on the exporter.
@@ -109,6 +138,7 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
         if not self.xilinxdevicejtag.bitstream_path:
             raise ExecutionError("Bitstream path not configured in XilinxDeviceJTAG resource")
 
+        bitstream_path = self._stage_payload(self.xilinxdevicejtag.bitstream_path)
         self.logger.info(f"Flashing bitstream: {self.xilinxdevicejtag.bitstream_path}")
 
         tcl_script = f"""
@@ -116,7 +146,7 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
         after 1000
         targets {self.xilinxdevicejtag.root_target}
         after 1000
-        fpga -f {self.xilinxdevicejtag.bitstream_path}
+        fpga -f {_tcl_quote_path(bitstream_path)}
         after 2000
         puts "Bitstream flashed successfully"
         """
@@ -133,6 +163,7 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
         if not self.xilinxdevicejtag.kernel_path:
             raise ExecutionError("Kernel path not configured in XilinxDeviceJTAG resource")
 
+        kernel_path = self._stage_payload(self.xilinxdevicejtag.kernel_path)
         self.logger.info(f"Downloading kernel: {self.xilinxdevicejtag.kernel_path}")
 
         tcl_script = f"""
@@ -140,7 +171,7 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
         after 1000
         targets {self.xilinxdevicejtag.microblaze_target}
         after 1000
-        dow {self.xilinxdevicejtag.kernel_path}
+        dow {_tcl_quote_path(kernel_path)}
         after 1000
         puts "Kernel downloaded successfully"
         """
@@ -174,16 +205,18 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
     @step()
     def load_bitstream_and_kernel_and_start(self):
         """Load bitstream + kernel, then run the Microblaze."""
+        bitstream_path = self._stage_payload(self.xilinxdevicejtag.bitstream_path)
+        kernel_path = self._stage_payload(self.xilinxdevicejtag.kernel_path)
         tcl_script = f"""
         connect
         after 1000
         targets {self.xilinxdevicejtag.root_target}
         after 1000
-        fpga -f {self.xilinxdevicejtag.bitstream_path}
+        fpga -f {_tcl_quote_path(bitstream_path)}
         after 2000
         targets {self.xilinxdevicejtag.microblaze_target}
         after 1000
-        dow {self.xilinxdevicejtag.kernel_path}
+        dow {_tcl_quote_path(kernel_path)}
         after 1000
         con
         after 500
@@ -231,21 +264,25 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
         loaded; the name-pattern form matches Xilinx's generated wrappers
         and is stable across Vivado versions.
         """
+        ps7_init_tcl = self._stage_payload(ps7_init_tcl)
+        uboot_elf = self._stage_payload(uboot_elf)
+        bitstream_path = self._stage_optional_payload(bitstream_path)
+        fsbl_elf = self._stage_optional_payload(fsbl_elf)
         self.logger.info(f"JTAG-bootstrapping Zynq-7000 U-Boot from {uboot_elf}")
 
         optional_lines = []
         if bitstream_path:
-            optional_lines.append(f"fpga -f {bitstream_path}")
+            optional_lines.append(f"fpga -f {_tcl_quote_path(bitstream_path)}")
             optional_lines.append("after 2000")
-        optional_lines.append(f"source {ps7_init_tcl}")
+        optional_lines.append(f"source {_tcl_quote_path(ps7_init_tcl)}")
         optional_lines.append("ps7_init")
         optional_lines.append("ps7_post_config")
         if fsbl_elf:
-            optional_lines.append(f"dow {fsbl_elf}")
+            optional_lines.append(f"dow {_tcl_quote_path(fsbl_elf)}")
             optional_lines.append("con")
             optional_lines.append("after 2000")
             optional_lines.append("stop")
-        optional_lines.append(f"dow {uboot_elf}")
+        optional_lines.append(f"dow {_tcl_quote_path(uboot_elf)}")
         optional_lines.append("con")
 
         optional_block = "\n        ".join(optional_lines)
@@ -285,26 +322,23 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
         firmware touches FPGA-fabric peripherals), and ``ps7_init_tcl`` runs the
         board PS init — both are produced by the no-os build's HDL ``.xsa``.
 
-        Paths are resolved to absolute before being embedded in the xsdb TCL:
-        xsdb runs the script from its own working directory (not the caller's),
-        so a relative ``dow``/``fpga -f`` path would fail to open.
+        Caller paths are resolved to absolute and staged to the xsdb host.
+        Use the ``exporter:`` prefix for explicit pre-existing exporter files.
         """
-        elf_path = os.path.abspath(elf_path)
-        if bitstream_path:
-            bitstream_path = os.path.abspath(bitstream_path)
-        if ps7_init_tcl:
-            ps7_init_tcl = os.path.abspath(ps7_init_tcl)
+        elf_path = self._stage_payload(elf_path)
+        bitstream_path = self._stage_optional_payload(bitstream_path)
+        ps7_init_tcl = self._stage_optional_payload(ps7_init_tcl)
         self.logger.info(f"JTAG-loading bare-metal ELF from {elf_path}")
 
         lines = []
         if bitstream_path:
-            lines.append(f"fpga -f {bitstream_path}")
+            lines.append(f"fpga -f {_tcl_quote_path(bitstream_path)}")
             lines.append("after 2000")
         if ps7_init_tcl:
-            lines.append(f"source {ps7_init_tcl}")
+            lines.append(f"source {_tcl_quote_path(ps7_init_tcl)}")
             lines.append("ps7_init")
             lines.append("ps7_post_config")
-        lines.append(f"dow {elf_path}")
+        lines.append(f"dow {_tcl_quote_path(elf_path)}")
         lines.append("con")
         optional_block = "\n        ".join(lines)
 
@@ -388,18 +422,21 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
            needs an X server and is avoided).
 
         Args:
-            psu_init_tcl: Path (on the xsdb host) to the board ``psu_init.tcl``.
-            spl_elf: Path (on the xsdb host) to ``spl/u-boot-spl`` (mini SPL).
+            psu_init_tcl: Caller-local board ``psu_init.tcl`` (staged automatically).
+            spl_elf: Caller-local ``spl/u-boot-spl`` (staged automatically).
             bitstream_path: Optional PL bitstream to program before psu_init.
             a53_target_name: xsdb target filter for the boot A53 core.
             apu_release_rst_value: value written to ``0xFD1A0104`` to release
                 the APU. Use ``0x0`` to release all four A53s (can destabilise
                 later debug); prefer the board's generated per-core value.
-            dcc_log_path: Optional path on the xsdb host to capture the DCC
-                console log. Leave ``None`` to skip console capture.
+            dcc_log_path: Optional output path on the xsdb host. Outputs are
+                not copied back to the caller. Leave ``None`` to skip capture.
             settle_ms: milliseconds to let the SPL run before stopping DCC
                 capture / returning.
         """
+        psu_init_tcl = self._stage_payload(psu_init_tcl)
+        spl_elf = self._stage_payload(spl_elf)
+        bitstream_path = self._stage_optional_payload(bitstream_path)
         self.logger.info(f"JTAG-bootstrapping ZynqMP mini U-Boot SPL from {spl_elf}")
 
         lines = [
@@ -412,11 +449,11 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
             "after 1000",
         ]
         if bitstream_path:
-            lines.append(f"fpga -file {bitstream_path}")
+            lines.append(f"fpga -file {_tcl_quote_path(bitstream_path)}")
             lines.append("after 500")
             lines.append('targets -set -nocase -filter {name =~ "PSU"}')
         lines += [
-            f"source {psu_init_tcl}",
+            f"source {_tcl_quote_path(psu_init_tcl)}",
             "psu_init",
             "psu_post_config",
             "psu_ps_pl_reset_config",
@@ -427,10 +464,12 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
             "rst -processor -clear-registers",
             "after 1000",
             "catch {stop}",
-            f"dow {spl_elf}",
+            f"dow {_tcl_quote_path(spl_elf)}",
         ]
         if dcc_log_path:
-            lines.append(f"catch {{readjtaguart -start -handle [open {dcc_log_path} w]}}")
+            lines.append(
+                f"catch {{readjtaguart -start -handle [open {_tcl_quote_path(dcc_log_path)} w]}}"
+            )
         lines.append("con")
         lines.append('puts "ZynqMP mini U-Boot SPL launched via JTAG"')
         lines.append(f"after {int(settle_ms)}")
@@ -510,6 +549,15 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
             raise ExecutionError("bl31_bin and atf_handoff_bin must be supplied together")
         if not use_bl31 and not handoff_bin:
             raise ExecutionError("either BL31 artifacts or handoff_bin are required")
+        psu_init_tcl = self._stage_payload(psu_init_tcl)
+        pmufw_bin = self._stage_payload(pmufw_bin)
+        uboot_bin = self._stage_payload(uboot_bin)
+        handoff_bin = self._stage_optional_payload(handoff_bin)
+        bitstream_path = self._stage_optional_payload(bitstream_path)
+        ddr_scrub_elf = self._stage_optional_payload(ddr_scrub_elf)
+        bl31_bin = self._stage_optional_payload(bl31_bin)
+        atf_handoff_bin = self._stage_optional_payload(atf_handoff_bin)
+        pm_config_bin = self._stage_optional_payload(pm_config_bin)
         poll_count = max(1, int(pmufw_timeout_ms) // 100)
 
         lines = [
@@ -520,7 +568,7 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
             "mwr 0xffff0000 0x14000000",
             f"mwr 0xFD1A0104 {apu_release_rst_value}",
             "after 1000",
-            f"source {psu_init_tcl}",
+            f"source {_tcl_quote_path(psu_init_tcl)}",
             "psu_init",
             "psu_post_config",
             "psu_ps_pl_reset_config",
@@ -535,7 +583,7 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
 
         if ddr_scrub_elf:
             lines += [
-                f"dow {ddr_scrub_elf}",
+                f"dow {_tcl_quote_path(ddr_scrub_elf)}",
                 "con",
                 f"after {int(ddr_scrub_settle_ms)}",
                 "catch {stop}",
@@ -556,7 +604,7 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
             "    after 100",
             "}",
             'if {!$pmu_sleep} {error "PMU ROM did not enter sleep"}',
-            f"dow -force -data {pmufw_bin} {pmufw_address}",
+            f"dow -force -data {_tcl_quote_path(pmufw_bin)} {pmufw_address}",
             "set pmu_control [mrd -force -value $pmu_control_addr]",
             "mwr $pmu_control_addr [expr {$pmu_control | 0x1}]",
             "set pmufw_ready 0",
@@ -570,18 +618,18 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
         ]
 
         if pm_config_bin:
-            lines.append(f"dow -force -data {pm_config_bin} {pm_config_address}")
+            lines.append(f"dow -force -data {_tcl_quote_path(pm_config_bin)} {pm_config_address}")
 
         if bitstream_path:
             lines += [
                 'targets -set -filter {name == "PL"}',
-                f"fpga -file {bitstream_path}",
+                f"fpga -file {_tcl_quote_path(bitstream_path)}",
                 'puts "FPGA_STATE=[fpga -state]"',
             ]
 
         lines += [
             'targets -set -nocase -filter {name =~ "PSU"}',
-            f"dow -force -data {uboot_bin} {uboot_address}",
+            f"dow -force -data {_tcl_quote_path(uboot_bin)} {uboot_address}",
         ]
 
         if use_bl31:
@@ -600,8 +648,8 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
                     f"mwr {bl31_console_uart_base} 0x00000114",
                 ]
             lines += [
-                f"dow -force -data {bl31_bin} {bl31_address}",
-                f"dow -force -data {atf_handoff_bin} {handoff_address}",
+                f"dow -force -data {_tcl_quote_path(bl31_bin)} {bl31_address}",
+                f"dow -force -data {_tcl_quote_path(atf_handoff_bin)} {handoff_address}",
                 f'targets -set -nocase -filter {{name =~ "{a53_target_name}"}}',
                 "catch {stop}",
                 f"rwr r0 {handoff_address}",
@@ -614,7 +662,7 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
             ]
         else:
             lines += [
-                f"dow -force -data {handoff_bin} {handoff_address}",
+                f"dow -force -data {_tcl_quote_path(handoff_bin)} {handoff_address}",
                 f'targets -set -nocase -filter {{name =~ "{a53_target_name}"}}',
                 "catch {stop}",
                 f"rwr pc {handoff_address}",
@@ -664,6 +712,13 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
         caller-provided EL3 trampoline performs the board-specific timer/GIC
         setup and enters Linux at non-secure EL2.
         """
+        psu_init_tcl = self._stage_payload(psu_init_tcl)
+        trampoline_elf = self._stage_payload(trampoline_elf)
+        kernel_image = self._stage_payload(kernel_image)
+        initramfs = self._stage_payload(initramfs)
+        dtb = self._stage_payload(dtb)
+        ddr_scrub_elf = self._stage_optional_payload(ddr_scrub_elf)
+        bitstream_path = self._stage_optional_payload(bitstream_path)
         lines = [
             f"connect -url {jtag_url}",
             "after 1000",
@@ -674,12 +729,12 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
         ]
         if bitstream_path:
             lines += [
-                f"fpga -file {bitstream_path}",
+                f"fpga -file {_tcl_quote_path(bitstream_path)}",
                 'puts "RECOVERY_FPGA_STATE=[fpga -state]"',
                 'targets -set -nocase -filter {name =~ "PSU"}',
             ]
         lines += [
-            f"source {psu_init_tcl}",
+            f"source {_tcl_quote_path(psu_init_tcl)}",
             "psu_init",
             "psu_post_config",
             "psu_ps_pl_reset_config",
@@ -697,7 +752,7 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
         ]
         if ddr_scrub_elf:
             lines += [
-                f"dow {ddr_scrub_elf}",
+                f"dow {_tcl_quote_path(ddr_scrub_elf)}",
                 "con",
                 f"after {int(ddr_scrub_settle_ms)}",
                 "stop",
@@ -717,13 +772,13 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
             ]
         lines += [
             'targets -set -nocase -filter {name =~ "PSU"}',
-            f"dow -force -data {kernel_image} {kernel_address}",
-            f"dow -force -data {initramfs} {initramfs_address}",
-            f"dow -force -data {dtb} {dtb_address}",
+            f"dow -force -data {_tcl_quote_path(kernel_image)} {kernel_address}",
+            f"dow -force -data {_tcl_quote_path(initramfs)} {initramfs_address}",
+            f"dow -force -data {_tcl_quote_path(dtb)} {dtb_address}",
             f'targets -set -nocase -filter {{name =~ "{a53_target_name}"}}',
             "catch {stop}",
             "rst -processor -clear-registers",
-            f"dow {trampoline_elf}",
+            f"dow {_tcl_quote_path(trampoline_elf)}",
             f"rwr pc {trampoline_address}",
             "con",
             'puts "RECOVERY_LINUX_LAUNCHED"',

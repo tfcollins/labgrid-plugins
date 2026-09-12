@@ -98,9 +98,9 @@ Driver transport matrix
      - Client → CyberPower PDU, UDP/161.
      - No direct hardware access; ``pysnmp`` is client-side.
    * - ``XilinxJTAGDriver``
-     - **Yes.** ``xsdb`` runs on the exporter selected by ``XilinxDeviceJTAG``; only the generated Tcl script is staged automatically.
+     - **Yes.** ``xsdb`` runs on the exporter selected by ``XilinxDeviceJTAG``; generated Tcl and every xsdb input payload are staged automatically.
      - Client → exporter SSH; ``jtag_url`` is resolved by the exporter-side ``xsdb`` process. ProxyJump-only exporters are not supported by the current Tcl staging helper.
-     - Xilinx tools and JTAG/hw_server access must be on the exporter. Bitstream, kernel, ELF, and other payload paths embedded in Tcl must already be valid there; they are not uploaded automatically.
+     - Xilinx tools and JTAG/hw_server access must be on the exporter. Prefix a payload with ``exporter:`` only when it already exists there. ``dcc_log_path`` is an exporter-side output path and is not copied back to the client.
    * - ``TFTPServerDriver``
      - No. The Python TFTP server starts in the client process; ``extra["proxy"]`` is not consumed.
      - DUT → client UDP on the configured port (3069 by default, often reached through a port-69 redirect).
