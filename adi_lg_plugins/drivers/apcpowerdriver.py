@@ -13,6 +13,8 @@ from labgrid.protocol import PowerProtocol
 from labgrid.step import step
 from packaging.version import Version
 
+from ._power_agent import ExporterPowerAgentMixin
+
 try:
     from pysnmp import __version__ as __pysnmp_version__
 
@@ -217,22 +219,26 @@ class APCPdu:
 
 @target_factory.reg_driver
 @attr.s(eq=False)
-class APCDriver(Driver, PowerResetMixin, PowerProtocol):
+class APCDriver(ExporterPowerAgentMixin, Driver, PowerResetMixin, PowerProtocol):
     """APCDriver - Driver using a APC PDU
     to control a target's power
     """
 
     bindings = {"APC_outlet": {"APCOutlet"}}
+    _remote_binding = "APC_outlet"
     # APC status values that should be treated as powered-on by PowerProtocol.get().
     _ON_STATUS_CODES = {1, 5}
 
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
-        self.pdu_dev = APCPdu(
-            self.APC_outlet.address,
-            read_community=self.APC_outlet.read_community,
-            write_community=self.APC_outlet.write_community,
-        )
+        self._init_exporter_agent()
+        self.pdu_dev = None
+        if not self._is_remote:
+            self.pdu_dev = APCPdu(
+                self.APC_outlet.address,
+                read_community=self.APC_outlet.read_community,
+                write_community=self.APC_outlet.write_community,
+            )
         self.outlet = self.APC_outlet.outlet
 
     @Driver.check_active
@@ -246,7 +252,15 @@ class APCDriver(Driver, PowerResetMixin, PowerProtocol):
         Raises:
             APCPduException: If SNMP communication fails.
         """
-        self.pdu_dev.set_outlet_on(self.outlet, True)
+        if self._is_remote:
+            self._exporter_call(
+                "apc_set",
+                self.APC_outlet.address,
+                self.outlet,
+                True,
+            )
+        else:
+            self.pdu_dev.set_outlet_on(self.outlet, True)
         self.logger.debug(f"Powered ON via APC outlet {self.outlet}")
 
     @Driver.check_active
@@ -260,7 +274,15 @@ class APCDriver(Driver, PowerResetMixin, PowerProtocol):
         Raises:
             APCPduException: If SNMP communication fails.
         """
-        self.pdu_dev.set_outlet_on(self.outlet, False)
+        if self._is_remote:
+            self._exporter_call(
+                "apc_set",
+                self.APC_outlet.address,
+                self.outlet,
+                False,
+            )
+        else:
+            self.pdu_dev.set_outlet_on(self.outlet, False)
         self.logger.debug(f"Powered OFF via APC outlet {self.outlet}")
 
     @Driver.check_active
@@ -304,7 +326,14 @@ class APCDriver(Driver, PowerResetMixin, PowerProtocol):
         Returns:
             bool: True when the outlet reports an ON-like state, False otherwise.
         """
-        status_code = self.pdu_dev.get_outlet_status(self.outlet)
+        if self._is_remote:
+            status_code = self._exporter_call(
+                "apc_get",
+                self.APC_outlet.address,
+                self.outlet,
+            )
+        else:
+            status_code = self.pdu_dev.get_outlet_status(self.outlet)
         is_on = status_code in self._ON_STATUS_CODES
         self.logger.debug(
             "APC outlet %s status code %s interpreted as %s",

@@ -117,8 +117,10 @@ class BootFPGASoC(Strategy):
         if self.kuiper:
             self.logger.info("Preloading Kuiper boot files")
             self.target.activate(self.kuiper)
-            self.kuiper.get_boot_files_from_release()
-            self.target.deactivate(self.kuiper)
+            try:
+                self._boot_artifacts = self.kuiper.get_boot_artifacts()
+            finally:
+                self.target.deactivate(self.kuiper)
 
     @never_retry
     @step()
@@ -184,9 +186,9 @@ class BootFPGASoC(Strategy):
             self.logger.info("Updating boot files on SD card...")
             self.target.activate(self.mass_storage)
             self.mass_storage.mount_partition()
-            for boot_file in self.kuiper._boot_files:
-                self.logger.info(f"Copying {boot_file} to SD card...")
-                self.mass_storage.copy_file(boot_file, "/")
+            for artifact in self._boot_artifacts:
+                self.logger.info("Copying %s to SD card...", artifact.path)
+                self.mass_storage.copy_artifact(artifact, "/")
             self.mass_storage.unmount_partition()
             self.target.deactivate(self.mass_storage)
             self.logger.info("Boot files updated successfully")

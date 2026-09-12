@@ -25,18 +25,18 @@ Terminology
    An operation is exporter-capable when it follows resource metadata from a
    ``RemotePlace`` and executes on, or connects through, the exporter.  A
    remote serial console is a typical exporter path.  In this package,
-   ``MassStorageDriver`` and ``XilinxJTAGDriver`` also explicitly move their
-   host-side commands to the exporter over SSH.
+   Host-side drivers use either labgrid's SSH-backed ``AgentWrapper`` or direct
+   SSH command execution. Composite drivers use their exported console,
+   command, and file-transfer providers.
 
 **Client LAN path**
    The client opens a connection directly to a target or service.  Registering
    the corresponding resource on an exporter does not tunnel this connection.
-   Examples are client-to-DUT SSH, SNMP to a PDU, and HTTP to Home Assistant.
+   Examples include optional client-to-DUT SSH and libIIO validation paths.
 
 **DUT return path**
-   The target opens a connection back to a service running in the client
-   process.  TFTP and the recovery HTTP server use this direction.  The DUT
-   must be able to route to the advertised client address and port.
+   The target opens a connection back to a service. Exporter-backed TFTP uses
+   DUT → exporter; the recovery HTTP server remains a DUT → client path.
 
 **Client-local requirement**
    A command, service, cache, or source path exists on the client itself.
@@ -47,6 +47,30 @@ Terminology
 ``RemotePlace`` alone is therefore not a transport guarantee.  In particular,
 plain plugin resources may contain ``extra["proxy"]`` after coordinator
 resolution, but only code which consumes that field relocates its work.
+
+Exporter credentials
+~~~~~~~~~~~~~~~~~~~~
+
+Resource parameters and ``extra`` are coordinator-visible. Do not put secrets
+in exporter resource YAML. Exporter-executed helpers read credentials only from the exporter environment
+or ``~/.config/adi-lg/credentials.env`` on the exporter:
+
+* ``ADI_LG_APC_READ_COMMUNITY`` and ``ADI_LG_APC_WRITE_COMMUNITY``
+* ``ADI_LG_HOMEASSISTANT_TOKEN``
+* ``ADI_LG_KASA_USERNAME`` and ``ADI_LG_KASA_PASSWORD`` (both optional)
+* ``ADI_LG_VESYNC_USERNAME`` and ``ADI_LG_VESYNC_PASSWORD``
+* ``CLOUDSMITH_API_TOKEN``
+
+The credential file uses one ``NAME=value`` per line and must have mode 0600.
+Set exporter-local ``ADI_LG_CREDENTIAL_FILE`` to select another protected path.
+The legacy resource credential fields remain available for local execution,
+but exporter execution never sends those values from the client. Protect the
+exporter environment with the same controls as other service credentials.
+
+``AgentWrapper`` opens direct SSH/rsync connections. If coordinator metadata
+sets ``proxy_required``, these drivers fail before starting an agent; configure
+an SSH ``ProxyJump`` for the advertised exporter hostname. The coordinator
+proxy metadata alone cannot tunnel ``AgentWrapper``.
 
 .. container:: topology-legend
 
@@ -70,13 +94,13 @@ Driver transport matrix
      - Required network path
      - Client/direct requirements
    * - ``APCDriver``
-     - No. The SNMP library runs in the client.
-     - Client → APC PDU, UDP/161.
-     - No direct hardware access; SNMP credentials and ``pysnmp`` are client-side.
+     - **Yes.** An allowlisted ``AgentWrapper`` helper runs SNMP on the bound resource's exporter.
+     - Client → exporter SSH; exporter → APC PDU, UDP/161.
+     - ``pysnmp`` must be installed on the exporter. A local resource preserves client-side behavior.
    * - ``VesyncPowerDriver``
-     - No. ``pyvesync`` runs in the client.
-     - Client → VeSync cloud service, plus the outlet's normal cloud connectivity.
-     - VeSync credentials and ``pyvesync`` are client-side.
+     - **Yes.** VeSync login, discovery, and operations run in the exporter helper.
+     - Client → exporter SSH; exporter → VeSync cloud service.
+     - ``pyvesync`` and outbound Internet access are required on the exporter.
    * - ``MassStorageDriver``
      - **Yes.** ``pmount``, ``pumount``, directory operations, and copies run on the exporter selected by the bound resource; source files are staged there over SSH.
      - Client → exporter SSH. ProxyJump-only exporters are not supported by the current staging helper.
@@ -86,33 +110,33 @@ Driver transport matrix
      - Client → exported serial endpoint, or whatever path the bound console requires.
      - No independent transport. Commands and XMODEM transfers use the bound console.
    * - ``KuiperDLDriver``
-     - No. Downloads, cache access, and extraction run in the client.
-     - Client → Kuiper release host/Internet.
-     - Cache, image extraction dependencies, and resulting boot-file paths are client-local.
+     - **Yes.** Download, cache, and extraction run in an exporter helper; results are location-aware ``ArtifactRef`` objects.
+     - Client → exporter SSH; exporter → Kuiper release host/Internet.
+     - Cache and optional ``pytsk3`` extraction support belong on the exporter. Legacy path APIs fetch an explicit client copy.
    * - ``CloudsmithDLDriver``
-     - No. API queries, downloads, and cache access run in the client.
-     - Client → Cloudsmith API/CDN/Internet.
-     - Cloudsmith credentials and cache paths are client-local.
+     - **Yes.** API resolution, downloads, and cache access run in an exporter helper.
+     - Client → exporter SSH; exporter → Cloudsmith API/CDN.
+     - Download dependencies and cache are exporter-side. Legacy path APIs fetch an explicit client copy.
    * - ``CyberPowerDriver``
-     - No. The SNMP library runs in the client.
-     - Client → CyberPower PDU, UDP/161.
-     - No direct hardware access; ``pysnmp`` is client-side.
+     - **Yes.** An allowlisted exporter helper performs SNMP operations.
+     - Client → exporter SSH; exporter → CyberPower PDU, UDP/161.
+     - ``pysnmp`` and PDU LAN reachability are required on the exporter.
    * - ``XilinxJTAGDriver``
-     - **Yes.** ``xsdb`` runs on the exporter selected by ``XilinxDeviceJTAG``; only the generated Tcl script is staged automatically.
+     - **Yes.** ``xsdb`` runs on the exporter selected by ``XilinxDeviceJTAG``; generated Tcl and client-readable xsdb payloads are staged automatically.
      - Client → exporter SSH; ``jtag_url`` is resolved by the exporter-side ``xsdb`` process. ProxyJump-only exporters are not supported by the current Tcl staging helper.
-     - Xilinx tools and JTAG/hw_server access must be on the exporter. Bitstream, kernel, ELF, and other payload paths embedded in Tcl must already be valid there; they are not uploaded automatically.
+     - Xilinx tools and JTAG/hw_server access must be on the exporter. Prefix a payload with ``exporter:`` when it already exists there. For compatibility, an absolute path absent on the client is also treated as exporter-local. ``dcc_log_path`` is an exporter-side output path and is not copied back to the client.
    * - ``TFTPServerDriver``
-     - No. The Python TFTP server starts in the client process; ``extra["proxy"]`` is not consumed.
-     - DUT → client UDP on the configured port (3069 by default, often reached through a port-69 redirect).
-     - The TFTP root, files, bind address, and redirect/firewall setup are client-local.
+     - **Yes.** A stateful ``AgentWrapper`` helper owns the UDP service and root on the resource exporter.
+     - Client → exporter SSH; DUT → exporter UDP on the configured port (3069 by default).
+     - Configure a DUT-visible address or use exporter-side ``auto`` discovery. Artifact publishing stays on-host when co-located.
    * - ``SoftwareInstallerDriver``
      - Inherited from its bound ``CommandProtocol`` and ``FileTransferProtocol``.
      - Whatever those providers require; with ``SSHDriver`` this is client → DUT LAN.
      - Build tools and packages are installed on the DUT; source files begin on the client and use the bound transfer protocol.
    * - ``HomeAssistantPowerDriver``
-     - No. ``requests`` calls run in the client.
-     - Client → Home Assistant REST API over HTTP(S).
-     - API token and ``requests`` are client-side; no direct hardware access.
+     - **Yes.** REST calls run in the exporter helper.
+     - Client → exporter SSH; exporter → Home Assistant HTTP(S).
+     - ``requests`` and Home Assistant reachability are required on the exporter.
    * - ``TickFpgaManagerDriver``
      - Inherited from its command/file-transfer providers; it has no exporter relocation of its own.
      - With the normal ``SSHDriver`` bindings, client → DUT SSH.
@@ -126,9 +150,9 @@ Driver transport matrix
      - With the normal ``SSHDriver`` bindings, client → DUT SSH.
      - The overlay starts on the client; configfs operations run on the DUT.
    * - ``KasaPowerDriver``
-     - No. Discovery and control run in the client.
-     - Client → Kasa device on the local LAN.
-     - ``python-kasa`` and any device credentials are client-side; no direct hardware access.
+     - **Yes.** Discovery and control run in the exporter helper.
+     - Client → exporter SSH; exporter → Kasa device on its local LAN.
+     - ``python-kasa`` is required on the exporter; a local resource retains client-side execution.
 
 The lower-case entry-point aliases have the same behavior as the class names
 shown above.  ``XilinxJTAGDriver`` also has an explicit diagnostic escape
@@ -155,8 +179,8 @@ branches are called out explicitly.
      - Placement rule
    * - ``BootFPGASoC``
      - Serial, USB SD mux, and mass-storage updates can operate through the exporter.
-     - Image download is client → Internet; optional SSH/IP synchronization is client → DUT.
-     - Fully exporter-capable for the normal SD-mux + serial boot path, provided the client can SSH to the exporter for mass-storage staging.
+     - Image download is exporter → Internet; optional SSH/IP synchronization is client → DUT.
+     - Fully exporter-capable for the normal SD-mux + serial boot path. Download→mass-storage artifacts remain on-host.
    * - ``BootFPGASoCSSH``
      - Initial serial and an exporter-backed power provider can use the exporter.
      - **Required:** client → DUT SSH. Image download is client → release service when enabled.
@@ -175,8 +199,8 @@ branches are called out explicitly.
      - JTAG-only programming plus serial verification can be remote-exporter based; network validation cannot.
    * - ``BootFPGASoCTFTP``
      - Serial, suitable power, and optional JTAG bootstrap can use the exporter.
-     - **Required for interactive TFTP:** DUT → client TFTP. Optional SSH synchronization is client → DUT.
-     - Not transparently exporter-only: TFTP runs in the client and boot files must exist in its local TFTP root. ``sd_autoboot`` skips TFTP but still uses serial and JTAG.
+     - **Required for interactive TFTP:** DUT → exporter TFTP. Optional SSH synchronization is client → DUT.
+     - Download→TFTP artifacts remain exporter-local. ``sd_autoboot`` skips TFTP but still uses serial and JTAG.
    * - ``SoftwareProvisioningStrategy``
      - Inherited from ``SoftwareInstallerDriver`` command/file providers.
      - Provider-dependent; normally client → DUT SSH.
@@ -187,7 +211,7 @@ branches are called out explicitly.
      - Runner must have Pi LAN reachability; exporter access alone is insufficient.
    * - ``BootVPK180``
      - Both serial consoles and the SD-mux + mass-storage update branch can use the exporter.
-     - The alternative update branch requires client → DUT SSH; downloads require client → release host.
+     - The alternative update branch requires client → DUT SSH; downloads originate on the exporter.
      - Choose one update topology: exporter-side SD access, or runner-to-DUT LAN. Console access remains required.
    * - ``BootZynq7000JTAGRecovery``
      - JTAG is explicitly exporter-capable; serial and suitable power can use exporter paths.
@@ -196,15 +220,15 @@ branches are called out explicitly.
    * - ``BootNoOSJTAG``
      - JTAG is explicitly exporter-capable; serial and suitable power can use exporter paths.
      - No DUT LAN path is required for firmware load and serial banner validation.
-     - Can run through an exporter if the client can SSH to it and every configured JTAG payload path already exists there.
+     - Runs through an exporter when the client can SSH to it; caller-local JTAG payloads are staged automatically.
    * - ``ReflashVPK180SD``
      - Both serial consoles and suitable power can use exporter paths.
-     - **Required:** recovery DUT → client TFTP.
-     - Not transparently exporter-only: the downloaded image and TFTP server/root are client-local.
+     - **Required:** recovery DUT → exporter TFTP.
+     - Downloaded images and TFTP remain on the same exporter through ``ArtifactRef`` handoff.
    * - ``BootZynqMPJTAG``
      - JTAG is explicitly exporter-capable; serial and suitable power can use exporter paths.
      - No DUT LAN path is required for JTAG/recovery/production boot and serial verification.
-     - Can run through an exporter if the client can SSH to it. Xilinx tools, hw_server/JTAG, and configured payload paths must all exist exporter-side.
+     - Runs through an exporter when the client can SSH to it. Xilinx tools and hw_server/JTAG are exporter-side; caller payloads are staged automatically.
 
 Common deployment decisions
 ---------------------------
@@ -212,14 +236,13 @@ Common deployment decisions
 * Put USB serial, SD muxes, block devices, JTAG adapters, ``xsdb``, and
   ``hw_server`` on the exporter.  Use exporter-capable resources/drivers for
   them.
-* Give the CI runner routed access to the DUT subnet whenever a strategy uses
-  ``SSHDriver``, libIIO, SNMP, Home Assistant, or Kasa.  The coordinator does
-  not proxy these application protocols.
-* For TFTP/recovery strategies, either run the client on the lab LAN or provide
-  explicit routing and firewall rules from the DUT to the client.  Merely
-  placing ``TFTPServerResource`` in exporter YAML does not move the server.
+* Give the exporter PDU/service reachability for SNMP, Home Assistant, Kasa,
+  VeSync, release downloads, and TFTP. Composite drivers follow their bound
+  provider; optional SSH and libIIO strategy steps may still require client LAN.
+* For TFTP/recovery strategies, allow DUT → exporter UDP and configure a
+  DUT-visible exporter address. ``address: auto`` is resolved on the exporter.
 * Ensure the client can resolve and SSH to ``resource.host`` or
   ``resource.extra["proxy"]`` for exporter-side mass-storage and JTAG work.
-  The current file staging path does not support exporters reachable only
-  through ProxyJump.  Mass-storage source files are staged, but JTAG payloads
-  referenced by Tcl must already exist on the exporter.
+  ``AgentWrapper`` requires direct SSH reachability or an SSH-configured
+  ProxyJump. Mass-storage and JTAG inputs are staged; ``ArtifactRef`` avoids
+  transfers when producer and consumer use the same exporter.

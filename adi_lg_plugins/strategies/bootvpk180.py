@@ -1,12 +1,15 @@
 """Strategy to boot AMD Versal Premium VPK180 boards via the Zynq system controller."""
 
 import enum
+import os
 import time
 
 import attr
 from labgrid.factory import target_factory
 from labgrid.step import step
 from labgrid.strategy import Strategy, StrategyError
+
+from adi_lg_plugins.artifacts import local_artifact
 
 from ._compat import never_retry
 
@@ -188,8 +191,10 @@ class BootVPK180(Strategy):
         if kuiper:
             self.logger.info("Preloading Kuiper boot files")
             self.target.activate(kuiper)
-            kuiper.get_boot_files_from_release()
-            self.target.deactivate(kuiper)
+            try:
+                self._boot_artifacts = kuiper.get_boot_artifacts()
+            finally:
+                self.target.deactivate(kuiper)
 
     def _cold_cycle(self):
         """Hard power off → settle → on, deactivating any active shells first."""
@@ -284,9 +289,9 @@ class BootVPK180(Strategy):
         self.logger.info("Updating boot files on SD card via SD-mux...")
         self.target.activate(self.mass_storage)
         self.mass_storage.mount_partition()
-        for boot_file in self.kuiper._boot_files:
-            self.logger.info("Copying %s to SD card...", boot_file)
-            self.mass_storage.copy_file(boot_file, "/")
+        for artifact in self._boot_artifacts:
+            self.logger.info("Copying %s to SD card...", artifact.path)
+            self.mass_storage.copy_artifact(artifact, "/")
         self.mass_storage.unmount_partition()
         self.target.deactivate(self.mass_storage)
         self.logger.info("Boot files updated via SD-mux")
@@ -301,7 +306,18 @@ class BootVPK180(Strategy):
         self.logger.info("Updating boot files on Versal via SSH...")
         self.target.activate(self.ssh)
         try:
-            for boot_file in self.kuiper._boot_files:
+            artifacts = getattr(self, "_boot_artifacts", None)
+            if artifacts is None:
+                artifacts = [local_artifact(path) for path in self.kuiper._boot_files]
+            for artifact in artifacts:
+                boot_file = artifact.path
+                if artifact.host is not None:
+                    cache = os.path.join(
+                        os.path.expanduser("~/.cache/labgrid/artifacts"),
+                        artifact.sha256,
+                        os.path.basename(artifact.path),
+                    )
+                    boot_file = artifact.materialize_on_client(cache)
                 self.logger.info("scp %s -> %s/", boot_file, self.boot_partition_path)
                 self.ssh.put(boot_file, f"{self.boot_partition_path}/")
             self.ssh.run_check("sync")

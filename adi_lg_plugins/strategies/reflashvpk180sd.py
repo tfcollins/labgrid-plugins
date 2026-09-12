@@ -9,6 +9,8 @@ from labgrid.factory import target_factory
 from labgrid.step import step
 from labgrid.strategy import Strategy, StrategyError
 
+from adi_lg_plugins.artifacts import ArtifactRef
+
 from ._compat import never_retry
 
 
@@ -305,7 +307,10 @@ class ReflashVPK180SD(Strategy):
         self.logger.info("Staging Kuiper image to TFTP root...")
         self.target.activate(self.kuiper)
         try:
-            img_path = self.kuiper.get_full_image_path()
+            artifact = self.kuiper.get_full_image_artifact()
+            if not isinstance(artifact, ArtifactRef):
+                artifact = None
+                img_path = self.kuiper.get_full_image_path()
         finally:
             try:
                 self.target.deactivate(self.kuiper)
@@ -313,14 +318,19 @@ class ReflashVPK180SD(Strategy):
                 pass
 
         self.target.activate(self.tftp)
-        tftp_root = self.tftp.resource.root
-        if not os.path.exists(tftp_root):
-            os.makedirs(tftp_root)
-        dst = os.path.join(tftp_root, self.tftp_image_filename)
-        self.logger.info("Staging %s → %s (%s)", img_path, dst, self.stage_method)
-        self._stage_one_file(img_path, dst)
+        if artifact is None:
+            tftp_root = self.tftp.resource.root
+            os.makedirs(tftp_root, exist_ok=True)
+            dst = os.path.join(tftp_root, self.tftp_image_filename)
+            self.logger.info("Staging %s → %s (%s)", img_path, dst, self.stage_method)
+            self._stage_one_file(img_path, dst)
+            size = os.path.getsize(dst)
+            published = {"filename": self.tftp_image_filename}
+        else:
+            self.logger.info("Publishing %s as %s", artifact.path, self.tftp_image_filename)
+            published = self.tftp.publish_artifact(artifact, self.tftp_image_filename)
+            size = artifact.size
 
-        size = os.path.getsize(dst)
         if size > 32 * 1024 * 1024:
             self.logger.warning(
                 "Staged image is %.1f MB; the bundled SimpleTFTPServer wraps RFC 1350 "
@@ -330,10 +340,10 @@ class ReflashVPK180SD(Strategy):
             )
         self.logger.info(
             "TFTP server: %s:%s, root=%s, file=%s",
-            self.tftp.resource.get_ip(),
-            self.tftp.resource.port,
-            tftp_root,
-            self.tftp_image_filename,
+            self.tftp.get_server_ip(),
+            self.tftp.get_server_port(),
+            self.tftp.resource.root,
+            published["filename"],
         )
 
     def _wait_for_recovery_kernel(self):
@@ -398,7 +408,7 @@ class ReflashVPK180SD(Strategy):
 
     def _write_sd_from_recovery(self):
         """Issue the dd command on the recovery shell and verify if requested."""
-        server_ip = self.tftp.resource.get_ip()
+        server_ip = self.tftp.get_server_ip()
         server_port = self.tftp.resource.port
         cmd = self.dd_command_template.format(
             filename=self.tftp_image_filename,

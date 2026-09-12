@@ -1603,8 +1603,8 @@ Bring up a ZynqMP board over JTAG via the mini U-Boot SPL.
        ``0x380E``.
    * - ``dcc_log_path``
      - ``None``
-     - Optional host path receiving the mini-SPL ARM DCC console capture. For example,
-       ``/tmp/zynqmp-dcc.log``.
+     - Optional exporter-side output path receiving the mini-SPL ARM DCC console
+       capture. It is not copied back to the client. For example, ``/tmp/zynqmp-dcc.log``.
    * - ``spl_settle_ms``
      - ``12000``
      - Milliseconds to wait after starting the mini U-Boot SPL. For example, ``12000``.

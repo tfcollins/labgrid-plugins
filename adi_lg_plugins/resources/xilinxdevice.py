@@ -19,9 +19,12 @@ class XilinxDeviceJTAG(Resource):
         microblaze_target (int): JTAG target ID for Microblaze processor (default: 3).
             This is typically the processor core target for xsdb commands.
         bitstream_path (str, optional): Path to FPGA bitstream file (.bit).
-            Required when using BootFabric strategy. Must exist on filesystem.
+            Required when using BootFabric strategy. Caller-local files are
+            staged to the exporter automatically. Prefix with ``exporter:``
+            for a file which already exists on the exporter.
         kernel_path (str, optional): Path to Microblaze Linux kernel image (.strip).
-            Required when using BootFabric strategy. Must exist on filesystem.
+            Required when using BootFabric strategy. Uses the same staging and
+            ``exporter:`` compatibility semantics as ``bitstream_path``.
         devicetree_path (str, optional): Path to device tree binary (.dtb).
             Only needed if device tree is separate from kernel image.
     """

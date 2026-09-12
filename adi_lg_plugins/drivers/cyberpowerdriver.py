@@ -13,6 +13,8 @@ from labgrid.protocol import PowerProtocol
 from labgrid.step import step
 from packaging.version import Version
 
+from ._power_agent import ExporterPowerAgentMixin
+
 try:
     from pysnmp import __version__ as __pysnmp_version__
 
@@ -156,16 +158,20 @@ class CyberPowerPdu:
 
 @target_factory.reg_driver
 @attr.s(eq=False)
-class CyberPowerDriver(Driver, PowerResetMixin, PowerProtocol):
+class CyberPowerDriver(ExporterPowerAgentMixin, Driver, PowerResetMixin, PowerProtocol):
     """CyberPowerDriver - Driver using a CyberPower PDU
     to control a target's power
     """
 
     bindings = {"cyberpower_outlet": {"CyberPowerOutlet"}}
+    _remote_binding = "cyberpower_outlet"
 
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
-        self.pdu_dev = CyberPowerPdu(self.cyberpower_outlet.address)
+        self._init_exporter_agent()
+        self.pdu_dev = None
+        if not self._is_remote:
+            self.pdu_dev = CyberPowerPdu(self.cyberpower_outlet.address)
         self.outlet = self.cyberpower_outlet.outlet
 
     @Driver.check_active
@@ -179,7 +185,10 @@ class CyberPowerDriver(Driver, PowerResetMixin, PowerProtocol):
         Raises:
             CyberPowerPduException: If SNMP communication fails.
         """
-        self.pdu_dev.set_outlet_on(self.outlet, True)
+        if self._is_remote:
+            self._exporter_call("cyberpower_set", self.cyberpower_outlet.address, self.outlet, True)
+        else:
+            self.pdu_dev.set_outlet_on(self.outlet, True)
         self.logger.debug(f"Powered ON via CyberPower outlet {self.outlet}")
 
     @Driver.check_active
@@ -193,7 +202,12 @@ class CyberPowerDriver(Driver, PowerResetMixin, PowerProtocol):
         Raises:
             CyberPowerPduException: If SNMP communication fails.
         """
-        self.pdu_dev.set_outlet_on(self.outlet, False)
+        if self._is_remote:
+            self._exporter_call(
+                "cyberpower_set", self.cyberpower_outlet.address, self.outlet, False
+            )
+        else:
+            self.pdu_dev.set_outlet_on(self.outlet, False)
         self.logger.debug(f"Powered OFF via CyberPower outlet {self.outlet}")
 
     @Driver.check_active

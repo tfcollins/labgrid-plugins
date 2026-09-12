@@ -46,6 +46,11 @@ def test_transport_matrices_cover_each_registered_class_exactly_once():
     assert set(drivers) == expected_drivers
     assert set(strategies) == expected_strategies
 
+    driver_section = text.split(".. _driver-transport-matrix:", 1)[1].split(
+        ".. _strategy-transport-matrix:", 1
+    )[0]
+    assert "\n     - No." not in driver_section
+
 
 def test_transport_guide_defines_each_execution_boundary():
     text = MATRIX.read_text()

@@ -14,24 +14,31 @@ from labgrid.protocol import PowerProtocol
 from labgrid.step import step
 from pyvesync import VeSync
 
+from ._power_agent import ExporterPowerAgentMixin
+
 
 @target_factory.reg_driver
 @attr.s(eq=False)
-class VesyncPowerDriver(Driver, PowerResetMixin, PowerProtocol):
+class VesyncPowerDriver(ExporterPowerAgentMixin, Driver, PowerResetMixin, PowerProtocol):
     """VesyncPowerDriver - Driver using a Vesync Smart Outlet
     to control a target's power - https://github.com/webdjoe/pyvesync.
     Uses pyvesync tool to control the outlet."""
 
     bindings = {"vesync_outlet": {"VesyncOutlet"}}
+    _remote_binding = "vesync_outlet"
 
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
+        self._init_exporter_agent()
+        self.pdu_dev = None
+        self.outlets = []
+        if self._is_remote:
+            return
         self.pdu_dev = VeSync(self.vesync_outlet.username, self.vesync_outlet.password)
         self.pdu_dev.login()
         assert self.pdu_dev.enabled, "Failed to login to VeSync account"
         self.pdu_dev.get_devices()
         self.pdu_dev.update()
-        self.outlets = []
         if not self.pdu_dev.outlets:
             raise Exception("No VeSync outlets found for this account")
         # Check and store all outlets
@@ -57,6 +64,10 @@ class VesyncPowerDriver(Driver, PowerResetMixin, PowerProtocol):
         else:
             raise Exception("Outlet must be a string or integer")
 
+    def _exporter_vesync(self, action):
+        resource = self.vesync_outlet
+        return self._exporter_call("vesync", action, resource.outlet_names)
+
     @Driver.check_active
     @step()
     def on(self):
@@ -69,8 +80,11 @@ class VesyncPowerDriver(Driver, PowerResetMixin, PowerProtocol):
         Raises:
             Exception: If outlet control fails or outlets are not found.
         """
-        for outlet in self.outlets:
-            outlet.turn_on()
+        if self._is_remote:
+            self._exporter_vesync("on")
+        else:
+            for outlet in self.outlets:
+                outlet.turn_on()
         self.logger.debug("Powered ON via Vesync outlet")
 
     @Driver.check_active
@@ -85,8 +99,11 @@ class VesyncPowerDriver(Driver, PowerResetMixin, PowerProtocol):
         Raises:
             Exception: If outlet control fails or outlets are not found.
         """
-        for outlet in self.outlets:
-            outlet.turn_off()
+        if self._is_remote:
+            self._exporter_vesync("off")
+        else:
+            for outlet in self.outlets:
+                outlet.turn_off()
         self.logger.debug("Powered OFF via Vesync outlet")
 
     @Driver.check_active
@@ -130,4 +147,6 @@ class VesyncPowerDriver(Driver, PowerResetMixin, PowerProtocol):
         Returns:
             bool: True if all configured outlets are on, False otherwise.
         """
+        if self._is_remote:
+            return self._exporter_vesync("get")
         return all(outlet.is_on for outlet in self.outlets)

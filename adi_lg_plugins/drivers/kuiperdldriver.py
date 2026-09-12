@@ -18,6 +18,9 @@ from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 from tqdm import tqdm
 
+from adi_lg_plugins.artifacts import ArtifactRef, local_artifact
+
+from ._exporter import ExporterAgentMixin
 from .imageextractor import IMGFileExtractor
 
 
@@ -257,18 +260,69 @@ def download_release_image(release_version: str, cache_path: str, *, logger=None
 
 @target_factory.reg_driver
 @attr.s(eq=False)
-class KuiperDLDriver(Driver):
+class KuiperDLDriver(ExporterAgentMixin, Driver):
     """KuiperDLDriver - Driver to download and manage Kuiper releases and provide
     files to the target device.
     """
 
     bindings = {"kuiper_resource": {"KuiperRelease"}}
 
+    _exporter_binding = "kuiper_resource"
+    _exporter_agent = "download"
+
     cache_datafile = "cache_info.json"
 
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
         self._boot_files = []
+        self._exporter_agent_init()
+
+    def on_activate(self):
+        self._exporter_agent_activate()
+
+    def on_deactivate(self):
+        self._exporter_agent_deactivate()
+
+    def _agent_config(self):
+        resource = self.kuiper_resource
+        return {
+            "release_version": resource.release_version,
+            "cache_path": resource.cache_path,
+            "kernel_path": resource.kernel_path,
+            "BOOTBIN_path": resource.BOOTBIN_path,
+            "device_tree_path": resource.device_tree_path,
+        }
+
+    @staticmethod
+    def _client_artifact_path(artifact):
+        root = os.path.join(os.path.expanduser("~/.cache/labgrid/artifacts"), artifact.sha256)
+        return os.path.join(root, os.path.basename(artifact.path))
+
+    def _decode_remote_artifacts(self, values):
+        return [ArtifactRef.from_dict({**value, "host": self._exporter_host}) for value in values]
+
+    def get_boot_artifacts(self, get_all_files=False):
+        """Return location-aware boot artifacts without unnecessary transfers."""
+        if self._runs_on_exporter:
+            values = self._exporter_call(
+                "boot_artifacts", "kuiper", self._agent_config(), get_all_files
+            )
+            if get_all_files:
+                return values
+            return self._decode_remote_artifacts(values)
+        paths = self.get_boot_files_from_release(get_all_files=get_all_files)
+        if get_all_files:
+            return paths
+        return [local_artifact(path) for path in paths]
+
+    def get_full_image_artifact(self, release_version=None):
+        """Return the full image with explicit client/exporter provenance."""
+        if self._runs_on_exporter:
+            value = self._exporter_call(
+                "full_image_artifact", self._agent_config(), release_version
+            )
+            return self._decode_remote_artifacts([value])[0]
+        return local_artifact(self.get_full_image_path(release_version))
 
     def check_cached(self, release_version=None):
         """Check if the specified Kuiper release version is cached locally.
@@ -278,6 +332,10 @@ class KuiperDLDriver(Driver):
         Returns:
             bool: True if the release is cached, False otherwise.
         """
+        if self._runs_on_exporter:
+            return self._exporter_call(
+                "check_cached", "kuiper", self._agent_config(), release_version
+            )
         cache_path = self.kuiper_resource.cache_path
         if not os.path.exists(cache_path):
             os.makedirs(cache_path)
@@ -303,16 +361,18 @@ class KuiperDLDriver(Driver):
 
     def download_release(self, release_version=None):
         """Download the specified Kuiper release version if not already cached."""
+        if self._runs_on_exporter:
+            self._exporter_call("download_release", "kuiper", self._agent_config(), release_version)
+            return
         if release_version is None:
             release_version = self.kuiper_resource.release_version
         download_release_image(release_version, self.kuiper_resource.cache_path, logger=self.logger)
 
     def get_full_image_path(self, release_version=None):
-        """Return the cached full SD image (.img) path for the configured release.
-
-        Downloads + extracts the release first if it isn't cached. Caller is
-        responsible for activating/deactivating the driver.
-        """
+        """Return a client-valid full SD image path for the configured release."""
+        if self._runs_on_exporter:
+            artifact = self.get_full_image_artifact(release_version)
+            return artifact.materialize_on_client(self._client_artifact_path(artifact))
         if release_version is None:
             release_version = self.kuiper_resource.release_version
         if not self.check_cached(release_version):
@@ -323,6 +383,15 @@ class KuiperDLDriver(Driver):
         return cache_data[release_version]["image_path"]
 
     def get_boot_files_from_release(self, get_all_files=False):
+        if self._runs_on_exporter:
+            artifacts = self.get_boot_artifacts(get_all_files=get_all_files)
+            if get_all_files:
+                return artifacts
+            self._boot_files = [
+                artifact.materialize_on_client(self._client_artifact_path(artifact))
+                for artifact in artifacts
+            ]
+            return self._boot_files
         if not self.check_cached():
             self.download_release()
 

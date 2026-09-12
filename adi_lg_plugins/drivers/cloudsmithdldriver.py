@@ -26,6 +26,10 @@ from requests.adapters import HTTPAdapter
 from requests.packages.urllib3.util.retry import Retry
 from tqdm import tqdm
 
+from adi_lg_plugins.artifacts import ArtifactRef, local_artifact
+
+from ._exporter import ExporterAgentMixin
+
 logger = logging.getLogger(__name__)
 
 CLOUDSMITH_API = "https://api.cloudsmith.io/packages/{owner}/{repo}/"
@@ -333,7 +337,7 @@ def get_latest_bootfiles(
 
 @target_factory.reg_driver
 @attr.s(eq=False)
-class CloudsmithDLDriver(Driver):
+class CloudsmithDLDriver(ExporterAgentMixin, Driver):
     """Driver to resolve and download Cloudsmith boot artifacts.
 
     Exposes the same ``get_boot_files_from_release()`` / ``_boot_files``
@@ -342,11 +346,54 @@ class CloudsmithDLDriver(Driver):
 
     bindings = {"cloudsmith_resource": {"CloudsmithRelease"}}
 
+    _exporter_binding = "cloudsmith_resource"
+    _exporter_agent = "download"
+
     cache_datafile = "cache_info.json"
 
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
         self._boot_files = []
+        self._exporter_agent_init()
+
+    def on_activate(self):
+        self._exporter_agent_activate()
+
+    def on_deactivate(self):
+        self._exporter_agent_deactivate()
+
+    def _agent_config(self):
+        resource = self.cloudsmith_resource
+        return {
+            "fpga_carrier": resource.fpga_carrier,
+            "daughter_card": resource.daughter_card,
+            "vfilter": resource.vfilter,
+            "vnot": resource.vnot,
+            "owner": resource.owner,
+            "repo": resource.repo,
+            "filename": resource.filename,
+            "version": resource.version,
+            "api_token": None,
+            "cache_path": resource.cache_path,
+            "boot_file_path": resource.boot_file_path,
+        }
+
+    @staticmethod
+    def _client_artifact_path(artifact):
+        root = os.path.join(os.path.expanduser("~/.cache/labgrid/artifacts"), artifact.sha256)
+        return os.path.join(root, os.path.basename(artifact.path))
+
+    def _decode_remote_artifacts(self, values):
+        return [ArtifactRef.from_dict({**value, "host": self._exporter_host}) for value in values]
+
+    def get_boot_artifacts(self):
+        """Return location-aware boot artifacts without unnecessary transfers."""
+        if self._runs_on_exporter:
+            values = self._exporter_call(
+                "boot_artifacts", "cloudsmith", self._agent_config(), False
+            )
+            return self._decode_remote_artifacts(values)
+        return [local_artifact(path) for path in self.get_boot_files_from_release()]
 
     def _cache_path(self):
         return os.path.expanduser(self.cloudsmith_resource.cache_path)
@@ -377,6 +424,12 @@ class CloudsmithDLDriver(Driver):
 
     def check_cached(self, version):
         """Return the cached boot-file path for ``version`` if present, else None."""
+        if self._runs_on_exporter:
+            value = self._exporter_call("check_cached", "cloudsmith", self._agent_config(), version)
+            if not value:
+                return None
+            artifact = self._decode_remote_artifacts([value])[0]
+            return artifact.materialize_on_client(self._client_artifact_path(artifact))
         cache_path = self._cache_path()
         cache_file_path = os.path.join(cache_path, self.cache_datafile)
         if not os.path.exists(cache_file_path):
@@ -390,6 +443,12 @@ class CloudsmithDLDriver(Driver):
 
     def download_release(self, version=None):
         """Resolve, download, and cache the boot artifact; return its local path."""
+        if self._runs_on_exporter:
+            value = self._exporter_call(
+                "download_release", "cloudsmith", self._agent_config(), version
+            )
+            artifact = self._decode_remote_artifacts([value])[0]
+            return artifact.materialize_on_client(self._client_artifact_path(artifact))
         res = self.cloudsmith_resource
         package = self._resolve()
         version = package.get("version")
@@ -436,9 +495,19 @@ class CloudsmithDLDriver(Driver):
 
     def get_boot_file_path(self, version=None):
         """Ensure the artifact is downloaded and return its local path."""
+        if self._runs_on_exporter:
+            artifact = self.get_boot_artifacts()[0]
+            return artifact.materialize_on_client(self._client_artifact_path(artifact))
         return self.download_release(version=version)
 
     def get_boot_files_from_release(self):
         """Strategy-facing contract: populate and return ``_boot_files``."""
+        if self._runs_on_exporter:
+            artifacts = self.get_boot_artifacts()
+            self._boot_files = [
+                artifact.materialize_on_client(self._client_artifact_path(artifact))
+                for artifact in artifacts
+            ]
+            return self._boot_files
         self._boot_files = [self.get_boot_file_path()]
         return self._boot_files
