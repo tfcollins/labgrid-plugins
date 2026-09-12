@@ -106,7 +106,8 @@ jobs:
           tests/hw_ci/test_doctor_gh.py \
           tests/test_kuiperdl_download_image.py \
           tests/test_kasa.py \
-          tests/test_pin_release_refs.py
+          tests/test_pin_release_refs.py \
+          tests/test_transport_matrix.py
 
   coordinator-api:
     # The coordinator FastAPI subproject has its own pyproject + test suite

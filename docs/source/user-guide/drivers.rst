@@ -4,6 +4,10 @@ Using Drivers
 Drivers provide low-level hardware control and protocol implementations. They bind to resources
 and expose protocols that can be used by strategies or tests.
 
+Before placing a driver on a remote lab, read :doc:`access-topology`.  Its
+matrix distinguishes drivers which actually relocate work to an exporter from
+drivers which still originate LAN connections or services on the client.
+
 Overview
 --------
 
