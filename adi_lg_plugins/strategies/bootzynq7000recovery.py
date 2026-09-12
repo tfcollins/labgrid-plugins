@@ -280,10 +280,20 @@ class BootZynq7000JTAGRecovery(Strategy):
         """
         if not self.auto_build_initramfs:
             return
-        tftp_root = self.tftp_server.root
-        target = os.path.join(tftp_root, self.recovery_initramfs)
+        extra = getattr(self.tftp_server, "extra", None) or {}
+        remote_tftp = isinstance(extra, dict) and bool(extra.get("proxy"))
+        if remote_tftp:
+            cache_dir = self.recovery_cache_dir or os.path.expanduser("~/.cache/labgrid/recovery")
+            os.makedirs(cache_dir, exist_ok=True)
+            target = os.path.join(cache_dir, self.recovery_initramfs)
+        else:
+            target = os.path.join(self.tftp_server.root, self.recovery_initramfs)
         if os.path.exists(target):
-            self.logger.info("recovery initramfs already staged at %s", target)
+            if remote_tftp:
+                self.tftp_driver.publish(target, self.recovery_initramfs)
+                self.logger.info("recovery initramfs published from cache %s", target)
+            else:
+                self.logger.info("recovery initramfs already staged at %s", target)
             return
 
         # Local import keeps module load cheap and avoids dragging
@@ -298,6 +308,8 @@ class BootZynq7000JTAGRecovery(Strategy):
         )
         self.logger.info("building recovery initramfs at %s (busybox=%s)", target, busybox)
         sizes = build_recovery_initramfs(busybox=busybox, output=target)
+        if remote_tftp:
+            self.tftp_driver.publish(target, self.recovery_initramfs)
         self.logger.info(
             "recovery initramfs ready: cpio=%dB gz=%dB uimage=%dB",
             sizes["cpio"],

@@ -425,9 +425,7 @@ class CloudsmithDLDriver(ExporterAgentMixin, Driver):
     def check_cached(self, version):
         """Return the cached boot-file path for ``version`` if present, else None."""
         if self._runs_on_exporter:
-            value = self._exporter_call(
-                "check_cached", "cloudsmith", self._agent_config(), version
-            )
+            value = self._exporter_call("check_cached", "cloudsmith", self._agent_config(), version)
             if not value:
                 return None
             artifact = self._decode_remote_artifacts([value])[0]

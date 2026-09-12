@@ -2,6 +2,7 @@
 
 import atexit
 import base64
+import hashlib
 import ipaddress
 import os
 import posixpath
@@ -264,6 +265,31 @@ def finish_upload(token):
     return relative
 
 
+def publish_existing(source, destination, sha256):
+    """Atomically publish an exporter-local, digest-verified artifact."""
+    if _server is None:
+        raise RuntimeError("TFTP server is not running")
+    source = os.path.realpath(os.path.expanduser(source))
+    if not os.path.isfile(source):
+        raise FileNotFoundError(source)
+    digest = hashlib.sha256()
+    with open(source, "rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    if digest.hexdigest() != sha256:
+        raise RuntimeError("artifact digest mismatch")
+    relative = _normalize_destination(destination)
+    token = begin_upload(relative)
+    try:
+        with open(source, "rb") as stream:
+            for chunk in iter(lambda: stream.read(64 * 1024), b""):
+                write_upload(token, base64.b85encode(chunk).decode("ascii"))
+        return finish_upload(token)
+    except Exception:
+        abort_upload(token)
+        raise
+
+
 def abort_upload(token):
     upload = _uploads.pop(token, None)
     if upload is None:
@@ -287,5 +313,6 @@ methods = {
     "begin_upload": begin_upload,
     "write_upload": write_upload,
     "finish_upload": finish_upload,
+    "publish_existing": publish_existing,
     "abort_upload": abort_upload,
 }

@@ -9,6 +9,7 @@ from adi_lg_plugins.drivers import _exporter
 from adi_lg_plugins.drivers.cloudsmithdldriver import CloudsmithDLDriver
 from adi_lg_plugins.drivers.kuiperdldriver import KuiperDLDriver
 from adi_lg_plugins.drivers.massstoragedriver import MassStorageDriver
+from adi_lg_plugins.drivers.tftpserverdriver import TFTPServerDriver
 
 
 def _remote_resource(**values):
@@ -118,3 +119,19 @@ def test_mass_storage_same_exporter_copy_is_zero_copy():
         mock.call(["mkdir", "-p", "/media/test"]),
         mock.call(["cp", "/var/cache/BOOT.BIN", "/media/test/BOOT.BIN"]),
     ]
+
+
+def test_tftp_same_exporter_publish_is_zero_copy():
+    driver = TFTPServerDriver.__new__(TFTPServerDriver)
+    driver.resource = types.SimpleNamespace(extra={"proxy": "exporter.example.com"})
+    driver.proxy = mock.Mock()
+    driver.proxy.publish_existing.return_value = "images/BOOT.BIN"
+    driver.server = types.SimpleNamespace(address="10.0.0.20", port=69)
+    artifact = ArtifactRef("/var/cache/BOOT.BIN", "exporter.example.com", "abc", 3)
+
+    result = driver.publish_artifact(artifact, "images/BOOT.BIN")
+
+    driver.proxy.publish_existing.assert_called_once_with(
+        "/var/cache/BOOT.BIN", "images/BOOT.BIN", "abc"
+    )
+    assert result == {"filename": "images/BOOT.BIN", "address": "10.0.0.20:69"}

@@ -221,7 +221,7 @@ class BootFPGASoCTFTP(Strategy):
         if self.kuiper:
             self.target.activate(self.kuiper)
             self.logger.info("KuiperDLDriver activated")
-            self.kuiper.get_boot_files_from_release()
+            self._boot_artifacts = self.kuiper.get_boot_artifacts()
             self.target.deactivate(self.kuiper)
 
     @never_retry
@@ -262,11 +262,20 @@ class BootFPGASoCTFTP(Strategy):
                 self.logger.warning("No KuiperDLDriver attached, skipping boot file update check")
             else:
                 self.logger.info(f"Preparing TFTP boot files in {self.tftp_root_folder}...")
-                for boot_file in self.kuiper._boot_files:
-                    self.logger.info(f"Copying {os.path.basename(boot_file)} to TFTP root...")
-                    if not os.path.exists(boot_file):
-                        raise StrategyError(f"Boot file {boot_file} does not exist")
-                    self.tftp_driver.publish(boot_file)
+                artifacts = getattr(self, "_boot_artifacts", None)
+                if artifacts is not None:
+                    for artifact in artifacts:
+                        self.logger.info(
+                            "Publishing %s in the TFTP root...", os.path.basename(artifact.path)
+                        )
+                        self.tftp_driver.publish_artifact(artifact)
+                else:
+                    # Compatibility for programmatic strategies/downloader
+                    # implementations which still expose only path strings.
+                    for boot_file in self.kuiper._boot_files:
+                        if not os.path.exists(boot_file):
+                            raise StrategyError(f"Boot file {boot_file} does not exist")
+                        self.tftp_driver.publish(boot_file)
                 self.logger.info("TFTP boot files prepared successfully")
 
         elif status == Status.booting:

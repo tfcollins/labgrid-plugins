@@ -9,6 +9,7 @@ from labgrid.driver.common import Driver
 from labgrid.factory import target_factory
 from labgrid.util.agentwrapper import AgentWrapper
 
+from adi_lg_plugins.artifacts import ArtifactRef
 from adi_lg_plugins.resources.tftpserver import TFTPServerResource
 
 from ._remote import RemoteExecMixin
@@ -128,3 +129,21 @@ class TFTPServerDriver(RemoteExecMixin, Driver):
     def stage_file(self, client_path, destination=None):
         """Backward-friendly alias for :meth:`publish`."""
         return self.publish(client_path, destination)
+
+    def publish_artifact(self, artifact: ArtifactRef, destination=None):
+        """Publish an artifact, retaining it on the exporter when co-located."""
+        self._require_server()
+        destination = destination or os.path.basename(artifact.path)
+        host = self._exporter_host(self.resource)
+        if artifact.host == host:
+            filename = self.proxy.publish_existing(artifact.path, destination, artifact.sha256)
+            return {"filename": filename, "address": self._server_address()}
+        local_path = artifact.path
+        if artifact.host is not None:
+            cache = os.path.join(
+                os.path.expanduser("~/.cache/labgrid/artifacts"),
+                artifact.sha256,
+                os.path.basename(artifact.path),
+            )
+            local_path = artifact.materialize_on_client(cache)
+        return self.publish(local_path, destination)

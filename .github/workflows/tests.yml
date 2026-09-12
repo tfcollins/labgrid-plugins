@@ -49,6 +49,7 @@ jobs:
           tests/test_vpk180_reflash_strat.py \
           tests/test_xilinx_jtag_driver_zynq.py \
           tests/test_xilinx_jtag_driver_zynqmp.py \
+          tests/test_xilinx_jtag_driver_exporter.py \
           tests/test_bootzynqmpjtag_strat.py \
           tests/test_zynqmp_production_boot_prepare.py \
           tests/test_remote_exec.py \
@@ -60,6 +61,8 @@ jobs:
           tests/test_bootfpgasocssh_helpers.py \
           tests/test_bootfpgasoctftp_sd_autoboot.py \
           tests/test_tftp_driver.py \
+          tests/test_power_exporter_agent.py \
+          tests/test_exporter_artifacts.py \
           tests/hw_ci/test_resolve.py \
           tests/hw_ci/test_markers_ast.py \
           tests/hw_ci/test_markers_rejections.py \
