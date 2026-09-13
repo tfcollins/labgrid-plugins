@@ -523,11 +523,16 @@ body[data-theme="dark"] {
         line-height: 1.3;
     }
 
+    article[role="main"] > section > h2 {
+        margin-top: 1.35rem;
+        margin-bottom: 0.7rem;
+    }
+
     .homepage-hero {
         clear: both;
-        margin-bottom: 2.25rem;
+        margin-bottom: 1.65rem;
         border-radius: 0.9rem;
-        padding: 1.45rem 1rem 1.35rem;
+        padding: 1.25rem 1rem 1.15rem;
     }
 
     .homepage-hero::after {
@@ -554,7 +559,7 @@ body[data-theme="dark"] {
     }
 
     .homepage-actions {
-        margin-top: 1.2rem;
+        margin-top: 1rem;
     }
 
     .homepage-actions .sd-btn,
@@ -569,14 +574,24 @@ body[data-theme="dark"] {
     }
 
     .homepage-proof {
-        margin-top: 1.2rem;
+        margin-top: 0.9rem;
         font-size: 0.76rem;
         line-height: 1.55;
     }
 
     .homepage-card-grid,
     .homepage-capability-grid {
-        margin-bottom: 2.5rem;
+        margin-bottom: 1.75rem;
+    }
+
+    .homepage-card-grid .sd-row,
+    .homepage-capability-grid .sd-row {
+        margin-top: -0.65rem;
+    }
+
+    .homepage-card-grid .sd-col,
+    .homepage-capability-grid .sd-col {
+        margin-top: 0.65rem;
     }
 
     .homepage-card {
@@ -584,17 +599,30 @@ body[data-theme="dark"] {
     }
 
     .homepage-card .sd-card-body {
-        padding: 1rem 1rem 0.4rem;
+        padding: 0.85rem 1rem 0.25rem;
+    }
+
+    .homepage-card .sd-card-body p {
+        margin: 0.45rem 0;
+        line-height: 1.45;
     }
 
     .homepage-card .sd-card-footer {
-        padding: 0.45rem 1rem 0.9rem;
+        padding: 0.3rem 1rem 0.7rem;
     }
 
     .homepage-feature-grid {
-        margin-bottom: 2.5rem;
+        margin-bottom: 1.75rem;
         border-radius: 0.9rem;
-        padding: 0.85rem;
+        padding: 0.7rem;
+    }
+
+    .homepage-feature-grid .sd-row {
+        margin-top: -0.75rem;
+    }
+
+    .homepage-feature-grid .sd-col {
+        margin-top: 0.75rem;
     }
 
     .homepage-feature-copy {
@@ -603,22 +631,27 @@ body[data-theme="dark"] {
 
     .homepage-flow-panel {
         border-radius: 0.75rem;
-        padding: 0.7rem;
+        padding: 0.6rem;
     }
 
     .homepage-flow-step {
-        padding: 0.65rem 0.8rem;
+        padding: 0.55rem 0.8rem;
+    }
+
+    .homepage-flow-arrow {
+        padding: 0.3rem 0.8rem;
     }
 
     .homepage-capability {
         border-radius: 0.8rem;
-        padding: 1rem;
+        padding: 0.85rem 1rem;
+        line-height: 1.45;
     }
 
     .homepage-final-cta {
-        margin: 2.5rem 0 1.5rem;
+        margin: 1.8rem 0 1.2rem;
         border-radius: 0.9rem;
-        padding: 1.35rem 1rem;
+        padding: 1.15rem 1rem;
     }
 
     .homepage-final-cta .sd-btn {
