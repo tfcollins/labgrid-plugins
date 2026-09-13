@@ -67,3 +67,16 @@ def test_homepage_supports_dark_mode_and_reduced_motion():
     assert 'body[data-theme="dark"]' in stylesheet
     assert "@media (prefers-color-scheme: dark)" in stylesheet
     assert "@media (prefers-reduced-motion: reduce)" in stylesheet
+
+
+def test_iphone_layout_preserves_content_width_and_touch_targets():
+    stylesheet = CSS.read_text(encoding="utf-8")
+
+    assert "@media (max-width: 30rem)" in stylesheet
+    assert ".content-icon-container" in stylesheet
+    assert "env(safe-area-inset-left)" in stylesheet
+    assert "env(safe-area-inset-right)" in stylesheet
+    assert "min-height: 2.75rem" in stylesheet
+    assert ".table-wrapper" in stylesheet
+    assert "overflow-x: auto" in stylesheet
+    assert ".topology-matrix th:first-child" in stylesheet

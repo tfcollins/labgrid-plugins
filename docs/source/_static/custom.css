@@ -466,6 +466,218 @@ body[data-theme="dark"] {
     }
 }
 
+/* iPhone-sized viewports: preserve the content lane and 44px touch targets. */
+@media (max-width: 30rem) {
+    .content {
+        padding-right: max(0.75rem, env(safe-area-inset-right));
+        padding-left: max(0.75rem, env(safe-area-inset-left));
+    }
+
+    .article-container,
+    article[role="main"],
+    article[role="main"] section {
+        min-width: 0;
+        max-width: 100%;
+    }
+
+    /* Furo already exposes these actions in desktop navigation. On a phone the
+       floating copies consume 64px of the article's first content block. */
+    .content-icon-container {
+        display: none;
+    }
+
+    .mobile-header .header-left,
+    .mobile-header .header-right {
+        padding-right: max(0.25rem, env(safe-area-inset-right));
+        padding-left: max(0.25rem, env(safe-area-inset-left));
+    }
+
+    .mobile-header .theme-toggle,
+    .mobile-header .nav-overlay-icon,
+    .mobile-header .toc-header-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 2.75rem;
+        min-height: 2.75rem;
+    }
+
+    .sidebar-tree a.reference {
+        display: flex;
+        align-items: center;
+        min-height: 2.75rem;
+    }
+
+    article[role="main"] h1 {
+        font-size: clamp(1.85rem, 9vw, 2.25rem);
+        line-height: 1.12;
+    }
+
+    article[role="main"] h2 {
+        font-size: clamp(1.45rem, 7.2vw, 1.75rem);
+        line-height: 1.2;
+    }
+
+    article[role="main"] h3 {
+        font-size: 1.2rem;
+        line-height: 1.3;
+    }
+
+    .homepage-hero {
+        clear: both;
+        margin-bottom: 2.25rem;
+        border-radius: 0.9rem;
+        padding: 1.45rem 1rem 1.35rem;
+    }
+
+    .homepage-hero::after {
+        top: -5rem;
+        right: -6rem;
+    }
+
+    .homepage-kicker {
+        font-size: 0.68rem;
+        letter-spacing: 0.09em;
+        line-height: 1.55;
+    }
+
+    .homepage-headline {
+        margin-bottom: 0.8rem;
+        font-size: clamp(2.15rem, 10.8vw, 2.65rem);
+        letter-spacing: -0.04em;
+        line-height: 1.02;
+    }
+
+    .homepage-lede {
+        font-size: 1rem;
+        line-height: 1.5;
+    }
+
+    .homepage-actions {
+        margin-top: 1.2rem;
+    }
+
+    .homepage-actions .sd-btn,
+    .homepage-feature-copy .sd-btn,
+    .homepage-final-cta .sd-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        min-height: 2.75rem;
+        padding: 0.55rem 0.85rem;
+    }
+
+    .homepage-proof {
+        margin-top: 1.2rem;
+        font-size: 0.76rem;
+        line-height: 1.55;
+    }
+
+    .homepage-card-grid,
+    .homepage-capability-grid {
+        margin-bottom: 2.5rem;
+    }
+
+    .homepage-card {
+        min-height: 0;
+    }
+
+    .homepage-card .sd-card-body {
+        padding: 1rem 1rem 0.4rem;
+    }
+
+    .homepage-card .sd-card-footer {
+        padding: 0.45rem 1rem 0.9rem;
+    }
+
+    .homepage-feature-grid {
+        margin-bottom: 2.5rem;
+        border-radius: 0.9rem;
+        padding: 0.85rem;
+    }
+
+    .homepage-feature-copy {
+        padding: 0.35rem;
+    }
+
+    .homepage-flow-panel {
+        border-radius: 0.75rem;
+        padding: 0.7rem;
+    }
+
+    .homepage-flow-step {
+        padding: 0.65rem 0.8rem;
+    }
+
+    .homepage-capability {
+        border-radius: 0.8rem;
+        padding: 1rem;
+    }
+
+    .homepage-final-cta {
+        margin: 2.5rem 0 1.5rem;
+        border-radius: 0.9rem;
+        padding: 1.35rem 1rem;
+    }
+
+    .homepage-final-cta .sd-btn {
+        margin: 0.45rem 0 0;
+    }
+
+    .highlight,
+    .literal-block-wrapper,
+    .table-wrapper,
+    .editorial-diagram {
+        box-sizing: border-box;
+        max-width: 100%;
+        overscroll-behavior-inline: contain;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    pre {
+        max-width: 100%;
+        font-size: 0.82em;
+    }
+
+    .copybtn {
+        min-width: 2.75rem;
+        min-height: 2.75rem;
+    }
+
+    .editorial-diagram {
+        position: relative;
+        margin-top: 1rem;
+        padding: 0.65rem 0;
+        scrollbar-width: thin;
+    }
+
+    .editorial-diagram img {
+        min-width: 36rem;
+    }
+
+    .table-wrapper {
+        width: 100%;
+        margin-right: 0;
+        margin-left: 0;
+        overflow-x: auto;
+        scrollbar-width: thin;
+    }
+
+    .topology-matrix th:first-child,
+    .topology-matrix td:first-child {
+        position: sticky;
+        z-index: 1;
+        left: 0;
+        background: var(--color-background-primary);
+        box-shadow: 0.2rem 0 0.4rem rgba(0, 0, 0, 0.08);
+    }
+
+    .related-pages a {
+        min-height: 2.75rem;
+    }
+}
+
 @media (prefers-reduced-motion: reduce) {
     .homepage-card {
         transition: none;
