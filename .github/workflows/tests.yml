@@ -112,7 +112,8 @@ jobs:
           tests/test_kasa.py \
           tests/test_pin_release_refs.py \
           tests/test_transport_matrix.py \
-          tests/test_docs_diagrams.py
+          tests/test_docs_diagrams.py \
+          tests/test_docs_homepage.py
 
   coordinator-api:
     # The coordinator FastAPI subproject has its own pyproject + test suite

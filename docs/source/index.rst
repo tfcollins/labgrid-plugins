@@ -1,96 +1,242 @@
-labgrid-plugins Documentation
-==================================
+.. title:: labgrid-plugins Documentation
 
-**labgrid-plugins** is a labgrid plugin package providing Analog Devices specific drivers, resources, and strategies for automated testing and device control of FPGA SoC systems.
+.. container:: homepage-hero
 
-.. grid:: 2
+   .. container:: homepage-kicker
 
-    .. grid-item-card:: Getting Started
-        :link: getting-started/index
-        :link-type: doc
+      HARDWARE AUTOMATION · FPGA SOC · LABGRID
 
-        New to labgrid-plugins? Start here with installation and basic usage.
+   .. container:: homepage-headline
 
-    .. grid-item-card:: API Reference
-        :link: api/index
-        :link-type: doc
+      Control the lab. Reproduce the result.
 
-        Complete API documentation for all components.
+   .. container:: homepage-lede
 
-    .. grid-item-card:: User Guide
-        :link: user-guide/index
-        :link-type: doc
+      Drivers, resources, boot strategies, and hardware-CI orchestration for
+      automated testing of Analog Devices FPGA SoC systems.
 
-        Learn how to configure and use drivers, resources, and strategies.
+   .. container:: homepage-actions
 
-    .. grid-item-card:: YAML Reference
-        :link: yaml-reference/index
-        :link-type: doc
+      .. button-ref:: getting-started/index
+         :color: primary
+         :expand:
 
-        Quick schema lookup for every resource, driver, and strategy.
+         Get started →
 
-    .. grid-item-card:: Developer Guide
-        :link: developer-guide/index
-        :link-type: doc
+      .. button-ref:: user-guide/access-topology
+         :color: secondary
+         :expand:
 
-        Contributing, architecture, and implementation patterns.
+         Explore the architecture
 
-    .. grid-item-card:: Hardware CI — Onboarding
-        :link: user-guide/onboarding-a-consumer-repo
-        :link-type: doc
+   .. container:: homepage-proof
 
-        Wire a consumer repo onto the lab hardware-CI flow — start here.
+      **15 drivers** · **13 strategies** · **Exporter-aware execution** · **Hardware CI**
 
-    .. grid-item-card:: Lab Host — Onboarding
-        :link: user-guide/onboarding-a-lab-host
-        :link-type: doc
+Choose your path
+----------------
 
-        Bring hardware online: coordinator, exporters, places, and runners.
+.. grid:: 1 2 3 3
+   :gutter: 3
+   :class-container: homepage-card-grid
 
-.. admonition:: Version Information
-    :class: note
+   .. grid-item-card:: Start building
+      :link: getting-started/index
+      :link-type: doc
+      :class-card: homepage-card homepage-card--green
 
-    Current version: **0.1.0** (early development)
+      Install the package, define a target, and run your first operation.
 
-    This is early-stage software under active development. Expect incomplete features and ongoing architectural changes.
+      +++
+      **Getting started →**
 
-Features
---------
+   .. grid-item-card:: Configure hardware
+      :link: yaml-reference/index
+      :link-type: doc
+      :class-card: homepage-card homepage-card--blue
 
-- **Power Control**: VeSync smart outlets plus APC and CyberPower PDU support
-- **Shell Access**: XMODEM file transfer over serial console
-- **Boot Strategies**: Automated FPGA SoC boot with kernel replacement
-- **Mass Storage**: SD card file management via USB mux
-- **Kuiper Linux**: Download and manage ADI Kuiper releases
+      Look up every resource, driver, and strategy field in one place.
 
-Quick Example
--------------
+      +++
+      **YAML reference →**
+
+   .. grid-item-card:: Operate the lab
+      :link: user-guide/index
+      :link-type: doc
+      :class-card: homepage-card homepage-card--orange
+
+      Follow task-oriented guides for exporters, boot flows, and device control.
+
+      +++
+      **User guide →**
+
+   .. grid-item-card:: Automate hardware CI
+      :link: user-guide/onboarding-a-consumer-repo
+      :link-type: doc
+      :class-card: homepage-card homepage-card--purple
+
+      Connect a consumer repository to bounded, repeatable hardware jobs.
+
+      +++
+      **CI onboarding →**
+
+   .. grid-item-card:: Bring a lab online
+      :link: user-guide/onboarding-a-lab-host
+      :link-type: doc
+      :class-card: homepage-card homepage-card--cyan
+
+      Set up coordinators, exporters, places, and resource-safe runners.
+
+      +++
+      **Lab-host onboarding →**
+
+   .. grid-item-card:: Extend the platform
+      :link: developer-guide/index
+      :link-type: doc
+      :class-card: homepage-card homepage-card--pink
+
+      Understand the architecture and implement new integrations safely.
+
+      +++
+      **Developer guide →**
+
+From API call to physical hardware
+----------------------------------
+
+.. grid:: 1 1 2 2
+   :gutter: 4
+   :class-container: homepage-feature-grid
+
+   .. grid-item::
+      :class: homepage-feature-copy
+
+      .. container:: homepage-kicker
+
+         EXECUTION TOPOLOGY
+
+      Keep control logic readable on the client while running network- and
+      hardware-adjacent operations on the exporter. Location-aware artifacts
+      cross boundaries only when their consumer requires it.
+
+      .. button-ref:: user-guide/access-topology
+         :color: primary
+
+         See execution and access paths →
+
+   .. grid-item::
+      :class: homepage-flow-panel
+
+      .. container:: homepage-flow
+
+         .. container:: homepage-flow-step homepage-flow-step--client
+
+            **1 · Client**
+
+            Resolve target and strategy
+
+         .. container:: homepage-flow-arrow
+
+            ↓  narrow RPC / SSH
+
+         .. container:: homepage-flow-step homepage-flow-step--exporter
+
+            **2 · Exporter**
+
+            Run tools near hardware
+
+         .. container:: homepage-flow-arrow
+
+            ↓  JTAG · TFTP · serial · LAN
+
+         .. container:: homepage-flow-step homepage-flow-step--dut
+
+            **3 · DUT**
+
+            Boot, test, and report
+
+Built for real lab workflows
+----------------------------
+
+.. grid:: 1 2 3 3
+   :gutter: 3
+   :class-container: homepage-capability-grid
+
+   .. grid-item::
+      :class: homepage-capability homepage-capability--power
+
+      **Power and recovery**
+
+      APC, CyberPower, Kasa, VeSync, and Home Assistant control with explicit
+      lifecycle and exporter-local credentials.
+
+   .. grid-item::
+      :class: homepage-capability homepage-capability--boot
+
+      **Repeatable boot paths**
+
+      Stage bitstreams and software through JTAG, mass storage, TFTP, and
+      recovery services without confusing client and exporter paths.
+
+   .. grid-item::
+      :class: homepage-capability homepage-capability--ci
+
+      **Resource-safe hardware CI**
+
+      Acquire named labgrid places, run bounded jobs, collect artifacts, and
+      release hardware even when a test fails.
+
+Try the API
+-----------
+
+.. container:: homepage-code-intro
+
+   A target configuration and a few Python calls are enough to control a device.
 
 .. code-block:: yaml
+   :caption: target.yaml
 
-    # target.yaml
-    targets:
-      my_device:
-        resources:
-          VesyncOutlet:
-            outlet_names: 'Device Power'
-            username: 'user@example.com'
-            password: 'password'
-
-        drivers:
-          VesyncPowerDriver: {}
+   targets:
+     my_device:
+       resources:
+         NetworkPowerPort:
+           model: kasa
+           host: 192.0.2.20
+           index: 0
+       drivers:
+         KasaPowerDriver: {}
 
 .. code-block:: python
+   :caption: Power-cycle the target
 
-    # Control device power
-    from labgrid import Environment
+   from labgrid import Environment
 
-    env = Environment("target.yaml")
-    target = env.get_target("my_device")
-    power = target.get_driver("VesyncPowerDriver")
+   env = Environment("target.yaml")
+   target = env.get_target("my_device")
+   power = target.get_driver("KasaPowerDriver")
 
-    power.on()   # Turn on device
-    power.off()  # Turn off device
+   power.cycle()
+
+.. container:: homepage-final-cta
+
+   **Ready to automate a board?**
+
+   Start with installation and a minimal target, or jump directly to the API.
+
+   .. button-ref:: getting-started/installation
+      :color: primary
+
+      Install labgrid-plugins →
+
+   .. button-ref:: api/index
+      :color: secondary
+
+      Browse the API
+
+.. admonition:: Project status
+   :class: note homepage-status
+
+   Current version: **0.1.0**. This is early-stage software under active
+   development; interfaces and architecture continue to evolve.
 
 .. toctree::
    :maxdepth: 2
@@ -105,7 +251,7 @@ Quick Example
    examples/index
 
 Indices and tables
-==================
+------------------
 
 * :ref:`genindex`
 * :ref:`modindex`
