@@ -80,3 +80,15 @@ def test_iphone_layout_preserves_content_width_and_touch_targets():
     assert ".table-wrapper" in stylesheet
     assert "overflow-x: auto" in stylesheet
     assert ".topology-matrix th:first-child" in stylesheet
+
+
+def test_iphone_graphics_keep_readable_internal_padding():
+    stylesheet = CSS.read_text(encoding="utf-8")
+
+    # Sphinx's generic ``.container`` sets horizontal padding to zero, so the
+    # hero and final CTA need explicit overrides at the phone breakpoint.
+    assert "padding: 1.25rem 1.25rem 1.15rem !important" in stylesheet
+    assert "padding: 1.25rem !important" in stylesheet
+    assert "padding: 1rem 1.25rem 0.35rem" in stylesheet
+    assert "padding: 1.1rem 1.25rem" in stylesheet
+    assert "padding: 1rem !important" in stylesheet

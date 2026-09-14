@@ -532,7 +532,7 @@ body[data-theme="dark"] {
         clear: both;
         margin-bottom: 1.65rem;
         border-radius: 0.9rem;
-        padding: 1.25rem 1rem 1.15rem;
+        padding: 1.25rem 1.25rem 1.15rem !important;
     }
 
     .homepage-hero::after {
@@ -599,7 +599,7 @@ body[data-theme="dark"] {
     }
 
     .homepage-card .sd-card-body {
-        padding: 0.85rem 1rem 0.25rem;
+        padding: 1rem 1.25rem 0.35rem;
     }
 
     .homepage-card .sd-card-body p {
@@ -608,50 +608,52 @@ body[data-theme="dark"] {
     }
 
     .homepage-card .sd-card-footer {
-        padding: 0.3rem 1rem 0.7rem;
+        padding: 0.35rem 1.25rem 0.9rem;
     }
 
     .homepage-feature-grid {
         margin-bottom: 1.75rem;
         border-radius: 0.9rem;
-        padding: 0.7rem;
+        padding: 1.25rem !important;
     }
 
     .homepage-feature-grid .sd-row {
-        margin-top: -0.75rem;
+        margin: -0.75rem 0 0;
     }
 
     .homepage-feature-grid .sd-col {
         margin-top: 0.75rem;
+        padding-right: 0;
+        padding-left: 0;
     }
 
     .homepage-feature-copy {
-        padding: 0.35rem;
+        padding: 0;
     }
 
     .homepage-flow-panel {
         border-radius: 0.75rem;
-        padding: 0.6rem;
+        padding: 1rem !important;
     }
 
     .homepage-flow-step {
-        padding: 0.55rem 0.8rem;
+        padding: 0.7rem 1rem;
     }
 
     .homepage-flow-arrow {
-        padding: 0.3rem 0.8rem;
+        padding: 0.4rem 1rem;
     }
 
     .homepage-capability {
         border-radius: 0.8rem;
-        padding: 0.85rem 1rem;
+        padding: 1.1rem 1.25rem;
         line-height: 1.45;
     }
 
     .homepage-final-cta {
         margin: 1.8rem 0 1.2rem;
         border-radius: 0.9rem;
-        padding: 1.15rem 1rem;
+        padding: 1.25rem !important;
     }
 
     .homepage-final-cta .sd-btn {
