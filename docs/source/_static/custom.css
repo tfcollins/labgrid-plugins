@@ -204,7 +204,7 @@ body[data-theme="dark"] {
     margin: 0 0 3rem;
     border: 1px solid var(--home-border);
     border-radius: 1.5rem;
-    padding: clamp(2rem, 7vw, 4.75rem) clamp(1.4rem, 6vw, 4.5rem);
+    padding: clamp(2.75rem, 8vw, 5.25rem) clamp(2.25rem, 7vw, 5rem);
     background:
         radial-gradient(circle at 88% 18%, rgba(89, 208, 255, 0.36), transparent 28%),
         radial-gradient(circle at 8% 92%, rgba(130, 92, 246, 0.24), transparent 30%),
@@ -353,24 +353,24 @@ body[data-theme="dark"] {
 .homepage-flow-panel {
     border: 1px solid var(--home-border);
     border-radius: 1rem;
-    padding: 1rem;
+    padding: 1.25rem;
     background: var(--home-surface-strong);
     box-shadow: var(--home-shadow);
 }
 
 .homepage-flow-step {
     border: 0;
-    border-radius: 0.7rem;
-    padding: 0.75rem 1rem;
+    border-radius: 0.75rem;
+    padding: 1.25rem 1.5rem;
 }
 
-.homepage-flow-step p { margin: 0.15rem 0; }
-.homepage-flow-step-client { background: var(--home-purple-soft); box-shadow: inset 0.3rem 0 var(--home-purple); }
-.homepage-flow-step-exporter { background: var(--home-blue-soft); box-shadow: inset 0.3rem 0 var(--home-blue); }
-.homepage-flow-step-dut { background: var(--home-orange-soft); box-shadow: inset 0.3rem 0 var(--home-orange); }
+.homepage-flow-step p { margin: 0.2rem 0; }
+.homepage-flow-step-client { background: var(--home-purple-soft); box-shadow: inset 0.35rem 0 var(--home-purple); }
+.homepage-flow-step-exporter { background: var(--home-blue-soft); box-shadow: inset 0.35rem 0 var(--home-blue); }
+.homepage-flow-step-dut { background: var(--home-orange-soft); box-shadow: inset 0.35rem 0 var(--home-orange); }
 
 .homepage-flow-arrow {
-    padding: 0.45rem 1rem;
+    padding: 0.5rem 1.25rem;
     color: var(--color-foreground-muted);
     font-family: var(--font-stack--monospace);
     font-size: 0.76rem;
