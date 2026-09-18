@@ -20,6 +20,9 @@ targets:
     drivers:
       VesyncPowerDriver: {}
       USBSDMuxDriver: {}
+      # Binds USBSDMuxDevice directly; performs full-image writes
+      # (BootFPGASoC's optional image_writer, and `adi-lg flash-sd`).
+      USBStorageDriver: {}
       SerialDriver: {}
       ADIShellDriver:
         prompt: 'root@.*'
@@ -28,7 +31,10 @@ targets:
         password: 'analog'
       KuiperDLDriver: {}
       MassStorageDriver:
-        partition: '/dev/disk/by-partuuid/a22286d2-01'
+        # By label, not by-partuuid: adi-kuiper-gen generates a fresh MBR
+        # signature per build, so a partuuid pin stops resolving after any
+        # full-image flash. The FAT label is always BOOT.
+        partition: '/dev/disk/by-label/BOOT'
       BootFPGASoC:
         reached_linux_marker: 'analog'
         wait_for_linux_prompt_timeout: 180
