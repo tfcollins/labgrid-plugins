@@ -202,3 +202,96 @@ def test_unmount_returns_when_pumount_errors_but_already_gone():
         d.unmount_partition()
 
     assert d.mounted is False
+
+
+def test_mount_partition_warns_once_about_partuuid_pin(caplog):
+    """A by-partuuid pin is only valid until the card is next reflashed."""
+    d = _driver(types.SimpleNamespace(path="/dev/sdb", extra={"proxy": "exp.host"}))
+    d.partition = "/dev/disk/by-partuuid/a22286d2-01"
+    d.mounted = False
+    d._partuuid_warned = False
+
+    with (
+        mock.patch.object(d, "_remote_run", return_value=mock.Mock(returncode=0)),
+        mock.patch.object(d, "_remote_check"),
+        mock.patch("time.sleep"),
+        mock.patch.object(d, "_is_mountpoint", side_effect=[False, True, False, True]),
+        mock.patch.object(d, "_path_exists", return_value=True),
+        caplog.at_level(logging.WARNING, logger="test_massstorage"),
+    ):
+        d.mount_partition()
+        d.mounted = False
+        d.mount_partition()
+
+    warnings = [r for r in caplog.records if "PARTUUID" in r.getMessage()]
+    assert len(warnings) == 1, "expected the pin warning exactly once per driver"
+    assert "by-label/BOOT" in warnings[0].getMessage()
+    d.mounted = False  # avoid __del__ -> real ssh unmount at GC time
+
+
+def test_mount_partition_no_partuuid_warning_for_label_pin(caplog):
+    d = _driver(types.SimpleNamespace(path="/dev/sdb", extra={"proxy": "exp.host"}))
+    d.partition = "/dev/disk/by-label/BOOT"
+    d.mounted = False
+    d._partuuid_warned = False
+
+    with (
+        mock.patch.object(d, "_remote_run", return_value=mock.Mock(returncode=0)),
+        mock.patch.object(d, "_remote_check"),
+        mock.patch("time.sleep"),
+        mock.patch.object(d, "_is_mountpoint", side_effect=[False, True]),
+        mock.patch.object(d, "_path_exists", return_value=True),
+        caplog.at_level(logging.WARNING, logger="test_massstorage"),
+    ):
+        d.mount_partition()
+
+    assert not [r for r in caplog.records if "PARTUUID" in r.getMessage()]
+    d.mounted = False  # avoid __del__ -> real ssh unmount at GC time
+
+
+def test_mount_partition_missing_partuuid_path_explains_reflash(caplog):
+    """The bare 'does not exist' error is baffling; name the likely cause."""
+    d = _driver(types.SimpleNamespace(path="/dev/sdb", extra={"proxy": "exp.host"}))
+    d.partition = "/dev/disk/by-partuuid/a22286d2-01"
+    d.mounted = False
+    d._partuuid_warned = False
+
+    with (
+        mock.patch.object(d, "_remote_run", return_value=mock.Mock(returncode=0)),
+        mock.patch("time.sleep"),
+        mock.patch.object(d, "_is_mountpoint", return_value=False),
+        mock.patch.object(d, "_path_exists", return_value=False),
+    ):
+        try:
+            d.mount_partition()
+        except RuntimeError as e:
+            msg = str(e)
+        else:
+            raise AssertionError("expected RuntimeError for a missing device path")
+
+    assert "does not exist" in msg
+    assert "pinned by PARTUUID" in msg
+    assert "by-label/BOOT" in msg
+    d.mounted = False  # avoid __del__ -> real ssh unmount at GC time
+
+
+def test_mount_partition_missing_plain_path_keeps_error_terse(caplog):
+    d = _driver(types.SimpleNamespace(path="/dev/sdb1", extra={"proxy": "exp.host"}))
+    d.mounted = False
+
+    with (
+        mock.patch.object(d, "_remote_run", return_value=mock.Mock(returncode=0)),
+        mock.patch("time.sleep"),
+        mock.patch.object(d, "_is_mountpoint", return_value=False),
+        mock.patch.object(d, "_path_exists", return_value=False),
+    ):
+        try:
+            d.mount_partition()
+        except RuntimeError as e:
+            msg = str(e)
+        else:
+            raise AssertionError("expected RuntimeError for a missing device path")
+
+    assert "does not exist" in msg
+    assert "PARTUUID" not in msg
+    d.mounted = False  # avoid __del__ -> real ssh unmount at GC time
