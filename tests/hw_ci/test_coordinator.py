@@ -34,6 +34,38 @@ def _stub_cli(monkeypatch):
     return calls
 
 
+def test_fetch_places_cli_parses_the_name_column_when_comments_are_present(monkeypatch):
+    """Comment text must not become part of the place name passed to show."""
+    calls: list[list[str]] = []
+
+    def _check_output(argv, **kwargs):
+        calls.append(argv)
+        if argv[-1] == "places":
+            return "tron   ADRV9009-ZU11EG on ADRV2CRR-FMC\n"
+        assert argv[-2:] == ["tron", "show"]
+        return (
+            "Place 'tron':\n"
+            "  tags: carrier=adrv2crr-fmc, daughter-board=adrv9009zu11eg, "
+            "boot-strategy=BootZynqMPJTAG\n"
+            "  acquired: None\n"
+        )
+
+    monkeypatch.setattr(coord_mod.subprocess, "check_output", _check_output)
+
+    assert coord_mod._fetch_places_cli("10.0.0.41:20408") == [
+        {
+            "name": "tron",
+            "tags": {
+                "carrier": "adrv2crr-fmc",
+                "daughter-board": "adrv9009zu11eg",
+                "boot-strategy": "BootZynqMPJTAG",
+            },
+            "acquired": None,
+        }
+    ]
+    assert calls[-1][-2:] == ["tron", "show"]
+
+
 @pytest.mark.parametrize(
     "rest_exc",
     [

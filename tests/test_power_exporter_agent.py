@@ -89,6 +89,32 @@ def test_homeassistant_remote_operations_use_exporter_agent():
     )
 
 
+def test_homeassistant_agent_is_self_contained(monkeypatch):
+    """The remote helper must work without importing labgrid driver classes."""
+    import sys
+
+    from adi_lg_plugins.drivers.agents import adi_power
+
+    requests = MagicMock()
+    response = MagicMock()
+    response.json.return_value = {"state": "on"}
+    requests.get.return_value = response
+    monkeypatch.setitem(sys.modules, "requests", requests)
+    monkeypatch.setenv("ADI_LG_HOMEASSISTANT_TOKEN", "test-token")
+
+    assert adi_power.handle_homeassistant("get", "http://ha.local:8123/", "switch.bench") is True
+
+    requests.get.assert_called_once_with(
+        "http://ha.local:8123/api/states/switch.bench",
+        headers={
+            "Authorization": "Bearer test-token",
+            "Content-Type": "application/json",
+        },
+        timeout=10,
+    )
+    response.raise_for_status.assert_called_once_with()
+
+
 def test_kasa_remote_operations_use_exporter_agent():
     resource = SimpleNamespace(
         extra={"proxy": "exporter.example.com"},

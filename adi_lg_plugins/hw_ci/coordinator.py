@@ -60,9 +60,14 @@ def _fetch_places_cli(coord: str, timeout: float = 15.0) -> list[dict]:
     )
     places: list[dict] = []
     for line in list_out.splitlines():
-        name = line.strip()
-        if not name:
+        # `labgrid-client places` emits a fixed-width name column followed by
+        # an optional comment.  Parse only the first field: using the whole
+        # line makes every commented place an invalid `-p` argument and
+        # silently removes it from discovery.
+        fields = line.split(maxsplit=1)
+        if not fields:
             continue
+        name = fields[0]
         try:
             show = subprocess.check_output(
                 ["labgrid-client", "-x", coord, "-p", name, "show"],
