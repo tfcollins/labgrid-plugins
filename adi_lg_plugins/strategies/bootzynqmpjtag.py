@@ -137,7 +137,7 @@ class BootZynqMPJTAG(Strategy):
 
     # Target-side completion criteria for the production handoff.
     production_uboot_prompt = attr.ib(default=r"ZynqMP>")
-    production_prompt_timeout = attr.ib(default=60)
+    production_prompt_timeout = attr.ib(default=120)
     sd_boot_command = attr.ib(default="setenv partid 1; run sdboot")
     kuiper_kernel_marker = attr.ib(default="Starting kernel")
     kuiper_shell_marker = attr.ib(default=r"root@analog:.*#")
