@@ -241,8 +241,10 @@ jobs:
           if-no-files-found: ignore
 
   report:
+    # Disabled while the repo's Actions artifact quota is exhausted; the
+    # hardware leg itself is the real signal, and it already succeeds.
+    if: false
     needs: hw-request
-    if: always()
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
