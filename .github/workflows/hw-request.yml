@@ -233,6 +233,7 @@ jobs:
           fi
       - name: Upload JUnit
         if: always()
+        continue-on-error: true
         uses: actions/upload-artifact@v4
         with:
           name: junit-${{ matrix.part }}
@@ -245,10 +246,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
+        continue-on-error: true
         with:
           pattern: junit-*
           merge-multiple: true
       - name: Publish test results
+        if: hashFiles('results-*.xml') != ''
         uses: EnricoMi/publish-unit-test-result-action@v2
         with:
           junit_files: "results-*.xml"
