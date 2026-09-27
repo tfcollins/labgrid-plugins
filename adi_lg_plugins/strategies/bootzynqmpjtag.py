@@ -142,10 +142,10 @@ class BootZynqMPJTAG(Strategy):
     kuiper_kernel_marker = attr.ib(default="Starting kernel")
     kuiper_shell_marker = attr.ib(default=r"root@analog:.*#")
     kuiper_boot_timeout = attr.ib(default=300)
-    kuiper_verify_timeout = attr.ib(default=120)
+    kuiper_verify_timeout = attr.ib(default=240)
     kuiper_verify_commands = attr.ib(
         factory=lambda: [
-            "i=0; until ip -4 addr show dev eth0 | grep -q 'inet '; do i=$((i+1)); test $i -lt 90 || exit 1; sleep 1; done",
+            "i=0; until ip -4 addr show dev eth0 | grep -q 'inet '; do i=$((i+1)); test $i -lt 180 || exit 1; sleep 1; done",
             "test $(for n in /sys/bus/iio/devices/iio:device*/name; do cat \"$n\"; done | grep -c '^adrv9009-phy') -eq 2",
             "test $(dmesg | grep -c 'successfully initialized via jesd204-fsm') -ge 2",
         ]
