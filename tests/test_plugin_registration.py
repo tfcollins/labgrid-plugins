@@ -25,6 +25,7 @@ _DRIVERS = [
     "BootFPGASoC",
     "BootFPGASoCTFTP",
     "BootFabric",
+    "BootZynqMPJTAG",
 ]
 _RESOURCES = [
     "KuiperRelease",

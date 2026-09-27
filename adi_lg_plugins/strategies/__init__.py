@@ -23,6 +23,7 @@ _MODULES = (
     "bootselmap",
     "bootvpk180",
     "bootzynq7000recovery",
+    "bootzynqmpjtag",
     "reflashvpk180sd",
     "software_provisioning",
 )
