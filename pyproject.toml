@@ -81,6 +81,7 @@ adi-lg = "adi_lg_plugins.tools.cli:cli"
 adi-lg-mcp = "adi_lg_plugins.tools.mcp:main"
 adi-lg-hw-ci = "adi_lg_plugins.hw_ci.cli:main"
 adi-lg-prism-upload = "adi_lg_plugins.hw_ci.prism_upload.upload_run:main"
+adi-lg-setup-runner = "adi_lg_plugins.tools.runner_setup.cli:main"
 
 # Entry points for plugin discovery
 # Labgrid automatically discovers and registers these components

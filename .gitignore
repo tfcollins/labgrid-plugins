@@ -229,3 +229,6 @@ coordinator/web/tsconfig.tsbuildinfo
 
 # Local env files holding lab/HA tokens — never commit.
 /exp.sh
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+/graft/

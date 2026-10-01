@@ -135,8 +135,13 @@ Step 5 — register self-hosted runners
 -------------------------------------
 
 The per-board CI legs run on self-hosted runners co-located with (or able to reach) each
-board. Register one physical host across one or more GitHub scopes with
-``.github/scripts/register-hw-runners.sh``:
+board. Register a host interactively with ``adi-lg setup-runner``:
+
+.. code-block:: bash
+
+   adi-lg setup-runner
+
+Or register across multiple scopes / batch hosts with ``.github/scripts/register-hw-runners.sh``:
 
 .. code-block:: bash
 
