@@ -446,3 +446,232 @@ def test_list_hardware_no_coordinator(mock_resolve, runner):
     result = runner.invoke(cli, ["list-hardware"])
     assert result.exit_code != 0
     assert "Error: no coordinator URL" in result.output
+
+
+# --- flash-sd -------------------------------------------------------------
+
+
+def _make_img(path, size=1024, imgid=b"\xd2\x86\x22\xa2"):
+    """Write a sparse file with an MBR disk signature at offset 440."""
+    with open(path, "wb") as f:
+        f.write(b"\0" * 440)
+        f.write(imgid)
+        f.write(b"\0" * max(0, size - 444))
+
+
+def _flash_drivers(mock_tg):
+    """Wire get_driver() to return distinct sdmux/writer/power mocks."""
+    drivers = {
+        "USBSDMuxDriver": MagicMock(),
+        "USBStorageDriver": MagicMock(),
+        "PowerProtocol": MagicMock(),
+    }
+
+    def _get_driver(name):
+        if name not in drivers:
+            raise Exception(f"no {name} driver found")
+        return drivers[name]
+
+    mock_tg.get_driver.side_effect = _get_driver
+    return drivers
+
+
+def test_flash_sd_help(runner):
+    result = runner.invoke(cli, ["flash-sd", "--help"])
+    assert result.exit_code == 0
+    assert "Flash a full SD card image" in result.output
+
+
+def test_flash_sd_requires_exactly_one_source(runner):
+    with runner.isolated_filesystem():
+        with open("config.yaml", "w") as f:
+            f.write("targets: {main: {}}")
+        _make_img("disk.img")
+
+        result = runner.invoke(cli, ["flash-sd", "-c", "config.yaml"])
+        assert result.exit_code != 0
+        assert "exactly one of --image or --release" in result.output
+
+        result = runner.invoke(
+            cli,
+            ["flash-sd", "-c", "config.yaml", "--image", "disk.img", "--release", "2023_R2_P1"],
+        )
+        assert result.exit_code != 0
+        assert "exactly one of --image or --release" in result.output
+
+
+@patch("adi_lg_plugins.tools.cli.Environment")
+def test_flash_sd_dry_run_writes_nothing(mock_env, runner):
+    with runner.isolated_filesystem():
+        with open("config.yaml", "w") as f:
+            f.write("targets: {main: {}}")
+        _make_img("disk.img")
+
+        result = runner.invoke(
+            cli, ["flash-sd", "-c", "config.yaml", "--image", "disk.img", "--dry-run"]
+        )
+
+        assert result.exit_code == 0
+        assert "Dry run" in result.output
+        # A dry run must short-circuit before the target is built, so a RemotePlace
+        # env (which cannot construct without an acquired place) can still be checked.
+        mock_env.assert_not_called()
+
+
+@patch("adi_lg_plugins.tools.cli.Environment")
+def test_flash_sd_success(mock_env, runner):
+    mock_tg = MagicMock()
+    mock_env.return_value.get_target.return_value = mock_tg
+    drivers = _flash_drivers(mock_tg)
+
+    with runner.isolated_filesystem():
+        with open("config.yaml", "w") as f:
+            f.write("targets: {main: {}}")
+        _make_img("disk.img")
+
+        result = runner.invoke(cli, ["flash-sd", "-c", "config.yaml", "--image", "disk.img"])
+
+        assert result.exit_code == 0
+        assert "flashed successfully" in result.output
+
+        from labgrid.driver.usbstoragedriver import Mode
+
+        drivers["USBStorageDriver"].write_image.assert_called_once_with(
+            filename=os.path.abspath("disk.img"), mode=Mode.DD
+        )
+        # Board must be powered down before the card is switched away from it, and
+        # the mux must end up back on the DUT.
+        drivers["PowerProtocol"].off.assert_called()
+        assert [c.args[0] for c in drivers["USBSDMuxDriver"].set_mode.call_args_list] == [
+            "host",
+            "dut",
+        ]
+        # --power-off is the default, so the board is left down.
+        drivers["PowerProtocol"].on.assert_not_called()
+
+
+@patch("adi_lg_plugins.tools.cli.Environment")
+def test_flash_sd_reports_partuuids(mock_env, runner):
+    mock_tg = MagicMock()
+    mock_env.return_value.get_target.return_value = mock_tg
+    _flash_drivers(mock_tg)
+
+    with runner.isolated_filesystem():
+        with open("config.yaml", "w") as f:
+            f.write("targets: {main: {}}")
+        _make_img("disk.img", imgid=b"\xd2\x86\x22\xa2")
+
+        result = runner.invoke(cli, ["flash-sd", "-c", "config.yaml", "--image", "disk.img"])
+
+        assert result.exit_code == 0
+        # Little-endian read of the four bytes at offset 440, as adi-kuiper-gen does.
+        assert "boot_partuuid=a22286d2-01" in result.output
+        assert "root_partuuid=a22286d2-02" in result.output
+
+
+@patch("adi_lg_plugins.tools.cli.Environment")
+def test_flash_sd_power_cycles_when_not_powering_off(mock_env, runner):
+    mock_tg = MagicMock()
+    mock_env.return_value.get_target.return_value = mock_tg
+    drivers = _flash_drivers(mock_tg)
+
+    with runner.isolated_filesystem():
+        with open("config.yaml", "w") as f:
+            f.write("targets: {main: {}}")
+        _make_img("disk.img")
+
+        result = runner.invoke(
+            cli, ["flash-sd", "-c", "config.yaml", "--image", "disk.img", "--no-power-off"]
+        )
+
+        assert result.exit_code == 0
+        drivers["PowerProtocol"].on.assert_called_once()
+
+
+@patch("adi_lg_plugins.tools.cli.Environment")
+def test_flash_sd_missing_image_writer_is_actionable(mock_env, runner):
+    mock_tg = MagicMock()
+    mock_env.return_value.get_target.return_value = mock_tg
+
+    def _get_driver(name):
+        if name == "USBStorageDriver":
+            raise Exception("no USBStorageDriver driver found in Target")
+        return MagicMock()
+
+    mock_tg.get_driver.side_effect = _get_driver
+
+    with runner.isolated_filesystem():
+        with open("config.yaml", "w") as f:
+            f.write("targets: {main: {}}")
+        _make_img("disk.img")
+
+        result = runner.invoke(cli, ["flash-sd", "-c", "config.yaml", "--image", "disk.img"])
+
+        assert result.exit_code != 0
+        # No shipped env yaml declares this driver, so the error has to name the fix.
+        assert "USBStorageDriver: {}" in result.output
+        assert "config.yaml" in result.output
+
+
+@patch("adi_lg_plugins.tools.cli.Environment")
+def test_flash_sd_extracts_zip(mock_env, runner):
+    import zipfile
+
+    mock_tg = MagicMock()
+    mock_env.return_value.get_target.return_value = mock_tg
+    drivers = _flash_drivers(mock_tg)
+
+    with runner.isolated_filesystem():
+        with open("config.yaml", "w") as f:
+            f.write("targets: {main: {}}")
+        _make_img("inner.img")
+        with zipfile.ZipFile("kuiper.zip", "w") as zf:
+            zf.write("inner.img")
+        os.remove("inner.img")
+        os.makedirs("cache", exist_ok=True)
+
+        result = runner.invoke(
+            cli,
+            [
+                "flash-sd",
+                "-c",
+                "config.yaml",
+                "--image",
+                "kuiper.zip",
+                "--cache-path",
+                "cache",
+                "--min-free-gb",
+                "0",
+            ],
+        )
+
+        assert result.exit_code == 0
+        written = drivers["USBStorageDriver"].write_image.call_args.kwargs["filename"]
+        assert written.endswith("inner.img")
+
+
+def test_flash_sd_refuses_without_disk_space(runner):
+    import zipfile
+
+    with runner.isolated_filesystem():
+        with open("config.yaml", "w") as f:
+            f.write("targets: {main: {}}")
+        _make_img("inner.img")
+        with zipfile.ZipFile("kuiper.zip", "w") as zf:
+            zf.write("inner.img")
+
+        result = runner.invoke(
+            cli,
+            [
+                "flash-sd",
+                "-c",
+                "config.yaml",
+                "--image",
+                "kuiper.zip",
+                "--min-free-gb",
+                "999999",
+            ],
+        )
+
+        assert result.exit_code != 0
+        assert "free" in result.output.lower()

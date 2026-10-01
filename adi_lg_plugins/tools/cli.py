@@ -1,6 +1,8 @@
+import glob
 import logging
 import os
 import shutil
+import time
 
 import click
 from labgrid import Environment
@@ -225,6 +227,252 @@ def recover(config, release, sd_image, target, state):
         except Exception as e:
             console.print(f"[bold red]Recovery failed: {e}[/bold red]")
             raise click.ClickException(str(e)) from e
+
+
+# The FAT boot partition label set by adi-kuiper-gen (mkdosfs -n BOOT). Suggested to
+# operators after a flash because every image carries a freshly generated MBR
+# signature, so any by-partuuid pin in an env yaml stops resolving.
+KUIPER_BOOT_LABEL = "BOOT"
+
+
+def _image_partuuids(img_path):
+    """Return (boot, root) PARTUUIDs for an MBR image.
+
+    Read from the source image, not read back from the card: this reports what a
+    successful write puts there, it does not verify what the card now holds.
+
+    adi-kuiper-gen runs ``parted --script mklabel msdos``, which generates a new
+    disk signature per build, then derives the PARTUUIDs from the four bytes at
+    offset 440. Reproduce that here so a flash can report what the card now has.
+    """
+    with open(img_path, "rb") as f:
+        f.seek(440)
+        sig = f.read(4)
+    if len(sig) != 4:
+        return None, None
+    imgid = int.from_bytes(sig, "little")
+    if imgid == 0:
+        return None, None
+    return f"{imgid:08x}-01", f"{imgid:08x}-02"
+
+
+def _free_gb(path):
+    """Free space in GiB on the filesystem holding ``path``."""
+    return shutil.disk_usage(path).free / (1024**3)
+
+
+def _resolve_flash_image(image, release, cache_path, min_free_gb):
+    """Resolve --image/--release down to a single uncompressed .img path.
+
+    A .zip (what adi-kuiper-gen emits) is extracted into ``cache_path``; a bare
+    .img is used as-is. Returns the .img path.
+    """
+    if release:
+        from adi_lg_plugins.drivers.kuiperdldriver import download_release_image
+
+        os.makedirs(cache_path, exist_ok=True)
+        if _free_gb(cache_path) < min_free_gb:
+            raise click.ClickException(
+                f"Only {_free_gb(cache_path):.1f} GiB free on {cache_path}, "
+                f"need at least {min_free_gb} GiB to download and extract a Kuiper release. "
+                "Free space or pass --cache-path pointing at a larger filesystem."
+            )
+        return download_release_image(release, cache_path, logger=logging.getLogger(__name__))
+
+    img = os.path.abspath(image)
+    if not img.endswith(".zip"):
+        return img
+
+    from adi_lg_plugins.drivers.kuiperdldriver import Downloader
+
+    os.makedirs(cache_path, exist_ok=True)
+    if _free_gb(cache_path) < min_free_gb:
+        raise click.ClickException(
+            f"Only {_free_gb(cache_path):.1f} GiB free on {cache_path}, "
+            f"need at least {min_free_gb} GiB to extract {os.path.basename(img)}. "
+            "Free space or pass --cache-path pointing at a larger filesystem."
+        )
+    logging.info(f"Extracting {img} into {cache_path}")
+    Downloader().extract_zip(img, cache_path)
+    found = sorted(glob.glob(os.path.join(cache_path, "**", "*.img"), recursive=True))
+    if len(found) != 1:
+        raise click.ClickException(
+            f"Expected exactly one .img after extracting {img}, found {len(found)}: {found}"
+        )
+    return found[0]
+
+
+def _get_flash_drivers(tg, config):
+    """Fetch the sdmux/writer/power drivers, with actionable errors when absent."""
+    try:
+        sdmux = tg.get_driver("USBSDMuxDriver")
+    except Exception as e:
+        raise click.ClickException(
+            f"No USBSDMuxDriver in {config}. This board has no SD mux wired, or the "
+            "env yaml is missing 'USBSDMuxDriver: {}' under drivers."
+        ) from e
+
+    try:
+        writer = tg.get_driver("USBStorageDriver")
+    except Exception as e:
+        # No shipped config declares this driver, so it is the likeliest operator
+        # error by a wide margin. Name the file and the exact line to add.
+        raise click.ClickException(
+            f"No USBStorageDriver in {config}. Add 'USBStorageDriver: {{}}' to the drivers "
+            "block of that env yaml -- it binds the USBSDMuxDevice resource directly and is "
+            "what performs the image write."
+        ) from e
+
+    try:
+        # The protocol, never a concrete class: the power driver differs per rig
+        # (VesyncPowerDriver, APCDriver, ...), which is why the hw_ci env templates
+        # substitute ${power_driver}.
+        power = tg.get_driver("PowerProtocol")
+    except Exception as e:
+        raise click.ClickException(
+            f"No power driver in {config}. A PowerProtocol driver is required so the "
+            "board can be powered down before the SD mux is switched away from it."
+        ) from e
+
+    return sdmux, writer, power
+
+
+@cli.command(name="flash-sd")
+@click.option(
+    "--config", "-c", required=True, type=click.Path(exists=True), help="Labgrid configuration file"
+)
+@click.option(
+    "--image",
+    type=click.Path(exists=True),
+    help="Path to an SD card image (.img, or the .zip adi-kuiper-gen emits)",
+)
+@click.option("--release", help="Kuiper release version to download and flash (e.g., 2023_R2_P1)")
+@click.option(
+    "--cache-path",
+    default="/tmp/kuiper_cache",
+    help="Where to download/extract images (default: /tmp/kuiper_cache)",
+)
+@click.option("--target", "-t", default="main", help="Target name in config (default: main)")
+@click.option(
+    "--mode",
+    type=click.Choice(["dd", "bmaptool"]),
+    default="dd",
+    help=(
+        "Write mode (default: dd). bmaptool is only faster with a .bmap alongside the "
+        "image, which adi-kuiper-gen does not produce."
+    ),
+)
+@click.option(
+    "--sd-mode-after",
+    type=click.Choice(["dut", "host", "off"]),
+    default="dut",
+    help="SD mux mode to leave set after writing (default: dut)",
+)
+@click.option(
+    "--power-off/--no-power-off",
+    default=True,
+    help="Leave the board powered down after flashing (default: --power-off)",
+)
+@click.option(
+    "--min-free-gb",
+    type=float,
+    default=24.0,
+    help="Refuse to download/extract with less free space than this (default: 24)",
+)
+@click.option(
+    "--dry-run", is_flag=True, help="Resolve the image and print the plan without writing anything"
+)
+def flash_sd(
+    config,
+    image,
+    release,
+    cache_path,
+    target,
+    mode,
+    sd_mode_after,
+    power_off,
+    min_free_gb,
+    dry_run,
+):
+    """Flash a full SD card image to a mux-attached card.
+
+    Powers the board down, switches the SD mux to the host, writes the image to
+    the card with labgrid's USBStorageDriver, then switches the mux back.
+
+    DESTRUCTIVE: overwrites the entire card. The env yaml must declare a power
+    driver, USBSDMuxDriver and USBStorageDriver.
+    """
+    if bool(image) == bool(release):
+        raise click.ClickException("Pass exactly one of --image or --release")
+
+    img = _resolve_flash_image(image, release, cache_path, min_free_gb)
+    size_gb = os.path.getsize(img) / (1024**3)
+    console.print(f"Image: [bold]{img}[/bold] ({size_gb:.2f} GiB)")
+
+    if dry_run:
+        # Deliberately before Environment()/get_target(): a RemotePlace env cannot
+        # construct a target without an acquired place, and a dry run is most useful
+        # exactly there.
+        console.print("[bold yellow]Dry run[/bold yellow] -- nothing will be written. Plan:")
+        console.print(f"  1. power off target '{target}' from {config}")
+        console.print("  2. SD mux -> host")
+        console.print(f"  3. write {img} with mode={mode}")
+        console.print(f"  4. SD mux -> {sd_mode_after}")
+        console.print(f"  5. {'leave powered off' if power_off else 'power cycle the board'}")
+        return
+
+    from labgrid.driver.usbstoragedriver import Mode
+
+    env = Environment(config)
+    tg = env.get_target(target)
+    sdmux, writer, power = _get_flash_drivers(tg, config)
+
+    try:
+        power.off()
+        tg.activate(sdmux)
+        sdmux.set_mode("host")
+        # The mux needs a moment for the card to re-enumerate on the host side.
+        time.sleep(5)
+
+        with console.status(
+            f"[bold green]Writing {os.path.basename(img)} to the SD card "
+            "(image is synced to the exporter first; this takes a while)..."
+        ):
+            tg.activate(writer)
+            writer.write_image(filename=img, mode=Mode.DD if mode == "dd" else Mode.BMAPTOOL)
+            tg.deactivate(writer)
+
+        sdmux.set_mode(sd_mode_after)
+        time.sleep(5)
+
+        if not power_off:
+            # Same workaround BootFPGASoC uses: after sdmux operations the board can
+            # latch into a state where the first on() looks applied but emits no UART.
+            power.off()
+            time.sleep(5)
+            power.on()
+    except click.ClickException:
+        raise
+    except Exception as e:
+        console.print(f"[bold red]Flash failed: {e}[/bold red]")
+        raise click.ClickException(str(e)) from e
+
+    console.print("[bold green]SD card flashed successfully![/bold green]")
+
+    boot_partuuid, root_partuuid = _image_partuuids(img)
+    if boot_partuuid:
+        console.print(f"boot_partuuid={boot_partuuid}")
+        console.print(f"root_partuuid={root_partuuid}")
+        console.print(
+            f"[yellow]Note:[/yellow] this image's PARTUUIDs differ from any previous image. "
+            f"Env yamls pinning MassStorageDriver.partition by partuuid must be updated, or "
+            f"switched to /dev/disk/by-label/{KUIPER_BOOT_LABEL}."
+        )
+        github_output = os.environ.get("GITHUB_OUTPUT")
+        if github_output:
+            with open(github_output, "a") as f:
+                f.write(f"boot_partuuid={boot_partuuid}\n")
+                f.write(f"root_partuuid={root_partuuid}\n")
 
 
 @cli.command()

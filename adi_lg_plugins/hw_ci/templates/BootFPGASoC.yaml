@@ -23,6 +23,9 @@ targets:
     drivers:
       ${power_driver}: {}
       USBSDMuxDriver: {}
+      # Binds the USBSDMuxDevice resource directly and performs full-image writes
+      # (BootFPGASoC's optional image_writer, and `adi-lg flash-sd`).
+      USBStorageDriver: {}
       SerialDriver: {}
       ADIShellDriver:
         prompt: 'root@.*'

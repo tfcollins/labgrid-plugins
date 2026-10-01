@@ -120,6 +120,84 @@ Boot an FPGA SoC using the SD Mux-based ``BootFPGASoC`` strategy. This is used f
 * ``--state <name>``: Target state to transition to (default: ``shell``).
 * ``--update-image``: If set, the full SD card image will be flashed before updating boot files.
 
+flash-sd
+~~~~~~~~
+
+Write a full SD card image to a mux-attached card, then stop. Unlike ``boot-soc
+--update-image``, this does not boot the board afterwards -- it is for resetting a
+rig's card to a known image.
+
+The command powers the board down, switches the SD mux to the host, writes the
+image with labgrid's ``USBStorageDriver``, switches the mux back to the DUT, and
+leaves the board powered off unless told otherwise.
+
+.. warning::
+
+   This is destructive: it overwrites the entire card, not just the boot
+   partition.
+
+.. code-block:: bash
+
+    # Flash a published Kuiper release
+    adi-lg flash-sd --config soc.yaml --release 2023_R2_P1
+
+    # Flash a locally built image (the .zip adi-kuiper-gen emits is extracted first)
+    adi-lg flash-sd --config soc.yaml --image image_2025-03-18-ADI-Kuiper-full.zip
+
+    # Check what would happen without touching hardware
+    adi-lg flash-sd --config soc.yaml --image kuiper.img --dry-run
+
+**Options:**
+
+* ``-c, --config <path>``: (Required) Labgrid configuration file.
+* ``--image <path>``: SD card image to write -- either a ``.img`` or a ``.zip`` containing one.
+* ``--release <version>``: Kuiper release to download and write. Mutually exclusive with ``--image``; exactly one is required.
+* ``--cache-path <path>``: Where images are downloaded and extracted (default: ``/tmp/kuiper_cache``).
+* ``-t, --target <name>``: Target name in the configuration (default: ``main``).
+* ``--mode <dd|bmaptool>``: Write mode (default: ``dd``).
+* ``--sd-mode-after <dut|host|off>``: SD mux mode to leave set after writing (default: ``dut``).
+* ``--power-off / --no-power-off``: Leave the board powered down afterwards (default: ``--power-off``).
+* ``--min-free-gb <n>``: Refuse to download or extract with less free space than this (default: ``24``).
+* ``--dry-run``: Resolve the image and print the plan without writing anything.
+
+**Required configuration.** The env YAML must declare a power driver,
+``USBSDMuxDriver`` and ``USBStorageDriver``. The last one is easy to miss --
+``USBStorageDriver`` binds the ``USBSDMuxDevice`` resource directly and is what
+actually performs the write:
+
+.. code-block:: yaml
+
+    imports:
+      - adi_lg_plugins
+
+    targets:
+      main:
+        resources:
+          RemotePlace:
+            name: mini2
+        drivers:
+          VesyncPowerDriver: {}
+          USBSDMuxDriver: {}
+          USBStorageDriver: {}
+          MassStorageDriver:
+            partition: '/dev/disk/by-label/BOOT'
+
+**PARTUUIDs change on every flash.** ``adi-kuiper-gen`` runs ``parted mklabel
+msdos``, which generates a fresh MBR signature per build, and the partition
+UUIDs are derived from it. After writing, the command prints the new
+``boot_partuuid`` / ``root_partuuid`` (and appends them to ``$GITHUB_OUTPUT``
+when running in CI). Any env YAML that pins ``MassStorageDriver.partition`` to a
+``/dev/disk/by-partuuid/...`` path will stop resolving -- use
+``/dev/disk/by-label/BOOT`` instead, as above.
+
+These values are read from the **source image**, not read back from the card, so
+they describe what a successful write puts there rather than confirming what the
+card now holds.
+
+**Expect it to be slow.** ``USBStorageDriver`` syncs the image to the exporter
+host before writing it, so a multi-gigabyte image crosses the network first and
+is then written to the card.
+
 boot-soc-ssh
 ~~~~~~~~~~~~
 
