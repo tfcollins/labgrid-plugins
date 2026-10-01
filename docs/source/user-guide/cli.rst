@@ -83,6 +83,53 @@ arguments are:
 
 See :doc:`hw-request` for the request workflow end to end.
 
+setup-runner
+~~~~~~~~~~~~
+
+Setup, configure, and service a self-hosted GitHub Actions hardware runner.
+Supports both **exporter** (coordinator-backed) and **direct** (locally attached DUT) modes.
+When invoked without arguments in an interactive shell, it launches a step-by-step
+guided wizard.
+
+.. code-block:: bash
+
+    # Launch interactive setup wizard
+    adi-lg setup-runner
+
+    # Check prerequisites only
+    adi-lg setup-runner --check-only --mode exporter
+
+    # Non-interactive / headless setup for exporter mode
+    adi-lg setup-runner \
+        --mode exporter \
+        --scope repo:analogdevicesinc/labgrid-plugins \
+        --coord 10.0.0.41:20408 \
+        --labels hw-lab \
+        --non-interactive
+
+    # Direct hardware setup
+    adi-lg setup-runner \
+        --mode direct \
+        --scope repo:analogdevicesinc/labgrid-plugins \
+        --env-file /etc/labgrid/direct_env.yaml \
+        --labels hw-direct \
+        --non-interactive
+
+**Options:**
+
+* ``--mode [exporter|direct]``: Hardware setup mode.
+* ``-s, --scope <scope>``: GitHub scope (``repo:OWNER/REPO`` or ``org:ORGNAME``).
+* ``-n, --name <name>``: Runner name (defaults to ``<hostname>-<scope-slug>``).
+* ``-l, --labels <labels>``: Comma-separated runner labels (e.g. ``hw-lab,zcu102``).
+* ``--dir <path>``: Runner installation directory (defaults to ``~/actions-runner-<scope-slug>``).
+* ``-c, --coord <host:port>``: Coordinator URL for exporter mode (default: ``$LG_COORDINATOR``).
+* ``-e, --env-file <path>``: Labgrid direct environment YAML for direct mode.
+* ``-t, --token <token>``: Runner registration token (bypasses automatic ``gh`` auth).
+* ``--service / --no-service``: Install and start runner systemd service (default: True).
+* ``--non-interactive, --unattended``: Run without interactive prompts.
+* ``--dry-run``: Preview planned actions without modifying system files.
+* ``--check-only``: Run prerequisite diagnostics and exit.
+
 boot-fabric
 ~~~~~~~~~~~
 

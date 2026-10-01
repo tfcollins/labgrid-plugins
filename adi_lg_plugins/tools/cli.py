@@ -17,6 +17,7 @@ from adi_lg_plugins.hw_ci.coordinator import (
 from adi_lg_plugins.tools.cloudsmithdl import download_cloudsmith_boot_file
 from adi_lg_plugins.tools.config_gen import generate_config
 from adi_lg_plugins.tools.request_cli import request_cmd
+from adi_lg_plugins.tools.runner_setup.cli import setup_runner_cmd
 
 console = Console()
 
@@ -39,6 +40,8 @@ def cli(debug):
 
 cli.add_command(generate_config)
 cli.add_command(request_cmd)
+cli.add_command(setup_runner_cmd, name="setup-runner")
+cli.add_command(setup_runner_cmd, name="runner-setup")
 
 
 @cli.command()

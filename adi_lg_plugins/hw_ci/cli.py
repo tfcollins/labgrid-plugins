@@ -494,6 +494,45 @@ def _cmd_fetch_xsa(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_setup_runner(args: argparse.Namespace) -> int:
+    from adi_lg_plugins.tools.runner_setup.cli import setup_runner_cmd
+
+    runner_args = []
+    if args.mode:
+        runner_args.extend(["--mode", args.mode])
+    if args.scope:
+        runner_args.extend(["--scope", args.scope])
+    if args.name:
+        runner_args.extend(["--name", args.name])
+    if args.labels:
+        runner_args.extend(["--labels", args.labels])
+    if args.dir:
+        runner_args.extend(["--dir", args.dir])
+    if args.coord:
+        runner_args.extend(["--coord", args.coord])
+    if args.env_file:
+        runner_args.extend(["--env-file", args.env_file])
+    if args.token:
+        runner_args.extend(["--token", args.token])
+    if args.no_service:
+        runner_args.append("--no-service")
+    if args.non_interactive:
+        runner_args.append("--non-interactive")
+    if args.dry_run:
+        runner_args.append("--dry-run")
+    if args.check_only:
+        runner_args.append("--check-only")
+
+    try:
+        setup_runner_cmd.main(args=runner_args, standalone_mode=False)
+        return 0
+    except SystemExit as e:
+        return e.code if isinstance(e.code, int) else 1
+    except Exception as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(
         prog="adi-lg-hw-ci",
@@ -690,6 +729,30 @@ def main(argv: list[str] | None = None) -> int:
     px.add_argument("--out", default=None, help="xsa cache dir (default ~/.labgrid/kuiper_xsa)")
     px.add_argument("--xsa-dir", default=None, help="pin the Kuiper boot folder, skip FAT search")
     px.set_defaults(func=_cmd_fetch_xsa)
+
+    psr = sub.add_parser(
+        "setup-runner",
+        aliases=["runner-setup"],
+        help="setup and configure a self-hosted GitHub Actions hardware runner",
+        description="setup and configure a self-hosted GitHub Actions hardware runner",
+    )
+    psr.add_argument("--mode", choices=["exporter", "direct"], help="hardware setup mode")
+    psr.add_argument("--scope", help="GitHub scope (repo:OWNER/REPO or org:ORG)")
+    psr.add_argument("--name", help="runner name (default: <hostname>-<scope-slug>)")
+    psr.add_argument("--labels", help="comma-separated runner labels")
+    psr.add_argument("--dir", help="runner installation directory")
+    psr.add_argument("--coord", help="coordinator URL (default: $LG_COORDINATOR)")
+    psr.add_argument("--env-file", help="labgrid direct environment YAML")
+    psr.add_argument("--token", help="GitHub runner registration token")
+    psr.add_argument("--no-service", action="store_true", help="do not install systemd service")
+    psr.add_argument(
+        "--non-interactive", "--unattended", action="store_true", help="run non-interactively"
+    )
+    psr.add_argument("--dry-run", action="store_true", help="preview actions without installing")
+    psr.add_argument(
+        "--check-only", action="store_true", help="run prerequisite checks only and exit"
+    )
+    psr.set_defaults(func=_cmd_setup_runner)
 
     ns = p.parse_args(argv)
     return ns.func(ns)

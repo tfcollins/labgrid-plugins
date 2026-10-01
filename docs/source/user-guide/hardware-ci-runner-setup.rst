@@ -22,9 +22,22 @@ The per-project build+flash legs run on a **self-hosted runner** that must:
 * Have ``labgrid-plugins`` installed (the workflow installs it per leg via
   ``uv``; no manual prep required).
 
-Register the runner with ``.github/scripts/register-hw-runners.sh``. Use
-``--scopes`` to register one physical host across multiple GitHub scopes so a
-single lab machine can serve both org and personal-account consumer repos:
+Register the runner interactively using ``adi-lg setup-runner``:
+
+.. code-block:: bash
+
+   # Interactive step-by-step wizard
+   adi-lg setup-runner
+
+   # Or non-interactive / scripted
+   adi-lg setup-runner \
+       --mode exporter \
+       --scope repo:analogdevicesinc/labgrid-plugins \
+       --coord "$LG_COORDINATOR" \
+       --labels hw-lab \
+       --non-interactive
+
+For multi-host or batch provisioning from an inventory file, use ``.github/scripts/register-hw-runners.sh``:
 
 .. code-block:: bash
 
