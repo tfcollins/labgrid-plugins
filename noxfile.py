@@ -10,8 +10,10 @@ nox.options.default_venv_backend = "uv"
 @nox.session
 def tests(session):
     """Run tests."""
-    # Install the package in editable mode with dev dependencies
-    session.install("-e", ".[dev]")
+    # Install the root package and the coordinator API package in editable
+    # mode with their dev dependencies so the full repo test suite can import
+    # both trees during collection.
+    session.install("-e", ".[dev]", "-e", "coordinator/api[dev]")
     # Run pytest
     session.run("pytest", *session.posargs)
 

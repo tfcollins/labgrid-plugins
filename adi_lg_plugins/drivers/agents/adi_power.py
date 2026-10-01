@@ -67,17 +67,35 @@ def handle_cyberpower_set(address, outlet, on):
 
 
 def handle_homeassistant(action, url, entity_id):
-    from adi_lg_plugins.drivers.homeassistantdriver import HomeAssistantClient
+    """Operate Home Assistant without importing the labgrid driver package.
 
-    client = HomeAssistantClient(url, _secret("ADI_LG_HOMEASSISTANT_TOKEN"))
-    if action == "on":
-        client.turn_on(entity_id)
-        return None
-    if action == "off":
-        client.turn_off(entity_id)
+    AgentWrapper starts this helper with the exporter's system ``python3``.
+    That interpreter intentionally need not have labgrid installed, while the
+    full ``HomeAssistantClient`` driver imports labgrid at module load time.
+    Keep this allowlisted operation self-contained instead.
+    """
+    import requests
+
+    url = url.rstrip("/")
+    token = _secret("ADI_LG_HOMEASSISTANT_TOKEN")
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
+    domain = entity_id.split(".", 1)[0]
+    if action in {"on", "off"}:
+        response = requests.post(
+            f"{url}/api/services/{domain}/turn_{action}",
+            headers=headers,
+            json={"entity_id": entity_id},
+            timeout=10,
+        )
+        response.raise_for_status()
         return None
     if action == "get":
-        return client.get_state(entity_id)
+        response = requests.get(f"{url}/api/states/{entity_id}", headers=headers, timeout=10)
+        response.raise_for_status()
+        return response.json().get("state") == "on"
     raise ValueError(f"unsupported Home Assistant action: {action!r}")
 
 

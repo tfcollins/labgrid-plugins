@@ -541,7 +541,7 @@ body[data-theme="dark"] {
         clear: both;
         margin-bottom: 1.65rem;
         border-radius: 0.9rem;
-        padding: 2.25rem 1.75rem 2rem !important;
+        padding: 1.25rem 1.25rem 1.15rem !important;
     }
 
     .homepage-hero::after {
@@ -662,7 +662,7 @@ body[data-theme="dark"] {
     .homepage-final-cta {
         margin: 1.8rem 0 1.2rem;
         border-radius: 0.9rem;
-        padding: 1.25rem !important;
+        padding: 1rem !important;
     }
 
     .homepage-final-cta .sd-btn {
