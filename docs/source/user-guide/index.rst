@@ -36,6 +36,16 @@ Comprehensive, task-oriented guides for operating hardware, deploying coordinato
       +++
       **Explore hardware CI →**
 
+   .. grid-item-card:: Prism Reporting
+      :link: prism-reporting
+      :link-type: doc
+      :class-card: sd-shadow-sm
+
+      JUnit upload, enriched labgrid metadata, dmesg, console logs, limits, and troubleshooting.
+
+      +++
+      **Configure reporting →**
+
    .. grid-item-card:: Lab Administration
       :link: lab-administration
       :link-type: doc
@@ -73,6 +83,7 @@ Comprehensive, task-oriented guides for operating hardware, deploying coordinato
    core-concepts
    tooling
    hardware-ci-guide
+   prism-reporting
    lab-administration
    web-ui
    legacy-ci

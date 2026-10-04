@@ -157,7 +157,9 @@ migration notes.
    * - ``prism_upload``
      - No
      - ``false``
-     - Post JUnit + artifact bundle to Prism after each leg.
+     - Post JUnit and the artifact bundle to Prism after each leg. This legacy
+       workflow uploader is separate from pytest-prism; see
+       :doc:`prism-reporting`.
    * - ``prism_url``
      - No
      - ``""``
@@ -416,7 +418,7 @@ See :doc:`hw-request` for the full consumer contract.
      - ``false``
      - Post each leg's JUnit to Prism after the test run.  The upload step
        runs with ``continue-on-error`` — a Prism outage never fails a
-       hardware leg.  See :doc:`hw-request` ("Uploading results to Prism").
+       hardware leg.  See :doc:`prism-reporting`.
    * - ``prism-url``
      - No
      - ``""``
@@ -547,7 +549,7 @@ have MATLAB installed (+ a reachable license) and the libIIO libs.
      - ``false``
      - Post each leg's JUnit to Prism after the test run.  The upload step
        runs with ``continue-on-error`` — a Prism outage never fails a
-       hardware leg.  See :doc:`hw-request` ("Uploading results to Prism").
+       hardware leg.  See :doc:`prism-reporting`.
    * - ``prism-url``
      - No
      - ``""``

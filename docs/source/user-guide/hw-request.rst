@@ -182,10 +182,10 @@ caller — cross-org ``secrets: inherit`` does **not** work:
          PRISM_EMAIL: ${{ secrets.PRISM_EMAIL }}
          PRISM_PASSWORD: ${{ secrets.PRISM_PASSWORD }}
 
-By default each leg installs the ``prism-uploader`` package into the per-leg
-venv via uv and uploads the leg's JUnit. Consumers with a **vendored
-uploader** (e.g. pyadi-dt's private-Prism-repo uploader script) can replace
-the built-in one with the ``prism-upload-cmd`` escape hatch — a shell
+By default each leg runs the stdlib-only uploader vendored in
+``labgrid-plugins`` and uploads the leg's JUnit. Consumers with their own
+uploader (e.g. pyadi-dt's private-Prism-repo uploader script) can replace the
+built-in one with the ``prism-upload-cmd`` escape hatch — a shell
 command run instead of the built-in uploader, with ``PRISM_URL``,
 ``PRISM_API_TOKEN``, ``PRISM_EMAIL``, ``PRISM_PASSWORD``, ``PRISM_PROJECT``,
 ``PRISM_JUNIT``, ``PRISM_RUN_NAME``, ``PRISM_BOARD``, ``PRISM_CARRIER``, and
@@ -217,9 +217,16 @@ When pytest-prism and labgrid-plugins are installed together, the
 allowlisted allocation metadata, pre/post/diff dmesg logs over the ``ip:``
 IIO URI, and the console files already produced by labgrid's ``--lg-log``
 reporter. Use ``--prism-dmesg-via console`` for console logs without SSH or
-``none`` for metadata only. The hook never starts a second console client.
+``none`` to disable dmesg. Console files are still copied in ``none`` mode
+when ``PRISM_LABGRID_LOG_DIR`` is set. The hook never starts a second console
+client.
+pytest-prism writes JUnit to ``<prism-out>/junit.xml``; copy that file to the
+workflow's expected result path after pytest so normal JUnit publication and
+the separate uploader continue to work.
 The separate workflow uploader above remains the compatible JUnit-only path
-and does not require pytest-prism.
+and does not require pytest-prism. See :doc:`prism-reporting` for source
+installation, direct-upload authentication, capture limits, metadata fields,
+security behavior, and troubleshooting.
 
 Flash mode (no-os)
 ------------------
