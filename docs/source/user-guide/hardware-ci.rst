@@ -395,7 +395,7 @@ Prism integration
 
 When ``vars.PRISM_UPLOAD_ENABLED=true`` and ``vars.PRISM_URL`` is set
 at the consumer's org/repo level, each matrix leg appends a step that
-posts JUnit + artifact bundle to Prism. The step is
+posts JUnit and the artifact bundle to Prism. The step is
 ``continue-on-error: true`` so a Prism outage does not redden an
 otherwise-green HW workflow.
 
@@ -422,15 +422,22 @@ a competing console client. Point both tools at one directory:
 
 The hook copies any ``console_*`` files into the Prism run after testing. In
 ``auto`` mode they are the fallback when SSH dmesg is unavailable; use
-``console`` to collect only those logs or ``none`` for metadata only. Capture
+``console`` to skip SSH. ``none`` disables dmesg, but still copies console
+files when ``PRISM_LABGRID_LOG_DIR`` is set. Capture
 failures are metadata on the Prism run and do not change the pytest result
 unless the consumer also requests strict Prism hook handling. Console logs
 can contain data typed by tests, so upload them only to an appropriately
 protected Prism project.
 
+pytest-prism redirects JUnit to ``<prism-out>/junit.xml``. If the surrounding
+workflow publishes a different JUnit path, copy this file there after pytest,
+including on test failure. See :doc:`prism-reporting` for a status-preserving
+example.
+
 The hook has no effect when pytest-prism is absent. Repo-specific renderers
-remain consumer-owned. See
-``prism/clients/python-pytest/README.md`` in the prism repo.
+remain consumer-owned. See :doc:`prism-reporting` for installation, the two
+upload paths, artifact contracts, capture limits, strict modes, and
+troubleshooting.
 
 Local debugging
 ---------------
