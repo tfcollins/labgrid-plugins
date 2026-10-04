@@ -82,6 +82,16 @@ def test_detect_uses_exact_probe_selector(monkeypatch):
     assert run.call_args.args[0][-1] == "--detect"
 
 
+def test_detect_returns_success_output_from_stderr(monkeypatch):
+    driver = _driver()
+    run = MagicMock(
+        return_value=SimpleNamespace(returncode=0, stdout="", stderr="model  xc7z035\n")
+    )
+    monkeypatch.setattr("adi_lg_plugins.drivers.openfpgaloaderdriver.subprocess.run", run)
+
+    assert "xc7z035" in driver.detect()
+
+
 def test_serial_selector_is_fallback(monkeypatch):
     interface = SimpleNamespace(
         busnum=None,

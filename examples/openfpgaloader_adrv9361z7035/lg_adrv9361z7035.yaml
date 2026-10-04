@@ -9,8 +9,7 @@ targets:
     drivers:
       HomeAssistantPowerDriver: {}
       OpenFPGALoaderDriver:
-        cable: ft2232
-        fpga_part: xc7z035ffg676
+        cable: digilent_hs2
         usb_busnum: 1
         usb_devnum: 5
         allow_flash: false

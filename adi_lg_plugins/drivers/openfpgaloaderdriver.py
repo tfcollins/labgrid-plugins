@@ -141,7 +141,7 @@ class OpenFPGALoaderDriver(RemoteExecMixin, Driver, BootstrapProtocol):
             raise ExecutionError(
                 f"openFPGALoader failed with exit status {result.returncode}: {detail}"
             )
-        return result.stdout
+        return "\n".join(part.strip() for part in (result.stdout, result.stderr) if part.strip())
 
     @Driver.check_active
     @step(args=["filename"])

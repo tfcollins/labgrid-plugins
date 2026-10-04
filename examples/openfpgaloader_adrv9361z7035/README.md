@@ -7,10 +7,10 @@ start either ARM core.
 
 ## Exporter prerequisites
 
-Install `openFPGALoader` on the exporter that owns the JTAG USB probe and add a
-labgrid `USBDebugger` resource matching that exact probe. The coordinator must
-publish it as `NetworkUSBDebugger` with stable USB bus/device or serial identity.
-Do not expose an unbound generic USB device when multiple FTDI probes are fitted.
+Install `openFPGALoader` on the exporter that owns the JTAG USB probe. The
+driver accepts either labgrid's `USBDebugger`/`NetworkUSBDebugger` resource or
+the plugin's established `XilinxDeviceJTAG` resource. Configure an exact USB
+bus/device or serial identity; never rely on the first matching FTDI probe.
 
 The process user needs udev permission for the probe. Configure a tool override
 when the binary is not on `PATH`:
@@ -22,9 +22,11 @@ tools:
 
 ## Configuration
 
-`lg_adrv9361z7035.yaml` uses an explicit cable and FPGA part because upstream
-openFPGALoader has no `adrv9361-z7035` named board. Confirm both values against
-the fitted probe and FPGA package before programming.
+`lg_adrv9361z7035.yaml` records the verified `digilent_hs2` profile and USB
+location `1:5`. Recheck the bus/device after USB re-enumeration. Upstream
+openFPGALoader does not currently include XC7Z035 IDCODE `0x23732093`; use a
+build containing the `zynq`/`xc7z035` mapping and require `--detect` to print
+`model xc7z035` before programming.
 
 Confirm the probe bus/device numbers, replace `/path/to/system_top.bit`, acquire the place, then request only the
 `programmed` state:
@@ -32,14 +34,20 @@ Confirm the probe bus/device numbers, replace `/path/to/system_top.bit`, acquire
 ```bash
 export LG_COORDINATOR=10.0.0.41:20408
 labgrid-client -p lablp acquire
-LG_ENV=lg_adrv9361z7035.yaml labgrid-client -t main transition programmed
+LG_ENV=lg_adrv9361z7035.yaml python - <<'PY'
+from labgrid import Environment
+env = Environment("lg_adrv9361z7035.yaml")
+env.get_target("main").get_driver("BootOpenFPGALoader").transition("programmed")
+PY
 labgrid-client -p lablp release
 ```
 
-`programmed` proves the tool returned successfully; it does not prove Linux or
-IIO readiness. Transitioning to `shell` additionally requires the configured
-UART marker. The driver uses `--write-sram`; flash writes are disabled unless
-both the environment and the caller explicitly opt in.
+`programmed` proves the programming command returned successfully; require a
+second `detect()` call containing `xc7z035` or an application-specific
+register/datapath check as independent evidence. Transitioning to `shell`
+additionally requires the configured UART marker. The driver uses
+`--write-sram`; flash writes are disabled unless both the environment and the
+caller explicitly opt in.
 
 For the production board boot, keep using the coordinator's existing
 `BootFPGASoCTFTP` environment.
