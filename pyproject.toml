@@ -164,6 +164,11 @@ bootzynqmpjtag = "adi_lg_plugins.strategies.bootzynqmpjtag:BootZynqMPJTAG"
 [project.entry-points."pytest11"]
 adi_lg_hw_ci = "adi_lg_plugins.pytest_plugin"
 
+# Optional pytest-prism enrichment. pytest-prism loads this hook only when it
+# is installed; labgrid-plugins itself does not depend on pytest-prism.
+[project.entry-points."pytest_prism.session_hooks"]
+labgrid = "adi_lg_plugins.prism:LabgridSessionHook"
+
 [tool.ty.environment]
 # ty picks up `venv/` automatically; overridable via `ty check --python <path>`.
 python-version = "3.10"
