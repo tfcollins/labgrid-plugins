@@ -202,6 +202,25 @@ The upload step runs with ``continue-on-error`` and surfaces failures as
 ``::warning::`` annotations — a Prism outage (or a missing uploader) never
 fails a hardware leg.
 
+For richer reports, install ``pytest-prism`` in the test environment and add
+these arguments to the consumer's pytest command:
+
+.. code-block:: text
+
+   PRISM_LABGRID_LOG_DIR="$RUNNER_TEMP/lg-console" \
+     pytest --lg-log "$RUNNER_TEMP/lg-console" \
+       --prism-report --prism-labgrid-place "$LG_PLACE" \
+       --prism-dmesg-via auto
+
+When pytest-prism and labgrid-plugins are installed together, the
+``labgrid-plugins`` session hook is discovered automatically. It adds
+allowlisted allocation metadata, pre/post/diff dmesg logs over the ``ip:``
+IIO URI, and the console files already produced by labgrid's ``--lg-log``
+reporter. Use ``--prism-dmesg-via console`` for console logs without SSH or
+``none`` for metadata only. The hook never starts a second console client.
+The separate workflow uploader above remains the compatible JUnit-only path
+and does not require pytest-prism.
+
 Flash mode (no-os)
 ------------------
 

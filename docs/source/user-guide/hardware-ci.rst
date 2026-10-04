@@ -403,7 +403,33 @@ Per-test enrichment (waveform PNGs, DTS diffs, etc.) is the consumer
 repo's responsibility: add ``pytest-prism`` to dev deps, pass
 ``--prism-labgrid-place "$LG_PLACE"`` in the pytest template, and
 register setuptools entry points for repo-specific renderers. The
-plugin's design supports this — see
+installed ``labgrid-plugins`` package automatically contributes a
+``pytest_prism.session_hooks`` provider. It records the selected place,
+allowlisted board tags/exporter names, environment name, and sanitized IIO
+URI in ``metadata.json``. In ``auto`` or ``ssh`` mode it captures bounded
+``dmesg_pre.log``, ``dmesg_post.log``, and an ordered ``dmesg_diff.log``
+over batch-mode SSH to the ``ip:`` IIO URI.
+
+Serial output reuses labgrid's existing console reporter rather than opening
+a competing console client. Point both tools at one directory:
+
+.. code-block:: bash
+
+   export PRISM_LABGRID_LOG_DIR="$RUNNER_TEMP/lg-console"
+   pytest --lg-log "$PRISM_LABGRID_LOG_DIR" \
+     --prism-report --prism-labgrid-place "$LG_PLACE" \
+     --prism-dmesg-via auto
+
+The hook copies any ``console_*`` files into the Prism run after testing. In
+``auto`` mode they are the fallback when SSH dmesg is unavailable; use
+``console`` to collect only those logs or ``none`` for metadata only. Capture
+failures are metadata on the Prism run and do not change the pytest result
+unless the consumer also requests strict Prism hook handling. Console logs
+can contain data typed by tests, so upload them only to an appropriately
+protected Prism project.
+
+The hook has no effect when pytest-prism is absent. Repo-specific renderers
+remain consumer-owned. See
 ``prism/clients/python-pytest/README.md`` in the prism repo.
 
 Local debugging
