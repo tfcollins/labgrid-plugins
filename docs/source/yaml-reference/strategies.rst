@@ -1316,7 +1316,8 @@ Program FPGA SRAM explicitly and distinguish programming completion from target 
           OpenFPGALoaderDriver:
             cable: ft2232
             fpga_part: xc7z035ffg676
-            usb_serial: FT7ABC12
+            usb_busnum: 1
+            usb_devnum: 5
           SerialDriver: {}
           ADIShellDriver:
             prompt: ''

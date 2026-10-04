@@ -11,7 +11,8 @@ targets:
       OpenFPGALoaderDriver:
         cable: ft2232
         fpga_part: xc7z035ffg676
-        usb_serial: REPLACE_WITH_EXACT_PROBE_SERIAL
+        usb_busnum: 1
+        usb_devnum: 5
         allow_flash: false
       SerialDriver: {}
       ADIShellDriver:

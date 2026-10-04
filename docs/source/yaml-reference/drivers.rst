@@ -475,7 +475,8 @@ Program FPGA fabric with openFPGALoader through one exactly selected JTAG probe.
           OpenFPGALoaderDriver:
             cable: ft2232
             fpga_part: xc7z035ffg676
-            usb_serial: FT7ABC12
+            usb_busnum: 1
+            usb_devnum: 5
             allow_flash: false
             timeout: 300
 

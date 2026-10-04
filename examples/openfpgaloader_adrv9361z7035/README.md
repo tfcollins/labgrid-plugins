@@ -26,7 +26,7 @@ tools:
 openFPGALoader has no `adrv9361-z7035` named board. Confirm both values against
 the fitted probe and FPGA package before programming.
 
-Replace the exact probe serial and `/path/to/system_top.bit`, acquire the place, then request only the
+Confirm the probe bus/device numbers, replace `/path/to/system_top.bit`, acquire the place, then request only the
 `programmed` state:
 
 ```bash

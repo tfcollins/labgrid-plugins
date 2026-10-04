@@ -181,6 +181,8 @@ def render_env(
         "openfpgaloader_cable": place.extra_tags.get("openfpgaloader-cable", ""),
         "openfpgaloader_fpga_part": place.extra_tags.get("openfpgaloader-fpga-part", ""),
         "openfpgaloader_frequency": place.extra_tags.get("openfpgaloader-frequency", ""),
+        "openfpgaloader_usb_busnum": place.extra_tags.get("openfpgaloader-usb-busnum", ""),
+        "openfpgaloader_usb_devnum": place.extra_tags.get("openfpgaloader-usb-devnum", ""),
         "openfpgaloader_usb_serial": place.extra_tags.get("openfpgaloader-usb-serial", ""),
         # BootZynqMPJTAG (JTAG-strapped ZynqMP production boot): boot payloads
         # live at canonical names under `recovery-root` on the exporter host

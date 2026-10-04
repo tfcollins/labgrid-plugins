@@ -17,6 +17,8 @@ targets:
         board: '${openfpgaloader_board}'
         cable: '${openfpgaloader_cable}'
         fpga_part: '${openfpgaloader_fpga_part}'
+        usb_busnum: '${openfpgaloader_usb_busnum}'
+        usb_devnum: '${openfpgaloader_usb_devnum}'
         usb_serial: '${openfpgaloader_usb_serial}'
       SerialDriver: {}
       ADIShellDriver:

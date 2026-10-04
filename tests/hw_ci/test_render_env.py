@@ -389,7 +389,8 @@ def test_bootopenfpgaloader_renders_explicit_probe_configuration():
             "power-driver": "HomeAssistantPowerDriver",
             "openfpgaloader-cable": "ft2232",
             "openfpgaloader-fpga-part": "xc7z035ffg676",
-            "openfpgaloader-usb-serial": "probe-serial",
+            "openfpgaloader-usb-busnum": "1",
+            "openfpgaloader-usb-devnum": "5",
             "bitstream-path": "/srv/bitstreams/system_top.bit",
             "boot-marker": "READY",
         },
@@ -400,7 +401,9 @@ def test_bootopenfpgaloader_renders_explicit_probe_configuration():
         "board": "",
         "cable": "ft2232",
         "fpga_part": "xc7z035ffg676",
-        "usb_serial": "probe-serial",
+        "usb_busnum": "1",
+        "usb_devnum": "5",
+        "usb_serial": "",
     }
     assert drivers["BootOpenFPGALoader"]["bitstream_path"] == ("/srv/bitstreams/system_top.bit")
     assert drivers["BootOpenFPGALoader"]["boot_marker"] == "READY"

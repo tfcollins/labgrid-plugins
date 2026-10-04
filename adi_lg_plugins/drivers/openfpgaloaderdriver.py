@@ -20,6 +20,10 @@ def _optional_string(_instance, attribute, value):
         raise ValueError(f"{attribute.name} must be a string or None")
 
 
+def _optional_int(value):
+    return None if value in (None, "") else int(value)
+
+
 @target_factory.reg_driver
 @attr.s(eq=False)
 class OpenFPGALoaderDriver(RemoteExecMixin, Driver, BootstrapProtocol):
@@ -45,10 +49,14 @@ class OpenFPGALoaderDriver(RemoteExecMixin, Driver, BootstrapProtocol):
     cable = attr.ib(default=None, validator=_optional_string)
     fpga_part = attr.ib(default=None, validator=_optional_string)
     usb_busnum = attr.ib(
-        default=None, validator=attr.validators.optional(attr.validators.instance_of(int))
+        default=None,
+        converter=_optional_int,
+        validator=attr.validators.optional(attr.validators.instance_of(int)),
     )
     usb_devnum = attr.ib(
-        default=None, validator=attr.validators.optional(attr.validators.instance_of(int))
+        default=None,
+        converter=_optional_int,
+        validator=attr.validators.optional(attr.validators.instance_of(int)),
     )
     usb_serial = attr.ib(default=None, validator=_optional_string)
     frequency = attr.ib(
