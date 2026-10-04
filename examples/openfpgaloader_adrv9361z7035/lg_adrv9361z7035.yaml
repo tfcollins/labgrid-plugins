@@ -1,0 +1,25 @@
+imports:
+  - adi_lg_plugins
+
+targets:
+  main:
+    resources:
+      RemotePlace:
+        name: lablp
+    drivers:
+      HomeAssistantPowerDriver: {}
+      OpenFPGALoaderDriver:
+        cable: ft2232
+        fpga_part: xc7z035ffg676
+        usb_serial: REPLACE_WITH_EXACT_PROBE_SERIAL
+        allow_flash: false
+      SerialDriver: {}
+      ADIShellDriver:
+        prompt: ''
+        login_prompt: ''
+        username: root
+        password: analog
+      BootOpenFPGALoader:
+        bitstream_path: /path/to/system_top.bit
+        boot_marker: Successfully initialized
+        boot_timeout: 60

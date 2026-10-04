@@ -1,0 +1,29 @@
+# Explicit PL-only programming. This does not initialize Zynq PS/DDR or
+# replace BootFPGASoCTFTP for normal Linux boot.
+imports:
+  - adi_lg_plugins
+
+targets:
+  main:
+    resources:
+      RemotePlace:
+        name: ${place_name}
+    features:
+      - '${daughter_board}'
+      - '${carrier}'
+    drivers:
+      ${power_driver}: {}
+      OpenFPGALoaderDriver:
+        board: '${openfpgaloader_board}'
+        cable: '${openfpgaloader_cable}'
+        fpga_part: '${openfpgaloader_fpga_part}'
+        usb_serial: '${openfpgaloader_usb_serial}'
+      SerialDriver: {}
+      ADIShellDriver:
+        prompt: ''
+        login_prompt: ''
+        username: 'root'
+        password: 'analog'
+      BootOpenFPGALoader:
+        bitstream_path: '${bitstream_path}'
+        boot_marker: '${boot_marker}'

@@ -401,6 +401,84 @@ This component has no class-specific YAML arguments. Use ``{}``.
         drivers:
           XilinxJTAGDriver: {}
 
+OpenFPGALoaderDriver
+~~~~~~~~~~~~~~~~~~~~
+
+Program FPGA fabric with openFPGALoader through one exactly selected JTAG probe.
+
+**Arguments**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 24 24 52
+
+   * - Argument
+     - Requirement/default
+     - Description and example
+   * - ``board``
+     - ``None``
+     - Named openFPGALoader board configuration, mutually exclusive with ``cable``. For example,
+       ``arty``.
+   * - ``cable``
+     - ``None``
+     - Explicit openFPGALoader cable type when no named board exists. For example, ``ft2232``.
+   * - ``fpga_part``
+     - ``None``
+     - Optional exact FPGA model and package passed to the programmer. For example,
+       ``xc7z035ffg676``.
+   * - ``usb_busnum``
+     - ``None``
+     - Optional exact USB bus number used with ``usb_devnum`` to select one probe. For example,
+       ``3``.
+   * - ``usb_devnum``
+     - ``None``
+     - Optional exact USB device address paired with ``usb_busnum``. For example, ``7``.
+   * - ``usb_serial``
+     - ``None``
+     - Stable USB serial selector used when bus/device numbers are unavailable. For example,
+       ``FT7ABC12``.
+   * - ``frequency``
+     - ``None``
+     - Optional positive JTAG clock frequency in hertz. For example, ``6000000``.
+   * - ``allow_flash``
+     - ``False``
+     - Enables the driver's second flash-write opt-in; SRAM remains the default. For example,
+       ``false`` keeps persistent writes disabled.
+   * - ``timeout``
+     - ``300``
+     - Maximum seconds allowed for one openFPGALoader invocation. For example, ``300``.
+
+**Bindings**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 66
+
+   * - Binding
+     - Provider
+   * - ``interface``
+     - ``USBDebugger``, ``NetworkUSBDebugger``, or ``XilinxDeviceJTAG`` identifies the exporter
+       that owns the physical JTAG probe.
+
+**Example**
+
+.. code-block:: yaml
+
+    imports:
+      - adi_lg_plugins
+    targets:
+      main:
+        resources:
+          RemotePlace:
+            name: lablp
+        drivers:
+          OpenFPGALoaderDriver:
+            cable: ft2232
+            fpga_part: xc7z035ffg676
+            usb_serial: FT7ABC12
+            allow_flash: false
+            timeout: 300
+
 TFTPServerDriver
 ~~~~~~~~~~~~~~~~
 

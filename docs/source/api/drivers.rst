@@ -10,7 +10,7 @@ Drivers provide low-level hardware control and protocol implementations.
 - `Storage Drivers`_ — `MassStorageDriver`_
 - `Kuiper Drivers`_ — `KuiperDLDriver`_
 - `Cloudsmith Drivers`_ — `CloudsmithDLDriver`_
-- `FPGA/JTAG Drivers`_ — `XilinxJTAGDriver`_
+- `FPGA/JTAG Drivers`_ — `XilinxJTAGDriver`_, `OpenFPGALoaderDriver`_
 - `Network Drivers`_ — `TFTPServerDriver`_, `Utility Classes`_
 - `Software Installer`_ — `SoftwareInstallerDriver`_
 
@@ -125,6 +125,14 @@ XilinxJTAGDriver
 ~~~~~~~~~~~~~~~~
 
 .. autoclass:: adi_lg_plugins.drivers.xilinxjtagdriver.XilinxJTAGDriver
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+OpenFPGALoaderDriver
+~~~~~~~~~~~~~~~~~~~~
+
+.. autoclass:: adi_lg_plugins.drivers.openfpgaloaderdriver.OpenFPGALoaderDriver
    :members:
    :undoc-members:
    :show-inheritance:
