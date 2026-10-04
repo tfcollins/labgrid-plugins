@@ -44,6 +44,14 @@ BootNoOSJTAG
    :undoc-members:
    :show-inheritance:
 
+BootOpenFPGALoader
+------------------
+
+.. autoclass:: adi_lg_plugins.strategies.bootopenfpgaloader.BootOpenFPGALoader
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 BootVPK180
 ----------
 

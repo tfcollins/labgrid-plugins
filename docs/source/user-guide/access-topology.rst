@@ -144,6 +144,10 @@ Driver transport matrix
      - **Yes.** ``xsdb`` runs on the exporter selected by ``XilinxDeviceJTAG``; generated Tcl and client-readable xsdb payloads are staged automatically.
      - Client → exporter SSH; ``jtag_url`` is resolved by the exporter-side ``xsdb`` process. ProxyJump-only exporters are not supported by the current Tcl staging helper.
      - Xilinx tools and JTAG/hw_server access must be on the exporter. Prefix a payload with ``exporter:`` when it already exists there. For compatibility, an absolute path absent on the client is also treated as exporter-local. ``dcc_log_path`` is an exporter-side output path and is not copied back to the client.
+   * - ``OpenFPGALoaderDriver``
+     - **Yes.** The bitstream is staged and ``openFPGALoader`` runs on the exporter selected by the bound debugger or ``XilinxDeviceJTAG`` resource.
+     - Client → exporter SSH; the exporter directly owns the selected USB JTAG probe.
+     - ``openFPGALoader`` and USB permission are exporter-side. Exact bus/device or serial selection is mandatory; flash writes need two explicit opt-ins.
    * - ``TFTPServerDriver``
      - **Yes.** A stateful ``AgentWrapper`` helper owns the UDP service and root on the resource exporter.
      - Client → exporter SSH; DUT → exporter UDP on the configured port (3069 by default).
@@ -240,6 +244,10 @@ branches are called out explicitly.
      - JTAG is explicitly exporter-capable; serial and suitable power can use exporter paths.
      - No DUT LAN path is required for firmware load and serial banner validation.
      - Runs through an exporter when the client can SSH to it; caller-local JTAG payloads are staged automatically.
+   * - ``BootOpenFPGALoader``
+     - PL programming, serial, and suitable power can use exporter paths.
+     - No DUT LAN path is required; the optional terminal state requires a target-visible serial marker.
+     - ``programmed`` proves only volatile PL programming. It does not initialize a Zynq PS/DDR or replace the board's normal boot strategy.
    * - ``ReflashVPK180SD``
      - Both serial consoles and suitable power can use exporter paths.
      - **Required:** recovery DUT → exporter TFTP.

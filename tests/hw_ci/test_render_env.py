@@ -379,6 +379,37 @@ def test_bootnoosjtag_a9_target_name_override_via_extra_subs():
     assert "${a9_target_name}" not in out
 
 
+def test_bootopenfpgaloader_renders_explicit_probe_configuration():
+    p = Place(
+        name="lablp",
+        carrier="adrv1crr-fmc",
+        daughter_board="adrv9361z7035",
+        boot_strategy="BootOpenFPGALoader",
+        extra_tags={
+            "power-driver": "HomeAssistantPowerDriver",
+            "openfpgaloader-cable": "ft2232",
+            "openfpgaloader-fpga-part": "xc7z035ffg676",
+            "openfpgaloader-usb-busnum": "1",
+            "openfpgaloader-usb-devnum": "5",
+            "bitstream-path": "/srv/bitstreams/system_top.bit",
+            "boot-marker": "READY",
+        },
+    )
+    doc = yaml.safe_load(render_env(p))
+    drivers = doc["targets"]["main"]["drivers"]
+    assert drivers["OpenFPGALoaderDriver"] == {
+        "board": "",
+        "cable": "ft2232",
+        "fpga_part": "xc7z035ffg676",
+        "usb_busnum": "1",
+        "usb_devnum": "5",
+        "usb_serial": "",
+    }
+    assert drivers["BootOpenFPGALoader"]["bitstream_path"] == ("/srv/bitstreams/system_top.bit")
+    assert drivers["BootOpenFPGALoader"]["boot_marker"] == "READY"
+    assert "HomeAssistantPowerDriver" in drivers
+
+
 # ── lg_feature gating: every template must expose place identity as features ──
 
 

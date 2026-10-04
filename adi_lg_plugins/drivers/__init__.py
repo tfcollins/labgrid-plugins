@@ -27,6 +27,7 @@ _MODULES = (
     "kasadriver",
     "kuiperdldriver",
     "massstoragedriver",
+    "openfpgaloaderdriver",
     "shelldriver",
     "softwareinstaller",
     "tftpserverdriver",

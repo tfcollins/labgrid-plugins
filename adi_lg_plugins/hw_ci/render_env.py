@@ -175,6 +175,15 @@ def render_env(
         "firmware_elf": place.extra_tags.get("firmware-elf", ""),
         "boot_marker": place.extra_tags.get("boot-marker", "Successfully initialized"),
         "a9_target_name": place.extra_tags.get("a9-target-name", "*Cortex-A9 MPCore #0"),
+        # Explicit PL-only programming with openFPGALoader. This does not
+        # initialize Zynq PS/DDR or replace the normal SoC boot strategy.
+        "openfpgaloader_board": place.extra_tags.get("openfpgaloader-board", ""),
+        "openfpgaloader_cable": place.extra_tags.get("openfpgaloader-cable", ""),
+        "openfpgaloader_fpga_part": place.extra_tags.get("openfpgaloader-fpga-part", ""),
+        "openfpgaloader_frequency": place.extra_tags.get("openfpgaloader-frequency", ""),
+        "openfpgaloader_usb_busnum": place.extra_tags.get("openfpgaloader-usb-busnum", ""),
+        "openfpgaloader_usb_devnum": place.extra_tags.get("openfpgaloader-usb-devnum", ""),
+        "openfpgaloader_usb_serial": place.extra_tags.get("openfpgaloader-usb-serial", ""),
         # BootZynqMPJTAG (JTAG-strapped ZynqMP production boot): boot payloads
         # live at canonical names under `recovery-root` on the exporter host
         # (see the template header); serial overrides handle ser2net/pyserial

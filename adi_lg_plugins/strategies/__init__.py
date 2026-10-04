@@ -19,6 +19,7 @@ _MODULES = (
     "bootfpgasoctftp",
     "boottickfpgassh",
     "bootnoosjtag",
+    "bootopenfpgaloader",
     "bootrpi",
     "bootselmap",
     "bootvpk180",

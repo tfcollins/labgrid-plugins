@@ -1255,6 +1255,81 @@ Load and run a no-os firmware ELF on a Zynq-7000 board via JTAG.
             boot_timeout: 60
             power_settle_time: 2
 
+BootOpenFPGALoader
+~~~~~~~~~~~~~~~~~~
+
+Program FPGA SRAM explicitly and distinguish programming completion from target readiness.
+
+**Arguments**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 24 24 52
+
+   * - Argument
+     - Requirement/default
+     - Description and example
+   * - ``bitstream_path``
+     - ``None``
+     - Required caller-local bitstream staged to the probe exporter before programming. For
+       example, ``/srv/bitstreams/system_top.bit``.
+   * - ``boot_marker``
+     - ``None``
+     - Serial-console marker required before the optional ``shell`` state is claimed. For example,
+       ``Successfully initialized``.
+   * - ``boot_timeout``
+     - ``60``
+     - Maximum seconds to wait for target-visible serial evidence. For example, ``60``.
+   * - ``power_settle_time``
+     - ``2``
+     - Seconds to wait after power-on before volatile fabric programming begins. For example,
+       ``2``.
+
+**Bindings**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 66
+
+   * - Binding
+     - Provider
+   * - ``power``
+     - ``PowerProtocol`` controls cold power transitions before programming starts.
+   * - ``programmer``
+     - ``OpenFPGALoaderDriver`` stages and writes the volatile FPGA bitstream.
+   * - ``shell``
+     - Optional ``ADIShellDriver`` reads the serial marker for target-visible verification.
+
+**Example**
+
+.. code-block:: yaml
+
+    imports:
+      - adi_lg_plugins
+    targets:
+      main:
+        resources:
+          RemotePlace:
+            name: lablp
+        drivers:
+          HomeAssistantPowerDriver: {}
+          OpenFPGALoaderDriver:
+            cable: ft2232
+            fpga_part: xc7z035ffg676
+            usb_busnum: 1
+            usb_devnum: 5
+          SerialDriver: {}
+          ADIShellDriver:
+            prompt: ''
+            login_prompt: ''
+            username: root
+            password: analog
+          BootOpenFPGALoader:
+            bitstream_path: /srv/bitstreams/system_top.bit
+            boot_marker: Successfully initialized
+            boot_timeout: 60
+            power_settle_time: 2
+
 ReflashVPK180SD
 ~~~~~~~~~~~~~~~
 
