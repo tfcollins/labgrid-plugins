@@ -78,7 +78,7 @@ class BootFabric(Strategy):
 
     bindings = {
         "power": {"PowerProtocol", None},
-        "jtag": "XilinxJTAGDriver",
+        "jtag": {"XilinxJTAGDriver", "XSDBDriver", "OpenFPGALoaderDriver"},
         "shell": {"ADIShellDriver", None},  # Optional serial console
         "ssh": {"SSHDriver", None},  # Optional SSH access
     }
@@ -192,7 +192,12 @@ class BootFabric(Strategy):
                 "Initializing JTAG and flashing bitstream/kernel (this may take several minutes)..."
             )
             self.target.activate(self.jtag)
-            self.jtag.load_bitstream_and_kernel_and_start()
+            if hasattr(self.jtag, "load_bitstream_and_kernel_and_start"):
+                self.jtag.load_bitstream_and_kernel_and_start()
+            elif hasattr(self.jtag, "program_bitstream"):
+                self.jtag.program_bitstream()
+            elif hasattr(self.jtag, "load"):
+                self.jtag.load()
             self.logger.info("Bitstream flashed and kernel started via JTAG successfully")
 
         # elif status == Status.bitstream_flashed:

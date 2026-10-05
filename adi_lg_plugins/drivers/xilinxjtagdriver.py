@@ -19,6 +19,7 @@ import attr
 from labgrid.driver.common import Driver
 from labgrid.driver.exception import ExecutionError
 from labgrid.factory import target_factory
+from labgrid.protocol import BootstrapProtocol
 from labgrid.step import step
 
 from ._remote import RemoteExecMixin
@@ -39,30 +40,88 @@ def _tcl_quote_path(path: str) -> str:
 
 @target_factory.reg_driver
 @attr.s(eq=False)
-class XilinxJTAGDriver(RemoteExecMixin, Driver):
+class XilinxJTAGDriver(RemoteExecMixin, Driver, BootstrapProtocol):
     """Program Xilinx FPGAs via JTAG using xsdb.
 
     Bindings:
 
-    * ``xilinxdevicejtag`` — ``XilinxDeviceJTAG`` resource containing JTAG
-      target IDs and caller-local bitstream/kernel paths. Payloads are staged
-      automatically; ``exporter:/path`` denotes a pre-existing exporter file.
+    * ``xilinxdevicejtag`` — ``XilinxDeviceJTAG``, ``XilinxUSBJTAG``,
+      ``NetworkXilinxUSBJTAG``, ``USBDebugger``, or ``NetworkUSBDebugger``
+      resource containing JTAG target IDs, serial, agent_url, or caller-local
+      bitstream/kernel paths. Payloads are staged automatically; ``exporter:/path``
+      denotes a pre-existing exporter file.
     * ``xilinxvivado`` — ``XilinxVivadoTool`` resource containing
-      ``vivado_path`` and ``xsdb_path``.
+      ``vivado_path`` and ``xsdb_path`` (optional; defaults to system ``xsdb``).
     """
 
     bindings = {
-        "xilinxdevicejtag": {"XilinxDeviceJTAG"},
-        "xilinxvivado": {"XilinxVivadoTool"},
+        "xilinxdevicejtag": {
+            "XilinxDeviceJTAG",
+            "XilinxUSBJTAG",
+            "NetworkXilinxUSBJTAG",
+            "USBDebugger",
+            "NetworkUSBDebugger",
+        },
+        "xilinxvivado": {"XilinxVivadoTool", None},
     }
 
     # RemoteExecMixin: the resource that locates the exporter host.
     _remote_binding = "xilinxdevicejtag"
 
+    @property
+    def interface(self):
+        """Alias for xilinxdevicejtag resource for compatibility with XSDBDriver."""
+        return self.xilinxdevicejtag
+
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
         self.logger.info("XilinxJTAGDriver initialized")
-        self.logger.debug(f"xsdb path: {self.xilinxvivado.xsdb_path}")
+        if self.xilinxvivado:
+            self.logger.debug(f"xsdb path: {self.xilinxvivado.xsdb_path}")
+        else:
+            self.logger.debug("No XilinxVivadoTool bound, using system 'xsdb'")
+
+    def _get_xsdb_bin(self) -> str:
+        """Resolve xsdb executable path."""
+        if self.xilinxvivado and getattr(self.xilinxvivado, "xsdb_path", None):
+            return self.xilinxvivado.xsdb_path
+        if hasattr(self.target, "env") and self.target.env:
+            tool = self.target.env.config.get_tool("xsdb")
+            if tool:
+                return tool
+        return "xsdb"
+
+    def _resolve_connect_command(self, explicit_url: str | None = None) -> str:
+        """Resolve the Tcl connect command based on explicit_url, agent_url, or host."""
+        agent_url = getattr(self.xilinxdevicejtag, "agent_url", None)
+        if not isinstance(agent_url, str):
+            agent_url = ""
+        host = getattr(self.xilinxdevicejtag, "host", None)
+        if not isinstance(host, str):
+            host = ""
+
+        if agent_url:
+            parts = agent_url.split(":")
+            if len(parts) >= 3 and not parts[1]:
+                if not self._is_remote and host:
+                    parts[1] = host
+                    agent_url = ":".join(parts)
+                elif self._is_remote:
+                    parts[1] = "127.0.0.1"
+                    agent_url = ":".join(parts)
+            return f"connect -url {agent_url}"
+        if explicit_url:
+            return f"connect -url {explicit_url}"
+        if host and not self._is_remote:
+            return f"connect -url tcp:{host}:3121"
+        return "connect"
+
+    def _resolve_target_select_command(self) -> str:
+        """Resolve Tcl filter command for cable serial if specified."""
+        serial = getattr(self.xilinxdevicejtag, "serial", None)
+        if isinstance(serial, str) and serial:
+            return f'catch {{jtag targets -filter {{serial == "{serial}"}}}}'
+        return ""
 
     def _exporter_host(self, res):
         if os.environ.get("LG_FORCE_LOCAL_XSDB", "").lower() in ("1", "true", "yes", "on"):
@@ -99,7 +158,7 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
 
         Returns (stdout, stderr, returncode) as strings.
         """
-        xsdb = self.xilinxvivado.xsdb_path
+        xsdb = self._get_xsdb_bin()
 
         with tempfile.NamedTemporaryFile(mode="w", suffix=".tcl", delete=False) as f:
             f.write(tcl_script)
@@ -126,8 +185,11 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
     def connect_jtag(self):
         """Connect to JTAG interface."""
         self.logger.info("Connecting to JTAG")
-        tcl_script = """
-        connect
+        conn_cmd = self._resolve_connect_command()
+        target_cmd = self._resolve_target_select_command()
+        tcl_script = f"""
+        {conn_cmd}
+        {target_cmd}
         after 1000
         puts "JTAG connected"
         """
@@ -137,21 +199,27 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
         self.logger.debug(f"JTAG connection output: {stdout}")
 
     @Driver.check_active
-    @step()
-    def flash_bitstream(self):
-        """Flash the FPGA bitstream via JTAG."""
-        if not self.xilinxdevicejtag.bitstream_path:
-            raise ExecutionError("Bitstream path not configured in XilinxDeviceJTAG resource")
+    @step(args=["filename"])
+    def program_bitstream(self, filename: str | None = None) -> None:
+        """Program FPGA bitstream using XSDB fpga command."""
+        target_file = filename or getattr(self.xilinxdevicejtag, "bitstream_path", None)
+        if not target_file:
+            raise ExecutionError("No bitstream filename provided or configured on resource")
 
-        bitstream_path = self._stage_payload(self.xilinxdevicejtag.bitstream_path)
-        self.logger.info(f"Flashing bitstream: {self.xilinxdevicejtag.bitstream_path}")
+        staged_bitstream = self._stage_payload(target_file)
+        self.logger.info(f"Flashing bitstream: {target_file}")
+
+        conn_cmd = self._resolve_connect_command()
+        target_cmd = self._resolve_target_select_command()
+        root_target = getattr(self.xilinxdevicejtag, "root_target", 1)
 
         tcl_script = f"""
-        connect
+        {conn_cmd}
+        {target_cmd}
         after 1000
-        targets {self.xilinxdevicejtag.root_target}
+        targets {root_target}
         after 1000
-        fpga -f {_tcl_quote_path(bitstream_path)}
+        fpga -f {_tcl_quote_path(staged_bitstream)}
         after 2000
         puts "Bitstream flashed successfully"
         """
@@ -163,18 +231,31 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
 
     @Driver.check_active
     @step()
+    def flash_bitstream(self):
+        """Flash the FPGA bitstream via JTAG."""
+        if not getattr(self.xilinxdevicejtag, "bitstream_path", None):
+            raise ExecutionError("Bitstream path not configured in XilinxDeviceJTAG resource")
+        self.program_bitstream(self.xilinxdevicejtag.bitstream_path)
+
+    @Driver.check_active
+    @step()
     def download_kernel(self):
         """Download Linux kernel image to Microblaze processor."""
-        if not self.xilinxdevicejtag.kernel_path:
+        if not getattr(self.xilinxdevicejtag, "kernel_path", None):
             raise ExecutionError("Kernel path not configured in XilinxDeviceJTAG resource")
 
         kernel_path = self._stage_payload(self.xilinxdevicejtag.kernel_path)
         self.logger.info(f"Downloading kernel: {self.xilinxdevicejtag.kernel_path}")
 
+        conn_cmd = self._resolve_connect_command()
+        target_cmd = self._resolve_target_select_command()
+        microblaze_target = getattr(self.xilinxdevicejtag, "microblaze_target", 3)
+
         tcl_script = f"""
-        connect
+        {conn_cmd}
+        {target_cmd}
         after 1000
-        targets {self.xilinxdevicejtag.microblaze_target}
+        targets {microblaze_target}
         after 1000
         dow {_tcl_quote_path(kernel_path)}
         after 1000
@@ -191,10 +272,15 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
     def start_execution(self):
         """Start kernel execution on Microblaze processor."""
         self.logger.info("Starting kernel execution")
+        conn_cmd = self._resolve_connect_command()
+        target_cmd = self._resolve_target_select_command()
+        microblaze_target = getattr(self.xilinxdevicejtag, "microblaze_target", 3)
+
         tcl_script = f"""
-        connect
+        {conn_cmd}
+        {target_cmd}
         after 1000
-        targets {self.xilinxdevicejtag.microblaze_target}
+        targets {microblaze_target}
         after 1000
         con
         after 500
@@ -210,16 +296,28 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
     @step()
     def load_bitstream_and_kernel_and_start(self):
         """Load bitstream + kernel, then run the Microblaze."""
-        bitstream_path = self._stage_payload(self.xilinxdevicejtag.bitstream_path)
-        kernel_path = self._stage_payload(self.xilinxdevicejtag.kernel_path)
+        bitstream_path = getattr(self.xilinxdevicejtag, "bitstream_path", None)
+        kernel_path = getattr(self.xilinxdevicejtag, "kernel_path", None)
+        if not bitstream_path or not kernel_path:
+            raise ExecutionError("Both bitstream_path and kernel_path must be configured")
+
+        bitstream_path = self._stage_payload(bitstream_path)
+        kernel_path = self._stage_payload(kernel_path)
+
+        conn_cmd = self._resolve_connect_command()
+        target_cmd = self._resolve_target_select_command()
+        root_target = getattr(self.xilinxdevicejtag, "root_target", 1)
+        microblaze_target = getattr(self.xilinxdevicejtag, "microblaze_target", 3)
+
         tcl_script = f"""
-        connect
+        {conn_cmd}
+        {target_cmd}
         after 1000
-        targets {self.xilinxdevicejtag.root_target}
+        targets {root_target}
         after 1000
         fpga -f {_tcl_quote_path(bitstream_path)}
         after 2000
-        targets {self.xilinxdevicejtag.microblaze_target}
+        targets {microblaze_target}
         after 1000
         dow {_tcl_quote_path(kernel_path)}
         after 1000
@@ -292,8 +390,12 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
 
         optional_block = "\n        ".join(optional_lines)
 
+        conn_cmd = self._resolve_connect_command()
+        target_cmd = self._resolve_target_select_command()
+
         tcl_script = f"""
-        connect
+        {conn_cmd}
+        {target_cmd}
         after 1000
         targets -set -filter {{name =~ "{a9_target_name}"}}
         after 500
@@ -347,8 +449,12 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
         lines.append("con")
         optional_block = "\n        ".join(lines)
 
+        conn_cmd = self._resolve_connect_command()
+        target_cmd = self._resolve_target_select_command()
+
         tcl_script = f"""
-        connect
+        {conn_cmd}
+        {target_cmd}
         after 1000
         targets -set -filter {{name =~ "{a9_target_name}"}}
         after 500
@@ -369,8 +475,11 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
     def stop_zynq_cpu(self, a9_target_name: str = "*Cortex-A9 MPCore #0") -> None:
         """Halt the A9 #0 core — used between failed bootstrap attempts."""
         self.logger.info(f"Stopping Zynq A9 CPU ({a9_target_name})")
+        conn_cmd = self._resolve_connect_command()
+        target_cmd = self._resolve_target_select_command()
         tcl_script = f"""
-        connect
+        {conn_cmd}
+        {target_cmd}
         after 500
         targets -set -filter {{name =~ "{a9_target_name}"}}
         stop
@@ -442,10 +551,13 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
         psu_init_tcl = self._stage_payload(psu_init_tcl)
         spl_elf = self._stage_payload(spl_elf)
         bitstream_path = self._stage_optional_payload(bitstream_path)
-        self.logger.info(f"JTAG-bootstrapping ZynqMP mini U-Boot SPL from {spl_elf}")
+        conn_cmd = self._resolve_connect_command(jtag_url)
+        target_cmd = self._resolve_target_select_command()
 
-        lines = [
-            f"connect -url {jtag_url}",
+        lines = [conn_cmd]
+        if target_cmd:
+            lines.append(target_cmd)
+        lines += [
             "after 1000",
             "configparams force-mem-accesses 1",
             'targets -set -nocase -filter {name =~ "PSU"}',
@@ -565,8 +677,13 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
         pm_config_bin = self._stage_optional_payload(pm_config_bin)
         poll_count = max(1, int(pmufw_timeout_ms) // 100)
 
-        lines = [
-            f"connect -url {jtag_url}",
+        conn_cmd = self._resolve_connect_command(jtag_url)
+        target_cmd = self._resolve_target_select_command()
+
+        lines = [conn_cmd]
+        if target_cmd:
+            lines.append(target_cmd)
+        lines += [
             "after 1000",
             "configparams force-mem-accesses 1",
             'targets -set -nocase -filter {name =~ "PSU"}',
@@ -724,8 +841,13 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
         dtb = self._stage_payload(dtb)
         ddr_scrub_elf = self._stage_optional_payload(ddr_scrub_elf)
         bitstream_path = self._stage_optional_payload(bitstream_path)
-        lines = [
-            f"connect -url {jtag_url}",
+        conn_cmd = self._resolve_connect_command(jtag_url)
+        target_cmd = self._resolve_target_select_command()
+
+        lines = [conn_cmd]
+        if target_cmd:
+            lines.append(target_cmd)
+        lines += [
             "after 1000",
             "configparams force-mem-accesses 1",
             'targets -set -nocase -filter {name =~ "PSU"}',
@@ -804,8 +926,11 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
     def stop_zynqmp_cpu(self, a53_target_name: str = "*Cortex-A53*#0*") -> None:
         """Halt the ZynqMP A53 #0 core -- used between failed bootstrap attempts."""
         self.logger.info(f"Stopping ZynqMP A53 CPU ({a53_target_name})")
+        conn_cmd = self._resolve_connect_command()
+        target_cmd = self._resolve_target_select_command()
         tcl_script = f"""
-        connect -url TCP:127.0.0.1:3121
+        {conn_cmd}
+        {target_cmd}
         after 500
         targets -set -nocase -filter {{name =~ "{a53_target_name}"}}
         catch {{stop}}
@@ -816,3 +941,61 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
         if returncode != 0:
             self.logger.warning(f"Stop CPU warning: {stderr}")
         self.logger.debug(f"Stop CPU output: {stdout}")
+
+    @Driver.check_active
+    @step(args=["bootmode"])
+    def force_bootmode_reset(self, bootmode: str) -> None:
+        """Force SoC bootmode switch and trigger system reset.
+
+        Adopted from the MLE labgrid fork for ZynqMP UltraScale+ PSU control.
+        """
+        bootmode = bootmode.lower()
+        bootmodes = {
+            "ps_jtag": 0x0,
+            "jtag": 0x0,
+            "quad_spi_24": 0x1,
+            "quad_spi_32": 0x2,
+            "qspi": 0x2,
+            "sd_0": 0x3,
+            "sd0": 0x3,
+            "nand": 0x4,
+            "sd_1": 0x5,
+            "sd1": 0x5,
+            "emmc": 0x6,
+            "usb_0": 0x7,
+            "pjtag_0": 0x8,
+            "pjtag_1": 0x9,
+            "sd_1_ls": 0xE,
+        }
+        if bootmode not in bootmodes:
+            raise ExecutionError(
+                f"Unsupported bootmode: {bootmode}. Available: {list(bootmodes.keys())}"
+            )
+
+        mode_val = bootmodes[bootmode]
+        conn_cmd = self._resolve_connect_command()
+        target_cmd = self._resolve_target_select_command()
+        tcl_script = f"""
+        {conn_cmd}
+        {target_cmd}
+        targets -set -nocase -filter {{name =~ "PSU"}}
+        catch {{stop}}
+        mwr 0xff5e0200 {mode_val}
+        rst -system
+        after 1000
+        disconnect
+        """
+        stdout, stderr, returncode = self._run_xsdb(tcl_script)
+        if returncode != 0:
+            raise ExecutionError(f"force_bootmode_reset failed: {stderr}")
+
+    @Driver.check_active
+    @step(args=["filename"])
+    def load(self, filename: str) -> None:
+        """Implement BootstrapProtocol.load by flashing bitstream or ELF."""
+        if filename.endswith(".bit") or filename.endswith(".bin"):
+            self.program_bitstream(filename)
+        elif filename.endswith(".elf"):
+            self.load_and_run_elf(elf_path=filename)
+        else:
+            raise ValueError(f"unsupported bootstrap file format: {filename}")

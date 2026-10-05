@@ -373,6 +373,12 @@ Xilinx FPGA device JTAG configuration.
      - ``None``
      - Standalone DTB path retained for workflows whose kernel does not embed it.
        For example, ``/srv/images/system.dtb``.
+   * - ``serial``
+     - ``None``
+     - Optional JTAG adapter serial number or port filter. For example, ``210308A567B1``.
+   * - ``agent_url``
+     - ``None``
+     - Optional agent listening URL for Vivado hw_server. For example, ``tcp:192.168.1.50:3121``.
 
 **Example**
 
@@ -389,6 +395,128 @@ Xilinx FPGA device JTAG configuration.
             bitstream_path: /srv/images/system_top.bit
             kernel_path: /srv/images/simpleImage.vcu118.strip
             devicetree_path: /srv/images/system.dtb
+
+XilinxUSBJTAG
+~~~~~~~~~~~~~
+
+Xilinx-compatible USB JTAG adapter resource.
+Compatible with upstream labgrid PR #706. Matches USB devices such as Digilent
+JTAG-HS3 / JTAG-SMT2, Trenz TE0790-03, and Xilinx Platform Cable USB/II.
+
+**Arguments**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 22 23 55
+
+   * - Argument
+     - Requirement/default
+     - Description and example
+   * - ``match``
+     - ``{}``
+     - udev matching dictionary for filtering USB probe attributes.
+       For example, ``{'ID_VENDOR_ID': '0403'}``.
+   * - ``device``
+     - ``None``
+     - Matched pyudev device assigned when resolved on exporter.
+       For example, ``None``.
+   * - ``suggest``
+     - ``None``
+     - Suggested device identifier for missing resource match.
+       For example, ``None``.
+   * - ``hw_server_cmd``
+     - ``'hw_server'``
+     - Command to launch the Vivado hardware server.
+       For example, ``hw_server``.
+   * - ``serial``
+     - ``''``
+     - Optional cable serial number or port filter.
+       For example, ``210308A567B1``.
+   * - ``agent_url``
+     - ``''``
+     - Agent listening URL for remote hw_server access.
+       For example, ``tcp:192.168.1.50:3121``.
+   * - ``gdb_port``
+     - ``0``
+     - Base port number for the GDB debug server.
+       For example, ``0``.
+   * - ``log_level``
+     - ``[]``
+     - List of log category flags passed to hw_server.
+       For example, ``['debug']``.
+   * - ``extra_args``
+     - ``[]``
+     - Additional command line arguments passed to hw_server.
+       For example, ``['-v']``.
+
+**Example**
+
+.. code-block:: yaml
+
+    imports:
+      - adi_lg_plugins
+    targets:
+      main:
+        resources:
+          XilinxUSBJTAG:
+            serial: '210308A567B1'
+
+NetworkXilinxUSBJTAG
+~~~~~~~~~~~~~~~~~~~~
+
+Network-exported Xilinx USB JTAG adapter resource.
+Published by an exporter running VivadoHWServerExport or proxying a XilinxUSBJTAG adapter.
+
+**Arguments**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 22 23 55
+
+   * - Argument
+     - Requirement/default
+     - Description and example
+   * - ``host``
+     - required
+     - Hostname or IP address of the exporter running hw_server.
+       For example, ``192.168.1.50``.
+   * - ``hw_server_cmd``
+     - ``'hw_server'``
+     - Command to launch the Vivado hardware server.
+       For example, ``hw_server``.
+   * - ``serial``
+     - ``''``
+     - Optional cable serial number or port filter.
+       For example, ``210308A567B1``.
+   * - ``agent_url``
+     - ``''``
+     - Agent listening URL for remote hw_server access.
+       For example, ``tcp:192.168.1.50:3121``.
+   * - ``gdb_port``
+     - ``0``
+     - Base port number for the GDB debug server.
+       For example, ``0``.
+   * - ``log_level``
+     - ``[]``
+     - List of log category flags passed to hw_server.
+       For example, ``['debug']``.
+   * - ``extra_args``
+     - ``[]``
+     - Additional command line arguments passed to hw_server.
+       For example, ``['-v']``.
+
+**Example**
+
+.. code-block:: yaml
+
+    imports:
+      - adi_lg_plugins
+    targets:
+      main:
+        resources:
+          NetworkXilinxUSBJTAG:
+            host: 192.168.1.50
+            agent_url: tcp:192.168.1.50:3121
 
 XilinxVivadoTool
 ~~~~~~~~~~~~~~~~

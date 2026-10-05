@@ -31,6 +31,10 @@ RESOURCE_DRIVER_MAP: dict[str, list[tuple[str, DriverConfigFactory]]] = {
     ],
     "KuiperRelease": [("KuiperDLDriver", lambda _r: {})],
     "XilinxDeviceJTAG": [("XilinxJTAGDriver", lambda _r: {})],
+    "NetworkXilinxUSBJTAG": [("XilinxJTAGDriver", lambda _r: {})],
+    "XilinxUSBJTAG": [("XilinxJTAGDriver", lambda _r: {})],
+    "NetworkUSBDebugger": [("XilinxJTAGDriver", lambda _r: {})],
+    "USBDebugger": [("XilinxJTAGDriver", lambda _r: {})],
     "XilinxVivadoTool": [],  # consumed by XilinxJTAGDriver, no standalone driver
     "TFTPServerResource": [("TFTPServerDriver", lambda _r: {})],
 }
