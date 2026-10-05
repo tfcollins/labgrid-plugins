@@ -22,7 +22,7 @@ from labgrid.factory import target_factory
 from labgrid.protocol import BootstrapProtocol
 from labgrid.step import step
 
-from ._remote import RemoteExecMixin
+from ._remote import RemoteExecMixin, _resolvable_host
 
 _EXPORTER_PATH_PREFIX = "exporter:"
 _TCL_BARE_PATH_CHARS = frozenset(
@@ -99,14 +99,24 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver, BootstrapProtocol):
         host = getattr(self.xilinxdevicejtag, "host", None)
         if not isinstance(host, str):
             host = ""
+        if not host and hasattr(self.xilinxdevicejtag, "extra"):
+            extra = self.xilinxdevicejtag.extra
+            if isinstance(extra, dict):
+                host = extra.get("proxy", "")
+        if host:
+            host = _resolvable_host(host)
+
+        # Non-default explicit URL takes priority (e.g. jtag_url passed to bootstrap methods)
+        if explicit_url and explicit_url not in ("TCP:127.0.0.1:3121", "tcp:127.0.0.1:3121"):
+            return f"connect -url {explicit_url}"
 
         if agent_url:
             parts = agent_url.split(":")
             if len(parts) >= 3 and not parts[1]:
-                if not self._is_remote and host:
+                if host:
                     parts[1] = host
                     agent_url = ":".join(parts)
-                elif self._is_remote:
+                else:
                     parts[1] = "127.0.0.1"
                     agent_url = ":".join(parts)
             return f"connect -url {agent_url}"
@@ -125,6 +135,11 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver, BootstrapProtocol):
 
     def _exporter_host(self, res):
         if os.environ.get("LG_FORCE_LOCAL_XSDB", "").lower() in ("1", "true", "yes", "on"):
+            return None
+        agent_url = getattr(res, "agent_url", None)
+        if isinstance(agent_url, str) and agent_url.strip():
+            # When agent_url is configured, xsdb runs on the client runner and communicates
+            # directly with the remote hw_server over TCP (the MLE use case).
             return None
         return super()._exporter_host(res)
 
@@ -943,36 +958,65 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver, BootstrapProtocol):
         self.logger.debug(f"Stop CPU output: {stdout}")
 
     @Driver.check_active
+    @step(args=["tcl_cmds", "interactive"])
+    def run(self, tcl_cmds: list[str], interactive: bool = False) -> str:
+        """Run a sequence of Tcl commands in XSDB.
+
+        Compatible with the MLE XSDBDriver API. Automatically connects to the
+        hardware server via agent_url or jtag_url if configured, selects target by
+        serial if configured, and executes the requested Tcl commands.
+        """
+        conn_cmd = self._resolve_connect_command()
+        target_cmd = self._resolve_target_select_command()
+
+        cmds = [conn_cmd]
+        if target_cmd:
+            cmds.append(target_cmd)
+        cmds.extend(tcl_cmds)
+        if not interactive:
+            cmds.append("disconnect")
+
+        tcl_script = "\n".join(cmds) + "\n"
+        self.logger.debug("Executing XSDB Tcl:\n%s", tcl_script.strip())
+        stdout, stderr, returncode = self._run_xsdb(tcl_script)
+        if returncode != 0:
+            raise ExecutionError(f"XSDB run failed with code {returncode}: {stderr}")
+        return stdout
+
+    @Driver.check_active
     @step(args=["bootmode"])
     def force_bootmode_reset(self, bootmode: str) -> None:
         """Force SoC bootmode switch and trigger system reset.
 
         Adopted from the MLE labgrid fork for ZynqMP UltraScale+ PSU control.
+        Supports both MLE short mode names and ZynqMP register values.
         """
         bootmode = bootmode.lower()
         bootmodes = {
-            "ps_jtag": 0x0,
-            "jtag": 0x0,
-            "quad_spi_24": 0x1,
-            "quad_spi_32": 0x2,
-            "qspi": 0x2,
-            "sd_0": 0x3,
-            "sd0": 0x3,
-            "nand": 0x4,
-            "sd_1": 0x5,
-            "sd1": 0x5,
-            "emmc": 0x6,
-            "usb_0": 0x7,
-            "pjtag_0": 0x8,
-            "pjtag_1": 0x9,
-            "sd_1_ls": 0xE,
+            "ps_jtag": "0x0000",
+            "jtag": "0x0100",
+            "quad_spi_24": "0x0001",
+            "quad_spi_32": "0x0002",
+            "qspi": "0x2100",
+            "sd_0": "0x0003",
+            "sd0": "0x0003",
+            "nand": "0x0004",
+            "sd_1": "0x0005",
+            "sd1": "0x0005",
+            "sd": "0xE100",
+            "emmc": "0x6100",
+            "usb_0": "0x0007",
+            "usb": "0x7100",
+            "pjtag_0": "0x0008",
+            "pjtag_1": "0x0009",
+            "sd_1_ls": "0xE100",
         }
-        if bootmode not in bootmodes:
+        if bootmode not in bootmodes and not bootmode.startswith("0x"):
             raise ExecutionError(
                 f"Unsupported bootmode: {bootmode}. Available: {list(bootmodes.keys())}"
             )
 
-        mode_val = bootmodes[bootmode]
+        mode_val = bootmodes.get(bootmode, bootmode)
         conn_cmd = self._resolve_connect_command()
         target_cmd = self._resolve_target_select_command()
         tcl_script = f"""
@@ -980,9 +1024,11 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver, BootstrapProtocol):
         {target_cmd}
         targets -set -nocase -filter {{name =~ "PSU"}}
         catch {{stop}}
+        catch {{mwr 0xffca0010 0x0}}
         mwr 0xff5e0200 {mode_val}
         rst -system
         after 1000
+        catch {{con}}
         disconnect
         """
         stdout, stderr, returncode = self._run_xsdb(tcl_script)

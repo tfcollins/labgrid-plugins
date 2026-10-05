@@ -84,16 +84,64 @@ def test_resolve_target_select_command(driver):
     )
 
 
+def test_xilinx_jtag_driver_run(driver):
+    driver.run(["targets", "mrd 0x0"])
+    assert len(driver.scripts) == 1
+    tcl = driver.scripts[0]
+    assert "connect" in tcl
+    assert "targets" in tcl
+    assert "mrd 0x0" in tcl
+    assert "disconnect" in tcl
+
+
+def test_xilinx_jtag_driver_run_interactive(driver):
+    driver.run(["targets"], interactive=True)
+    tcl = driver.scripts[0]
+    assert "connect" in tcl
+    assert "targets" in tcl
+    assert "disconnect" not in tcl
+
+
+def test_hw_server_bypasses_ssh_remote_exec(driver):
+    mock_res = MagicMock()
+    mock_res.extra = {"proxy": "tron"}
+    mock_res.host = None
+    mock_res.agent_url = None
+
+    # Without agent_url, coordinator proxy makes it remote
+    assert driver._exporter_host(mock_res) in ("tron", "tron.local")
+
+    # With agent_url, execution stays local to runner (communicating via TCP)
+    mock_res.agent_url = "tcp:tron.local:3121"
+    assert driver._exporter_host(mock_res) is None
+
+
+def test_resolve_connect_command_template_agent_url(driver):
+    driver.xilinxdevicejtag.agent_url = "tcp::3121"
+    driver.xilinxdevicejtag.extra = {"proxy": "tron"}
+    driver.xilinxdevicejtag.host = None
+    assert driver._resolve_connect_command() in (
+        "connect -url tcp:tron:3121",
+        "connect -url tcp:tron.local:3121",
+    )
+
+
 def test_force_bootmode_reset(driver):
     driver.force_bootmode_reset("jtag")
     tcl = driver.scripts[0]
-    assert "mwr 0xff5e0200 0" in tcl
+    assert "mwr 0xff5e0200 0x0100" in tcl
     assert "rst -system" in tcl
+    assert "mwr 0xffca0010 0x0" in tcl
+
+    driver.scripts.clear()
+    driver.force_bootmode_reset("sd")
+    tcl = driver.scripts[0]
+    assert "mwr 0xff5e0200 0xE100" in tcl
 
     driver.scripts.clear()
     driver.force_bootmode_reset("sd_0")
     tcl = driver.scripts[0]
-    assert "mwr 0xff5e0200 3" in tcl
+    assert "mwr 0xff5e0200 0x0003" in tcl
 
     with pytest.raises(ExecutionError, match="Unsupported bootmode"):
         driver.force_bootmode_reset("invalid")
