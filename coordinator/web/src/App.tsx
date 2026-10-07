@@ -18,6 +18,7 @@ import Login from "./pages/Login";
 import AdminUsers from "./pages/AdminUsers";
 import RequireAuth from "./auth/RequireAuth";
 import RequireAdmin from "./auth/RequireAdmin";
+import Deployments from "./pages/Deployments";
 
 function App() {
   return (
@@ -28,6 +29,7 @@ function App() {
         <Route path="/" element={<Dashboard />} />
         <Route path="/places" element={<Places />} />
         <Route path="/resources" element={<Resources />} />
+        <Route path="/deployments" element={<Deployments />} />
         <Route
           path="/reservations"
           element={<RequireAuth><Reservations /></RequireAuth>}

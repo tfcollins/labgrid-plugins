@@ -51,6 +51,11 @@ export const CONCEPTS = {
     gloss: "A queued claim on a place that matches a tag filter. The coordinator allocates a matching place when one frees; the holder can then acquire it.",
     color: "#ecc94b",
   },
+  deployment: {
+    label: "Deployment",
+    gloss: "The coordinator's current provisioning state for a managed node, from discovery through installation.",
+    color: "#805ad5",
+  },
 } as const;
 
 export type ConceptName = keyof typeof CONCEPTS;
