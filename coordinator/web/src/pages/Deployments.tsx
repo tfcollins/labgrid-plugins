@@ -82,8 +82,8 @@ function DeploymentDetails({ hostname }: { hostname: string }) {
       <SimpleGrid columns={{ base: 2, lg: 4 }} spacing={4}>
         <Value label="First seen">{formatTimestamp(data.first_seen)}</Value>
         <Value label="Last seen">{formatTimestamp(data.last_seen)}</Value>
-        <Value label="IP address">{data.ip_address ?? "—"}</Value>
-        <Value label="MAC address">{data.mac_address ?? "—"}</Value>
+        <Value label="IP addresses">{data.ip_addresses.join(", ") || "—"}</Value>
+        <Value label="MAC addresses">{data.mac_addresses.join(", ") || "—"}</Value>
       </SimpleGrid>
 
       <Box>
@@ -175,7 +175,7 @@ function DeploymentRow({ deployment }: { deployment: DeploymentSummary }) {
           </HStack>
         </Td>
         <Td fontFamily="mono" whiteSpace="nowrap">
-          {deployment.attempt} / {deployment.generation}
+          {deployment.attempt}
         </Td>
         <Td>{deployment.stage}</Td>
         <Td>
@@ -198,9 +198,9 @@ function DeploymentRow({ deployment }: { deployment: DeploymentSummary }) {
             </Text>
           </HStack>
         </Td>
-        <Td whiteSpace="nowrap">{deployment.ip_address ?? "—"}</Td>
+        <Td whiteSpace="nowrap">{deployment.ip_addresses.join(", ") || "—"}</Td>
         <Td fontFamily="mono" whiteSpace="nowrap">
-          {deployment.mac_address ?? "—"}
+          {deployment.mac_addresses.join(", ") || "—"}
         </Td>
         <Td whiteSpace="nowrap">{formatTimestamp(deployment.first_seen)}</Td>
         <Td whiteSpace="nowrap">{formatTimestamp(deployment.last_seen)}</Td>
@@ -253,7 +253,7 @@ export default function Deployments() {
           <Thead>
             <Tr>
               <Th>Hostname</Th>
-              <Th>Attempt / generation</Th>
+              <Th>Attempt</Th>
               <Th>Stage</Th>
               <Th>Status</Th>
               <Th>Progress</Th>

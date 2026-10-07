@@ -27,14 +27,12 @@ export interface DeploymentSummary {
   hostname: string;
   /** Current attempt number, starting at one. */
   attempt: number;
-  /** Desired node configuration revision. */
-  generation: number;
   stage: string;
   status: DeploymentStatus;
   /** Completion percentage in the inclusive range 0..100. */
   progress: number;
-  ip_address: string | null;
-  mac_address: string | null;
+  ip_addresses: string[];
+  mac_addresses: string[];
   /** ISO-8601 timestamp at which this node was first observed. */
   first_seen: string;
   /** ISO-8601 timestamp of the most recent node update. */

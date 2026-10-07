@@ -7,12 +7,14 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from .auth.store import AuthStore
 from .config import settings
+from .deployments.store import DeploymentStore
 from .grpc_client import CoordinatorClient
 from .recorder import Recorder
 from .routers import (
     auth,
     catalog,
     console,
+    deployments,
     health,
     history,
     places,
@@ -61,6 +63,10 @@ async def lifespan(app: FastAPI):
 
     auth_store = AuthStore(settings.database_path)
     app.state.auth_store = auth_store
+
+    deployment_store = DeploymentStore(settings.database_path)
+    await deployment_store.initialize()
+    app.state.deployment_store = deployment_store
 
     from .places.store import PlaceAcquisitionStore
 
@@ -187,6 +193,7 @@ app.add_middleware(
 app.include_router(health.router, prefix="/api")
 app.include_router(catalog.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
+app.include_router(deployments.router, prefix="/api")
 app.include_router(history.router, prefix="/api")
 app.include_router(places.router, prefix="/api")
 app.include_router(resources.router, prefix="/api")

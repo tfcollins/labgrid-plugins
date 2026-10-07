@@ -16,12 +16,12 @@ vi.mock("../../api/deployments", () => ({
 const summary = {
   hostname: "node-01",
   attempt: 2,
-  generation: 7,
+
   stage: "installing",
   status: "in_progress" as const,
   progress: 42,
-  ip_address: "192.0.2.10",
-  mac_address: "02:00:00:00:00:01",
+  ip_addresses: ["192.0.2.10"],
+  mac_addresses: ["02:00:00:00:00:01"],
   first_seen: "2026-10-07T12:00:00Z",
   last_seen: "2026-10-07T12:05:00Z",
   errors: ["first boot timed out"],
@@ -62,7 +62,7 @@ describe("Deployments", () => {
     renderPage();
 
     expect(await screen.findByText("node-01")).toBeInTheDocument();
-    expect(screen.getByText("2 / 7")).toBeInTheDocument();
+    expect(screen.getByText("2")).toBeInTheDocument();
     expect(screen.getByText("installing")).toBeInTheDocument();
     expect(screen.getByText("in progress")).toBeInTheDocument();
     expect(screen.getByText("42%")).toBeInTheDocument();
