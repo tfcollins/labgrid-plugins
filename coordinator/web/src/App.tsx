@@ -29,7 +29,10 @@ function App() {
         <Route path="/" element={<Dashboard />} />
         <Route path="/places" element={<Places />} />
         <Route path="/resources" element={<Resources />} />
-        <Route path="/deployments" element={<Deployments />} />
+        <Route
+          path="/deployments"
+          element={<RequireAuth><Deployments /></RequireAuth>}
+        />
         <Route
           path="/reservations"
           element={<RequireAuth><Reservations /></RequireAuth>}
