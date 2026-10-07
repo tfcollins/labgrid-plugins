@@ -25,6 +25,7 @@ services:
       - LG_RECORDINGS_DIR
       - LG_RECORDING_RETENTION_DAYS
       - LG_RECORDING_MAX_BYTES_PER_PLACE
+      - LG_DEPLOYMENT_TOKEN
     volumes:
       - api-data:/data
     depends_on:

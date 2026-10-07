@@ -25,6 +25,7 @@ import {
   MdDarkMode,
   MdMovie,
   MdOpenInNew,
+  MdSystemUpdateAlt,
 } from "react-icons/md";
 import ChipIcon from "./ChipIcon";
 import NavItem from "./ui/NavItem";
@@ -32,6 +33,7 @@ import NavItem from "./ui/NavItem";
 const navItems = [
   { to: "/", icon: MdDashboard, label: "Dashboard" },
   { to: "/resources", icon: MdStorage, label: "Resources" },
+  { to: "/deployments", icon: MdSystemUpdateAlt, label: "Deployments" },
   { to: "/places", icon: MdPlace, label: "Places" },
   { to: "/reservations", icon: MdBookmarkBorder, label: "Reservations" },
   { to: "/topology", icon: MdAccountTree, label: "Topology" },
