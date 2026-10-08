@@ -373,11 +373,13 @@ This component has no class-specific YAML arguments. Use ``{}``.
    * - Binding
      - Provider
    * - ``xilinxdevicejtag``
-     - ``XilinxDeviceJTAG`` supplies JTAG target IDs, boot artifact paths, and
-       the exporter host on which those paths are visible.
+     - ``XilinxDeviceJTAG``, ``XilinxUSBJTAG``, ``NetworkXilinxUSBJTAG``,
+       ``USBDebugger``, or ``NetworkUSBDebugger`` supplies JTAG target IDs,
+       cable serial number, remote hw_server agent URL, boot artifact paths,
+       and the exporter host.
    * - ``xilinxvivado``
-     - ``XilinxVivadoTool`` locates the Vivado installation and ``xsdb``
-       executable used to run programming scripts.
+     - (Optional) ``XilinxVivadoTool`` locates the Vivado installation and ``xsdb``
+       executable. If omitted, falls back to the system ``xsdb`` from PATH.
 
 **Example**
 
@@ -400,6 +402,54 @@ This component has no class-specific YAML arguments. Use ``{}``.
             xsdb_path: /opt/Xilinx/2025.1/Vivado/bin/xsdb
         drivers:
           XilinxJTAGDriver: {}
+
+XSDBDriver
+~~~~~~~~~~
+
+Control Xilinx devices using XSDB / Vivado Hardware Server.
+Compatible with upstream labgrid PR #706 and the MLE fork, with support for
+direct TCP ``agent_url`` connections or SSH remote execution.
+
+**Arguments**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 24 24 52
+
+   * - Argument
+     - Requirement/default
+     - Description and example
+   * - ``bitstream``
+     - ``None``
+     - Optional default bitstream file path to program. For example, ``/srv/images/system_top.bit``.
+
+**Bindings**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 66
+
+   * - Binding
+     - Provider
+   * - ``interface``
+     - ``XilinxUSBJTAG``, ``NetworkXilinxUSBJTAG``, ``XilinxDeviceJTAG``,
+       ``USBDebugger``, or ``NetworkUSBDebugger``.
+
+**Example**
+
+.. code-block:: yaml
+
+    imports:
+      - adi_lg_plugins
+    targets:
+      main:
+        resources:
+          NetworkXilinxUSBJTAG:
+            host: 192.168.1.50
+            agent_url: tcp:192.168.1.50:3121
+        drivers:
+          XSDBDriver:
+            bitstream: /srv/images/system_top.bit
 
 OpenFPGALoaderDriver
 ~~~~~~~~~~~~~~~~~~~~

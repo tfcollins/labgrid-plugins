@@ -26,7 +26,13 @@ from typing import Any
 # (host + TCP socket port); a runner-local exporter uses RawSerialPort /
 # USBSerialPort with a /dev/ttyUSBx path.
 _SERIAL_CANDIDATES = ("RawSerialPort", "USBSerialPort", "NetworkSerialPort")
-_JTAG_CANDIDATES = ("XilinxDeviceJTAG",)
+_JTAG_CANDIDATES = (
+    "NetworkXilinxUSBJTAG",
+    "XilinxUSBJTAG",
+    "NetworkUSBDebugger",
+    "USBDebugger",
+    "XilinxDeviceJTAG",
+)
 _TOOL_CANDIDATES = ("XilinxVivadoTool",)
 
 
@@ -38,8 +44,8 @@ class ResolvedResources:
     path); ``uart_host`` / ``uart_port`` are set for a coordinator-side
     ``NetworkSerialPort`` (a TCP socket). Exactly one of those shapes is
     populated for a given place. JTAG fields carry what a bash ``xsdb``
-    invocation actually needs — the binary path and the target indices;
-    there is no cable-serial attribute in the ADI resource set.
+    invocation actually needs — the binary path, target indices, agent URL,
+    and cable serial.
     """
 
     uart_device: str | None = None
@@ -49,6 +55,8 @@ class ResolvedResources:
     jtag_xsdb: str | None = None
     jtag_root_target: int | None = None
     jtag_mb_target: int | None = None
+    jtag_agent_url: str | None = None
+    jtag_serial: str | None = None
 
 
 def _first_resource(target: Any, names: tuple[str, ...]) -> Any | None:
@@ -100,6 +108,8 @@ def resolve_resources(target: Any) -> ResolvedResources:
         jtag_xsdb=getattr(tool, "xsdb_path", None),
         jtag_root_target=getattr(jtag, "root_target", None),
         jtag_mb_target=getattr(jtag, "microblaze_target", None),
+        jtag_agent_url=getattr(jtag, "agent_url", None),
+        jtag_serial=getattr(jtag, "serial", None),
     )
 
 
@@ -117,6 +127,8 @@ def render_github_output(r: ResolvedResources) -> str:
         ("LG_JTAG_XSDB", r.jtag_xsdb),
         ("LG_JTAG_ROOT_TARGET", r.jtag_root_target),
         ("LG_JTAG_MB_TARGET", r.jtag_mb_target),
+        ("LG_JTAG_AGENT_URL", r.jtag_agent_url),
+        ("LG_JTAG_SERIAL", r.jtag_serial),
     )
     lines = [f"{key}={value}" for key, value in pairs if value is not None]
     return "".join(f"{line}\n" for line in lines)

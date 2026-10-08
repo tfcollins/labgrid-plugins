@@ -144,6 +144,10 @@ Driver transport matrix
      - **Yes.** ``xsdb`` runs on the exporter selected by ``XilinxDeviceJTAG``; generated Tcl and client-readable xsdb payloads are staged automatically.
      - Client → exporter SSH; ``jtag_url`` is resolved by the exporter-side ``xsdb`` process. ProxyJump-only exporters are not supported by the current Tcl staging helper.
      - Xilinx tools and JTAG/hw_server access must be on the exporter. Prefix a payload with ``exporter:`` when it already exists there. For compatibility, an absolute path absent on the client is also treated as exporter-local. ``dcc_log_path`` is an exporter-side output path and is not copied back to the client.
+   * - ``XSDBDriver``
+     - **Yes.** ``xsdb`` runs on the exporter via SSH or connects directly to the exporter's ``hw_server`` daemon over TCP via ``agent_url``.
+     - Client → exporter SSH, or Client → exporter TCP (:3121) when using ``agent_url``.
+     - Compatible with upstream labgrid PR #706 and MLE fork. Supports ``run()``, ``program_bitstream()``, ``force_bootmode_reset()``, and ``load()``.
    * - ``OpenFPGALoaderDriver``
      - **Yes.** The bitstream is staged and ``openFPGALoader`` runs on the exporter selected by the bound debugger or ``XilinxDeviceJTAG`` resource.
      - Client → exporter SSH; the exporter directly owns the selected USB JTAG probe.

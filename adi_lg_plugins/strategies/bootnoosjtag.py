@@ -41,7 +41,7 @@ class BootNoOSJTAG(Strategy):
 
     bindings = {
         "power": "PowerProtocol",
-        "jtag": "XilinxJTAGDriver",
+        "jtag": {"XilinxJTAGDriver", "XSDBDriver"},
         "shell": "ADIShellDriver",
     }
 
