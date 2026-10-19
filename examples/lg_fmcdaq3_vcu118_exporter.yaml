@@ -34,6 +34,11 @@ tlab:
 
   XilinxDeviceJTAG:
     cls: XilinxDeviceJTAG
+    ## Live names make this robust against target ordering and fail closed when
+    ## the FT232H/JTAG chain has not enumerated. Numeric IDs remain only as
+    ## compatibility fallback for older plugin installations.
+    root_target_name: "xcvu9p"
+    microblaze_target_name: "MicroBlaze #0"
     root_target: 1
     microblaze_target: 3
     kernel_path: "/jenkins/vcu118_fmcdaq3/simpleImage.vcu118_fmcdaq3.strip"

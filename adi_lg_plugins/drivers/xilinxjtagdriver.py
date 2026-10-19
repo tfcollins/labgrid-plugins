@@ -87,6 +87,24 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
             except FileNotFoundError:
                 pass
 
+    def _target_selector(self, name_attribute: str, id_attribute: str, label: str) -> str:
+        """Return fail-closed TCL selecting a live named target when configured."""
+        target_name = getattr(self.xilinxdevicejtag, name_attribute, None)
+        if target_name:
+            return f'''\
+        set matched_targets [targets -filter {{name == "{target_name}"}}]
+        if {{![llength $matched_targets]}} {{
+            error "required {label} target {target_name} is absent"
+        }}
+        targets [lindex $matched_targets 0]'''
+        return f"targets {getattr(self.xilinxdevicejtag, id_attribute)}"
+
+    def _root_target_selector(self) -> str:
+        return self._target_selector("root_target_name", "root_target", "FPGA")
+
+    def _microblaze_target_selector(self) -> str:
+        return self._target_selector("microblaze_target_name", "microblaze_target", "Microblaze")
+
     @Driver.check_active
     @step()
     def connect_jtag(self):
@@ -114,7 +132,7 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
         tcl_script = f"""
         connect
         after 1000
-        targets {self.xilinxdevicejtag.root_target}
+        {self._root_target_selector()}
         after 1000
         fpga -f {self.xilinxdevicejtag.bitstream_path}
         after 2000
@@ -138,7 +156,7 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
         tcl_script = f"""
         connect
         after 1000
-        targets {self.xilinxdevicejtag.microblaze_target}
+        {self._microblaze_target_selector()}
         after 1000
         dow {self.xilinxdevicejtag.kernel_path}
         after 1000
@@ -158,7 +176,7 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
         tcl_script = f"""
         connect
         after 1000
-        targets {self.xilinxdevicejtag.microblaze_target}
+        {self._microblaze_target_selector()}
         after 1000
         con
         after 500
@@ -177,11 +195,11 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
         tcl_script = f"""
         connect
         after 1000
-        targets {self.xilinxdevicejtag.root_target}
+        {self._root_target_selector()}
         after 1000
         fpga -f {self.xilinxdevicejtag.bitstream_path}
         after 2000
-        targets {self.xilinxdevicejtag.microblaze_target}
+        {self._microblaze_target_selector()}
         after 1000
         dow {self.xilinxdevicejtag.kernel_path}
         after 1000

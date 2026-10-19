@@ -111,6 +111,38 @@ def test_stop_zynq_cpu_emits_stop(driver):
     assert "stop" in tcl
 
 
+def test_microblaze_load_resolves_live_target_names_when_configured(driver):
+    driver.xilinxdevicejtag.root_target_name = "xcvu9p"
+    driver.xilinxdevicejtag.microblaze_target_name = "MicroBlaze #0"
+    driver.xilinxdevicejtag.bitstream_path = "/tmp/fpga.bit"
+    driver.xilinxdevicejtag.kernel_path = "/tmp/linux.strip"
+
+    driver.load_bitstream_and_kernel_and_start()
+
+    tcl = driver._captured[0]
+    assert 'targets -filter {name == "xcvu9p"}' in tcl
+    assert 'targets -filter {name == "MicroBlaze #0"}' in tcl
+    assert 'error "required FPGA target xcvu9p is absent"' in tcl
+    assert 'error "required Microblaze target MicroBlaze #0 is absent"' in tcl
+    assert "fpga -f /tmp/fpga.bit" in tcl
+    assert "dow /tmp/linux.strip" in tcl
+
+
+def test_microblaze_load_keeps_legacy_numeric_target_fallback(driver):
+    driver.xilinxdevicejtag.root_target_name = None
+    driver.xilinxdevicejtag.microblaze_target_name = None
+    driver.xilinxdevicejtag.root_target = 7
+    driver.xilinxdevicejtag.microblaze_target = 9
+    driver.xilinxdevicejtag.bitstream_path = "/tmp/fpga.bit"
+    driver.xilinxdevicejtag.kernel_path = "/tmp/linux.strip"
+
+    driver.load_bitstream_and_kernel_and_start()
+
+    tcl = driver._captured[0]
+    assert "targets 7" in tcl
+    assert "targets 9" in tcl
+
+
 # ---------- load_and_run_elf (no-os firmware flash) -----------------------
 
 
