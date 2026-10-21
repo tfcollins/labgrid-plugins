@@ -36,6 +36,7 @@ _MODULES = (
     "tickoverlaydriver",
     "vesyncdriver",
     "xilinxjtagdriver",
+    "xsdbdriver",
 )
 
 for _m in _MODULES:

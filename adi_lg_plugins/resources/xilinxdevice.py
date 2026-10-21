@@ -56,3 +56,13 @@ class XilinxDeviceJTAG(Resource):
         default=None,
         validator=attr.validators.optional(attr.validators.instance_of(str)),
     )
+
+    # Optional hardware server or cable serial configuration
+    serial = attr.ib(
+        default=None,
+        validator=attr.validators.optional(attr.validators.instance_of(str)),
+    )
+    agent_url = attr.ib(
+        default=None,
+        validator=attr.validators.optional(attr.validators.instance_of(str)),
+    )

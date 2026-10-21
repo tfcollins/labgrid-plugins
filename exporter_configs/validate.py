@@ -33,6 +33,10 @@ KNOWN_CLASSES = {
     "HomeAssistantOutlet",
     "TFTPServerResource",
     "KuiperRelease",
+    "XilinxUSBJTAG",
+    "NetworkXilinxUSBJTAG",
+    "USBDebugger",
+    "NetworkUSBDebugger",
 }
 
 

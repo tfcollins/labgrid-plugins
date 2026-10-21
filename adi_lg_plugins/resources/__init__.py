@@ -25,6 +25,7 @@ _MODULES = (
     "vesync",
     "xilinxdevice",
     "xilinxtool",
+    "xilinxusb",
 )
 
 for _m in _MODULES:

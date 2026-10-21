@@ -39,7 +39,11 @@
         "VesyncOutlet",
         "HomeAssistantOutlet",
         "TFTPServerResource",
-        "KuiperRelease"
+        "KuiperRelease",
+        "XilinxUSBJTAG",
+        "NetworkXilinxUSBJTAG",
+        "USBDebugger",
+        "NetworkUSBDebugger"
       ]
     }
   }

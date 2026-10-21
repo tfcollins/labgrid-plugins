@@ -65,6 +65,19 @@ def test_resolve_reads_jtag_fields():
     assert r.jtag_xsdb == "/tools/Xilinx/2025.1/Vitis/bin/xsdb"
 
 
+def test_resolve_reads_xilinx_usb_jtag_fields():
+    jtag = MagicMock(spec=["agent_url", "serial"])
+    jtag.agent_url = "tcp:192.168.1.100:3121"
+    jtag.serial = "210308A567B1"
+    r = resolve_resources(_target({"NetworkXilinxUSBJTAG": jtag}))
+    assert r.jtag_agent_url == "tcp:192.168.1.100:3121"
+    assert r.jtag_serial == "210308A567B1"
+
+    out = render_github_output(r)
+    assert "LG_JTAG_AGENT_URL=tcp:192.168.1.100:3121\n" in out
+    assert "LG_JTAG_SERIAL=210308A567B1\n" in out
+
+
 def test_resolve_no_resources_is_all_none():
     r = resolve_resources(_target({}))
     assert r == ResolvedResources()
