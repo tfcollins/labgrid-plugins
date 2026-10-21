@@ -8,7 +8,10 @@ they are not constructor arguments.
 .. note::
 
    Native labgrid providers such as ``SerialDriver`` and ``SSHDriver`` are included where
-   useful. Replace their example resources with the devices exported by your lab.
+   useful. Each example shows both the **Exporter** configuration (the exporter's
+   ``resources.yaml`` group definition paired with the client's ``RemotePlace`` target
+   configuration) and the **Local (Non-Exporter)** target configuration with inline
+   resources.
 
 APCDriver
 ~~~~~~~~~
@@ -31,21 +34,54 @@ This component has no class-specific YAML arguments. Use ``{}``.
 
 **Example**
 
-.. code-block:: yaml
+.. tab-set::
 
-    imports:
-      - adi_lg_plugins
-    targets:
-      main:
-        resources:
-          APCOutlet:
-            address: pdu.example.test
-            outlet: 1
-            delay: 5.0
-            read_community: public
-            write_community: private
-        drivers:
-          APCDriver: {}
+    .. tab-item:: Exporter
+
+        Exporter resource configuration (``resources.yaml``):
+
+        .. code-block:: yaml
+
+            main:
+              APCOutlet:
+                cls: APCOutlet
+                address: pdu.example.test
+                outlet: 1
+                delay: 5.0
+                read_community: public
+                write_community: private
+
+        Client environment configuration (``target.yaml``):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  RemotePlace:
+                    name: example-place
+                drivers:
+                  APCDriver: {}
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  APCOutlet:
+                    address: pdu.example.test
+                    outlet: 1
+                    delay: 5.0
+                    read_community: public
+                    write_community: private
+                drivers:
+                  APCDriver: {}
 
 VesyncPowerDriver
 ~~~~~~~~~~~~~~~~~
@@ -68,20 +104,52 @@ This component has no class-specific YAML arguments. Use ``{}``.
 
 **Example**
 
-.. code-block:: yaml
+.. tab-set::
 
-    imports:
-      - adi_lg_plugins
-    targets:
-      main:
-        resources:
-          VesyncOutlet:
-            outlet_names: Device Power
-            username: user@example.test
-            password: secret
-            delay: 5.0
-        drivers:
-          VesyncPowerDriver: {}
+    .. tab-item:: Exporter
+
+        Exporter resource configuration (``resources.yaml``):
+
+        .. code-block:: yaml
+
+            main:
+              VesyncOutlet:
+                cls: VesyncOutlet
+                outlet_names: Device Power
+                username: user@example.test
+                password: secret
+                delay: 5.0
+
+        Client environment configuration (``target.yaml``):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  RemotePlace:
+                    name: example-place
+                drivers:
+                  VesyncPowerDriver: {}
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  VesyncOutlet:
+                    outlet_names: Device Power
+                    username: user@example.test
+                    password: secret
+                    delay: 5.0
+                drivers:
+                  VesyncPowerDriver: {}
 
 MassStorageDriver
 ~~~~~~~~~~~~~~~~~
@@ -130,25 +198,62 @@ Mount and copy files to a USB mass storage device.
 
 **Example**
 
-.. code-block:: yaml
+.. tab-set::
 
-    imports:
-      - adi_lg_plugins
-    targets:
-      main:
-        resources:
-          MassStorageDevice:
-            path: /dev/sdb
-            file_updates:
-              /srv/boot/BOOT.BIN: BOOT.BIN
-              /srv/boot/Image: Image
-            use_with_sdmux: true
-        drivers:
-          MassStorageDriver:
-            partition: /dev/disk/by-label/BOOT
-            mount_label: lg_mass_storage
-            unmount_retries: 3
-            unmount_retry_delay: 2.0
+    .. tab-item:: Exporter
+
+        Exporter resource configuration (``resources.yaml``):
+
+        .. code-block:: yaml
+
+            main:
+              MassStorageDevice:
+                cls: MassStorageDevice
+                path: /dev/sdb
+                file_updates:
+                  /srv/boot/BOOT.BIN: BOOT.BIN
+                  /srv/boot/Image: Image
+                use_with_sdmux: true
+
+        Client environment configuration (``target.yaml``):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  RemotePlace:
+                    name: example-place
+                drivers:
+                  MassStorageDriver:
+                    partition: /dev/disk/by-label/BOOT
+                    mount_label: lg_mass_storage
+                    unmount_retries: 3
+                    unmount_retry_delay: 2.0
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  MassStorageDevice:
+                    path: /dev/sdb
+                    file_updates:
+                      /srv/boot/BOOT.BIN: BOOT.BIN
+                      /srv/boot/Image: Image
+                    use_with_sdmux: true
+                drivers:
+                  MassStorageDriver:
+                    partition: /dev/disk/by-label/BOOT
+                    mount_label: lg_mass_storage
+                    unmount_retries: 3
+                    unmount_retry_delay: 2.0
 
 ADIShellDriver
 ~~~~~~~~~~~~~~
@@ -218,28 +323,68 @@ ADIShellDriver - Driver to execute commands on the shell ADIShellDriver binds on
 
 **Example**
 
-.. code-block:: yaml
+.. tab-set::
 
-    imports:
-      - adi_lg_plugins
-    targets:
-      main:
-        resources:
-          RawSerialPort:
-            port: /dev/ttyUSB0
-            speed: 115200
-        drivers:
-          SerialDriver: {}
-          ADIShellDriver:
-            prompt: root@analog:.*#
-            login_prompt: 'analog login: '
-            username: root
-            password: analog
-            keyfile: ''
-            login_timeout: 60
-            console_ready: ''
-            await_login_timeout: 2
-            post_login_settle_time: 0
+    .. tab-item:: Exporter
+
+        Exporter resource configuration (``resources.yaml``):
+
+        .. code-block:: yaml
+
+            main:
+              RawSerialPort:
+                cls: RawSerialPort
+                port: /dev/ttyUSB0
+                speed: 115200
+
+        Client environment configuration (``target.yaml``):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  RemotePlace:
+                    name: example-place
+                drivers:
+                  SerialDriver: {}
+                  ADIShellDriver:
+                    prompt: root@analog:.*#
+                    login_prompt: 'analog login: '
+                    username: root
+                    password: analog
+                    keyfile: ''
+                    login_timeout: 60
+                    console_ready: ''
+                    await_login_timeout: 2
+                    post_login_settle_time: 0
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  RawSerialPort:
+                    port: /dev/ttyUSB0
+                    speed: 115200
+                drivers:
+                  SerialDriver: {}
+                  ADIShellDriver:
+                    prompt: root@analog:.*#
+                    login_prompt: 'analog login: '
+                    username: root
+                    password: analog
+                    keyfile: ''
+                    login_timeout: 60
+                    console_ready: ''
+                    await_login_timeout: 2
+                    post_login_settle_time: 0
 
 KuiperDLDriver
 ~~~~~~~~~~~~~~
@@ -262,21 +407,54 @@ This component has no class-specific YAML arguments. Use ``{}``.
 
 **Example**
 
-.. code-block:: yaml
+.. tab-set::
 
-    imports:
-      - adi_lg_plugins
-    targets:
-      main:
-        resources:
-          KuiperRelease:
-            release_version: 2023_R2_P1
-            cache_path: ~/.labgrid/kuiper_releases/
-            kernel_path: release:zynqmp-common/Image
-            BOOTBIN_path: release:zynqmp-zcu102-rev10-ad9081/BOOT.BIN
-            device_tree_path: release:zynqmp-zcu102-rev10-ad9081/system.dtb
-        drivers:
-          KuiperDLDriver: {}
+    .. tab-item:: Exporter
+
+        Exporter resource configuration (``resources.yaml``):
+
+        .. code-block:: yaml
+
+            main:
+              KuiperRelease:
+                cls: KuiperRelease
+                release_version: 2023_R2_P1
+                cache_path: ~/.labgrid/kuiper_releases/
+                kernel_path: release:zynqmp-common/Image
+                BOOTBIN_path: release:zynqmp-zcu102-rev10-ad9081/BOOT.BIN
+                device_tree_path: release:zynqmp-zcu102-rev10-ad9081/system.dtb
+
+        Client environment configuration (``target.yaml``):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  RemotePlace:
+                    name: example-place
+                drivers:
+                  KuiperDLDriver: {}
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  KuiperRelease:
+                    release_version: 2023_R2_P1
+                    cache_path: ~/.labgrid/kuiper_releases/
+                    kernel_path: release:zynqmp-common/Image
+                    BOOTBIN_path: release:zynqmp-zcu102-rev10-ad9081/BOOT.BIN
+                    device_tree_path: release:zynqmp-zcu102-rev10-ad9081/system.dtb
+                drivers:
+                  KuiperDLDriver: {}
 
 CloudsmithDLDriver
 ~~~~~~~~~~~~~~~~~~
@@ -299,28 +477,68 @@ This component has no class-specific YAML arguments. Use ``{}``.
 
 **Example**
 
-.. code-block:: yaml
+.. tab-set::
 
-    imports:
-      - adi_lg_plugins
-    targets:
-      main:
-        resources:
-          CloudsmithRelease:
-            fpga_carrier: zcu102
-            daughter_card: adrv9009
-            vfilter:
-              - main
-            vnot:
-              - deprecated
-            owner: adi
-            repo: sdg-boot-partition
-            filename: BOOT.BIN
-            version: 2025.1.0
-            api_token: ${CLOUDSMITH_API_TOKEN}
-            cache_path: ~/.labgrid/cloudsmith_releases/
-        drivers:
-          CloudsmithDLDriver: {}
+    .. tab-item:: Exporter
+
+        Exporter resource configuration (``resources.yaml``):
+
+        .. code-block:: yaml
+
+            main:
+              CloudsmithRelease:
+                cls: CloudsmithRelease
+                fpga_carrier: zcu102
+                daughter_card: adrv9009
+                vfilter:
+                  - main
+                vnot:
+                  - deprecated
+                owner: adi
+                repo: sdg-boot-partition
+                filename: BOOT.BIN
+                version: 2025.1.0
+                api_token: ${CLOUDSMITH_API_TOKEN}
+                cache_path: ~/.labgrid/cloudsmith_releases/
+
+        Client environment configuration (``target.yaml``):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  RemotePlace:
+                    name: example-place
+                drivers:
+                  CloudsmithDLDriver: {}
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  CloudsmithRelease:
+                    fpga_carrier: zcu102
+                    daughter_card: adrv9009
+                    vfilter:
+                      - main
+                    vnot:
+                      - deprecated
+                    owner: adi
+                    repo: sdg-boot-partition
+                    filename: BOOT.BIN
+                    version: 2025.1.0
+                    api_token: ${CLOUDSMITH_API_TOKEN}
+                    cache_path: ~/.labgrid/cloudsmith_releases/
+                drivers:
+                  CloudsmithDLDriver: {}
 
 CyberPowerDriver
 ~~~~~~~~~~~~~~~~
@@ -343,19 +561,50 @@ This component has no class-specific YAML arguments. Use ``{}``.
 
 **Example**
 
-.. code-block:: yaml
+.. tab-set::
 
-    imports:
-      - adi_lg_plugins
-    targets:
-      main:
-        resources:
-          CyberPowerOutlet:
-            address: pdu.example.test
-            outlet: 3
-            delay: 5.0
-        drivers:
-          CyberPowerDriver: {}
+    .. tab-item:: Exporter
+
+        Exporter resource configuration (``resources.yaml``):
+
+        .. code-block:: yaml
+
+            main:
+              CyberPowerOutlet:
+                cls: CyberPowerOutlet
+                address: pdu.example.test
+                outlet: 3
+                delay: 5.0
+
+        Client environment configuration (``target.yaml``):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  RemotePlace:
+                    name: example-place
+                drivers:
+                  CyberPowerDriver: {}
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  CyberPowerOutlet:
+                    address: pdu.example.test
+                    outlet: 3
+                    delay: 5.0
+                drivers:
+                  CyberPowerDriver: {}
 
 XilinxJTAGDriver
 ~~~~~~~~~~~~~~~~
@@ -381,25 +630,63 @@ This component has no class-specific YAML arguments. Use ``{}``.
 
 **Example**
 
-.. code-block:: yaml
+.. tab-set::
 
-    imports:
-      - adi_lg_plugins
-    targets:
-      main:
-        resources:
-          XilinxDeviceJTAG:
-            root_target: 1
-            microblaze_target: 3
-            bitstream_path: /srv/images/system_top.bit
-            kernel_path: /srv/images/simpleImage.vcu118.strip
-            devicetree_path: /srv/images/system.dtb
-          XilinxVivadoTool:
-            vivado_path: /opt/Xilinx/2025.1/Vivado
-            version: '2025.1'
-            xsdb_path: /opt/Xilinx/2025.1/Vivado/bin/xsdb
-        drivers:
-          XilinxJTAGDriver: {}
+    .. tab-item:: Exporter
+
+        Exporter resource configuration (``resources.yaml``):
+
+        .. code-block:: yaml
+
+            main:
+              XilinxDeviceJTAG:
+                cls: XilinxDeviceJTAG
+                root_target: 1
+                microblaze_target: 3
+                bitstream_path: /srv/images/system_top.bit
+                kernel_path: /srv/images/simpleImage.vcu118.strip
+                devicetree_path: /srv/images/system.dtb
+              XilinxVivadoTool:
+                cls: XilinxVivadoTool
+                vivado_path: /opt/Xilinx/2025.1/Vivado
+                version: '2025.1'
+                xsdb_path: /opt/Xilinx/2025.1/Vivado/bin/xsdb
+
+        Client environment configuration (``target.yaml``):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  RemotePlace:
+                    name: example-place
+                drivers:
+                  XilinxJTAGDriver: {}
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  XilinxDeviceJTAG:
+                    root_target: 1
+                    microblaze_target: 3
+                    bitstream_path: /srv/images/system_top.bit
+                    kernel_path: /srv/images/simpleImage.vcu118.strip
+                    devicetree_path: /srv/images/system.dtb
+                  XilinxVivadoTool:
+                    vivado_path: /opt/Xilinx/2025.1/Vivado
+                    version: '2025.1'
+                    xsdb_path: /opt/Xilinx/2025.1/Vivado/bin/xsdb
+                drivers:
+                  XilinxJTAGDriver: {}
 
 OpenFPGALoaderDriver
 ~~~~~~~~~~~~~~~~~~~~
@@ -462,23 +749,60 @@ Program FPGA fabric with openFPGALoader through one exactly selected JTAG probe.
 
 **Example**
 
-.. code-block:: yaml
+.. tab-set::
 
-    imports:
-      - adi_lg_plugins
-    targets:
-      main:
-        resources:
-          RemotePlace:
-            name: lablp
-        drivers:
-          OpenFPGALoaderDriver:
-            cable: ft2232
-            fpga_part: xc7z035ffg676
-            usb_busnum: 1
-            usb_devnum: 5
-            allow_flash: false
-            timeout: 300
+    .. tab-item:: Exporter
+
+        Exporter resource configuration (``resources.yaml``):
+
+        .. code-block:: yaml
+
+            main:
+              XilinxDeviceJTAG:
+                cls: XilinxDeviceJTAG
+                root_target: 1
+                microblaze_target: 3
+
+        Client environment configuration (``target.yaml``):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  RemotePlace:
+                    name: lablp
+                drivers:
+                  OpenFPGALoaderDriver:
+                    cable: ft2232
+                    fpga_part: xc7z035ffg676
+                    usb_busnum: 1
+                    usb_devnum: 5
+                    allow_flash: false
+                    timeout: 300
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  XilinxDeviceJTAG:
+                    root_target: 1
+                    microblaze_target: 3
+                drivers:
+                  OpenFPGALoaderDriver:
+                    cable: ft2232
+                    fpga_part: xc7z035ffg676
+                    usb_busnum: 1
+                    usb_devnum: 5
+                    allow_flash: false
+                    timeout: 300
 
 TFTPServerDriver
 ~~~~~~~~~~~~~~~~
@@ -501,19 +825,50 @@ This component has no class-specific YAML arguments. Use ``{}``.
 
 **Example**
 
-.. code-block:: yaml
+.. tab-set::
 
-    imports:
-      - adi_lg_plugins
-    targets:
-      main:
-        resources:
-          TFTPServerResource:
-            address: auto
-            port: 3069
-            root: /var/lib/tftpboot
-        drivers:
-          TFTPServerDriver: {}
+    .. tab-item:: Exporter
+
+        Exporter resource configuration (``resources.yaml``):
+
+        .. code-block:: yaml
+
+            main:
+              TFTPServerResource:
+                cls: TFTPServerResource
+                address: auto
+                port: 3069
+                root: /var/lib/tftpboot
+
+        Client environment configuration (``target.yaml``):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  RemotePlace:
+                    name: example-place
+                drivers:
+                  TFTPServerDriver: {}
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  TFTPServerResource:
+                    address: auto
+                    port: 3069
+                    root: /var/lib/tftpboot
+                drivers:
+                  TFTPServerDriver: {}
 
 SoftwareInstallerDriver
 ~~~~~~~~~~~~~~~~~~~~~~~
@@ -539,19 +894,50 @@ This component has no class-specific YAML arguments. Use ``{}``.
 
 **Example**
 
-.. code-block:: yaml
+.. tab-set::
 
-    imports:
-      - adi_lg_plugins
-    targets:
-      main:
-        resources:
-          NetworkService:
-            address: dut.example.test
-            username: root
-        drivers:
-          SSHDriver: {}
-          SoftwareInstallerDriver: {}
+    .. tab-item:: Exporter
+
+        Exporter resource configuration (``resources.yaml``):
+
+        .. code-block:: yaml
+
+            main:
+              NetworkService:
+                cls: NetworkService
+                address: dut.example.test
+                username: root
+
+        Client environment configuration (``target.yaml``):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  RemotePlace:
+                    name: example-place
+                drivers:
+                  SSHDriver: {}
+                  SoftwareInstallerDriver: {}
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  NetworkService:
+                    address: dut.example.test
+                    username: root
+                drivers:
+                  SSHDriver: {}
+                  SoftwareInstallerDriver: {}
 
 HomeAssistantPowerDriver
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -574,20 +960,52 @@ This component has no class-specific YAML arguments. Use ``{}``.
 
 **Example**
 
-.. code-block:: yaml
+.. tab-set::
 
-    imports:
-      - adi_lg_plugins
-    targets:
-      main:
-        resources:
-          HomeAssistantOutlet:
-            url: http://homeassistant.example.test:8123
-            token: ${HOME_ASSISTANT_TOKEN}
-            entity_id: switch.lab_outlet_1
-            delay: 5.0
-        drivers:
-          HomeAssistantPowerDriver: {}
+    .. tab-item:: Exporter
+
+        Exporter resource configuration (``resources.yaml``):
+
+        .. code-block:: yaml
+
+            main:
+              HomeAssistantOutlet:
+                cls: HomeAssistantOutlet
+                url: http://homeassistant.example.test:8123
+                token: ${HOME_ASSISTANT_TOKEN}
+                entity_id: switch.lab_outlet_1
+                delay: 5.0
+
+        Client environment configuration (``target.yaml``):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  RemotePlace:
+                    name: example-place
+                drivers:
+                  HomeAssistantPowerDriver: {}
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  HomeAssistantOutlet:
+                    url: http://homeassistant.example.test:8123
+                    token: ${HOME_ASSISTANT_TOKEN}
+                    entity_id: switch.lab_outlet_1
+                    delay: 5.0
+                drivers:
+                  HomeAssistantPowerDriver: {}
 
 TickFpgaManagerDriver
 ~~~~~~~~~~~~~~~~~~~~~
@@ -616,26 +1034,64 @@ This component has no class-specific YAML arguments. Use ``{}``.
 
 **Example**
 
-.. code-block:: yaml
+.. tab-set::
 
-    imports:
-      - adi_lg_plugins
-    targets:
-      main:
-        resources:
-          TickArtifacts:
-            bitstream_path: /run/tick/system.bit
-            overlay_dtbo_path: /run/tick/tick.dtbo
-            module_ko_path: /run/tick/axi_timed_command_scheduler.ko
-            firmware_name: tick.bit
-            overlay_name: tick
-            remote_dir: /tmp/tick
-          NetworkService:
-            address: dut.example.test
-            username: root
-        drivers:
-          SSHDriver: {}
-          TickFpgaManagerDriver: {}
+    .. tab-item:: Exporter
+
+        Exporter resource configuration (``resources.yaml``):
+
+        .. code-block:: yaml
+
+            main:
+              NetworkService:
+                cls: NetworkService
+                address: dut.example.test
+                username: root
+
+        Client environment configuration (``target.yaml``):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  RemotePlace:
+                    name: example-place
+                  TickArtifacts:
+                    bitstream_path: /run/tick/system.bit
+                    overlay_dtbo_path: /run/tick/tick.dtbo
+                    module_ko_path: /run/tick/axi_timed_command_scheduler.ko
+                    firmware_name: tick.bit
+                    overlay_name: tick
+                    remote_dir: /tmp/tick
+                drivers:
+                  SSHDriver: {}
+                  TickFpgaManagerDriver: {}
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  TickArtifacts:
+                    bitstream_path: /run/tick/system.bit
+                    overlay_dtbo_path: /run/tick/tick.dtbo
+                    module_ko_path: /run/tick/axi_timed_command_scheduler.ko
+                    firmware_name: tick.bit
+                    overlay_name: tick
+                    remote_dir: /tmp/tick
+                  NetworkService:
+                    address: dut.example.test
+                    username: root
+                drivers:
+                  SSHDriver: {}
+                  TickFpgaManagerDriver: {}
 
 TickModuleDriver
 ~~~~~~~~~~~~~~~~
@@ -681,28 +1137,68 @@ Insert/remove ``axi_timed_command_scheduler.ko`` over SSH.
 
 **Example**
 
-.. code-block:: yaml
+.. tab-set::
 
-    imports:
-      - adi_lg_plugins
-    targets:
-      main:
-        resources:
-          TickArtifacts:
-            bitstream_path: /run/tick/system.bit
-            overlay_dtbo_path: /run/tick/tick.dtbo
-            module_ko_path: /run/tick/axi_timed_command_scheduler.ko
-            firmware_name: tick.bit
-            overlay_name: tick
-            remote_dir: /tmp/tick
-          NetworkService:
-            address: dut.example.test
-            username: root
-        drivers:
-          SSHDriver: {}
-          TickModuleDriver:
-            restart_iiod: true
-            force_on_vermagic_mismatch: true
+    .. tab-item:: Exporter
+
+        Exporter resource configuration (``resources.yaml``):
+
+        .. code-block:: yaml
+
+            main:
+              NetworkService:
+                cls: NetworkService
+                address: dut.example.test
+                username: root
+
+        Client environment configuration (``target.yaml``):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  RemotePlace:
+                    name: example-place
+                  TickArtifacts:
+                    bitstream_path: /run/tick/system.bit
+                    overlay_dtbo_path: /run/tick/tick.dtbo
+                    module_ko_path: /run/tick/axi_timed_command_scheduler.ko
+                    firmware_name: tick.bit
+                    overlay_name: tick
+                    remote_dir: /tmp/tick
+                drivers:
+                  SSHDriver: {}
+                  TickModuleDriver:
+                    restart_iiod: true
+                    force_on_vermagic_mismatch: true
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  TickArtifacts:
+                    bitstream_path: /run/tick/system.bit
+                    overlay_dtbo_path: /run/tick/tick.dtbo
+                    module_ko_path: /run/tick/axi_timed_command_scheduler.ko
+                    firmware_name: tick.bit
+                    overlay_name: tick
+                    remote_dir: /tmp/tick
+                  NetworkService:
+                    address: dut.example.test
+                    username: root
+                drivers:
+                  SSHDriver: {}
+                  TickModuleDriver:
+                    restart_iiod: true
+                    force_on_vermagic_mismatch: true
 
 TickOverlayDriver
 ~~~~~~~~~~~~~~~~~
@@ -731,26 +1227,64 @@ This component has no class-specific YAML arguments. Use ``{}``.
 
 **Example**
 
-.. code-block:: yaml
+.. tab-set::
 
-    imports:
-      - adi_lg_plugins
-    targets:
-      main:
-        resources:
-          TickArtifacts:
-            bitstream_path: /run/tick/system.bit
-            overlay_dtbo_path: /run/tick/tick.dtbo
-            module_ko_path: /run/tick/axi_timed_command_scheduler.ko
-            firmware_name: tick.bit
-            overlay_name: tick
-            remote_dir: /tmp/tick
-          NetworkService:
-            address: dut.example.test
-            username: root
-        drivers:
-          SSHDriver: {}
-          TickOverlayDriver: {}
+    .. tab-item:: Exporter
+
+        Exporter resource configuration (``resources.yaml``):
+
+        .. code-block:: yaml
+
+            main:
+              NetworkService:
+                cls: NetworkService
+                address: dut.example.test
+                username: root
+
+        Client environment configuration (``target.yaml``):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  RemotePlace:
+                    name: example-place
+                  TickArtifacts:
+                    bitstream_path: /run/tick/system.bit
+                    overlay_dtbo_path: /run/tick/tick.dtbo
+                    module_ko_path: /run/tick/axi_timed_command_scheduler.ko
+                    firmware_name: tick.bit
+                    overlay_name: tick
+                    remote_dir: /tmp/tick
+                drivers:
+                  SSHDriver: {}
+                  TickOverlayDriver: {}
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  TickArtifacts:
+                    bitstream_path: /run/tick/system.bit
+                    overlay_dtbo_path: /run/tick/tick.dtbo
+                    module_ko_path: /run/tick/axi_timed_command_scheduler.ko
+                    firmware_name: tick.bit
+                    overlay_name: tick
+                    remote_dir: /tmp/tick
+                  NetworkService:
+                    address: dut.example.test
+                    username: root
+                drivers:
+                  SSHDriver: {}
+                  TickOverlayDriver: {}
 
 KasaPowerDriver
 ~~~~~~~~~~~~~~~
@@ -773,18 +1307,51 @@ This component has no class-specific YAML arguments. Use ``{}``.
 
 **Example**
 
-.. code-block:: yaml
+.. tab-set::
 
-    imports:
-      - adi_lg_plugins
-    targets:
-      main:
-        resources:
-          KasaOutlet:
-            host: kasa-plug.example.test
-            outlets: Bench DUT
-            username: ${KASA_USERNAME}
-            password: ${KASA_PASSWORD}
-            delay: 5.0
-        drivers:
-          KasaPowerDriver: {}
+    .. tab-item:: Exporter
+
+        Exporter resource configuration (``resources.yaml``):
+
+        .. code-block:: yaml
+
+            main:
+              KasaOutlet:
+                cls: KasaOutlet
+                host: kasa-plug.example.test
+                outlets: Bench DUT
+                username: ${KASA_USERNAME}
+                password: ${KASA_PASSWORD}
+                delay: 5.0
+
+        Client environment configuration (``target.yaml``):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  RemotePlace:
+                    name: example-place
+                drivers:
+                  KasaPowerDriver: {}
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  KasaOutlet:
+                    host: kasa-plug.example.test
+                    outlets: Bench DUT
+                    username: ${KASA_USERNAME}
+                    password: ${KASA_PASSWORD}
+                    delay: 5.0
+                drivers:
+                  KasaPowerDriver: {}

@@ -67,16 +67,50 @@ TFTPServerDriver
 
 **Configuration**
 
-.. code-block:: yaml
+.. tab-set::
 
-    resources:
-      TFTPServerResource:
-        address: '10.0.0.1'           # IP address of the host interface
-        port: 3069                    # Port to bind (default: 3069)
-        root: '/var/lib/tftpboot'     # Root directory for serving files
+    .. tab-item:: Exporter
 
-    drivers:
-      TFTPServerDriver: {}
+        ``resources.yaml`` (on exporter host):
+
+        .. code-block:: yaml
+
+            my_group:
+              TFTPServerResource:
+                cls: TFTPServerResource
+                address: '10.0.0.1'           # IP address of the host interface
+                port: 3069                    # Port to bind (default: 3069)
+                root: '/var/lib/tftpboot'     # Root directory for serving files
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  RemotePlace:
+                    name: my_place
+                drivers:
+                  TFTPServerDriver: {}
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  TFTPServerResource:
+                    address: '10.0.0.1'           # IP address of the host interface
+                    port: 3069                    # Port to bind (default: 3069)
+                    root: '/var/lib/tftpboot'     # Root directory for serving files
+                drivers:
+                  TFTPServerDriver: {}
 
 **Key Parameters**
 
@@ -153,18 +187,51 @@ APCDriver
 
 **Configuration**
 
-.. code-block:: yaml
+.. tab-set::
 
-    targets:
-      test_device:
-        resources:
-          APCOutlet:
-            address: '192.168.1.50'
-            outlet: 1
-            delay: 5.0
+    .. tab-item:: Exporter
 
-        drivers:
-          APCDriver: {}
+        ``resources.yaml`` (on exporter host):
+
+        .. code-block:: yaml
+
+            my_group:
+              APCOutlet:
+                cls: APCOutlet
+                address: '192.168.1.50'
+                outlet: 1
+                delay: 5.0
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              test_device:
+                resources:
+                  RemotePlace:
+                    name: my_place
+                drivers:
+                  APCDriver: {}
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              test_device:
+                resources:
+                  APCOutlet:
+                    address: '192.168.1.50'
+                    outlet: 1
+                    delay: 5.0
+
+                drivers:
+                  APCDriver: {}
 
 **Key Parameters**
 
@@ -201,19 +268,53 @@ VesyncPowerDriver
 
 **Configuration**
 
-.. code-block:: yaml
+.. tab-set::
 
-    targets:
-      test_device:
-        resources:
-          VesyncOutlet:
-            outlet_names: 'My Test Device,Lab Bench Power'
-            username: 'your_email@example.com'
-            password: 'your_password'
-            delay: 5.0  # Seconds to wait between off/on during cycle
+    .. tab-item:: Exporter
 
-        drivers:
-          VesyncPowerDriver: {}
+        ``resources.yaml`` (on exporter host):
+
+        .. code-block:: yaml
+
+            my_group:
+              VesyncOutlet:
+                cls: VesyncOutlet
+                outlet_names: 'My Test Device,Lab Bench Power'
+                username: 'your_email@example.com'
+                password: 'your_password'
+                delay: 5.0  # Seconds to wait between off/on during cycle
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              test_device:
+                resources:
+                  RemotePlace:
+                    name: my_place
+                drivers:
+                  VesyncPowerDriver: {}
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              test_device:
+                resources:
+                  VesyncOutlet:
+                    outlet_names: 'My Test Device,Lab Bench Power'
+                    username: 'your_email@example.com'
+                    password: 'your_password'
+                    delay: 5.0  # Seconds to wait between off/on during cycle
+
+                drivers:
+                  VesyncPowerDriver: {}
 
 **Key Parameters**
 
@@ -287,18 +388,51 @@ CyberPowerDriver
 
 **Configuration**
 
-.. code-block:: yaml
+.. tab-set::
 
-    targets:
-      lab_device:
-        resources:
-          CyberPowerOutlet:
-            address: '192.168.1.100'    # PDU IP address or hostname
-            outlet: 3                    # Outlet number (1-8 for most models)
-            delay: 3.0                   # Seconds between off/on
+    .. tab-item:: Exporter
 
-        drivers:
-          CyberPowerDriver: {}
+        ``resources.yaml`` (on exporter host):
+
+        .. code-block:: yaml
+
+            my_group:
+              CyberPowerOutlet:
+                cls: CyberPowerOutlet
+                address: '192.168.1.100'    # PDU IP address or hostname
+                outlet: 3                    # Outlet number (1-8 for most models)
+                delay: 3.0                   # Seconds between off/on
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              lab_device:
+                resources:
+                  RemotePlace:
+                    name: my_place
+                drivers:
+                  CyberPowerDriver: {}
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              lab_device:
+                resources:
+                  CyberPowerOutlet:
+                    address: '192.168.1.100'    # PDU IP address or hostname
+                    outlet: 3                    # Outlet number (1-8 for most models)
+                    delay: 3.0                   # Seconds between off/on
+
+                drivers:
+                  CyberPowerDriver: {}
 
 **Key Parameters**
 
@@ -364,19 +498,53 @@ HomeAssistantPowerDriver
 
 **Configuration**
 
-.. code-block:: yaml
+.. tab-set::
 
-    targets:
-      lab_device:
-        resources:
-          HomeAssistantOutlet:
-            url: 'http://homeassistant.local:8123'
-            token: 'eyJhbGciOiJI...'             # Long-lived access token
-            entity_id: 'switch.lab_outlet_1'
-            delay: 5.0
+    .. tab-item:: Exporter
 
-        drivers:
-          HomeAssistantPowerDriver: {}
+        ``resources.yaml`` (on exporter host):
+
+        .. code-block:: yaml
+
+            my_group:
+              HomeAssistantOutlet:
+                cls: HomeAssistantOutlet
+                url: 'http://homeassistant.local:8123'
+                token: 'eyJhbGciOiJI...'             # Long-lived access token
+                entity_id: 'switch.lab_outlet_1'
+                delay: 5.0
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              lab_device:
+                resources:
+                  RemotePlace:
+                    name: my_place
+                drivers:
+                  HomeAssistantPowerDriver: {}
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              lab_device:
+                resources:
+                  HomeAssistantOutlet:
+                    url: 'http://homeassistant.local:8123'
+                    token: 'eyJhbGciOiJI...'             # Long-lived access token
+                    entity_id: 'switch.lab_outlet_1'
+                    delay: 5.0
+
+                drivers:
+                  HomeAssistantPowerDriver: {}
 
 **Key Parameters** (on ``HomeAssistantOutlet``)
 
@@ -434,18 +602,66 @@ ADIShellDriver
 
 **Configuration**
 
-.. code-block:: yaml
+.. tab-set::
 
-    drivers:
-      ADIShellDriver:
-        prompt: 'root@analog:.*#'              # Regex matching shell prompt
-        login_prompt: 'login:'                 # Regex matching login prompt
-        username: 'root'                       # Login username
-        password: 'analog'                     # Login password
-        login_timeout: 60                      # Seconds to wait for login
-        console_ready: 'Press ENTER'           # Optional: marker before login
-        await_login_timeout: 5                 # Seconds to detect login requirement
-        keyfile: 'keys/id_rsa.pub'             # Optional: SSH key to inject
+    .. tab-item:: Exporter
+
+        ``resources.yaml`` (on exporter host):
+
+        .. code-block:: yaml
+
+            my_group:
+              RawSerialPort:
+                cls: RawSerialPort
+                port: '/dev/ttyUSB0'
+                speed: 115200
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  RemotePlace:
+                    name: my_place
+                drivers:
+                  SerialDriver: {}
+                  ADIShellDriver:
+                    prompt: 'root@analog:.*#'              # Regex matching shell prompt
+                    login_prompt: 'login:'                 # Regex matching login prompt
+                    username: 'root'                       # Login username
+                    password: 'analog'                     # Login password
+                    login_timeout: 60                      # Seconds to wait for login
+                    console_ready: 'Press ENTER'           # Optional: marker before login
+                    await_login_timeout: 5                 # Seconds to detect login requirement
+                    keyfile: 'keys/id_rsa.pub'             # Optional: SSH key to inject
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  RawSerialPort:
+                    port: '/dev/ttyUSB0'
+                    speed: 115200
+                drivers:
+                  SerialDriver: {}
+                  ADIShellDriver:
+                    prompt: 'root@analog:.*#'              # Regex matching shell prompt
+                    login_prompt: 'login:'                 # Regex matching login prompt
+                    username: 'root'                       # Login username
+                    password: 'analog'                     # Login password
+                    login_timeout: 60                      # Seconds to wait for login
+                    console_ready: 'Press ENTER'           # Optional: marker before login
+                    await_login_timeout: 5                 # Seconds to detect login requirement
+                    keyfile: 'keys/id_rsa.pub'             # Optional: SSH key to inject
 
 **Key Parameters**
 
@@ -517,16 +733,62 @@ File upload and execution:
 
 SSH key injection for passwordless access:
 
-.. code-block:: yaml
+.. tab-set::
 
-    # Config with SSH key
-    drivers:
-      ADIShellDriver:
-        prompt: 'root@.*#'
-        login_prompt: 'login:'
-        username: 'root'
-        password: 'analog'
-        keyfile: 'keys/id_rsa.pub'    # Public key to inject
+    .. tab-item:: Exporter
+
+        ``resources.yaml`` (on exporter host):
+
+        .. code-block:: yaml
+
+            my_group:
+              RawSerialPort:
+                cls: RawSerialPort
+                port: '/dev/ttyUSB0'
+                speed: 115200
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            # Config with SSH key
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  RemotePlace:
+                    name: my_place
+                drivers:
+                  SerialDriver: {}
+                  ADIShellDriver:
+                    prompt: 'root@.*#'
+                    login_prompt: 'login:'
+                    username: 'root'
+                    password: 'analog'
+                    keyfile: 'keys/id_rsa.pub'    # Public key to inject
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            # Config with SSH key
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  RawSerialPort:
+                    port: '/dev/ttyUSB0'
+                    speed: 115200
+                drivers:
+                  SerialDriver: {}
+                  ADIShellDriver:
+                    prompt: 'root@.*#'
+                    login_prompt: 'login:'
+                    username: 'root'
+                    password: 'analog'
+                    keyfile: 'keys/id_rsa.pub'    # Public key to inject
 
 .. code-block:: bash
 
@@ -574,17 +836,52 @@ MassStorageDriver
 
 **Configuration**
 
-.. code-block:: yaml
+.. tab-set::
 
-    resources:
-      MassStorageDevice:
-        path: '/dev/disk/by-partuuid/0123-4567'
-        use_with_sdmux: true
+    .. tab-item:: Exporter
 
-    drivers:
-      MassStorageDriver:
-        partition: '1'
-        mount_label: 'lg_mass_storage'
+        ``resources.yaml`` (on exporter host):
+
+        .. code-block:: yaml
+
+            my_group:
+              MassStorageDevice:
+                cls: MassStorageDevice
+                path: '/dev/disk/by-partuuid/0123-4567'
+                use_with_sdmux: true
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  RemotePlace:
+                    name: my_place
+                drivers:
+                  MassStorageDriver:
+                    partition: '1'
+                    mount_label: 'lg_mass_storage'
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  MassStorageDevice:
+                    path: '/dev/disk/by-partuuid/0123-4567'
+                    use_with_sdmux: true
+                drivers:
+                  MassStorageDriver:
+                    partition: '1'
+                    mount_label: 'lg_mass_storage'
 
 **Key Parameters**
 
@@ -680,15 +977,48 @@ KuiperDLDriver
 
 **Configuration**
 
-.. code-block:: yaml
+.. tab-set::
 
-    resources:
-      KuiperRelease:
-        release_version: '2023_R2_P1'               # Release version
-        cache_path: '/var/cache/kuiper'    # Download cache directory
+    .. tab-item:: Exporter
 
-    drivers:
-      KuiperDLDriver: {}
+        ``resources.yaml`` (on exporter host):
+
+        .. code-block:: yaml
+
+            my_group:
+              KuiperRelease:
+                cls: KuiperRelease
+                release_version: '2023_R2_P1'               # Release version
+                cache_path: '/var/cache/kuiper'    # Download cache directory
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  RemotePlace:
+                    name: my_place
+                drivers:
+                  KuiperDLDriver: {}
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  KuiperRelease:
+                    release_version: '2023_R2_P1'               # Release version
+                    cache_path: '/var/cache/kuiper'    # Download cache directory
+                drivers:
+                  KuiperDLDriver: {}
 
 **Key Parameters**
 
@@ -791,16 +1121,50 @@ individual files served over a CDN.
 
 **Configuration**
 
-.. code-block:: yaml
+.. tab-set::
 
-    resources:
-      CloudsmithRelease:
-        fpga_carrier: 'zcu102'
-        daughter_card: 'adrv9009'
-        # version: '...'   # optional pin; omit for latest
+    .. tab-item:: Exporter
 
-    drivers:
-      CloudsmithDLDriver: {}
+        ``resources.yaml`` (on exporter host):
+
+        .. code-block:: yaml
+
+            my_group:
+              CloudsmithRelease:
+                cls: CloudsmithRelease
+                fpga_carrier: 'zcu102'
+                daughter_card: 'adrv9009'
+                # version: '...'   # optional pin; omit for latest
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  RemotePlace:
+                    name: my_place
+                drivers:
+                  CloudsmithDLDriver: {}
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  CloudsmithRelease:
+                    fpga_carrier: 'zcu102'
+                    daughter_card: 'adrv9009'
+                    # version: '...'   # optional pin; omit for latest
+                drivers:
+                  CloudsmithDLDriver: {}
 
 Set ``CLOUDSMITH_API_TOKEN`` in the environment (or ``api_token`` on the
 resource) before activating the driver.
@@ -868,23 +1232,62 @@ cable; see :doc:`hardware-ci-runner-setup` for host setup.
 
 **Configuration**
 
-.. code-block:: yaml
+.. tab-set::
 
-    targets:
-      vcu118:
-        resources:
-          XilinxVivadoTool:
-            vivado_path: '/tools/Xilinx/2025.1/Vivado'
-            # xsdb_path is auto-derived from vivado_path if omitted.
+    .. tab-item:: Exporter
 
-          XilinxDeviceJTAG:
-            root_target: 1                        # FPGA fabric target ID
-            microblaze_target: 3                  # Microblaze processor target ID
-            bitstream_path: '/builds/system_top.bit'
-            kernel_path:    '/builds/simpleImage.vcu118.strip'
+        ``resources.yaml`` (on exporter host):
 
-        drivers:
-          XilinxJTAGDriver: {}
+        .. code-block:: yaml
+
+            vcu118_group:
+              XilinxVivadoTool:
+                cls: XilinxVivadoTool
+                vivado_path: '/tools/Xilinx/2025.1/Vivado'
+                # xsdb_path is auto-derived from vivado_path if omitted.
+
+              XilinxDeviceJTAG:
+                cls: XilinxDeviceJTAG
+                root_target: 1                        # FPGA fabric target ID
+                microblaze_target: 3                  # Microblaze processor target ID
+                bitstream_path: '/builds/system_top.bit'
+                kernel_path:    '/builds/simpleImage.vcu118.strip'
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              vcu118:
+                resources:
+                  RemotePlace:
+                    name: vcu118_place
+                drivers:
+                  XilinxJTAGDriver: {}
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              vcu118:
+                resources:
+                  XilinxVivadoTool:
+                    vivado_path: '/tools/Xilinx/2025.1/Vivado'
+                    # xsdb_path is auto-derived from vivado_path if omitted.
+
+                  XilinxDeviceJTAG:
+                    root_target: 1                        # FPGA fabric target ID
+                    microblaze_target: 3                  # Microblaze processor target ID
+                    bitstream_path: '/builds/system_top.bit'
+                    kernel_path:    '/builds/simpleImage.vcu118.strip'
+
+                drivers:
+                  XilinxJTAGDriver: {}
 
 **Key Parameters** (on ``XilinxDeviceJTAG`` / ``XilinxVivadoTool``)
 
@@ -999,14 +1402,52 @@ SoftwareInstallerDriver
 
 **Configuration**
 
-.. code-block:: yaml
+.. tab-set::
 
-    drivers:
-      SSHDriver:
-        hostname: '10.0.0.23'
-        username: 'root'
-        password: 'analog'
-      SoftwareInstallerDriver: {}
+    .. tab-item:: Exporter
+
+        ``resources.yaml`` (on exporter host):
+
+        .. code-block:: yaml
+
+            my_group:
+              NetworkService:
+                cls: NetworkService
+                address: '10.0.0.23'
+                username: 'root'
+                password: 'analog'
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  RemotePlace:
+                    name: my_place
+                drivers:
+                  SSHDriver: {}
+                  SoftwareInstallerDriver: {}
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  NetworkService:
+                    address: '10.0.0.23'
+                    username: 'root'
+                    password: 'analog'
+                drivers:
+                  SSHDriver: {}
+                  SoftwareInstallerDriver: {}
 
 **Key Parameters**
 

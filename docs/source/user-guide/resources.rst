@@ -38,19 +38,52 @@ Resource Binding
 
 Resources are bound to drivers via configuration:
 
-.. code-block:: yaml
+.. tab-set::
 
-    targets:
-      my_device:
-        resources:
-          VesyncOutlet:          # Resource type
-            outlet_names: 'Lab Device 1'
-            username: 'user@example.com'
-            password: 'password'
+    .. tab-item:: Exporter
 
-        drivers:
-          VesyncPowerDriver:     # Driver using the resource
-            {}
+        Exporter resource configuration (``resources.yaml``):
+
+        .. code-block:: yaml
+
+            my_device:
+              VesyncOutlet:
+                cls: VesyncOutlet
+                outlet_names: 'Lab Device 1'
+                username: 'user@example.com'
+                password: 'password'
+
+        Client environment configuration (``target.yaml``):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              my_device:
+                resources:
+                  RemotePlace:
+                    name: my_device
+                drivers:
+                  VesyncPowerDriver: {}
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              my_device:
+                resources:
+                  VesyncOutlet:          # Resource type
+                    outlet_names: 'Lab Device 1'
+                    username: 'user@example.com'
+                    password: 'password'
+
+                drivers:
+                  VesyncPowerDriver:     # Driver using the resource
+                    {}
 
 The driver then accesses the resource:
 
@@ -88,24 +121,63 @@ VesyncOutlet
 
 **Basic Example**
 
-.. code-block:: yaml
+.. tab-set::
 
-    resources:
-      VesyncOutlet:
-        outlet_names: 'Lab Device Power'
-        username: 'engineer@example.com'
-        password: 'secure_password'
-        delay: 5.0
+    .. tab-item:: Exporter
+
+        .. code-block:: yaml
+
+            main:
+              VesyncOutlet:
+                cls: VesyncOutlet
+                outlet_names: 'Lab Device Power'
+                username: 'engineer@example.com'
+                password: 'secure_password'
+                delay: 5.0
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  VesyncOutlet:
+                    outlet_names: 'Lab Device Power'
+                    username: 'engineer@example.com'
+                    password: 'secure_password'
+                    delay: 5.0
 
 **Multiple Outlets Example**
 
-.. code-block:: yaml
+.. tab-set::
 
-    resources:
-      VesyncOutlet:
-        outlet_names: 'Device A,Device B,Device C'
-        username: 'engineer@example.com'
-        password: 'secure_password'
+    .. tab-item:: Exporter
+
+        .. code-block:: yaml
+
+            main:
+              VesyncOutlet:
+                cls: VesyncOutlet
+                outlet_names: 'Device A,Device B,Device C'
+                username: 'engineer@example.com'
+                password: 'secure_password'
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  VesyncOutlet:
+                    outlet_names: 'Device A,Device B,Device C'
+                    username: 'engineer@example.com'
+                    password: 'secure_password'
 
 **Notes**
 
@@ -131,22 +203,59 @@ CyberPowerOutlet
 
 **Basic Example**
 
-.. code-block:: yaml
+.. tab-set::
 
-    resources:
-      CyberPowerOutlet:
-        address: '192.168.1.100'
-        outlet: 3
-        delay: 3.0
+    .. tab-item:: Exporter
+
+        .. code-block:: yaml
+
+            main:
+              CyberPowerOutlet:
+                cls: CyberPowerOutlet
+                address: '192.168.1.100'
+                outlet: 3
+                delay: 3.0
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  CyberPowerOutlet:
+                    address: '192.168.1.100'
+                    outlet: 3
+                    delay: 3.0
 
 **Hostname Example**
 
-.. code-block:: yaml
+.. tab-set::
 
-    resources:
-      CyberPowerOutlet:
-        address: 'lab-pdu-01.local'
-        outlet: 5
+    .. tab-item:: Exporter
+
+        .. code-block:: yaml
+
+            main:
+              CyberPowerOutlet:
+                cls: CyberPowerOutlet
+                address: 'lab-pdu-01.local'
+                outlet: 5
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  CyberPowerOutlet:
+                    address: 'lab-pdu-01.local'
+                    outlet: 5
 
 **Notes**
 
@@ -173,22 +282,59 @@ APCOutlet
 
 **Basic Example**
 
-.. code-block:: yaml
+.. tab-set::
 
-    resources:
-      APCOutlet:
-        address: '192.168.1.50'
-        outlet: 1
-        delay: 3.0
+    .. tab-item:: Exporter
+
+        .. code-block:: yaml
+
+            main:
+              APCOutlet:
+                cls: APCOutlet
+                address: '192.168.1.50'
+                outlet: 1
+                delay: 3.0
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  APCOutlet:
+                    address: '192.168.1.50'
+                    outlet: 1
+                    delay: 3.0
 
 **Hostname Example**
 
-.. code-block:: yaml
+.. tab-set::
 
-    resources:
-      APCOutlet:
-        address: 'lab-apc-01.local'
-        outlet: 4
+    .. tab-item:: Exporter
+
+        .. code-block:: yaml
+
+            main:
+              APCOutlet:
+                cls: APCOutlet
+                address: 'lab-apc-01.local'
+                outlet: 4
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  APCOutlet:
+                    address: 'lab-apc-01.local'
+                    outlet: 4
 
 **Notes**
 
@@ -216,23 +362,61 @@ MassStorageDevice
 
 **Basic Example**
 
-.. code-block:: yaml
+.. tab-set::
 
-    resources:
-      MassStorageDevice:
-        path: '/dev/disk/by-partuuid/0123-4567'
-        use_with_sdmux: true
+    .. tab-item:: Exporter
+
+        .. code-block:: yaml
+
+            main:
+              MassStorageDevice:
+                cls: MassStorageDevice
+                path: '/dev/disk/by-partuuid/0123-4567'
+                use_with_sdmux: true
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  MassStorageDevice:
+                    path: '/dev/disk/by-partuuid/0123-4567'
+                    use_with_sdmux: true
 
 **File Update Example**
 
-.. code-block:: yaml
+.. tab-set::
 
-    resources:
-      MassStorageDevice:
-        path: '/dev/disk/by-partuuid/0123-4567'
-        file_updates:
-          BOOT.BIN: '/srv/boot/BOOT.BIN'
-          Image: '/srv/boot/Image'
+    .. tab-item:: Exporter
+
+        .. code-block:: yaml
+
+            main:
+              MassStorageDevice:
+                cls: MassStorageDevice
+                path: '/dev/disk/by-partuuid/0123-4567'
+                file_updates:
+                  BOOT.BIN: '/srv/boot/BOOT.BIN'
+                  Image: '/srv/boot/Image'
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  MassStorageDevice:
+                    path: '/dev/disk/by-partuuid/0123-4567'
+                    file_updates:
+                      BOOT.BIN: '/srv/boot/BOOT.BIN'
+                      Image: '/srv/boot/Image'
 
 **Important Notes**
 
@@ -275,21 +459,57 @@ KuiperRelease
 
 **Basic Example**
 
-.. code-block:: yaml
+.. tab-set::
 
-    resources:
-      KuiperRelease:
-        release_version: '2023_R2_P1'
-        cache_path: '/var/cache/kuiper'
+    .. tab-item:: Exporter
+
+        .. code-block:: yaml
+
+            main:
+              KuiperRelease:
+                cls: KuiperRelease
+                release_version: '2023_R2_P1'
+                cache_path: '/var/cache/kuiper'
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  KuiperRelease:
+                    release_version: '2023_R2_P1'
+                    cache_path: '/var/cache/kuiper'
 
 **System-Wide Cache Example**
 
-.. code-block:: yaml
+.. tab-set::
 
-    resources:
-      KuiperRelease:
-        release_version: '2023_R2_P1'
-        cache_path: '/opt/labgrid/kuiper-cache'
+    .. tab-item:: Exporter
+
+        .. code-block:: yaml
+
+            main:
+              KuiperRelease:
+                cls: KuiperRelease
+                release_version: '2023_R2_P1'
+                cache_path: '/opt/labgrid/kuiper-cache'
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  KuiperRelease:
+                    release_version: '2023_R2_P1'
+                    cache_path: '/opt/labgrid/kuiper-cache'
 
 **Notes**
 
@@ -326,23 +546,61 @@ Cloudsmith package repository, resolved by FPGA carrier + daughter card.
 
 **Basic Example**
 
-.. code-block:: yaml
+.. tab-set::
 
-    resources:
-      CloudsmithRelease:
-        fpga_carrier: 'zcu102'
-        daughter_card: 'adrv9009'
+    .. tab-item:: Exporter
+
+        .. code-block:: yaml
+
+            main:
+              CloudsmithRelease:
+                cls: CloudsmithRelease
+                fpga_carrier: 'zcu102'
+                daughter_card: 'adrv9009'
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  CloudsmithRelease:
+                    fpga_carrier: 'zcu102'
+                    daughter_card: 'adrv9009'
 
 **Pinned Version Example**
 
-.. code-block:: yaml
+.. tab-set::
 
-    resources:
-      CloudsmithRelease:
-        fpga_carrier: 'zcu102'
-        daughter_card: 'adrv9009'
-        # Reproducible: resolve this exact package instead of latest.
-        version: 'boot_partition/main/2025_06_14-07_18_12/zynqmp-zcu102-rev10-adrv9009/'
+    .. tab-item:: Exporter
+
+        .. code-block:: yaml
+
+            main:
+              CloudsmithRelease:
+                cls: CloudsmithRelease
+                fpga_carrier: 'zcu102'
+                daughter_card: 'adrv9009'
+                # Reproducible: resolve this exact package instead of latest.
+                version: 'boot_partition/main/2025_06_14-07_18_12/zynqmp-zcu102-rev10-adrv9009/'
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  CloudsmithRelease:
+                    fpga_carrier: 'zcu102'
+                    daughter_card: 'adrv9009'
+                    # Reproducible: resolve this exact package instead of latest.
+                    version: 'boot_partition/main/2025_06_14-07_18_12/zynqmp-zcu102-rev10-adrv9009/'
 
 **Notes**
 
@@ -370,14 +628,34 @@ HomeAssistantOutlet
 
 **Example**
 
-.. code-block:: yaml
+.. tab-set::
 
-    resources:
-      HomeAssistantOutlet:
-        url: 'http://homeassistant.local:8123'
-        token: 'eyJhbGciOiJI...'
-        entity_id: 'switch.lab_outlet_1'
-        delay: 5.0
+    .. tab-item:: Exporter
+
+        .. code-block:: yaml
+
+            main:
+              HomeAssistantOutlet:
+                cls: HomeAssistantOutlet
+                url: 'http://homeassistant.local:8123'
+                token: 'eyJhbGciOiJI...'
+                entity_id: 'switch.lab_outlet_1'
+                delay: 5.0
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  HomeAssistantOutlet:
+                    url: 'http://homeassistant.local:8123'
+                    token: 'eyJhbGciOiJI...'
+                    entity_id: 'switch.lab_outlet_1'
+                    delay: 5.0
 
 **Notes**
 
@@ -398,13 +676,32 @@ TFTPServerResource
 
 **Example**
 
-.. code-block:: yaml
+.. tab-set::
 
-    resources:
-      TFTPServerResource:
-        address: 'auto'
-        port: 3069
-        root: '/var/lib/tftpboot'
+    .. tab-item:: Exporter
+
+        .. code-block:: yaml
+
+            main:
+              TFTPServerResource:
+                cls: TFTPServerResource
+                address: 'auto'
+                port: 3069
+                root: '/var/lib/tftpboot'
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  TFTPServerResource:
+                    address: 'auto'
+                    port: 3069
+                    root: '/var/lib/tftpboot'
 
 **Notes**
 
@@ -426,12 +723,30 @@ XilinxVivadoTool
 
 **Example**
 
-.. code-block:: yaml
+.. tab-set::
 
-    resources:
-      XilinxVivadoTool:
-        vivado_path: '/tools/Xilinx/2025.1/Vivado'
-        version: '2025.1'
+    .. tab-item:: Exporter
+
+        .. code-block:: yaml
+
+            main:
+              XilinxVivadoTool:
+                cls: XilinxVivadoTool
+                vivado_path: '/tools/Xilinx/2025.1/Vivado'
+                version: '2025.1'
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  XilinxVivadoTool:
+                    vivado_path: '/tools/Xilinx/2025.1/Vivado'
+                    version: '2025.1'
 
 **Notes**
 
@@ -455,14 +770,34 @@ XilinxDeviceJTAG
 
 **Example**
 
-.. code-block:: yaml
+.. tab-set::
 
-    resources:
-      XilinxDeviceJTAG:
-        root_target: 1
-        microblaze_target: 3
-        bitstream_path: 'ref/vcu118_ad9081_m8_l4/system_top.bit'
-        kernel_path:    'ref/vcu118_ad9081_m8_l4/simpleImage.vcu118_ad9081_m8_l4.strip'
+    .. tab-item:: Exporter
+
+        .. code-block:: yaml
+
+            main:
+              XilinxDeviceJTAG:
+                cls: XilinxDeviceJTAG
+                root_target: 1
+                microblaze_target: 3
+                bitstream_path: 'ref/vcu118_ad9081_m8_l4/system_top.bit'
+                kernel_path:    'ref/vcu118_ad9081_m8_l4/simpleImage.vcu118_ad9081_m8_l4.strip'
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  XilinxDeviceJTAG:
+                    root_target: 1
+                    microblaze_target: 3
+                    bitstream_path: 'ref/vcu118_ad9081_m8_l4/system_top.bit'
+                    kernel_path:    'ref/vcu118_ad9081_m8_l4/simpleImage.vcu118_ad9081_m8_l4.strip'
 
 **Notes**
 
@@ -478,24 +813,63 @@ Security
 
 Never commit credentials to git:
 
-.. code-block:: yaml
+.. tab-set::
 
-    # BAD - Don't do this!
-    resources:
-      VesyncOutlet:
-        username: 'engineer@example.com'
-        password: 'hardcoded_password'  # Never!
+    .. tab-item:: Exporter
+
+        .. code-block:: yaml
+
+            # BAD - Don't do this!
+            my_group:
+              VesyncOutlet:
+                cls: VesyncOutlet
+                username: 'engineer@example.com'
+                password: 'hardcoded_password'  # Never!
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            # BAD - Don't do this!
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  VesyncOutlet:
+                    username: 'engineer@example.com'
+                    password: 'hardcoded_password'  # Never!
 
 **Use Environment Variables**
 
-.. code-block:: yaml
+.. tab-set::
 
-    # GOOD - Use environment variables
-    resources:
-      VesyncOutlet:
-        outlet_names: 'Device Power'
-        username: !env VESYNC_USERNAME
-        password: !env VESYNC_PASSWORD
+    .. tab-item:: Exporter
+
+        .. code-block:: yaml
+
+            # GOOD - Use environment variables in exporter resources.yaml
+            my_group:
+              VesyncOutlet:
+                cls: VesyncOutlet
+                outlet_names: 'Device Power'
+                username: !env VESYNC_USERNAME
+                password: !env VESYNC_PASSWORD
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            # GOOD - Use environment variables in target.yaml
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  VesyncOutlet:
+                    outlet_names: 'Device Power'
+                    username: !env VESYNC_USERNAME
+                    password: !env VESYNC_PASSWORD
 
 Then set environment before running:
 
@@ -519,6 +893,8 @@ Then set environment before running:
 .. code-block:: yaml
 
     # target.yaml (committed to git)
+    imports:
+      - adi_lg_plugins
     includes:
       - credentials.yaml
 
@@ -546,11 +922,28 @@ Create `/etc/udev/rules.d/99-labgrid.rules`:
 
 Then use in configuration:
 
-.. code-block:: yaml
+.. tab-set::
 
-    resources:
-      MassStorageDevice:
-        path: '/dev/sd-mux-labgrid1'
+    .. tab-item:: Exporter
+
+        .. code-block:: yaml
+
+            my_group:
+              MassStorageDevice:
+                cls: MassStorageDevice
+                path: '/dev/sd-mux-labgrid1'
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  MassStorageDevice:
+                    path: '/dev/sd-mux-labgrid1'
 
 Reload udev rules:
 
@@ -584,6 +977,8 @@ Then reference in target files:
 .. code-block:: yaml
 
     # target1.yaml
+    imports:
+      - adi_lg_plugins
     includes:
       - common-resources.yaml
 
@@ -600,36 +995,84 @@ Configuration Documentation
 
 **Comment Your Configuration**
 
-.. code-block:: yaml
+.. tab-set::
 
-    targets:
-      zcu102_dev:
-        # Main test device in lab
-        # Power controlled via PDU outlet 3
-        # Serial: /dev/ttyUSB0 (mapped via udev)
-        # SD card: /dev/sdb (SanDisk Ultra, blue connector)
+    .. tab-item:: Exporter
 
-        resources:
-          CyberPowerOutlet:
-            address: '10.0.1.100'  # Lab PDU IP
-            outlet: 3              # Physical outlet on front panel
-            delay: 3.0             # Device needs 3 sec before boot
+        .. code-block:: yaml
 
-          MassStorageDevice:
-            path: '/dev/sdb1'      # USB SD card boot partition
+            zcu102_dev:
+              # Main test device in lab
+              # Power controlled via PDU outlet 3
+              # Serial: /dev/ttyUSB0 (mapped via udev)
+              # SD card: /dev/sdb (SanDisk Ultra, blue connector)
+
+              CyberPowerOutlet:
+                cls: CyberPowerOutlet
+                address: '10.0.1.100'  # Lab PDU IP
+                outlet: 3              # Physical outlet on front panel
+                delay: 3.0             # Device needs 3 sec before boot
+
+              MassStorageDevice:
+                cls: MassStorageDevice
+                path: '/dev/sdb1'      # USB SD card boot partition
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              zcu102_dev:
+                # Main test device in lab
+                # Power controlled via PDU outlet 3
+                # Serial: /dev/ttyUSB0 (mapped via udev)
+                # SD card: /dev/sdb (SanDisk Ultra, blue connector)
+
+                resources:
+                  CyberPowerOutlet:
+                    address: '10.0.1.100'  # Lab PDU IP
+                    outlet: 3              # Physical outlet on front panel
+                    delay: 3.0             # Device needs 3 sec before boot
+
+                  MassStorageDevice:
+                    path: '/dev/sdb1'      # USB SD card boot partition
 
 **Document Special Considerations**
 
-.. code-block:: yaml
+.. tab-set::
 
-    resources:
-      VesyncOutlet:
-        # Note: WiFi outlet firmware requires IP in 192.168.x.x range
-        # If lab network is 10.0.x.x, outlet won't connect to account
-        outlet_names: 'Lab Bench Power'
-        username: 'lab@example.com'
-        password: 'password'
-        delay: 10.0  # This outlet is slow, needs longer wait
+    .. tab-item:: Exporter
+
+        .. code-block:: yaml
+
+            my_group:
+              VesyncOutlet:
+                cls: VesyncOutlet
+                # Note: WiFi outlet firmware requires IP in 192.168.x.x range
+                # If lab network is 10.0.x.x, outlet won't connect to account
+                outlet_names: 'Lab Bench Power'
+                username: 'lab@example.com'
+                password: 'password'
+                delay: 10.0  # This outlet is slow, needs longer wait
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  VesyncOutlet:
+                    # Note: WiFi outlet firmware requires IP in 192.168.x.x range
+                    # If lab network is 10.0.x.x, outlet won't connect to account
+                    outlet_names: 'Lab Bench Power'
+                    username: 'lab@example.com'
+                    password: 'password'
+                    delay: 10.0  # This outlet is slow, needs longer wait
 
 Testing Configuration
 ---------------------
@@ -666,81 +1109,198 @@ Resource Declaration Patterns
 Single Target Example
 ~~~~~~~~~~~~~~~~~~~~~
 
-.. code-block:: yaml
+.. tab-set::
 
-    targets:
-      zcu102:
-        resources:
-          VesyncOutlet:
-            outlet_names: 'ZCU102 Test Board'
-            username: 'user@example.com'
-            password: 'password'
+    .. tab-item:: Exporter
 
-          MassStorageDevice:
-            path: '/dev/sdb1'
+        ``resources.yaml`` (on exporter host):
 
-          KuiperRelease:
-            release_version: '2023_R2_P1'
-            cache_path: '/var/cache/kuiper'
+        .. code-block:: yaml
 
-        drivers:
-          VesyncPowerDriver: {}
-          MassStorageDriver: {}
-          KuiperDLDriver: {}
+            zcu102_group:
+              VesyncOutlet:
+                cls: VesyncOutlet
+                outlet_names: 'ZCU102 Test Board'
+                username: 'user@example.com'
+                password: 'password'
+
+              MassStorageDevice:
+                cls: MassStorageDevice
+                path: '/dev/sdb1'
+
+              KuiperRelease:
+                cls: KuiperRelease
+                release_version: '2023_R2_P1'
+                cache_path: '/var/cache/kuiper'
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              zcu102:
+                resources:
+                  RemotePlace:
+                    name: zcu102_place
+                drivers:
+                  VesyncPowerDriver: {}
+                  MassStorageDriver: {}
+                  KuiperDLDriver: {}
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              zcu102:
+                resources:
+                  VesyncOutlet:
+                    outlet_names: 'ZCU102 Test Board'
+                    username: 'user@example.com'
+                    password: 'password'
+
+                  MassStorageDevice:
+                    path: '/dev/sdb1'
+
+                  KuiperRelease:
+                    release_version: '2023_R2_P1'
+                    cache_path: '/var/cache/kuiper'
+
+                drivers:
+                  VesyncPowerDriver: {}
+                  MassStorageDriver: {}
+                  KuiperDLDriver: {}
 
 Multiple Targets Sharing Resources
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. code-block:: yaml
+.. tab-set::
 
-    # shared.yaml
-    resources:
-      shared_pdu:
-        CyberPowerOutlet:
-          address: '192.168.1.100'
-          delay: 3.0
+    .. tab-item:: Exporter
 
-      shared_kuiper:
-        KuiperRelease:
-          release_version: '2023_R2_P1'
-          cache_path: '/var/cache/kuiper'
+        ``resources.yaml`` (on exporter host):
 
-    # target1.yaml
-    includes:
-      - shared.yaml
+        .. code-block:: yaml
 
-    targets:
-      device1:
-        resources:
-          CyberPowerOutlet:
-            outlet: 1
-          KuiperRelease: {}
-        drivers:
-          CyberPowerDriver: {}
+            device1_group:
+              CyberPowerOutlet:
+                cls: CyberPowerOutlet
+                address: '192.168.1.100'
+                outlet: 1
+                delay: 3.0
+              KuiperRelease:
+                cls: KuiperRelease
+                release_version: '2023_R2_P1'
+                cache_path: '/var/cache/kuiper'
 
-    # target2.yaml
-    includes:
-      - shared.yaml
+            device2_group:
+              CyberPowerOutlet:
+                cls: CyberPowerOutlet
+                address: '192.168.1.100'
+                outlet: 2
+                delay: 3.0
+              KuiperRelease:
+                cls: KuiperRelease
+                release_version: '2023_R2_P1'
+                cache_path: '/var/cache/kuiper'
 
-    targets:
-      device2:
-        resources:
-          CyberPowerOutlet:
-            outlet: 2
-          KuiperRelease: {}
-        drivers:
-          CyberPowerDriver: {}
+        ``targets.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              device1:
+                resources:
+                  RemotePlace:
+                    name: device1_place
+                drivers:
+                  CyberPowerDriver: {}
+              device2:
+                resources:
+                  RemotePlace:
+                    name: device2_place
+                drivers:
+                  CyberPowerDriver: {}
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            # shared.yaml
+            resources:
+              shared_pdu:
+                CyberPowerOutlet:
+                  address: '192.168.1.100'
+                  delay: 3.0
+
+              shared_kuiper:
+                KuiperRelease:
+                  release_version: '2023_R2_P1'
+                  cache_path: '/var/cache/kuiper'
+
+            # target1.yaml
+            imports:
+              - adi_lg_plugins
+            includes:
+              - shared.yaml
+
+            targets:
+              device1:
+                resources:
+                  CyberPowerOutlet:
+                    outlet: 1
+                  KuiperRelease: {}
+                drivers:
+                  CyberPowerDriver: {}
+
+            # target2.yaml
+            imports:
+              - adi_lg_plugins
+            includes:
+              - shared.yaml
+
+            targets:
+              device2:
+                resources:
+                  CyberPowerOutlet:
+                    outlet: 2
+                  KuiperRelease: {}
+                drivers:
+                  CyberPowerDriver: {}
 
 Environment Variable Integration
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. code-block:: yaml
+.. tab-set::
 
-    # template.yaml
-    resources:
-      storage:
-        MassStorageDevice:
-          path: !env STORAGE_DEVICE
+    .. tab-item:: Exporter
+
+        .. code-block:: yaml
+
+            # resources.yaml
+            my_group:
+              MassStorageDevice:
+                cls: MassStorageDevice
+                path: !env STORAGE_DEVICE
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            # template.yaml
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  MassStorageDevice:
+                    path: !env STORAGE_DEVICE
 
 Set before use:
 

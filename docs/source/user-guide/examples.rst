@@ -10,19 +10,53 @@ Turn on/off a device using a smart outlet:
 
 **Configuration**:
 
-.. code-block:: yaml
+.. tab-set::
 
-    targets:
-      mydevice:
-        resources:
-          VesyncOutlet:
-            outlet_names: 'Device Power'
-            username: 'your_email@example.com'
-            password: 'your_password'
-            delay: 5.0
+    .. tab-item:: Exporter
 
-        drivers:
-          VesyncPowerDriver: {}
+        ``resources.yaml`` (on exporter host):
+
+        .. code-block:: yaml
+
+            mydevice_group:
+              VesyncOutlet:
+                cls: VesyncOutlet
+                outlet_names: 'Device Power'
+                username: 'your_email@example.com'
+                password: 'your_password'
+                delay: 5.0
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              mydevice:
+                resources:
+                  RemotePlace:
+                    name: mydevice_place
+                drivers:
+                  VesyncPowerDriver: {}
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              mydevice:
+                resources:
+                  VesyncOutlet:
+                    outlet_names: 'Device Power'
+                    username: 'your_email@example.com'
+                    password: 'your_password'
+                    delay: 5.0
+
+                drivers:
+                  VesyncPowerDriver: {}
 
 **Usage**:
 
@@ -45,22 +79,61 @@ Connect to a device's serial console for interactive shell commands:
 
 **Configuration**:
 
-.. code-block:: yaml
+.. tab-set::
 
-    targets:
-      serial_device:
-        resources:
-          RawSerialPort:
-            port: '/dev/ttyUSB0'
-            speed: 115200
+    .. tab-item:: Exporter
 
-        drivers:
-          ADIShellDriver:
-            prompt: 'root@.*:.*#'
-            login_prompt: 'login:'
-            username: 'root'
-            password: 'analog'
-            login_timeout: 60
+        ``resources.yaml`` (on exporter host):
+
+        .. code-block:: yaml
+
+            serial_device_group:
+              RawSerialPort:
+                cls: RawSerialPort
+                port: '/dev/ttyUSB0'
+                speed: 115200
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              serial_device:
+                resources:
+                  RemotePlace:
+                    name: serial_device_place
+                drivers:
+                  SerialDriver: {}
+                  ADIShellDriver:
+                    prompt: 'root@.*:.*#'
+                    login_prompt: 'login:'
+                    username: 'root'
+                    password: 'analog'
+                    login_timeout: 60
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              serial_device:
+                resources:
+                  RawSerialPort:
+                    port: '/dev/ttyUSB0'
+                    speed: 115200
+
+                drivers:
+                  SerialDriver: {}
+                  ADIShellDriver:
+                    prompt: 'root@.*:.*#'
+                    login_prompt: 'login:'
+                    username: 'root'
+                    password: 'analog'
+                    login_timeout: 60
 
 **Usage**:
 
@@ -88,21 +161,59 @@ Upload/download files using XMODEM protocol over serial:
 
 **Configuration**:
 
-.. code-block:: yaml
+.. tab-set::
 
-    targets:
-      xmodem_device:
-        resources:
-          RawSerialPort:
-            port: '/dev/ttyUSB0'
-            speed: 115200
+    .. tab-item:: Exporter
 
-        drivers:
-          ADIShellDriver:
-            prompt: 'root@.*:.*#'
-            login_prompt: 'login:'
-            username: 'root'
-            password: 'analog'
+        ``resources.yaml`` (on exporter host):
+
+        .. code-block:: yaml
+
+            xmodem_device_group:
+              RawSerialPort:
+                cls: RawSerialPort
+                port: '/dev/ttyUSB0'
+                speed: 115200
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              xmodem_device:
+                resources:
+                  RemotePlace:
+                    name: xmodem_device_place
+                drivers:
+                  SerialDriver: {}
+                  ADIShellDriver:
+                    prompt: 'root@.*:.*#'
+                    login_prompt: 'login:'
+                    username: 'root'
+                    password: 'analog'
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              xmodem_device:
+                resources:
+                  RawSerialPort:
+                    port: '/dev/ttyUSB0'
+                    speed: 115200
+
+                drivers:
+                  SerialDriver: {}
+                  ADIShellDriver:
+                    prompt: 'root@.*:.*#'
+                    login_prompt: 'login:'
+                    username: 'root'
+                    password: 'analog'
 
 **Upload file to device**:
 
@@ -138,40 +249,100 @@ Boot a device to shell using a strategy:
 
 **Configuration**:
 
-.. code-block:: yaml
+.. tab-set::
 
-    targets:
-      bootable_device:
-        resources:
-          VesyncOutlet:
-            outlet_names: 'Device Power'
-            username: 'your_email@example.com'
-            password: 'your_password'
-            delay: 5.0
+    .. tab-item:: Exporter
 
-          RawSerialPort:
-            port: '/dev/ttyUSB0'
-            speed: 115200
+        ``resources.yaml`` (on exporter host):
 
-          MassStorageDevice:
-            path: '/dev/sda1'
+        .. code-block:: yaml
 
-          KuiperRelease:
-            release_version: '2024.r1'
+            bootable_device_group:
+              VesyncOutlet:
+                cls: VesyncOutlet
+                outlet_names: 'Device Power'
+                username: 'your_email@example.com'
+                password: 'your_password'
+                delay: 5.0
 
-        drivers:
-          VesyncPowerDriver: {}
-          ADIShellDriver:
-            prompt: 'root@.*:.*#'
-            login_prompt: 'login:'
-            username: 'root'
-            password: 'analog'
-          MassStorageDriver: {}
-          KuiperDLDriver: {}
+              RawSerialPort:
+                cls: RawSerialPort
+                port: '/dev/ttyUSB0'
+                speed: 115200
 
-          BootFPGASoC:
-            reached_linux_marker: 'analog'
-            update_image: false
+              MassStorageDevice:
+                cls: MassStorageDevice
+                path: '/dev/sda1'
+
+              KuiperRelease:
+                cls: KuiperRelease
+                release_version: '2024.r1'
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              bootable_device:
+                resources:
+                  RemotePlace:
+                    name: bootable_device_place
+                drivers:
+                  VesyncPowerDriver: {}
+                  SerialDriver: {}
+                  ADIShellDriver:
+                    prompt: 'root@.*:.*#'
+                    login_prompt: 'login:'
+                    username: 'root'
+                    password: 'analog'
+                  MassStorageDriver: {}
+                  KuiperDLDriver: {}
+
+                  BootFPGASoC:
+                    reached_linux_marker: 'analog'
+                    update_image: false
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              bootable_device:
+                resources:
+                  VesyncOutlet:
+                    outlet_names: 'Device Power'
+                    username: 'your_email@example.com'
+                    password: 'your_password'
+                    delay: 5.0
+
+                  RawSerialPort:
+                    port: '/dev/ttyUSB0'
+                    speed: 115200
+
+                  MassStorageDevice:
+                    path: '/dev/sda1'
+
+                  KuiperRelease:
+                    release_version: '2024.r1'
+
+                drivers:
+                  VesyncPowerDriver: {}
+                  SerialDriver: {}
+                  ADIShellDriver:
+                    prompt: 'root@.*:.*#'
+                    login_prompt: 'login:'
+                    username: 'root'
+                    password: 'analog'
+                  MassStorageDriver: {}
+                  KuiperDLDriver: {}
+
+                  BootFPGASoC:
+                    reached_linux_marker: 'analog'
+                    update_image: false
 
 **Usage**:
 
@@ -200,16 +371,47 @@ Mount SD card, copy files, prepare for device boot:
 
 **Configuration**:
 
-.. code-block:: yaml
+.. tab-set::
 
-    targets:
-      sd_device:
-        resources:
-          MassStorageDevice:
-            path: '/dev/sda1'
+    .. tab-item:: Exporter
 
-        drivers:
-          MassStorageDriver: {}
+        ``resources.yaml`` (on exporter host):
+
+        .. code-block:: yaml
+
+            sd_device_group:
+              MassStorageDevice:
+                cls: MassStorageDevice
+                path: '/dev/sda1'
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              sd_device:
+                resources:
+                  RemotePlace:
+                    name: sd_device_place
+                drivers:
+                  MassStorageDriver: {}
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              sd_device:
+                resources:
+                  MassStorageDevice:
+                    path: '/dev/sda1'
+
+                drivers:
+                  MassStorageDriver: {}
 
 **Usage**:
 
@@ -242,17 +444,49 @@ Download and manage Kuiper release boot files:
 
 **Configuration**:
 
-.. code-block:: yaml
+.. tab-set::
 
-    targets:
-      kuiper_device:
-        resources:
-          KuiperRelease:
-            release_version: '2024.r1'
-            cache_path: '/tmp/kuiper_cache'
+    .. tab-item:: Exporter
 
-        drivers:
-          KuiperDLDriver: {}
+        ``resources.yaml`` (on exporter host):
+
+        .. code-block:: yaml
+
+            kuiper_device_group:
+              KuiperRelease:
+                cls: KuiperRelease
+                release_version: '2024.r1'
+                cache_path: '/tmp/kuiper_cache'
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              kuiper_device:
+                resources:
+                  RemotePlace:
+                    name: kuiper_device_place
+                drivers:
+                  KuiperDLDriver: {}
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              kuiper_device:
+                resources:
+                  KuiperRelease:
+                    release_version: '2024.r1'
+                    cache_path: '/tmp/kuiper_cache'
+
+                drivers:
+                  KuiperDLDriver: {}
 
 **Usage**:
 
@@ -339,48 +573,121 @@ Manage multiple devices in a single test session:
 
 **Configuration**:
 
-.. code-block:: yaml
+.. tab-set::
 
-    targets:
-      device_a:
-        resources:
-          VesyncOutlet:
-            outlet_names: 'Device A Power'
-            username: 'your_email@example.com'
-            password: 'your_password'
-            delay: 5.0
+    .. tab-item:: Exporter
 
-          RawSerialPort:
-            port: '/dev/ttyUSB0'
-            speed: 115200
+        ``resources.yaml`` (on exporter host):
 
-        drivers:
-          VesyncPowerDriver: {}
-          ADIShellDriver:
-            prompt: 'root@.*:.*#'
-            login_prompt: 'login:'
-            username: 'root'
-            password: 'analog'
+        .. code-block:: yaml
 
-      device_b:
-        resources:
-          VesyncOutlet:
-            outlet_names: 'Device B Power'
-            username: 'your_email@example.com'
-            password: 'your_password'
-            delay: 5.0
+            device_a_group:
+              VesyncOutlet:
+                cls: VesyncOutlet
+                outlet_names: 'Device A Power'
+                username: 'your_email@example.com'
+                password: 'your_password'
+                delay: 5.0
 
-          RawSerialPort:
-            port: '/dev/ttyUSB1'
-            speed: 115200
+              RawSerialPort:
+                cls: RawSerialPort
+                port: '/dev/ttyUSB0'
+                speed: 115200
 
-        drivers:
-          VesyncPowerDriver: {}
-          ADIShellDriver:
-            prompt: 'root@.*:.*#'
-            login_prompt: 'login:'
-            username: 'root'
-            password: 'analog'
+            device_b_group:
+              VesyncOutlet:
+                cls: VesyncOutlet
+                outlet_names: 'Device B Power'
+                username: 'your_email@example.com'
+                password: 'your_password'
+                delay: 5.0
+
+              RawSerialPort:
+                cls: RawSerialPort
+                port: '/dev/ttyUSB1'
+                speed: 115200
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              device_a:
+                resources:
+                  RemotePlace:
+                    name: device_a_place
+                drivers:
+                  VesyncPowerDriver: {}
+                  SerialDriver: {}
+                  ADIShellDriver:
+                    prompt: 'root@.*:.*#'
+                    login_prompt: 'login:'
+                    username: 'root'
+                    password: 'analog'
+
+              device_b:
+                resources:
+                  RemotePlace:
+                    name: device_b_place
+                drivers:
+                  VesyncPowerDriver: {}
+                  SerialDriver: {}
+                  ADIShellDriver:
+                    prompt: 'root@.*:.*#'
+                    login_prompt: 'login:'
+                    username: 'root'
+                    password: 'analog'
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              device_a:
+                resources:
+                  VesyncOutlet:
+                    outlet_names: 'Device A Power'
+                    username: 'your_email@example.com'
+                    password: 'your_password'
+                    delay: 5.0
+
+                  RawSerialPort:
+                    port: '/dev/ttyUSB0'
+                    speed: 115200
+
+                drivers:
+                  VesyncPowerDriver: {}
+                  SerialDriver: {}
+                  ADIShellDriver:
+                    prompt: 'root@.*:.*#'
+                    login_prompt: 'login:'
+                    username: 'root'
+                    password: 'analog'
+
+              device_b:
+                resources:
+                  VesyncOutlet:
+                    outlet_names: 'Device B Power'
+                    username: 'your_email@example.com'
+                    password: 'your_password'
+                    delay: 5.0
+
+                  RawSerialPort:
+                    port: '/dev/ttyUSB1'
+                    speed: 115200
+
+                drivers:
+                  VesyncPowerDriver: {}
+                  SerialDriver: {}
+                  ADIShellDriver:
+                    prompt: 'root@.*:.*#'
+                    login_prompt: 'login:'
+                    username: 'root'
+                    password: 'analog'
 
 **Usage**:
 
@@ -421,18 +728,51 @@ Control power via CyberPower PDU with SNMP:
 
 **Configuration**:
 
-.. code-block:: yaml
+.. tab-set::
 
-    targets:
-      cyberpower_device:
-        resources:
-          CyberPowerOutlet:
-            address: '192.168.1.100'
-            outlet: 1
-            delay: 5.0
+    .. tab-item:: Exporter
 
-        drivers:
-          CyberPowerDriver: {}
+        ``resources.yaml`` (on exporter host):
+
+        .. code-block:: yaml
+
+            cyberpower_device_group:
+              CyberPowerOutlet:
+                cls: CyberPowerOutlet
+                address: '192.168.1.100'
+                outlet: 1
+                delay: 5.0
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              cyberpower_device:
+                resources:
+                  RemotePlace:
+                    name: cyberpower_device_place
+                drivers:
+                  CyberPowerDriver: {}
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              cyberpower_device:
+                resources:
+                  CyberPowerOutlet:
+                    address: '192.168.1.100'
+                    outlet: 1
+                    delay: 5.0
+
+                drivers:
+                  CyberPowerDriver: {}
 
 **Usage**:
 

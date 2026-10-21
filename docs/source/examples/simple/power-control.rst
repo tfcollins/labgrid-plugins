@@ -14,21 +14,55 @@ VeSync provides cloud-connected smart outlets that can be controlled remotely. T
 - VeSync outlet name (configured in your VeSync account)
 - Account credentials (email and password)
 
-**Configuration File** (target.yaml):
+**Configuration File**:
 
-.. code-block:: yaml
+.. tab-set::
 
-    targets:
-      my_fpga_board:
-        resources:
-          VesyncOutlet:
-            outlet_names: 'FPGA Board Power'  # Name of outlet in VeSync app
-            username: 'your_email@example.com'
-            password: 'your_password'
-            delay: 5.0  # Seconds to wait between off and on during cycle
+    .. tab-item:: Exporter
 
-        drivers:
-          VesyncPowerDriver: {}
+        ``resources.yaml`` (on exporter host):
+
+        .. code-block:: yaml
+
+            my_fpga_board_group:
+              VesyncOutlet:
+                cls: VesyncOutlet
+                outlet_names: 'FPGA Board Power'  # Name of outlet in VeSync app
+                username: 'your_email@example.com'
+                password: 'your_password'
+                delay: 5.0  # Seconds to wait between off and on during cycle
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              my_fpga_board:
+                resources:
+                  RemotePlace:
+                    name: my_fpga_board_place
+                drivers:
+                  VesyncPowerDriver: {}
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              my_fpga_board:
+                resources:
+                  VesyncOutlet:
+                    outlet_names: 'FPGA Board Power'  # Name of outlet in VeSync app
+                    username: 'your_email@example.com'
+                    password: 'your_password'
+                    delay: 5.0  # Seconds to wait between off and on during cycle
+
+                drivers:
+                  VesyncPowerDriver: {}
 
 **Basic Usage Script**:
 
@@ -86,19 +120,53 @@ VeSync provides cloud-connected smart outlets that can be controlled remotely. T
 
 VeSync supports controlling multiple outlets from a single driver:
 
-.. code-block:: yaml
+.. tab-set::
 
-    targets:
-      test_rack:
-        resources:
-          VesyncOutlet:
-            outlet_names: 'Board A,Board B,Board C'  # Comma-separated outlet names
-            username: 'your_email@example.com'
-            password: 'your_password'
-            delay: 5.0
+    .. tab-item:: Exporter
 
-        drivers:
-          VesyncPowerDriver: {}
+        ``resources.yaml`` (on exporter host):
+
+        .. code-block:: yaml
+
+            test_rack_group:
+              VesyncOutlet:
+                cls: VesyncOutlet
+                outlet_names: 'Board A,Board B,Board C'  # Comma-separated outlet names
+                username: 'your_email@example.com'
+                password: 'your_password'
+                delay: 5.0
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              test_rack:
+                resources:
+                  RemotePlace:
+                    name: test_rack_place
+                drivers:
+                  VesyncPowerDriver: {}
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              test_rack:
+                resources:
+                  VesyncOutlet:
+                    outlet_names: 'Board A,Board B,Board C'  # Comma-separated outlet names
+                    username: 'your_email@example.com'
+                    password: 'your_password'
+                    delay: 5.0
+
+                drivers:
+                  VesyncPowerDriver: {}
 
 .. code-block:: python
 
@@ -130,20 +198,53 @@ CyberPower PDUs provide industrial-grade power distribution with SNMP control. T
 - SNMP community string (default is typically "public")
 - Outlet number (usually 1-8)
 
-**Configuration File** (target.yaml):
+**Configuration File**:
 
-.. code-block:: yaml
+.. tab-set::
 
-    targets:
-      lab_device:
-        resources:
-          CyberPowerOutlet:
-            address: '192.168.1.100'
-            outlet: 1  # Outlet 1-8
-            delay: 5.0
+    .. tab-item:: Exporter
 
-        drivers:
-          CyberPowerDriver: {}
+        ``resources.yaml`` (on exporter host):
+
+        .. code-block:: yaml
+
+            lab_device_group:
+              CyberPowerOutlet:
+                cls: CyberPowerOutlet
+                address: '192.168.1.100'
+                outlet: 1  # Outlet 1-8
+                delay: 5.0
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              lab_device:
+                resources:
+                  RemotePlace:
+                    name: lab_device_place
+                drivers:
+                  CyberPowerDriver: {}
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              lab_device:
+                resources:
+                  CyberPowerOutlet:
+                    address: '192.168.1.100'
+                    outlet: 1  # Outlet 1-8
+                    delay: 5.0
+
+                drivers:
+                  CyberPowerDriver: {}
 
 **Basic Usage Script**:
 
@@ -175,26 +276,68 @@ CyberPower PDUs provide industrial-grade power distribution with SNMP control. T
 
 **Multi-Outlet Control**:
 
-.. code-block:: yaml
+.. tab-set::
 
-    targets:
-      multi_outlet_system:
-        resources:
-          CyberPowerOutlet:
-            address: '192.168.1.100'
-            outlet: 1  # Can create multiple resources for different outlets
-            delay: 5.0
+    .. tab-item:: Exporter
 
-          CyberPowerOutlet@board_b_power:
-            address: '192.168.1.100'
-            outlet: 2
-            delay: 5.0
+        ``resources.yaml`` (on exporter host):
 
-        drivers:
-          CyberPowerDriver: {}
-          CyberPowerDriver@board_b:
-            bindings:
-              cyberpower_outlet: CyberPowerOutlet@board_b_power
+        .. code-block:: yaml
+
+            multi_outlet_group:
+              CyberPowerOutlet:
+                cls: CyberPowerOutlet
+                address: '192.168.1.100'
+                outlet: 1
+                delay: 5.0
+
+              board_b_power:
+                cls: CyberPowerOutlet
+                address: '192.168.1.100'
+                outlet: 2
+                delay: 5.0
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              multi_outlet_system:
+                resources:
+                  RemotePlace:
+                    name: multi_outlet_place
+                drivers:
+                  CyberPowerDriver: {}
+                  CyberPowerDriver@board_b:
+                    bindings:
+                      cyberpower_outlet: CyberPowerOutlet@board_b_power
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              multi_outlet_system:
+                resources:
+                  CyberPowerOutlet:
+                    address: '192.168.1.100'
+                    outlet: 1  # Can create multiple resources for different outlets
+                    delay: 5.0
+
+                  CyberPowerOutlet@board_b_power:
+                    address: '192.168.1.100'
+                    outlet: 2
+                    delay: 5.0
+
+                drivers:
+                  CyberPowerDriver: {}
+                  CyberPowerDriver@board_b:
+                    bindings:
+                      cyberpower_outlet: CyberPowerOutlet@board_b_power
 
 .. code-block:: python
 
@@ -229,23 +372,54 @@ APC PDU Control
 
 Control a single APC outlet over SNMP and verify that it turned off.
 
-**Configuration File** (target.yaml):
+**Configuration File**:
 
-.. code-block:: yaml
+.. tab-set::
 
-    imports:
-      - adi_lg_plugins
+    .. tab-item:: Exporter
 
-    targets:
-      apc_device:
-        resources:
-          APCOutlet:
-            address: '10.75.169.99'
-            outlet: 6
-            delay: 5.0
+        ``resources.yaml`` (on exporter host):
 
-        drivers:
-          APCDriver: {}
+        .. code-block:: yaml
+
+            apc_device_group:
+              APCOutlet:
+                cls: APCOutlet
+                address: '10.75.169.99'
+                outlet: 6
+                delay: 5.0
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              apc_device:
+                resources:
+                  RemotePlace:
+                    name: apc_device_place
+                drivers:
+                  APCDriver: {}
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+
+            targets:
+              apc_device:
+                resources:
+                  APCOutlet:
+                    address: '10.75.169.99'
+                    outlet: 6
+                    delay: 5.0
+
+                drivers:
+                  APCDriver: {}
 
 **Basic Usage Script**:
 
@@ -475,31 +649,78 @@ Power control is usually managed automatically by boot strategies, but you can a
 Complete Working Example
 ------------------------
 
-**target.yaml**:
+**Configuration**:
 
-.. code-block:: yaml
+.. tab-set::
 
-    targets:
-      test_device:
-        resources:
-          VesyncOutlet:
-            outlet_names: 'Test Device'
-            username: 'your_email@example.com'
-            password: 'your_password'
-            delay: 5.0
+    .. tab-item:: Exporter
 
-          RawSerialPort:
-            port: '/dev/ttyUSB0'
-            speed: 115200
+        ``resources.yaml`` (on exporter host):
 
-        drivers:
-          VesyncPowerDriver: {}
-          ADIShellDriver:
-            prompt: 'root@.*:.*#'
-            login_prompt: 'login:'
-            username: 'root'
-            password: 'analog'
-            login_timeout: 60
+        .. code-block:: yaml
+
+            test_device_group:
+              VesyncOutlet:
+                cls: VesyncOutlet
+                outlet_names: 'Test Device'
+                username: 'your_email@example.com'
+                password: 'your_password'
+                delay: 5.0
+
+              RawSerialPort:
+                cls: RawSerialPort
+                port: '/dev/ttyUSB0'
+                speed: 115200
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              test_device:
+                resources:
+                  RemotePlace:
+                    name: test_device_place
+                drivers:
+                  VesyncPowerDriver: {}
+                  SerialDriver: {}
+                  ADIShellDriver:
+                    prompt: 'root@.*:.*#'
+                    login_prompt: 'login:'
+                    username: 'root'
+                    password: 'analog'
+                    login_timeout: 60
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              test_device:
+                resources:
+                  VesyncOutlet:
+                    outlet_names: 'Test Device'
+                    username: 'your_email@example.com'
+                    password: 'your_password'
+                    delay: 5.0
+
+                  RawSerialPort:
+                    port: '/dev/ttyUSB0'
+                    speed: 115200
+
+                drivers:
+                  VesyncPowerDriver: {}
+                  SerialDriver: {}
+                  ADIShellDriver:
+                    prompt: 'root@.*:.*#'
+                    login_prompt: 'login:'
+                    username: 'root'
+                    password: 'analog'
+                    login_timeout: 60
 
 **test_power_control.py**:
 

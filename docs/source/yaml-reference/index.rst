@@ -2,10 +2,12 @@ YAML Reference
 ==============
 
 Quick schema lookup for every resource, driver, and strategy registered by
-``labgrid-plugins``. Use this section when authoring a target YAML. Each argument
-entry states whether it is required, shows its implementation default, explains
-what behavior it controls, and gives a representative value. The complete YAML
-beneath each component demonstrates where that value belongs in a real environment.
+``labgrid-plugins``. Use this section when authoring an exporter resource YAML
+or a client target YAML. Each argument entry states whether it is required,
+shows its implementation default, explains what behavior it controls, and gives
+a representative value. The tabbed YAML examples beneath each component show
+both the **Exporter** configuration and the **Local (Non-Exporter)** target
+configuration.
 
 .. grid:: 3
 

@@ -6,22 +6,56 @@ This guide will walk you through your first use of labgrid-plugins.
 Basic Power Control Example
 ----------------------------
 
-Create a target configuration file:
+Create a configuration file:
 
-.. code-block:: yaml
+.. tab-set::
 
-    # target.yaml
-    targets:
-      my_device:
-        resources:
-          VesyncOutlet:
-            outlet_names: 'My Device Power'
-            username: 'your_email@example.com'
-            password: 'your_password'
-            delay: 3.0
+    .. tab-item:: Exporter
 
-        drivers:
-          VesyncPowerDriver: {}
+        Exporter resource configuration (``resources.yaml``):
+
+        .. code-block:: yaml
+
+            my_device:
+              VesyncOutlet:
+                cls: VesyncOutlet
+                outlet_names: 'My Device Power'
+                username: 'your_email@example.com'
+                password: 'your_password'
+                delay: 3.0
+
+        Client environment configuration (``target.yaml``):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              my_device:
+                resources:
+                  RemotePlace:
+                    name: my_device
+                drivers:
+                  VesyncPowerDriver: {}
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            # target.yaml
+            imports:
+              - adi_lg_plugins
+            targets:
+              my_device:
+                resources:
+                  VesyncOutlet:
+                    outlet_names: 'My Device Power'
+                    username: 'your_email@example.com'
+                    password: 'your_password'
+                    delay: 3.0
+
+                drivers:
+                  VesyncPowerDriver: {}
 
 Control the power from Python:
 

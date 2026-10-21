@@ -192,18 +192,47 @@ Try the API
 
    A target configuration and a few Python calls are enough to control a device.
 
-.. code-block:: yaml
-   :caption: target.yaml
+.. tab-set::
 
-   targets:
-     my_device:
-       resources:
-         NetworkPowerPort:
-           model: kasa
-           host: 192.0.2.20
-           index: 0
-       drivers:
-         KasaPowerDriver: {}
+   .. tab-item:: Exporter
+
+      .. code-block:: yaml
+         :caption: resources.yaml
+
+         my_device:
+           KasaOutlet:
+             cls: KasaOutlet
+             host: 192.0.2.20
+             outlets: Bench DUT
+
+      .. code-block:: yaml
+         :caption: target.yaml
+
+         imports:
+           - adi_lg_plugins
+         targets:
+           my_device:
+             resources:
+               RemotePlace:
+                 name: my_device
+             drivers:
+               KasaPowerDriver: {}
+
+   .. tab-item:: Local (Non-Exporter)
+
+      .. code-block:: yaml
+         :caption: target.yaml
+
+         imports:
+           - adi_lg_plugins
+         targets:
+           my_device:
+             resources:
+               KasaOutlet:
+                 host: 192.0.2.20
+                 outlets: Bench DUT
+             drivers:
+               KasaPowerDriver: {}
 
 .. code-block:: python
    :caption: Power-cycle the target

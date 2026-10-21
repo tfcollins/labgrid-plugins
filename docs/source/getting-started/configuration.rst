@@ -17,17 +17,50 @@ labgrid-plugins uses YAML files to configure targets, resources, and drivers.
 Basic Structure
 ~~~~~~~~~~~~~~~
 
-.. code-block:: yaml
+.. tab-set::
 
-    targets:
-      target_name:
-        resources:
-          ResourceType:
-            parameter1: value1
-            parameter2: value2
+    .. tab-item:: Exporter
 
-        drivers:
-          DriverType: {}
+        Exporter resource configuration (``resources.yaml``):
+
+        .. code-block:: yaml
+
+            target_name:
+              ResourceType:
+                cls: ResourceType
+                parameter1: value1
+                parameter2: value2
+
+        Client environment configuration (``target.yaml``):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              target_name:
+                resources:
+                  RemotePlace:
+                    name: target_name
+
+                drivers:
+                  DriverType: {}
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              target_name:
+                resources:
+                  ResourceType:
+                    parameter1: value1
+                    parameter2: value2
+
+                drivers:
+                  DriverType: {}
 
 Resource Configuration
 ----------------------

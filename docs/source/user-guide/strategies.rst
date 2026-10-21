@@ -3,10 +3,12 @@ Working with Strategies
 
 .. important::
 
-   Every complete environment using these plugin classes must include
+   Every complete client environment using these plugin classes must include
    ``imports: [adi_lg_plugins]``. Strategy classes are configured under the target's
-   ``drivers:`` mapping, not under a separate ``strategies:`` mapping. Short snippets
-   on this page omit the repeated ``imports`` line; complete copy/paste forms are in
+   ``drivers:`` mapping, not under a separate ``strategies:`` mapping. Examples
+   on this page show both **Exporter** (``labgrid-exporter`` ``resources.yaml`` plus
+   ``RemotePlace`` client ``target.yaml``) and **Local (Non-Exporter)** (single-file
+   ``target.yaml``) configurations; complete copy/paste forms for every strategy are in
    :doc:`../yaml-reference/strategies`.
 
 Strategies are high-level state machines that coordinate multiple drivers to accomplish complex workflows. They abstract away the detailed choreography of hardware interactions, allowing test engineers to focus on the overall boot and test sequence.
@@ -103,49 +105,119 @@ The strategy manages 10 states:
 
 **Configuration Example**:
 
-.. code-block:: yaml
+.. tab-set::
 
-    targets:
-      mydevice:
-        resources:
-          VesyncOutlet:
-            outlet_names: 'Device Power'
-            username: 'your_email@example.com'
-            password: 'your_password'
-            delay: 5.0
+    .. tab-item:: Exporter
 
-          USBSDMuxDevice:
-            match:
-              ID_SERIAL_SHORT: '00012345'
+        ``resources.yaml`` (on exporter host):
 
-          MassStorageDevice:
-            path: '/dev/sda1'
+        .. code-block:: yaml
 
-          RawSerialPort:
-            port: '/dev/ttyUSB0'
-            speed: 115200
+            mydevice_group:
+              VesyncOutlet:
+                cls: VesyncOutlet
+                outlet_names: 'Device Power'
+                username: 'your_email@example.com'
+                password: 'your_password'
+                delay: 5.0
 
-          KuiperRelease:
-            release_version: '2024.r1'
+              USBSDMuxDevice:
+                cls: USBSDMuxDevice
+                match:
+                  ID_SERIAL_SHORT: '00012345'
 
-        drivers:
-          VesyncPowerDriver: {}
-          USBSDMuxDriver: {}
-          MassStorageDriver: {}
-          ADIShellDriver:
-            prompt: 'root@.*:.*#'
-            login_prompt: 'login:'
-            username: 'root'
-            password: 'analog'
-          KuiperDLDriver: {}
-          SSHDriver: {}
+              MassStorageDevice:
+                cls: MassStorageDevice
+                path: '/dev/sda1'
 
-          BootFPGASoC:
-            reached_linux_marker: 'analog'
-            update_image: true  # Flash full image, not just boot files
-            ethernet_interface: 'eth0'
-            trigger_dhcp_request: true
-            restart_iiod_on_shell: true
+              RawSerialPort:
+                cls: RawSerialPort
+                port: '/dev/ttyUSB0'
+                speed: 115200
+
+              KuiperRelease:
+                cls: KuiperRelease
+                release_version: '2024.r1'
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              mydevice:
+                resources:
+                  RemotePlace:
+                    name: mydevice_place
+                drivers:
+                  VesyncPowerDriver: {}
+                  USBSDMuxDriver: {}
+                  MassStorageDriver: {}
+                  SerialDriver: {}
+                  ADIShellDriver:
+                    prompt: 'root@.*:.*#'
+                    login_prompt: 'login:'
+                    username: 'root'
+                    password: 'analog'
+                  KuiperDLDriver: {}
+                  SSHDriver: {}
+
+                  BootFPGASoC:
+                    reached_linux_marker: 'analog'
+                    update_image: true  # Flash full image, not just boot files
+                    ethernet_interface: 'eth0'
+                    trigger_dhcp_request: true
+                    restart_iiod_on_shell: true
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              mydevice:
+                resources:
+                  VesyncOutlet:
+                    outlet_names: 'Device Power'
+                    username: 'your_email@example.com'
+                    password: 'your_password'
+                    delay: 5.0
+
+                  USBSDMuxDevice:
+                    match:
+                      ID_SERIAL_SHORT: '00012345'
+
+                  MassStorageDevice:
+                    path: '/dev/sda1'
+
+                  RawSerialPort:
+                    port: '/dev/ttyUSB0'
+                    speed: 115200
+
+                  KuiperRelease:
+                    release_version: '2024.r1'
+
+                drivers:
+                  VesyncPowerDriver: {}
+                  USBSDMuxDriver: {}
+                  MassStorageDriver: {}
+                  SerialDriver: {}
+                  ADIShellDriver:
+                    prompt: 'root@.*:.*#'
+                    login_prompt: 'login:'
+                    username: 'root'
+                    password: 'analog'
+                  KuiperDLDriver: {}
+                  SSHDriver: {}
+
+                  BootFPGASoC:
+                    reached_linux_marker: 'analog'
+                    update_image: true  # Flash full image, not just boot files
+                    ethernet_interface: 'eth0'
+                    trigger_dhcp_request: true
+                    restart_iiod_on_shell: true
 
 **Usage Example**:
 
@@ -273,40 +345,100 @@ The strategy manages 9 states with a two-stage boot process:
 
 **Configuration Example**:
 
-.. code-block:: yaml
+.. tab-set::
 
-    targets:
-      netdevice:
-        resources:
-          VesyncOutlet:
-            outlet_names: 'Device Power'
-            username: 'your_email@example.com'
-            password: 'your_password'
+    .. tab-item:: Exporter
 
-          RawSerialPort:
-            port: '/dev/ttyUSB0'
-            speed: 115200
+        ``resources.yaml`` (on exporter host):
 
-          NetworkService:
-            address: 'analog.local'
-            username: 'root'
-            password: 'analog'
+        .. code-block:: yaml
 
-          KuiperRelease:
-            release_version: '2024.r1'
+            netdevice_group:
+              VesyncOutlet:
+                cls: VesyncOutlet
+                outlet_names: 'Device Power'
+                username: 'your_email@example.com'
+                password: 'your_password'
 
-        drivers:
-          VesyncPowerDriver: {}
-          ADIShellDriver:
-            prompt: 'root@.*:.*#'
-            login_prompt: 'login:'
-            username: 'root'
-            password: 'analog'
-          SSHDriver: {}
-          KuiperDLDriver: {}
+              RawSerialPort:
+                cls: RawSerialPort
+                port: '/dev/ttyUSB0'
+                speed: 115200
 
-          BootFPGASoCSSH:
-            reached_linux_marker: 'analog'
+              NetworkService:
+                cls: NetworkService
+                address: 'analog.local'
+                username: 'root'
+                password: 'analog'
+
+              KuiperRelease:
+                cls: KuiperRelease
+                release_version: '2024.r1'
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              netdevice:
+                resources:
+                  RemotePlace:
+                    name: netdevice_place
+                drivers:
+                  VesyncPowerDriver: {}
+                  SerialDriver: {}
+                  ADIShellDriver:
+                    prompt: 'root@.*:.*#'
+                    login_prompt: 'login:'
+                    username: 'root'
+                    password: 'analog'
+                  SSHDriver: {}
+                  KuiperDLDriver: {}
+
+                  BootFPGASoCSSH:
+                    reached_linux_marker: 'analog'
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              netdevice:
+                resources:
+                  VesyncOutlet:
+                    outlet_names: 'Device Power'
+                    username: 'your_email@example.com'
+                    password: 'your_password'
+
+                  RawSerialPort:
+                    port: '/dev/ttyUSB0'
+                    speed: 115200
+
+                  NetworkService:
+                    address: 'analog.local'
+                    username: 'root'
+                    password: 'analog'
+
+                  KuiperRelease:
+                    release_version: '2024.r1'
+
+                drivers:
+                  VesyncPowerDriver: {}
+                  SerialDriver: {}
+                  ADIShellDriver:
+                    prompt: 'root@.*:.*#'
+                    login_prompt: 'login:'
+                    username: 'root'
+                    password: 'analog'
+                  SSHDriver: {}
+                  KuiperDLDriver: {}
+
+                  BootFPGASoCSSH:
+                    reached_linux_marker: 'analog'
 
 **Usage Example**:
 
@@ -405,46 +537,110 @@ filename and server address. Destinations must be relative POSIX paths without t
 
 **Configuration Example**
 
-.. code-block:: yaml
+.. tab-set::
 
-    targets:
-      zcu102_tftp:
-        resources:
-          RawSerialPort:
-            port: '/dev/ttyUSB0'
-            speed: 115200
+    .. tab-item:: Exporter
 
-          VesyncOutlet:
-            outlet_names: 'ZCU102 Power'
-            username: 'lab@example.com'
-            password: '...'
+        ``resources.yaml`` (on exporter host):
 
-          TFTPServerResource:
-            address: 'auto'
-            port: 3069
-            root: '/var/lib/tftpboot'
+        .. code-block:: yaml
 
-          KuiperRelease:
-            release_version: '2023_R2_P1'
-            cache_path: '/var/cache/kuiper'
+            zcu102_tftp_group:
+              RawSerialPort:
+                cls: RawSerialPort
+                port: '/dev/ttyUSB0'
+                speed: 115200
 
-        drivers:
-          SerialDriver: {}
-          ADIShellDriver:
-            prompt: 'root@analog:.*#'
-            login_prompt: 'login:'
-            username: 'root'
-            password: 'analog'
-          VesyncPowerDriver: {}
-          TFTPServerDriver: {}
-          KuiperDLDriver: {}
+              VesyncOutlet:
+                cls: VesyncOutlet
+                outlet_names: 'ZCU102 Power'
+                username: 'lab@example.com'
+                password: '...'
 
-          BootFPGASoCTFTP:
-            reached_linux_marker: 'analog'
-            wait_for_linux_prompt_timeout: 60
-            kernel_addr: '0x30000000'
-            dtb_addr:    '0x2A000000'
-            bootargs: 'console=ttyPS0,115200 root=/dev/mmcblk0p2 rw earlycon earlyprintk rootfstype=ext4 rootwait'
+              TFTPServerResource:
+                cls: TFTPServerResource
+                address: 'auto'
+                port: 3069
+                root: '/var/lib/tftpboot'
+
+              KuiperRelease:
+                cls: KuiperRelease
+                release_version: '2023_R2_P1'
+                cache_path: '/var/cache/kuiper'
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              zcu102_tftp:
+                resources:
+                  RemotePlace:
+                    name: zcu102_tftp_place
+                drivers:
+                  SerialDriver: {}
+                  ADIShellDriver:
+                    prompt: 'root@analog:.*#'
+                    login_prompt: 'login:'
+                    username: 'root'
+                    password: 'analog'
+                  VesyncPowerDriver: {}
+                  TFTPServerDriver: {}
+                  KuiperDLDriver: {}
+
+                  BootFPGASoCTFTP:
+                    reached_linux_marker: 'analog'
+                    wait_for_linux_prompt_timeout: 60
+                    kernel_addr: '0x30000000'
+                    dtb_addr:    '0x2A000000'
+                    bootargs: 'console=ttyPS0,115200 root=/dev/mmcblk0p2 rw earlycon earlyprintk rootfstype=ext4 rootwait'
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              zcu102_tftp:
+                resources:
+                  RawSerialPort:
+                    port: '/dev/ttyUSB0'
+                    speed: 115200
+
+                  VesyncOutlet:
+                    outlet_names: 'ZCU102 Power'
+                    username: 'lab@example.com'
+                    password: '...'
+
+                  TFTPServerResource:
+                    address: 'auto'
+                    port: 3069
+                    root: '/var/lib/tftpboot'
+
+                  KuiperRelease:
+                    release_version: '2023_R2_P1'
+                    cache_path: '/var/cache/kuiper'
+
+                drivers:
+                  SerialDriver: {}
+                  ADIShellDriver:
+                    prompt: 'root@analog:.*#'
+                    login_prompt: 'login:'
+                    username: 'root'
+                    password: 'analog'
+                  VesyncPowerDriver: {}
+                  TFTPServerDriver: {}
+                  KuiperDLDriver: {}
+
+                  BootFPGASoCTFTP:
+                    reached_linux_marker: 'analog'
+                    wait_for_linux_prompt_timeout: 60
+                    kernel_addr: '0x30000000'
+                    dtb_addr:    '0x2A000000'
+                    bootargs: 'console=ttyPS0,115200 root=/dev/mmcblk0p2 rw earlycon earlyprintk rootfstype=ext4 rootwait'
 
 **Attributes**
 
@@ -592,61 +788,142 @@ The strategy manages 9 states. Each transition cascades through prior states, so
 
 **Configuration Example**:
 
-.. code-block:: yaml
+.. tab-set::
 
-   targets:
-     zc706_recovery:
-       resources:
-         RawSerialPort:
-           port: '/dev/serial/by-id/usb-Silicon_Labs_CP2103_USB_to_UART_Bridge_Controller_0001-if00-port0'
-           speed: 115200
+    .. tab-item:: Exporter
 
-         HomeAssistantOutlet:
-           url: 'http://YOUR_HA_HOST:8123'
-           token: '${HA_TOKEN}'
-           entity_id: 'switch.your_board_outlet'
+        ``resources.yaml`` (on exporter host):
 
-         TFTPServerResource:
-           address: '10.0.0.156'
-           port: 3069
-           root: '/var/lib/tftpboot'
+        .. code-block:: yaml
 
-         XilinxDeviceJTAG:
-           root_target: 1
-         XilinxVivadoTool:
-           vivado_path: '/opt/Xilinx/Vivado/2023.2'
-           xsdb_path: '/opt/Xilinx/Vivado/2023.2/bin/xsdb'
-           version: '2023.2'
+            zc706_recovery_group:
+              RawSerialPort:
+                cls: RawSerialPort
+                port: '/dev/serial/by-id/usb-Silicon_Labs_CP2103_USB_to_UART_Bridge_Controller_0001-if00-port0'
+                speed: 115200
 
-       drivers:
-         SerialDriver: {}
-         HomeAssistantPowerDriver: {}
-         TFTPServerDriver: {}
-         XilinxJTAGDriver: {}
+              HomeAssistantOutlet:
+                cls: HomeAssistantOutlet
+                url: 'http://YOUR_HA_HOST:8123'
+                token: '${HA_TOKEN}'
+                entity_id: 'switch.your_board_outlet'
 
-         ADIShellDriver:
-           prompt: 'root@.*[#$]'
-           login_prompt: '(analog|recovery) login: ?'
-           username: 'root'
-           password: 'analog'
+              TFTPServerResource:
+                cls: TFTPServerResource
+                address: '10.0.0.156'
+                port: 3069
+                root: '/var/lib/tftpboot'
 
-         BootZynq7000JTAGRecovery:
-           ps7_init_tcl: '/tmp/recovery/ps7_init.tcl'
-           uboot_elf: '/tmp/recovery/u-boot.elf'
-           bitstream_path: '/tmp/recovery/system_top.bit'
-           recovery_kernel: 'uImage'
-           recovery_dtb: 'devicetree.dtb'
-           recovery_initramfs: 'uInitrd.recovery'
-           recovery_login_marker: 'recovery login:'
-           sd_image_url: 'http://10.0.0.156:8080/2025-03-18-ADI-Kuiper-full.img'
-           sd_device: '/dev/mmcblk0'
-           download_cmd_template: 'wget -q -O - "{url}"'
-           uboot_prompt: 'Zynq>.*'
-           kernel_addr: '0x3000000'
-           dtb_addr: '0x2A00000'
-           initramfs_addr: '0x10000000'
-           bootargs: 'console=ttyPS0,115200 earlyprintk loglevel=8 rdinit=/init'
-           wait_for_sd_flash_timeout: 1800
+              XilinxDeviceJTAG:
+                cls: XilinxDeviceJTAG
+                root_target: 1
+
+              XilinxVivadoTool:
+                cls: XilinxVivadoTool
+                vivado_path: '/opt/Xilinx/Vivado/2023.2'
+                xsdb_path: '/opt/Xilinx/Vivado/2023.2/bin/xsdb'
+                version: '2023.2'
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              zc706_recovery:
+                resources:
+                  RemotePlace:
+                    name: zc706_recovery_place
+                drivers:
+                  SerialDriver: {}
+                  HomeAssistantPowerDriver: {}
+                  TFTPServerDriver: {}
+                  XilinxJTAGDriver: {}
+
+                  ADIShellDriver:
+                    prompt: 'root@.*[#$]'
+                    login_prompt: '(analog|recovery) login: ?'
+                    username: 'root'
+                    password: 'analog'
+
+                  BootZynq7000JTAGRecovery:
+                    ps7_init_tcl: '/tmp/recovery/ps7_init.tcl'
+                    uboot_elf: '/tmp/recovery/u-boot.elf'
+                    bitstream_path: '/tmp/recovery/system_top.bit'
+                    recovery_kernel: 'uImage'
+                    recovery_dtb: 'devicetree.dtb'
+                    recovery_initramfs: 'uInitrd.recovery'
+                    recovery_login_marker: 'recovery login:'
+                    sd_image_url: 'http://10.0.0.156:8080/2025-03-18-ADI-Kuiper-full.img'
+                    sd_device: '/dev/mmcblk0'
+                    download_cmd_template: 'wget -q -O - "{url}"'
+                    uboot_prompt: 'Zynq>.*'
+                    kernel_addr: '0x3000000'
+                    dtb_addr: '0x2A00000'
+                    initramfs_addr: '0x10000000'
+                    bootargs: 'console=ttyPS0,115200 earlyprintk loglevel=8 rdinit=/init'
+                    wait_for_sd_flash_timeout: 1800
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              zc706_recovery:
+                resources:
+                  RawSerialPort:
+                    port: '/dev/serial/by-id/usb-Silicon_Labs_CP2103_USB_to_UART_Bridge_Controller_0001-if00-port0'
+                    speed: 115200
+
+                  HomeAssistantOutlet:
+                    url: 'http://YOUR_HA_HOST:8123'
+                    token: '${HA_TOKEN}'
+                    entity_id: 'switch.your_board_outlet'
+
+                  TFTPServerResource:
+                    address: '10.0.0.156'
+                    port: 3069
+                    root: '/var/lib/tftpboot'
+
+                  XilinxDeviceJTAG:
+                    root_target: 1
+                  XilinxVivadoTool:
+                    vivado_path: '/opt/Xilinx/Vivado/2023.2'
+                    xsdb_path: '/opt/Xilinx/Vivado/2023.2/bin/xsdb'
+                    version: '2023.2'
+
+                drivers:
+                  SerialDriver: {}
+                  HomeAssistantPowerDriver: {}
+                  TFTPServerDriver: {}
+                  XilinxJTAGDriver: {}
+
+                  ADIShellDriver:
+                    prompt: 'root@.*[#$]'
+                    login_prompt: '(analog|recovery) login: ?'
+                    username: 'root'
+                    password: 'analog'
+
+                  BootZynq7000JTAGRecovery:
+                    ps7_init_tcl: '/tmp/recovery/ps7_init.tcl'
+                    uboot_elf: '/tmp/recovery/u-boot.elf'
+                    bitstream_path: '/tmp/recovery/system_top.bit'
+                    recovery_kernel: 'uImage'
+                    recovery_dtb: 'devicetree.dtb'
+                    recovery_initramfs: 'uInitrd.recovery'
+                    recovery_login_marker: 'recovery login:'
+                    sd_image_url: 'http://10.0.0.156:8080/2025-03-18-ADI-Kuiper-full.img'
+                    sd_device: '/dev/mmcblk0'
+                    download_cmd_template: 'wget -q -O - "{url}"'
+                    uboot_prompt: 'Zynq>.*'
+                    kernel_addr: '0x3000000'
+                    dtb_addr: '0x2A00000'
+                    initramfs_addr: '0x10000000'
+                    bootargs: 'console=ttyPS0,115200 earlyprintk loglevel=8 rdinit=/init'
+                    wait_for_sd_flash_timeout: 1800
 
 **Attributes**:
 
@@ -827,46 +1104,107 @@ loading (see :ref:`xilinxjtagdriver`).
 
 **Configuration Example**:
 
-.. code-block:: yaml
+.. tab-set::
 
-   imports: [adi_lg_plugins]
+    .. tab-item:: Exporter
 
-   targets:
-     zc706_noos:
-       resources:
-         RawSerialPort:
-           port: '/dev/serial/by-id/usb-Silicon_Labs_CP2103_USB_to_UART_Bridge_Controller_0001-if00-port0'
-           speed: 115200
+        ``resources.yaml`` (on exporter host):
 
-         HomeAssistantOutlet:
-           url: 'http://homeassistant.local:8123'
-           token: '${HA_TOKEN}'
-           entity_id: 'switch.zc706_power'
+        .. code-block:: yaml
 
-         XilinxDeviceJTAG:
-           root_target: 1
+            zc706_noos_group:
+              RawSerialPort:
+                cls: RawSerialPort
+                port: '/dev/serial/by-id/usb-Silicon_Labs_CP2103_USB_to_UART_Bridge_Controller_0001-if00-port0'
+                speed: 115200
 
-         XilinxVivadoTool:
-           vivado_path: '/opt/Xilinx/Vivado/2023.2'
-           xsdb_path: '/opt/Xilinx/Vivado/2023.2/bin/xsdb'
+              HomeAssistantOutlet:
+                cls: HomeAssistantOutlet
+                url: 'http://homeassistant.local:8123'
+                token: '${HA_TOKEN}'
+                entity_id: 'switch.zc706_power'
 
-       drivers:
-         SerialDriver: {}
-         HomeAssistantPowerDriver: {}
-         XilinxJTAGDriver: {}
+              XilinxDeviceJTAG:
+                cls: XilinxDeviceJTAG
+                root_target: 1
 
-         ADIShellDriver:
-           prompt: ''
-           login_prompt: ''
-           username: 'root'
-           password: 'analog'
+              XilinxVivadoTool:
+                cls: XilinxVivadoTool
+                vivado_path: '/opt/Xilinx/Vivado/2023.2'
+                xsdb_path: '/opt/Xilinx/Vivado/2023.2/bin/xsdb'
 
-         BootNoOSJTAG:
-           firmware_elf:    '/tmp/noos-build/ad9361_iio.elf'
-           bitstream_path:  '/tmp/noos-build/system_top.bit'
-           ps7_init_tcl:    '/tmp/noos-build/ps7_init.tcl'
-           boot_marker:     'Successfully initialized'
-           boot_timeout:    90
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              zc706_noos:
+                resources:
+                  RemotePlace:
+                    name: zc706_noos_place
+                drivers:
+                  SerialDriver: {}
+                  HomeAssistantPowerDriver: {}
+                  XilinxJTAGDriver: {}
+
+                  ADIShellDriver:
+                    prompt: ''
+                    login_prompt: ''
+                    username: 'root'
+                    password: 'analog'
+
+                  BootNoOSJTAG:
+                    firmware_elf:    '/tmp/noos-build/ad9361_iio.elf'
+                    bitstream_path:  '/tmp/noos-build/system_top.bit'
+                    ps7_init_tcl:    '/tmp/noos-build/ps7_init.tcl'
+                    boot_marker:     'Successfully initialized'
+                    boot_timeout:    90
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+
+            targets:
+              zc706_noos:
+                resources:
+                  RawSerialPort:
+                    port: '/dev/serial/by-id/usb-Silicon_Labs_CP2103_USB_to_UART_Bridge_Controller_0001-if00-port0'
+                    speed: 115200
+
+                  HomeAssistantOutlet:
+                    url: 'http://homeassistant.local:8123'
+                    token: '${HA_TOKEN}'
+                    entity_id: 'switch.zc706_power'
+
+                  XilinxDeviceJTAG:
+                    root_target: 1
+
+                  XilinxVivadoTool:
+                    vivado_path: '/opt/Xilinx/Vivado/2023.2'
+                    xsdb_path: '/opt/Xilinx/Vivado/2023.2/bin/xsdb'
+
+                drivers:
+                  SerialDriver: {}
+                  HomeAssistantPowerDriver: {}
+                  XilinxJTAGDriver: {}
+
+                  ADIShellDriver:
+                    prompt: ''
+                    login_prompt: ''
+                    username: 'root'
+                    password: 'analog'
+
+                  BootNoOSJTAG:
+                    firmware_elf:    '/tmp/noos-build/ad9361_iio.elf'
+                    bitstream_path:  '/tmp/noos-build/system_top.bit'
+                    ps7_init_tcl:    '/tmp/noos-build/ps7_init.tcl'
+                    boot_marker:     'Successfully initialized'
+                    boot_timeout:    90
 
 **Usage Example**:
 
@@ -959,47 +1297,114 @@ The strategy manages 11 states with dual-FPGA boot orchestration:
 
 **Configuration Example**:
 
-.. code-block:: yaml
+.. tab-set::
 
-    targets:
-      dual_fpga:
-        resources:
-          VesyncOutlet:
-            outlet_names: 'Dual FPGA Power'
-            username: 'your_email@example.com'
-            password: 'your_password'
+    .. tab-item:: Exporter
 
-          RawSerialPort:
-            port: '/dev/ttyUSB0'
-            speed: 115200
+        ``resources.yaml`` (on exporter host):
 
-          NetworkService:
-            address: 'zynq.local'
-            username: 'root'
-            password: 'analog'
+        .. code-block:: yaml
 
-          KuiperRelease:
-            release_version: '2024.r1'
+            dual_fpga_group:
+              VesyncOutlet:
+                cls: VesyncOutlet
+                outlet_names: 'Dual FPGA Power'
+                username: 'your_email@example.com'
+                password: 'your_password'
 
-        drivers:
-          VesyncPowerDriver: {}
-          ADIShellDriver:
-            prompt: 'root@.*:.*#'
-            login_prompt: 'login:'
-            username: 'root'
-            password: 'analog'
-          SSHDriver: {}
+              RawSerialPort:
+                cls: RawSerialPort
+                port: '/dev/ttyUSB0'
+                speed: 115200
 
-          BootSelMap:
-            reached_linux_marker: 'analog'
-            ethernet_interface: 'eth0'
-            iio_jesd_driver_name: 'axi-ad9081-rx-hpc'
-            pre_boot_boot_files: null
-            post_boot_boot_files: null
-            local_bitstream_filename: '/path/to/vu11p.bin'
-            local_overlay_filename: '/path/to/vu11p.dtbo'
-            target_dut_folder: '/boot/ci'
-            pre_load_commands: null
+              NetworkService:
+                cls: NetworkService
+                address: 'zynq.local'
+                username: 'root'
+                password: 'analog'
+
+              KuiperRelease:
+                cls: KuiperRelease
+                release_version: '2024.r1'
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              dual_fpga:
+                resources:
+                  RemotePlace:
+                    name: dual_fpga_place
+                drivers:
+                  VesyncPowerDriver: {}
+                  SerialDriver: {}
+                  ADIShellDriver:
+                    prompt: 'root@.*:.*#'
+                    login_prompt: 'login:'
+                    username: 'root'
+                    password: 'analog'
+                  SSHDriver: {}
+
+                  BootSelMap:
+                    reached_linux_marker: 'analog'
+                    ethernet_interface: 'eth0'
+                    iio_jesd_driver_name: 'axi-ad9081-rx-hpc'
+                    pre_boot_boot_files: null
+                    post_boot_boot_files: null
+                    local_bitstream_filename: '/path/to/vu11p.bin'
+                    local_overlay_filename: '/path/to/vu11p.dtbo'
+                    target_dut_folder: '/boot/ci'
+                    pre_load_commands: null
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              dual_fpga:
+                resources:
+                  VesyncOutlet:
+                    outlet_names: 'Dual FPGA Power'
+                    username: 'your_email@example.com'
+                    password: 'your_password'
+
+                  RawSerialPort:
+                    port: '/dev/ttyUSB0'
+                    speed: 115200
+
+                  NetworkService:
+                    address: 'zynq.local'
+                    username: 'root'
+                    password: 'analog'
+
+                  KuiperRelease:
+                    release_version: '2024.r1'
+
+                drivers:
+                  VesyncPowerDriver: {}
+                  SerialDriver: {}
+                  ADIShellDriver:
+                    prompt: 'root@.*:.*#'
+                    login_prompt: 'login:'
+                    username: 'root'
+                    password: 'analog'
+                  SSHDriver: {}
+
+                  BootSelMap:
+                    reached_linux_marker: 'analog'
+                    ethernet_interface: 'eth0'
+                    iio_jesd_driver_name: 'axi-ad9081-rx-hpc'
+                    pre_boot_boot_files: null
+                    post_boot_boot_files: null
+                    local_bitstream_filename: '/path/to/vu11p.bin'
+                    local_overlay_filename: '/path/to/vu11p.dtbo'
+                    target_dut_folder: '/boot/ci'
+                    pre_load_commands: null
 
 **Usage Example**:
 
@@ -1231,55 +1636,145 @@ When no power driver is available and the device is in ``unknown`` state, the st
 
 **Configuration Example (SSH only)**:
 
-.. code-block:: yaml
+.. tab-set::
 
-    targets:
-      rpi:
-        resources:
-          NetworkService:
-            address: 10.0.0.149
-            username: root
-            password: analog
+    .. tab-item:: Exporter
 
-        drivers:
-          SSHDriver: {}
-          BootRPI:
-            ssh_boot_timeout: 60
+        ``resources.yaml`` (on exporter host):
+
+        .. code-block:: yaml
+
+            rpi_group:
+              NetworkService:
+                cls: NetworkService
+                address: 10.0.0.149
+                username: root
+                password: analog
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              rpi:
+                resources:
+                  RemotePlace:
+                    name: rpi_place
+                drivers:
+                  SSHDriver: {}
+                  BootRPI:
+                    ssh_boot_timeout: 60
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              rpi:
+                resources:
+                  NetworkService:
+                    address: 10.0.0.149
+                    username: root
+                    password: analog
+
+                drivers:
+                  SSHDriver: {}
+                  BootRPI:
+                    ssh_boot_timeout: 60
 
 **Configuration Example (with power and serial)**:
 
-.. code-block:: yaml
+.. tab-set::
 
-    targets:
-      rpi:
-        resources:
-          NetworkService:
-            address: 10.0.0.149
-            username: root
-            password: analog
+    .. tab-item:: Exporter
 
-          VesyncOutlet:
-            outlet_names: 'RPI Power'
-            username: 'your_email@example.com'
-            password: 'your_password'
-            delay: 5.0
+        ``resources.yaml`` (on exporter host):
 
-          RawSerialPort:
-            port: /dev/ttyUSB0
-            speed: 115200
+        .. code-block:: yaml
 
-        drivers:
-          SSHDriver: {}
-          VesyncPowerDriver: {}
-          SerialDriver: {}
-          ADIShellDriver:
-            prompt: 'root@.*:.*#'
-            login_prompt: 'login:'
-            username: 'root'
-            password: 'analog'
-          BootRPI:
-            ssh_boot_timeout: 120
-            power_off_delay: 5
+            rpi_group:
+              NetworkService:
+                cls: NetworkService
+                address: 10.0.0.149
+                username: root
+                password: analog
+
+              VesyncOutlet:
+                cls: VesyncOutlet
+                outlet_names: 'RPI Power'
+                username: 'your_email@example.com'
+                password: 'your_password'
+                delay: 5.0
+
+              RawSerialPort:
+                cls: RawSerialPort
+                port: /dev/ttyUSB0
+                speed: 115200
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              rpi:
+                resources:
+                  RemotePlace:
+                    name: rpi_place
+                drivers:
+                  SSHDriver: {}
+                  VesyncPowerDriver: {}
+                  SerialDriver: {}
+                  ADIShellDriver:
+                    prompt: 'root@.*:.*#'
+                    login_prompt: 'login:'
+                    username: 'root'
+                    password: 'analog'
+                  BootRPI:
+                    ssh_boot_timeout: 120
+                    power_off_delay: 5
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              rpi:
+                resources:
+                  NetworkService:
+                    address: 10.0.0.149
+                    username: root
+                    password: analog
+
+                  VesyncOutlet:
+                    outlet_names: 'RPI Power'
+                    username: 'your_email@example.com'
+                    password: 'your_password'
+                    delay: 5.0
+
+                  RawSerialPort:
+                    port: /dev/ttyUSB0
+                    speed: 115200
+
+                drivers:
+                  SSHDriver: {}
+                  VesyncPowerDriver: {}
+                  SerialDriver: {}
+                  ADIShellDriver:
+                    prompt: 'root@.*:.*#'
+                    login_prompt: 'login:'
+                    username: 'root'
+                    password: 'analog'
+                  BootRPI:
+                    ssh_boot_timeout: 120
+                    power_off_delay: 5
 
 **Usage Example**:
 
@@ -1545,43 +2040,104 @@ BootFabric Strategy
 
 **Configuration Example**:
 
-.. code-block:: yaml
+.. tab-set::
 
-   targets:
-     vcu118:
-       resources:
-         RawSerialPort:
-           port: "/dev/ttyUSB0"
-           speed: 115200
+    .. tab-item:: Exporter
 
-         XilinxDeviceJTAG:
-           root_target: 1
-           microblaze_target: 3
-           bitstream_path: "/builds/system_top.bit"
-           kernel_path: "/builds/simpleImage.vcu118.strip"
+        ``resources.yaml`` (on exporter host):
 
-         XilinxVivadoTool:
-           vivado_path: "/tools/Xilinx/Vivado"
-           version: "2023.2"
+        .. code-block:: yaml
 
-         NetworkPowerPort:
-           model: "gude"
-           host: "192.168.1.100"
-           index: 1
+            vcu118_group:
+              RawSerialPort:
+                cls: RawSerialPort
+                port: "/dev/ttyUSB0"
+                speed: 115200
 
-       drivers:
-         SerialDriver: {}
-         ADIShellDriver:
-           prompt: "#.*"
-           login_prompt: "buildroot login: "
-           username: "root"
-         XilinxJTAGDriver: {}
-         NetworkPowerDriver: {}
+              XilinxDeviceJTAG:
+                cls: XilinxDeviceJTAG
+                root_target: 1
+                microblaze_target: 3
+                bitstream_path: "/builds/system_top.bit"
+                kernel_path: "/builds/simpleImage.vcu118.strip"
 
-         BootFabric:
-           reached_boot_marker: "login:"
-           wait_for_boot_timeout: 120
-           verify_iio_device: "axi-ad9081-rx-hpc"
+              XilinxVivadoTool:
+                cls: XilinxVivadoTool
+                vivado_path: "/tools/Xilinx/Vivado"
+                version: "2023.2"
+
+              NetworkPowerPort:
+                cls: NetworkPowerPort
+                model: "gude"
+                host: "192.168.1.100"
+                index: 1
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              vcu118:
+                resources:
+                  RemotePlace:
+                    name: vcu118_place
+                drivers:
+                  SerialDriver: {}
+                  ADIShellDriver:
+                    prompt: "#.*"
+                    login_prompt: "buildroot login: "
+                    username: "root"
+                  XilinxJTAGDriver: {}
+                  NetworkPowerDriver: {}
+
+                  BootFabric:
+                    reached_boot_marker: "login:"
+                    wait_for_boot_timeout: 120
+                    verify_iio_device: "axi-ad9081-rx-hpc"
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              vcu118:
+                resources:
+                  RawSerialPort:
+                    port: "/dev/ttyUSB0"
+                    speed: 115200
+
+                  XilinxDeviceJTAG:
+                    root_target: 1
+                    microblaze_target: 3
+                    bitstream_path: "/builds/system_top.bit"
+                    kernel_path: "/builds/simpleImage.vcu118.strip"
+
+                  XilinxVivadoTool:
+                    vivado_path: "/tools/Xilinx/Vivado"
+                    version: "2023.2"
+
+                  NetworkPowerPort:
+                    model: "gude"
+                    host: "192.168.1.100"
+                    index: 1
+
+                drivers:
+                  SerialDriver: {}
+                  ADIShellDriver:
+                    prompt: "#.*"
+                    login_prompt: "buildroot login: "
+                    username: "root"
+                  XilinxJTAGDriver: {}
+                  NetworkPowerDriver: {}
+
+                  BootFabric:
+                    reached_boot_marker: "login:"
+                    wait_for_boot_timeout: 120
+                    verify_iio_device: "axi-ad9081-rx-hpc"
 
 **Usage Example**:
 
@@ -1663,36 +2219,87 @@ SoftwareProvisioningStrategy
 
 **Configuration Example**
 
-.. code-block:: yaml
+.. tab-set::
 
-    targets:
-      netdevice:
-        resources:
-          NetworkService:
-            address: '10.0.0.23'
-            username: 'root'
-            password: 'analog'
+    .. tab-item:: Exporter
 
-        drivers:
-          SSHDriver: {}
-          SoftwareInstallerDriver: {}
+        ``resources.yaml`` (on exporter host):
 
-          SoftwareProvisioningStrategy:
-            packages:
-              - git
-              - build-essential
-              - cmake
-            repos:
-              - url:    'https://github.com/analogdevicesinc/libiio'
-                dest:   '/opt/libiio'
-                branch: 'main'
-              - ['https://github.com/analogdevicesinc/libad9361-iio', '/opt/libad9361']
-            build_steps:
-              - cmd: 'cmake -S . -B build && cmake --build build -j4'
-                dir: '/opt/libiio'
-            test_steps:
-              - cmd: 'ctest --test-dir build'
-                dir: '/opt/libiio'
+        .. code-block:: yaml
+
+            netdevice_group:
+              NetworkService:
+                cls: NetworkService
+                address: '10.0.0.23'
+                username: 'root'
+                password: 'analog'
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              netdevice:
+                resources:
+                  RemotePlace:
+                    name: netdevice_place
+                drivers:
+                  SSHDriver: {}
+                  SoftwareInstallerDriver: {}
+
+                  SoftwareProvisioningStrategy:
+                    packages:
+                      - git
+                      - build-essential
+                      - cmake
+                    repos:
+                      - url:    'https://github.com/analogdevicesinc/libiio'
+                        dest:   '/opt/libiio'
+                        branch: 'main'
+                      - ['https://github.com/analogdevicesinc/libad9361-iio', '/opt/libad9361']
+                    build_steps:
+                      - cmd: 'cmake -S . -B build && cmake --build build -j4'
+                        dir: '/opt/libiio'
+                    test_steps:
+                      - cmd: 'ctest --test-dir build'
+                        dir: '/opt/libiio'
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              netdevice:
+                resources:
+                  NetworkService:
+                    address: '10.0.0.23'
+                    username: 'root'
+                    password: 'analog'
+
+                drivers:
+                  SSHDriver: {}
+                  SoftwareInstallerDriver: {}
+
+                  SoftwareProvisioningStrategy:
+                    packages:
+                      - git
+                      - build-essential
+                      - cmake
+                    repos:
+                      - url:    'https://github.com/analogdevicesinc/libiio'
+                        dest:   '/opt/libiio'
+                        branch: 'main'
+                      - ['https://github.com/analogdevicesinc/libad9361-iio', '/opt/libad9361']
+                    build_steps:
+                      - cmd: 'cmake -S . -B build && cmake --build build -j4'
+                        dir: '/opt/libiio'
+                    test_steps:
+                      - cmd: 'ctest --test-dir build'
+                        dir: '/opt/libiio'
 
 **Attributes**
 
