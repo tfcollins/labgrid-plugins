@@ -212,22 +212,74 @@ leaves the board powered off unless told otherwise.
 ``USBStorageDriver`` binds the ``USBSDMuxDevice`` resource directly and is what
 actually performs the write:
 
-.. code-block:: yaml
+.. tab-set::
 
-    imports:
-      - adi_lg_plugins
+    .. tab-item:: Exporter
 
-    targets:
-      main:
-        resources:
-          RemotePlace:
-            name: mini2
-        drivers:
-          VesyncPowerDriver: {}
-          USBSDMuxDriver: {}
-          USBStorageDriver: {}
-          MassStorageDriver:
-            partition: '/dev/disk/by-label/BOOT'
+        ``resources.yaml`` (on exporter host):
+
+        .. code-block:: yaml
+
+            mini2_group:
+              VesyncOutlet:
+                cls: VesyncOutlet
+                outlet_names: 'Board Power'
+                username: 'user@example.com'
+                password: 'password'
+              USBSDMuxDevice:
+                cls: USBSDMuxDevice
+                match:
+                  ID_SERIAL_SHORT: '00001234'
+              MassStorageDevice:
+                cls: MassStorageDevice
+                path: '/dev/disk/by-label/BOOT'
+                use_with_sdmux: true
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+
+            targets:
+              main:
+                resources:
+                  RemotePlace:
+                    name: mini2
+                drivers:
+                  VesyncPowerDriver: {}
+                  USBSDMuxDriver: {}
+                  USBStorageDriver: {}
+                  MassStorageDriver:
+                    partition: '/dev/disk/by-label/BOOT'
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+
+            targets:
+              main:
+                resources:
+                  VesyncOutlet:
+                    outlet_names: 'Board Power'
+                    username: 'user@example.com'
+                    password: 'password'
+                  USBSDMuxDevice:
+                    match:
+                      ID_SERIAL_SHORT: '00001234'
+                  MassStorageDevice:
+                    path: '/dev/disk/by-label/BOOT'
+                    use_with_sdmux: true
+                drivers:
+                  VesyncPowerDriver: {}
+                  USBSDMuxDriver: {}
+                  USBStorageDriver: {}
+                  MassStorageDriver:
+                    partition: '/dev/disk/by-label/BOOT'
 
 **PARTUUIDs change on every flash.** ``adi-kuiper-gen`` runs ``parted mklabel
 msdos``, which generates a fresh MBR signature per build, and the partition

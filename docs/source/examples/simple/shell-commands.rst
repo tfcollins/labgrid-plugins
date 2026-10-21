@@ -10,22 +10,61 @@ Execute simple commands and capture output:
 
 **Configuration**:
 
-.. code-block:: yaml
+.. tab-set::
 
-    targets:
-      device_under_test:
-        resources:
-          RawSerialPort:
-            port: '/dev/ttyUSB0'
-            speed: 115200
+    .. tab-item:: Exporter
 
-        drivers:
-          ADIShellDriver:
-            prompt: 'root@.*:.*#'
-            login_prompt: 'login:'
-            username: 'root'
-            password: 'analog'
-            login_timeout: 60
+        ``resources.yaml`` (on exporter host):
+
+        .. code-block:: yaml
+
+            device_under_test_group:
+              RawSerialPort:
+                cls: RawSerialPort
+                port: '/dev/ttyUSB0'
+                speed: 115200
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              device_under_test:
+                resources:
+                  RemotePlace:
+                    name: device_under_test_place
+                drivers:
+                  SerialDriver: {}
+                  ADIShellDriver:
+                    prompt: 'root@.*:.*#'
+                    login_prompt: 'login:'
+                    username: 'root'
+                    password: 'analog'
+                    login_timeout: 60
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              device_under_test:
+                resources:
+                  RawSerialPort:
+                    port: '/dev/ttyUSB0'
+                    speed: 115200
+
+                drivers:
+                  SerialDriver: {}
+                  ADIShellDriver:
+                    prompt: 'root@.*:.*#'
+                    login_prompt: 'login:'
+                    username: 'root'
+                    password: 'analog'
+                    login_timeout: 60
 
 **Basic Usage**:
 
@@ -259,25 +298,61 @@ Enable passwordless SSH access by injecting SSH keys into the device:
 
 **Configuration with Key File**:
 
-.. code-block:: yaml
+.. tab-set::
 
-    targets:
-      ssh_enabled_device:
-        resources:
-          RawSerialPort:
-            port: '/dev/ttyUSB0'
-            speed: 115200
+    .. tab-item:: Exporter
 
-          SSHKey:
-            keyfile: '~/.ssh/id_rsa.pub'
+        ``resources.yaml`` (on exporter host):
 
-        drivers:
-          ADIShellDriver:
-            keyfile: '~/.ssh/id_rsa.pub'  # Inject this key on login
-            prompt: 'root@.*:.*#'
-            login_prompt: 'login:'
-            username: 'root'
-            password: 'analog'
+        .. code-block:: yaml
+
+            ssh_enabled_device_group:
+              RawSerialPort:
+                cls: RawSerialPort
+                port: '/dev/ttyUSB0'
+                speed: 115200
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              ssh_enabled_device:
+                resources:
+                  RemotePlace:
+                    name: ssh_enabled_device_place
+                drivers:
+                  SerialDriver: {}
+                  ADIShellDriver:
+                    keyfile: '~/.ssh/id_rsa.pub'  # Inject this key on login
+                    prompt: 'root@.*:.*#'
+                    login_prompt: 'login:'
+                    username: 'root'
+                    password: 'analog'
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              ssh_enabled_device:
+                resources:
+                  RawSerialPort:
+                    port: '/dev/ttyUSB0'
+                    speed: 115200
+
+                drivers:
+                  SerialDriver: {}
+                  ADIShellDriver:
+                    keyfile: '~/.ssh/id_rsa.pub'  # Inject this key on login
+                    prompt: 'root@.*:.*#'
+                    login_prompt: 'login:'
+                    username: 'root'
+                    password: 'analog'
 
 **Workflow**:
 
@@ -625,24 +700,63 @@ Console Access Techniques
 Complete Working Example
 ------------------------
 
-**target.yaml**:
+**Configuration**:
 
-.. code-block:: yaml
+.. tab-set::
 
-    targets:
-      shell_test_device:
-        resources:
-          RawSerialPort:
-            port: '/dev/ttyUSB0'
-            speed: 115200
+    .. tab-item:: Exporter
 
-        drivers:
-          ADIShellDriver:
-            prompt: 'root@.*:.*#'
-            login_prompt: 'login:'
-            username: 'root'
-            password: 'analog'
-            login_timeout: 60
+        ``resources.yaml`` (on exporter host):
+
+        .. code-block:: yaml
+
+            shell_test_device_group:
+              RawSerialPort:
+                cls: RawSerialPort
+                port: '/dev/ttyUSB0'
+                speed: 115200
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              shell_test_device:
+                resources:
+                  RemotePlace:
+                    name: shell_test_device_place
+                drivers:
+                  SerialDriver: {}
+                  ADIShellDriver:
+                    prompt: 'root@.*:.*#'
+                    login_prompt: 'login:'
+                    username: 'root'
+                    password: 'analog'
+                    login_timeout: 60
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              shell_test_device:
+                resources:
+                  RawSerialPort:
+                    port: '/dev/ttyUSB0'
+                    speed: 115200
+
+                drivers:
+                  SerialDriver: {}
+                  ADIShellDriver:
+                    prompt: 'root@.*:.*#'
+                    login_prompt: 'login:'
+                    username: 'root'
+                    password: 'analog'
+                    login_timeout: 60
 
 **test_shell_commands.py**:
 

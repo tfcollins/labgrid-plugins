@@ -21,36 +21,105 @@ Components
 Example environment
 -------------------
 
-.. code-block:: yaml
+.. tab-set::
 
-   imports:
-     - adi_lg_plugins
-   targets:
-     main:
-       resources:
-         RemotePlace:
-           name: mini2
-         TickArtifacts:
-           bitstream_path: /run/tick/ad9081_fmca_ebz_zcu102.bit
-           overlay_dtbo_path: /run/tick/tick.dtbo
-           module_ko_path: /run/tick/axi_timed_command_scheduler.ko
-       drivers:
-         VesyncPowerDriver: {}
-         SerialDriver: {}
-         ADIShellDriver:
-           prompt: 'root@.*#'
-           login_prompt: 'analog login: '
-           username: root
-           password: analog
-         SSHDriver@runtime-ssh: {}
-         TickFpgaManagerDriver:
-           bindings: {command: runtime-ssh, fs: runtime-ssh}
-         TickOverlayDriver:
-           bindings: {command: runtime-ssh, fs: runtime-ssh}
-         TickModuleDriver:
-           bindings: {command: runtime-ssh, fs: runtime-ssh}
-         BootTickFPGASSH:
-           bindings: {ssh: runtime-ssh}
+    .. tab-item:: Exporter
+
+        ``resources.yaml`` (on exporter host):
+
+        .. code-block:: yaml
+
+            mini2_group:
+              VesyncOutlet:
+                cls: VesyncOutlet
+                outlet_names: 'ZCU102 Power'
+                username: 'user@example.com'
+                password: 'password'
+              RawSerialPort:
+                cls: RawSerialPort
+                port: '/dev/ttyUSB0'
+                speed: 115200
+              NetworkService:
+                cls: NetworkService
+                address: '10.0.0.50'
+                username: 'root'
+                password: 'analog'
+              TickArtifacts:
+                cls: TickArtifacts
+                bitstream_path: /run/tick/ad9081_fmca_ebz_zcu102.bit
+                overlay_dtbo_path: /run/tick/tick.dtbo
+                module_ko_path: /run/tick/axi_timed_command_scheduler.ko
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  RemotePlace:
+                    name: mini2
+                drivers:
+                  VesyncPowerDriver: {}
+                  SerialDriver: {}
+                  ADIShellDriver:
+                    prompt: 'root@.*#'
+                    login_prompt: 'analog login: '
+                    username: root
+                    password: analog
+                  SSHDriver@runtime-ssh: {}
+                  TickFpgaManagerDriver:
+                    bindings: {command: runtime-ssh, fs: runtime-ssh}
+                  TickOverlayDriver:
+                    bindings: {command: runtime-ssh, fs: runtime-ssh}
+                  TickModuleDriver:
+                    bindings: {command: runtime-ssh, fs: runtime-ssh}
+                  BootTickFPGASSH:
+                    bindings: {ssh: runtime-ssh}
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  VesyncOutlet:
+                    outlet_names: 'ZCU102 Power'
+                    username: 'user@example.com'
+                    password: 'password'
+                  RawSerialPort:
+                    port: '/dev/ttyUSB0'
+                    speed: 115200
+                  NetworkService:
+                    address: '10.0.0.50'
+                    username: 'root'
+                    password: 'analog'
+                  TickArtifacts:
+                    bitstream_path: /run/tick/ad9081_fmca_ebz_zcu102.bit
+                    overlay_dtbo_path: /run/tick/tick.dtbo
+                    module_ko_path: /run/tick/axi_timed_command_scheduler.ko
+                drivers:
+                  VesyncPowerDriver: {}
+                  SerialDriver: {}
+                  ADIShellDriver:
+                    prompt: 'root@.*#'
+                    login_prompt: 'analog login: '
+                    username: root
+                    password: analog
+                  SSHDriver@runtime-ssh: {}
+                  TickFpgaManagerDriver:
+                    bindings: {command: runtime-ssh, fs: runtime-ssh}
+                  TickOverlayDriver:
+                    bindings: {command: runtime-ssh, fs: runtime-ssh}
+                  TickModuleDriver:
+                    bindings: {command: runtime-ssh, fs: runtime-ssh}
+                  BootTickFPGASSH:
+                    bindings: {ssh: runtime-ssh}
 
 .. note::
 

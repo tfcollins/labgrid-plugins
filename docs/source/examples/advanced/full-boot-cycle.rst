@@ -56,53 +56,129 @@ Hardware Setup
 Complete Configuration
 ----------------------
 
-**target.yaml - Full Example**:
+**Full Example**:
 
-.. code-block:: yaml
+.. tab-set::
 
-    targets:
-      fpga_soc_board:
-        resources:
-          VesyncOutlet:
-            outlet_names: 'FPGA SoC Power'
-            username: 'your_email@example.com'
-            password: 'your_password'
-            delay: 5.0  # Wait 5s between power off and on
+    .. tab-item:: Exporter
 
-          RawSerialPort:
-            port: '/dev/ttyUSB0'
-            speed: 115200
+        ``resources.yaml`` (on exporter host):
 
-          USBSDMuxDriver:
-            serial: '00012345'  # Serial of your SD mux device
+        .. code-block:: yaml
 
-          MassStorageDevice:
-            path: '/dev/sda1'  # Your SD card partition
+            fpga_soc_board_group:
+              VesyncOutlet:
+                cls: VesyncOutlet
+                outlet_names: 'FPGA SoC Power'
+                username: 'your_email@example.com'
+                password: 'your_password'
+                delay: 5.0  # Wait 5s between power off and on
 
-          KuiperRelease:
-            release_version: '2024.r1'  # Release version to boot
-            cache_path: '/tmp/kuiper_cache'
+              RawSerialPort:
+                cls: RawSerialPort
+                port: '/dev/ttyUSB0'
+                speed: 115200
 
-        drivers:
-          VesyncPowerDriver: {}
+              USBSDMuxDevice:
+                cls: USBSDMuxDevice
+                match:
+                  ID_SERIAL_SHORT: '00012345'  # Serial of your SD mux device
 
-          ADIShellDriver:
-            prompt: 'root@.*:.*# '  # Adjust to match your prompt
-            login_prompt: 'login:'
-            username: 'root'
-            password: 'analog'
-            login_timeout: 60
-            post_login_settle_time: 2
+              MassStorageDevice:
+                cls: MassStorageDevice
+                path: '/dev/sda1'  # Your SD card partition
+                use_with_sdmux: true
 
-          USBSDMuxDriver: {}
+              KuiperRelease:
+                cls: KuiperRelease
+                release_version: '2024.r1'  # Release version to boot
+                cache_path: '/tmp/kuiper_cache'
 
-          MassStorageDriver: {}
+        ``target.yaml`` (on client):
 
-          KuiperDLDriver: {}
+        .. code-block:: yaml
 
-          BootFPGASoC:
-            reached_linux_marker: 'analog'  # String in login prompt
-            update_image: false  # Set to true to flash full image
+            imports:
+              - adi_lg_plugins
+            targets:
+              fpga_soc_board:
+                resources:
+                  RemotePlace:
+                    name: fpga_soc_board_place
+                drivers:
+                  VesyncPowerDriver: {}
+                  SerialDriver: {}
+
+                  ADIShellDriver:
+                    prompt: 'root@.*:.*# '  # Adjust to match your prompt
+                    login_prompt: 'login:'
+                    username: 'root'
+                    password: 'analog'
+                    login_timeout: 60
+                    post_login_settle_time: 2
+
+                  USBSDMuxDriver: {}
+
+                  MassStorageDriver: {}
+
+                  KuiperDLDriver: {}
+
+                  BootFPGASoC:
+                    reached_linux_marker: 'analog'  # String in login prompt
+                    update_image: false  # Set to true to flash full image
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              fpga_soc_board:
+                resources:
+                  VesyncOutlet:
+                    outlet_names: 'FPGA SoC Power'
+                    username: 'your_email@example.com'
+                    password: 'your_password'
+                    delay: 5.0  # Wait 5s between power off and on
+
+                  RawSerialPort:
+                    port: '/dev/ttyUSB0'
+                    speed: 115200
+
+                  USBSDMuxDevice:
+                    match:
+                      ID_SERIAL_SHORT: '00012345'  # Serial of your SD mux device
+
+                  MassStorageDevice:
+                    path: '/dev/sda1'  # Your SD card partition
+                    use_with_sdmux: true
+
+                  KuiperRelease:
+                    release_version: '2024.r1'  # Release version to boot
+                    cache_path: '/tmp/kuiper_cache'
+
+                drivers:
+                  VesyncPowerDriver: {}
+                  SerialDriver: {}
+
+                  ADIShellDriver:
+                    prompt: 'root@.*:.*# '  # Adjust to match your prompt
+                    login_prompt: 'login:'
+                    username: 'root'
+                    password: 'analog'
+                    login_timeout: 60
+                    post_login_settle_time: 2
+
+                  USBSDMuxDriver: {}
+
+                  MassStorageDriver: {}
+
+                  KuiperDLDriver: {}
+
+                  BootFPGASoC:
+                    reached_linux_marker: 'analog'  # String in login prompt
+                    update_image: false  # Set to true to flash full image
 
 Basic Boot Script
 -----------------

@@ -71,24 +71,55 @@ def _yaml_blocks(text):
     lines = text.splitlines()
     index = 0
     while index < len(lines):
-        if lines[index].strip() != ".. code-block:: yaml":
+        stripped = lines[index].lstrip()
+        if stripped != ".. code-block:: yaml":
             index += 1
             continue
+        directive_indent = len(lines[index]) - len(stripped)
         index += 1
-        while index < len(lines) and not lines[index].strip():
+        while index < len(lines) and (
+            not lines[index].strip() or lines[index].lstrip().startswith(":")
+        ):
             index += 1
+        if index >= len(lines):
+            break
+        content_indent = len(lines[index]) - len(lines[index].lstrip())
+        if content_indent <= directive_indent:
+            continue
         block = []
         while index < len(lines):
             line = lines[index]
-            if line.startswith("    ") or not line.strip():
-                block.append(line[4:] if line.startswith("    ") else "")
+            if not line.strip():
+                block.append("")
+                index += 1
+                continue
+            line_indent = len(line) - len(line.lstrip())
+            if line_indent >= content_indent:
+                block.append(line[content_indent:])
                 index += 1
                 continue
             break
         yield "\n".join(block).rstrip()
 
 
+def _is_exporter_group_document(document: dict) -> bool:
+    """Return True if document is a labgrid-exporter group configuration."""
+    return "targets" not in document and "imports" not in document
+
+
 def _component_configs(document, section):
+    if _is_exporter_group_document(document):
+        if section != "resources":
+            return
+        for group in document.values():
+            if not isinstance(group, dict):
+                continue
+            for key, config in group.items():
+                if key == "location" or not isinstance(config, dict):
+                    continue
+                class_name = config.get("cls") or key.split("@", 1)[0]
+                yield class_name, config
+        return
     for target in (document.get("targets") or {}).values():
         for class_name, config in (target.get(section) or {}).items():
             yield class_name, config or {}
@@ -149,7 +180,16 @@ def test_reference_covers_every_registered_component_and_argument():
                 assert "For example," in description and "``" in description, (
                     f"{page.name} {class_name}.{field.name} needs an inline example"
                 )
-            assert list(_yaml_blocks(section)), f"{page.name} has no example for {class_name}"
+            assert ".. tab-item:: Exporter" in section, (
+                f"{page.name} {class_name} needs an Exporter tab"
+            )
+            assert ".. tab-item:: Local (Non-Exporter)" in section, (
+                f"{page.name} {class_name} needs a Local (Non-Exporter) tab"
+            )
+            section_blocks = list(_yaml_blocks(section))
+            assert len(section_blocks) >= 2, (
+                f"{page.name} {class_name} needs both Exporter and Local YAML examples"
+            )
 
 
 def test_reference_yaml_is_unique_parseable_and_uses_real_arguments():
@@ -167,16 +207,28 @@ def test_reference_yaml_is_unique_parseable_and_uses_real_arguments():
         for number, block in enumerate(blocks, 1):
             document = yaml.load(block, Loader=UniqueKeyLoader)
             assert isinstance(document, dict), f"{page.name} block {number} is not a mapping"
-            assert document.get("imports") == ["adi_lg_plugins"], (
-                f"{page.name} block {number} must import adi_lg_plugins"
-            )
-            assert "strategies" not in document, (
-                f"{page.name} block {number}: strategies belong under target drivers"
-            )
-            for target in (document.get("targets") or {}).values():
-                assert "strategies" not in target, (
+            if _is_exporter_group_document(document):
+                for group_name, group in document.items():
+                    assert isinstance(group, dict), (
+                        f"{page.name} block {number}: exporter group {group_name!r} must be a mapping"
+                    )
+                    for key, res_cfg in group.items():
+                        if key == "location":
+                            continue
+                        assert isinstance(res_cfg, dict) and "cls" in res_cfg, (
+                            f"{page.name} block {number}: exporter resource {key!r} must specify 'cls'"
+                        )
+            else:
+                assert document.get("imports") == ["adi_lg_plugins"], (
+                    f"{page.name} block {number} must import adi_lg_plugins"
+                )
+                assert "strategies" not in document, (
                     f"{page.name} block {number}: strategies belong under target drivers"
                 )
+                for target in (document.get("targets") or {}).values():
+                    assert "strategies" not in target, (
+                        f"{page.name} block {number}: strategies belong under target drivers"
+                    )
 
             for class_name, config in _component_configs(document, "resources"):
                 class_name = class_name.split("@", 1)[0]
