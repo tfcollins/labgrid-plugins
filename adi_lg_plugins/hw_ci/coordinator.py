@@ -19,6 +19,7 @@ import logging
 import os
 import subprocess
 import sys
+import urllib.error
 import urllib.request
 from collections.abc import Iterable
 
@@ -217,3 +218,91 @@ def _resolve_api(coord: str) -> str:
     base = coord.split("://", 1)[-1]
     host = base.rsplit(":", 1)[0] if ":" in base else base
     return f"{host}:8000"
+
+
+# --- Write path: creating/tagging places ------------------------------
+#
+# Unlike GET /api/places (open), every write endpoint under /places
+# requires an authenticated session (a `lg_session` cookie set by
+# POST /auth/login) — there is no bearer-token path on the coordinator API.
+# `login()` performs that handshake once; the resulting cookie is then
+# passed into create_place/add_match/set_place_tags for the rest of the
+# session's calls.
+
+
+def login(api: str, username: str, password: str, *, timeout: float = 15.0) -> str:
+    """POST /auth/login; returns the `Cookie:` header value to reuse on writes."""
+    url = f"{_api_url(api)}/auth/login"
+    body = json.dumps({"username": username, "password": password}).encode()
+    req = urllib.request.Request(
+        url, data=body, method="POST", headers={"Content-Type": "application/json"}
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310
+            cookie = r.headers.get("Set-Cookie")
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(
+            f"login to {url} failed: {e.code} {e.read().decode(errors='replace')}"
+        ) from e
+    if not cookie:
+        raise RuntimeError(f"login to {url} succeeded but returned no session cookie")
+    return cookie.split(";", 1)[0]
+
+
+def _write_json(
+    api: str, path: str, method: str, cookie: str, body: dict, *, timeout: float = 15.0
+) -> dict:
+    url = f"{_api_url(api)}{path}"
+    data = json.dumps(body).encode()
+    req = urllib.request.Request(
+        url,
+        data=data,
+        method=method,
+        headers={"Content-Type": "application/json", "Cookie": cookie},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:  # noqa: S310
+            raw = r.read()
+            return json.loads(raw) if raw else {}
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(
+            f"{method} {url} failed: {e.code} {e.read().decode(errors='replace')}"
+        ) from e
+
+
+def create_place(api: str, cookie: str, name: str, *, timeout: float = 15.0) -> None:
+    """POST /places. Idempotent: a place that already exists is not an error."""
+    try:
+        _write_json(api, "/places", "POST", cookie, {"name": name}, timeout=timeout)
+    except RuntimeError as e:
+        if "exist" in str(e).lower():
+            logger.info("place %r already exists on the coordinator; continuing", name)
+            return
+        raise
+
+
+def add_match(
+    api: str,
+    cookie: str,
+    name: str,
+    pattern: str,
+    rename: str | None = None,
+    *,
+    timeout: float = 15.0,
+) -> None:
+    """POST /places/{name}/matches."""
+    _write_json(
+        api,
+        f"/places/{name}/matches",
+        "POST",
+        cookie,
+        {"pattern": pattern, "rename": rename},
+        timeout=timeout,
+    )
+
+
+def set_place_tags(
+    api: str, cookie: str, name: str, tags: dict[str, str], *, timeout: float = 15.0
+) -> None:
+    """PUT /places/{name}/tags."""
+    _write_json(api, f"/places/{name}/tags", "PUT", cookie, {"tags": tags}, timeout=timeout)

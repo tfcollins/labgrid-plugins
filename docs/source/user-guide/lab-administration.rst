@@ -13,6 +13,12 @@ Guides for lab administrators to deploy physical lab hosts, configure exporters,
 
       Step-by-step procedure for provisioning coordinator catalog entries, places, and exporter services.
 
+   .. grid-item-card:: NetBox Onboarding
+      :link: netbox-onboarding
+      :link-type: doc
+
+      Automating the above with ``adi-lg netbox add-hardware``: NetBox registration, exporter deployment, and place creation in one interactive command.
+
    .. grid-item-card:: Coordinator Setup
       :link: coordinator
       :link-type: doc
@@ -42,6 +48,7 @@ Guides for lab administrators to deploy physical lab hosts, configure exporters,
    :hidden:
 
    onboarding-a-lab-host
+   netbox-onboarding
    coordinator
    coordinator-testing
    exporter-setup
