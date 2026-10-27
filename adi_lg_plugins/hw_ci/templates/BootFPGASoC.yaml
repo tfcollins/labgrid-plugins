@@ -21,6 +21,7 @@ targets:
       - '${carrier}'
 
     drivers:
+      ${power_output_driver}
       ${power_driver}: {}
       USBSDMuxDriver: {}
       # Binds the USBSDMuxDevice resource directly and performs full-image writes

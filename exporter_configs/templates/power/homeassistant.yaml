@@ -1,0 +1,8 @@
+## Power fragment: Home Assistant switch (homeassistant), included by the stock exporter
+## templates. Generated from adi_lg_plugins/hw_ci/power.py - edit there, then run
+## `python -m adi_lg_plugins.hw_ci.power exporter_configs/templates/power`.
+  HomeAssistantOutlet:
+    cls: HomeAssistantOutlet
+    entity_id: "{{ power_outlet }}"
+    url: '{{ env["HOMEASSISTANT_URL"] }}'
+    token: '{{ env["HOMEASSISTANT_TOKEN"] }}'

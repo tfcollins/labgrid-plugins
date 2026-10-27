@@ -1,0 +1,7 @@
+## Power fragment: Yepkit YKUSH hub port (ykush), included by the stock exporter
+## templates. Generated from adi_lg_plugins/hw_ci/power.py - edit there, then run
+## `python -m adi_lg_plugins.hw_ci.power exporter_configs/templates/power`.
+  YKUSHPowerPort:
+    cls: YKUSHPowerPort
+    serial: "{{ power_serial }}"
+    index: "{{ power_index }}"

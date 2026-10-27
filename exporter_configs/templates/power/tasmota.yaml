@@ -1,0 +1,11 @@
+## Power fragment: Tasmota plug (MQTT) (tasmota), included by the stock exporter
+## templates. Generated from adi_lg_plugins/hw_ci/power.py - edit there, then run
+## `python -m adi_lg_plugins.hw_ci.power exporter_configs/templates/power`.
+  TasmotaPowerPort:
+    cls: TasmotaPowerPort
+    host: "{{ power_host }}"
+    avail_topic: "{{ power_avail_topic }}"
+    power_topic: {{ power_power_topic | default(none) | tojson }}
+    status_topic: {{ power_status_topic | default(none) | tojson }}
+    username: '{{ env["TASMOTA_USERNAME"] }}'
+    password: '{{ env["TASMOTA_PASSWORD"] }}'

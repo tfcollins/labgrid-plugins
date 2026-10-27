@@ -1,0 +1,7 @@
+## Power fragment: Robot Electronics ETH008 relay (eth008), included by the stock exporter
+## templates. Generated from adi_lg_plugins/hw_ci/power.py - edit there, then run
+## `python -m adi_lg_plugins.hw_ci.power exporter_configs/templates/power`.
+  Eth008DigitalOutput:
+    cls: Eth008DigitalOutput
+    host: "{{ power_host }}"
+    index: {{ power_index }}

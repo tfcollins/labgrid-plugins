@@ -1,0 +1,6 @@
+## Power fragment: Sysfs GPIO (by index) (gpio), included by the stock exporter
+## templates. Generated from adi_lg_plugins/hw_ci/power.py - edit there, then run
+## `python -m adi_lg_plugins.hw_ci.power exporter_configs/templates/power`.
+  SysfsGPIO:
+    cls: SysfsGPIO
+    index: {{ power_gpio_index }}

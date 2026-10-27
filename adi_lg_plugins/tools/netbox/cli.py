@@ -16,6 +16,7 @@ from rich.console import Console
 from rich.prompt import Confirm, Prompt
 
 from adi_lg_plugins.hw_ci import coordinator as coord_mod
+from adi_lg_plugins.hw_ci import power as power_types
 from adi_lg_plugins.hw_ci.coordinator import (
     _resolve_api,
     add_match,
@@ -56,6 +57,34 @@ def netbox_group():
 def _discover_templates(exporter_configs_dir: Path) -> dict[str, Path]:
     templates_dir = exporter_configs_dir / "templates"
     return {p.stem: p for p in sorted(templates_dir.glob("*.yaml"))}
+
+
+def _ask_power() -> tuple[str, dict[str, str]]:
+    """Ask for a power type by category, then that type's fields.
+
+    Returns the type key and the template context for its ``power_*`` fields;
+    optional fields left blank are omitted so the fragment's default applies.
+    """
+    console.print("[bold]Power control[/bold]")
+    for category in power_types.CATEGORIES:
+        keys = ", ".join(t.key for t in power_types.types_in(category))
+        console.print(f"  {category}: {keys}")
+    category = Prompt.ask(
+        "Power category", choices=list(power_types.CATEGORIES), default=power_types.PLUG
+    )
+    in_category = [t.key for t in power_types.types_in(category)]
+    power = Prompt.ask(
+        "Power type",
+        choices=in_category,
+        default="vesync" if "vesync" in in_category else in_category[0],
+    )
+    context = {}
+    for f in power_types.POWER_TYPES[power].fields:
+        choices = power_types.choices_for(f.choices) if f.choices else None
+        answer = Prompt.ask(f"  {f.prompt}", choices=choices, default=f.default)
+        if answer not in (None, ""):
+            context[f.var] = answer
+    return power, context
 
 
 @netbox_group.command(name="add-hardware")
@@ -102,12 +131,8 @@ def add_hardware(
         choices=KNOWN_BOOT_STRATEGIES,
         default=provision.template_strategy(template_path),
     )
-    power = Prompt.ask("Power control", choices=sorted(provision.POWER_DRIVERS), default="vesync")
-    power_outlet = Prompt.ask(
-        "Power outlet (Home Assistant entity_id, e.g. switch.lab_outlet_1)"
-        if power == "homeassistant"
-        else "Power outlet (VeSync outlet name)"
-    )
+    power, power_context = _ask_power()
+    power_type = power_types.POWER_TYPES[power]
     runner_label = Prompt.ask("GitHub runner label", default=f"hw-{carrier.lower()}")
     site_slug = Prompt.ask("NetBox site slug (must already exist)")
     ssh_target = Prompt.ask("Exporter host SSH target (user@host)")
@@ -116,19 +141,20 @@ def add_hardware(
     ssh_user, ssh_host = ssh_target.split("@", 1)
 
     # Templates name their resource group <CARRIER>_<CHIP> from these fields
-    # and pick the outlet resource from `power`, so fill them from the answers
-    # above instead of asking twice.
+    # and include the power fragment named by `power`, so fill them from the
+    # answers above instead of asking twice.
     context = {
         "carrier": carrier,
         "chip": daughter_board,
         "power": power,
-        "power_outlet": power_outlet,
+        **power_context,
     }
     try:
         var_names = sorted(
             provision.discover_template_vars(template_path)
             - set(context)
             - provision.EXPORTER_RUNTIME_VARS
+            - {f.var for t in power_types.POWER_TYPES.values() for f in t.fields}
         )
     except RuntimeError as e:
         raise click.ClickException(str(e)) from e
@@ -148,17 +174,27 @@ def add_hardware(
         f"  NetBox device: {name}  (carrier={carrier}, chip={daughter_board}, site={site_slug})"
     )
     console.print(f"  Exporter: {ssh_target} -> systemd unit labgrid-exporter-{name}")
+    power_tags = provision.power_tags(power)
     console.print(
         f"  Coordinator place: {name}  "
         f"(tags: daughter-board={daughter_board.lower()}, carrier={carrier.lower()}, "
         f"boot-strategy={boot_strategy}, runner={runner_label}, "
-        f"power-driver={provision.POWER_DRIVERS[power]})"
+        + ", ".join(f"{k}={v}" for k, v in power_tags.items())
+        + ")"
     )
-    console.print(
-        f"  Power: {power} outlet {power_outlet!r}; credentials "
-        f"{', '.join(provision.POWER_ENV[power])} from {provision.EXPORTER_ENV_FILE} "
-        "on the exporter host"
-    )
+    console.print(f"  Power: {power_type.label} ({power}), via {' + '.join(power_type.drivers)}")
+    if power_type.credentials:
+        console.print(
+            "    credentials from "
+            f"{provision.EXPORTER_ENV_FILE} on the exporter host: "
+            + ", ".join(
+                c.env + ("" if c.required else " (optional)") for c in power_type.credentials
+            )
+        )
+    if power_type.reach == "client":
+        console.print("    [yellow]the client (test runner) must reach this device[/yellow]")
+    if power_type.note:
+        console.print(f"    {power_type.note}")
 
     try:
         rendered_path, groups = provision.render_and_validate(
@@ -245,7 +281,7 @@ def add_hardware(
                 "carrier": carrier.lower(),
                 "boot-strategy": boot_strategy,
                 "runner": runner_label,
-                "power-driver": provision.POWER_DRIVERS[power],
+                **power_tags,
             },
         )
     except RuntimeError as e:

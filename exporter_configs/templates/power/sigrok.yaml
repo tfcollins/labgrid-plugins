@@ -1,0 +1,9 @@
+## Power fragment: Bench supply via sigrok (sigrok), included by the stock exporter
+## templates. Generated from adi_lg_plugins/hw_ci/power.py - edit there, then run
+## `python -m adi_lg_plugins.hw_ci.power exporter_configs/templates/power`.
+  SigrokUSBSerialDevice:
+    cls: SigrokUSBSerialDevice
+    match:
+      ID_PATH: "{{ power_usb_path }}"
+    driver: "{{ power_sigrok_driver }}"
+    channel_group: {{ power_channel | default(none) | tojson }}

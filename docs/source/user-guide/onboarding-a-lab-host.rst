@@ -111,9 +111,13 @@ per board and **tag it with the keys the consumer preflight matches on**:
        host (Step 5)
    * - ``power-driver``
      - optional
-     - client power driver class matching the outlet the place exports
-       (``VesyncPowerDriver``, the default, or ``HomeAssistantPowerDriver``); read by
-       ``render-env``
+     - client power driver class for the power control the place exports (default
+       ``VesyncPowerDriver``); read by ``render-env``. See :ref:`power-types` for each type's
+       driver
+   * - ``power-output-driver``
+     - relay types
+     - the relay's own driver (e.g. ``ModbusCoilDriver``) when ``power-driver`` is
+       ``DigitalOutputPowerDriver``; ``render-env`` creates it first
 
 .. note::
 

@@ -12,6 +12,7 @@ targets:
       - '${daughter_board}'
       - '${carrier}'
     drivers:
+      ${power_output_driver}
       ${power_driver}: {}
       OpenFPGALoaderDriver:
         board: '${openfpgaloader_board}'

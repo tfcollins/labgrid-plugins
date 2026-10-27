@@ -39,6 +39,7 @@ targets:
       - '${carrier}'
 
     drivers:
+      ${power_output_driver}
       ${power_driver}: {}
       SerialDriver: {}
       XilinxJTAGDriver: {}

@@ -33,9 +33,12 @@ YAML templates for deploying labgrid exporters, plus validation:
   `## boot-strategy:` line: `soc-sdmux` (BootFPGASoC), `soc-ssh` (BootFPGASoCSSH), `soc-tftp`
   (BootFPGASoCTFTP), `zynqmp-jtag` (BootZynqMPJTAG), `fabric-jtag` (BootFabric), `rpi-ssh`
   (BootRPI). Resource groups are `<CARRIER>_<CHIP>` from the `carrier`/`chip` fields. Each
-  exports a power outlet chosen by `power` (vesync|homeassistant) — tag the place
-  `power-driver=VesyncPowerDriver|HomeAssistantPowerDriver` to match; outlet credentials come
-  from the exporter's environment (`/etc/labgrid/exporter.env`), never the file. Start from the closest template; don't
+  exports one power control chosen by `power` — a fragment in `templates/power/` generated
+  from `adi_lg_plugins/hw_ci/power.py`, covering the ADI outlets and every labgrid power
+  option (PDUs, smart plugs, USB hub ports, relays via `DigitalOutputPowerDriver`, sigrok
+  supplies). Tag the place `power-driver=<driver>` (plus `power-output-driver=<relay driver>`
+  for relays); `netbox add-hardware` does both. Credentials come from the exporter's
+  environment (`/etc/labgrid/exporter.env`), never the file. Start from the closest template; don't
   author an exporter config from scratch.
 - `exporter_configs/validate.py` + `exporter_configs/schemas/*.json` — **validate every config
   you produce** against the schema before deploying. A malformed exporter config fails to export

@@ -1,0 +1,8 @@
+## Power fragment: USB HID relay (hid-relay), included by the stock exporter
+## templates. Generated from adi_lg_plugins/hw_ci/power.py - edit there, then run
+## `python -m adi_lg_plugins.hw_ci.power exporter_configs/templates/power`.
+  HIDRelay:
+    cls: HIDRelay
+    match:
+      ID_PATH: "{{ power_usb_path }}"
+    index: {{ power_index | default(1) }}

@@ -1,0 +1,8 @@
+## Power fragment: Linaro Automation Appliance (laa), included by the stock exporter
+## templates. Generated from adi_lg_plugins/hw_ci/power.py - edit there, then run
+## `python -m adi_lg_plugins.hw_ci.power exporter_configs/templates/power`.
+  LAAPowerPort:
+    cls: LAAPowerPort
+    laa_identity: "{{ power_laa_identity }}"
+    power_on: [{% for p in (power_on | default('')).split(',') if p.strip() %}[{{ p.split(':')[0] | trim | tojson }}, {{ p.split(':', 1)[1] | trim | tojson }}]{{ ', ' if not loop.last }}{% endfor %}]
+    power_off: [{% for p in (power_off | default('')).split(',') if p.strip() %}[{{ p.split(':')[0] | trim | tojson }}, {{ p.split(':', 1)[1] | trim | tojson }}]{{ ', ' if not loop.last }}{% endfor %}]

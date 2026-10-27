@@ -21,6 +21,8 @@ from types import ModuleType
 
 import yaml
 
+from adi_lg_plugins.hw_ci.power import POWER_TYPES
+
 logger = logging.getLogger(__name__)
 
 STAGE_DIR = "/tmp/adi-lg-netbox-stage"
@@ -29,13 +31,19 @@ DEFAULT_EXPORTER_BIN = "/usr/local/bin/labgrid-exporter"
 # variables as `{{ env["NAME"] }}`, which labgrid resolves when it starts.
 EXPORTER_ENV_FILE = "/etc/labgrid/exporter.env"
 
-# Template `power` value -> client power driver (the place's `power-driver` tag,
-# read by render-env) and the credential variables its outlet resource reads.
-POWER_DRIVERS = {"vesync": "VesyncPowerDriver", "homeassistant": "HomeAssistantPowerDriver"}
-POWER_ENV = {
-    "vesync": ("VESYNC_USERNAME", "VESYNC_PASSWORD"),
-    "homeassistant": ("HOMEASSISTANT_URL", "HOMEASSISTANT_TOKEN"),
-}
+# Power types (template `power` value -> resource, client driver(s), fields,
+# credentials) live in adi_lg_plugins.hw_ci.power.
+
+
+def power_tags(power: str) -> dict[str, str]:
+    """Place tags that make render-env emit this power type's client driver(s)."""
+    t = POWER_TYPES[power]
+    tags = {"power-driver": t.driver}
+    if t.output_driver:
+        tags["power-output-driver"] = t.output_driver
+    return tags
+
+
 # Provided by labgrid-exporter when it renders the file - never prompted for.
 EXPORTER_RUNTIME_VARS = frozenset({"env", "hostname", "name", "isolated"})
 
@@ -115,13 +123,18 @@ def render_and_validate(
     """
     jinja2 = _require_jinja2()
 
-    env = jinja2.Environment(undefined=jinja2.StrictUndefined)
+    # A file loader so templates can `{% include "power/<type>.yaml" %}`, the same
+    # way labgrid-exporter resolves includes relative to the config file.
+    env = jinja2.Environment(
+        loader=jinja2.FileSystemLoader(str(template_path.parent)),
+        undefined=jinja2.StrictUndefined,
+    )
     try:
-        rendered = env.from_string(template_path.read_text()).render(
-            **{"env": _ExporterEnv(), **context}
-        )
+        rendered = env.get_template(template_path.name).render(**{"env": _ExporterEnv(), **context})
     except jinja2.UndefinedError as e:
         raise RuntimeError(f"template {template_path.name} is missing a required field: {e}") from e
+    except jinja2.TemplateNotFound as e:
+        raise RuntimeError(f"template {template_path.name}: unknown power type ({e.name})") from e
 
     out_dir = Path(tempfile.mkdtemp(prefix="adi-lg-netbox-"))
     out_path = out_dir / template_path.name
@@ -197,7 +210,7 @@ def check_prerequisites(ssh_host: str) -> str:
 
 
 def missing_power_env(ssh_host: str, power: str) -> list[str]:
-    """Return the power-credential variables not set in the host's exporter env file.
+    """Return the required power-credential variables not set in the host's exporter env file.
 
     An unset variable renders as an empty string, so the exporter still starts
     and the place only fails at its first power operation - worth a warning.
@@ -207,7 +220,7 @@ def missing_power_env(ssh_host: str, power: str) -> list[str]:
 
     conn = sshmanager.get(ssh_host)
     missing = []
-    for name in POWER_ENV[power]:
+    for name in (c.env for c in POWER_TYPES[power].credentials if c.required):
         try:
             conn.run_check(f"sudo grep -qE '^{name}=.' {EXPORTER_ENV_FILE}")
         except ExecutionError:

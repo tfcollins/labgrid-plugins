@@ -20,19 +20,43 @@ SCRIPT_DIR = Path(__file__).parent
 DEFAULT_SCHEMA = SCRIPT_DIR / "schemas" / "exporter_schema.json"
 HW_NODES_SCHEMA = SCRIPT_DIR / "schemas" / "hw-nodes.schema.json"
 
-# Known resource classes from the labgrid-plugins project
+# Resource classes the stock templates and lab configs export. Power classes
+# mirror adi_lg_plugins/hw_ci/power.py (kept in sync by tests/test_power_types.py).
 KNOWN_CLASSES = {
     "NetworkService",
     "RawSerialPort",
     "XilinxDeviceJTAG",
     "XilinxVivadoTool",
     "USBSDMuxDevice",
+    "USBMassStorage",
     "MassStorageDevice",
-    "CyberPowerOutlet",
-    "VesyncOutlet",
-    "HomeAssistantOutlet",
     "TFTPServerResource",
     "KuiperRelease",
+    "TickArtifacts",
+    # power control
+    "APCOutlet",
+    "CyberPowerOutlet",
+    "DeditecRelais8",
+    "Eth008DigitalOutput",
+    "HIDRelay",
+    "HomeAssistantOutlet",
+    "HttpDigitalOutput",
+    "KasaOutlet",
+    "LAAPowerPort",
+    "LXAIOBusPIO",
+    "MatchedSysfsGPIO",
+    "ModbusTCPCoil",
+    "NetworkPowerPort",
+    "OneWirePIO",
+    "PDUDaemonPort",
+    "SiSPMPowerPort",
+    "SigrokUSBSerialDevice",
+    "SysfsGPIO",
+    "TasmotaPowerPort",
+    "USBPowerPort",
+    "VesyncOutlet",
+    "WaveshareModbusTCPCoil",
+    "YKUSHPowerPort",
 }
 
 
