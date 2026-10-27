@@ -679,6 +679,88 @@ and the manifest reference.
        ``labgrid-plugins`` into the per-leg venv.
 
 
+``infra-smoke.yml`` — lab boot-smoke
+------------------------------------
+
+A lab-health check, not a consumer workflow: it boots **every** live board on
+a coordinator once and runs no repo tests. The preflight runs
+``adi-lg-hw-ci all-places-matrix --check-reachability``. Each leg runs
+``adi-lg request`` for its place (a real Linux boot plus iiod check, or an
+acquire-only check for flash-only boards), then converts the exit code to a
+one-test-case JUnit (``boot-status`` / ``boot-junit``, see :doc:`cli`). A busy
+board is reported as skipped, not failed. Results are published as a check run
+and, optionally, uploaded to Prism. Typically called from a scheduled workflow:
+
+.. code-block:: yaml
+
+   # .github/workflows/daily-infra.yml
+   name: daily-infra
+   on:
+     schedule:
+       - cron: "0 6 * * *"
+     workflow_dispatch:
+   permissions:
+     contents: read
+     checks: write
+     pull-requests: write
+   jobs:
+     infra:
+       uses: tfcollins/labgrid-plugins/.github/workflows/infra-smoke.yml@main
+       with:
+         coordinator: ${{ vars.LG_COORDINATOR }}
+         runner-label: ${{ vars.HW_REQUEST_RUNNER }}
+         preflight-runner-label: ${{ vars.HW_PREFLIGHT_RUNNER }}
+
+.. list-table::
+   :widths: 26 10 30 34
+   :header-rows: 1
+
+   * - Input
+     - Required
+     - Default
+     - Description
+   * - ``coordinator``
+     - **Yes**
+     - —
+     - gRPC coordinator ``host:port``; the REST API port is derived.
+   * - ``wait``
+     - No
+     - ``1800``
+     - Seconds each leg queues for its board (``0`` = fail fast).
+   * - ``runner-label``
+     - No
+     - ``hw-lab``
+     - Fallback runner label for a place with no ``runner`` tag.
+   * - ``preflight-runner-label``
+     - No
+     - ``hw-coordinator``
+     - Runner label for the discovery preflight (must reach the REST API).
+   * - ``venv-dir``
+     - No
+     - ``$HOME/.cache/infra-smoke/venv``
+     - Persistent uv venv on the runner.
+   * - ``power-down``
+     - No
+     - ``true``
+     - Power each board off after its leg (best-effort; no-op for
+       acquire-only legs).
+   * - ``prism-upload``
+     - No
+     - ``false``
+     - Upload each board's boot JUnit to Prism.
+   * - ``prism-url``
+     - No
+     - ``vars.PRISM_URL``
+     - Prism base URL.
+   * - ``prism-project``
+     - With ``prism-upload``
+     - —
+     - Prism project slug (e.g. ``lab-infra-daily``).
+
+Secrets ``PRISM_API_TOKEN`` (or ``PRISM_EMAIL`` + ``PRISM_PASSWORD``) are
+needed only with ``prism-upload: true``; see :doc:`prism-reporting`.
+
+
 .. _composite-actions:
 
 Composite actions

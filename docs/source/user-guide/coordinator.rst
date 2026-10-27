@@ -72,6 +72,51 @@ Copy ``.env.example`` to ``.env`` and adjust ports if needed:
    API_PORT=8000
    WEB_PORT=3000
 
+   # Optional: enables node-deployment reporting (see below)
+   LG_DEPLOYMENT_TOKEN=<output of: openssl rand -hex 32>
+
+.. _coordinator-deployments:
+
+Node deployment tracking
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+The API can record the progress of lab nodes (runner/exporter hosts) while
+they are being installed, shown on the dashboard's Deployments page
+(:doc:`web-dashboard`). Installers report each stage with
+``POST /api/deployments/events``, authenticated by a shared bearer token
+rather than a user session, so an unattended installer needs no account:
+
+.. code-block:: bash
+
+   curl -fsS -X POST http://<coordinator-host>:8000/api/deployments/events \
+     -H "Authorization: Bearer $LG_DEPLOYMENT_TOKEN" \
+     -H "Content-Type: application/json" \
+     -d '{"event_id": "lab-host-04-packages-1",
+          "hostname": "lab-host-04",
+          "status": "packages_installed",
+          "reported_at": "2026-10-27T15:04:05Z",
+          "ip_addresses": ["10.0.0.44"],
+          "mac_addresses": ["dc:a6:32:00:11:22"]}'
+
+- ``status`` is one of ``installer_started``, ``storage_configured``,
+  ``packages_installed``, ``install_complete``, ``first_boot``,
+  ``setup_started``, ``runner_ready`` (succeeded), or ``failed``; put the
+  failure reason in the optional ``message`` (max 1024 characters).
+- ``hostname`` is required and is normalized to lowercase. ``reported_at``
+  defaults to the time the API receives the event; if given, it must carry a
+  timezone. Up to 16 IP and 16 MAC addresses (``aa:bb:cc:dd:ee:ff`` form) may
+  be attached.
+- Retries are safe: an ``event_id`` already recorded for that host returns
+  the original event instead of adding a duplicate.
+- An ``installer_started`` event for a host that is past that stage begins a
+  new **attempt** (a reinstall); other events update the current one. An event
+  older than the host's current one is added to the timeline without changing
+  the current stage.
+
+The endpoint returns ``503`` while ``LG_DEPLOYMENT_TOKEN`` is unset and
+``401`` for a missing or wrong token. Event history is kept in the API's
+SQLite database alongside the place/resource history.
+
 Connecting Exporters
 --------------------
 
@@ -214,6 +259,18 @@ The API server exposes the following endpoints:
 - ``PUT /api/users/{user_id}/disabled`` - Enable/disable a user
 
 See :doc:`web-ui-auth` for the full authentication and user-management guide.
+
+**Deployments**
+
+- ``POST /api/deployments/events`` - Record an installer event. Authenticated
+  with ``Authorization: Bearer <LG_DEPLOYMENT_TOKEN>``, not a session; see
+  :ref:`coordinator-deployments`.
+- ``GET /api/deployments`` - List tracked nodes with their current stage,
+  status, progress, and errors (login required)
+- ``GET /api/deployments/{hostname}`` - One node, including its timeline
+  (login required)
+- ``GET /api/deployments/{hostname}/history`` - The node's event timeline only
+  (login required)
 
 **WebSocket**
 

@@ -15,6 +15,8 @@ Resources are configuration descriptors for hardware and network components.
 - `TFTPServerResource`_
 - `XilinxDeviceJTAG`_
 - `XilinxVivadoTool`_
+- `KasaOutlet`_
+- `TickArtifacts`_
 
 VesyncOutlet
 ------------
@@ -92,6 +94,22 @@ XilinxVivadoTool
 ----------------
 
 .. autoclass:: adi_lg_plugins.resources.xilinxtool.XilinxVivadoTool
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+KasaOutlet
+----------
+
+.. autoclass:: adi_lg_plugins.resources.kasa.KasaOutlet
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+TickArtifacts
+-------------
+
+.. autoclass:: adi_lg_plugins.resources.tickartifacts.TickArtifacts
    :members:
    :undoc-members:
    :show-inheritance:

@@ -31,7 +31,7 @@
 
    .. container:: homepage-proof
 
-      **15 drivers** · **13 strategies** · **Exporter-aware execution** · **Hardware CI**
+      **16 drivers** · **14 strategies** · **Exporter-aware execution** · **Hardware CI**
 
 Choose your path
 ----------------

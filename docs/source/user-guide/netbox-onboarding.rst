@@ -8,6 +8,15 @@ comes up, then creates the matching labgrid Place on the coordinator (``create``
 ``add-match`` / ``set-tags``). Run it instead of hand-editing a template and typing
 ``labgrid-client`` commands.
 
+**On this page:**
+
+- `Prerequisites`_
+- `Usage`_ — `Options`_
+- `What it creates`_ — `In NetBox`_, `On the exporter host`_, `On the coordinator`_
+- `Re-running for an existing board`_
+- `Troubleshooting`_
+- `How it maps to the manual procedure`_
+
 .. admonition:: What it does NOT do
    :class: note
 
@@ -18,9 +27,11 @@ Prerequisites
 -------------
 
 - Run from within a ``labgrid-plugins`` checkout (``exporter_configs/`` and its templates live
-  at the repo root, outside the installed package).
+  at the repo root, outside the installed package), or pass ``--exporter-configs-dir``.
 - ``pip install -e ".[netbox]"`` (adds ``pynetbox``, ``jinja2``, ``jsonschema`` - not installed
   by default).
+- NetBox **4.3 or newer** - custom fields are created with the ``object_types`` key that NetBox
+  4.3 introduced (it replaced ``content_types``).
 - A NetBox URL and API token with permission to create devices (``NETBOX_URL`` /
   ``NETBOX_TOKEN`` env vars, or ``--netbox-url`` / ``--netbox-token``).
 - The NetBox **Site** you'll place the device under must already exist - this command creates
@@ -32,8 +43,10 @@ Prerequisites
 - SSH access to the exporter host as ``user@host``, with:
 
   - **passwordless sudo** for that user (needed to write under ``/etc`` and run ``systemctl``),
-  - **``labgrid-exporter`` already installed** there (``pip install labgrid`` on that host) -
-    checked up front and failed fast if missing, rather than partially provisioning.
+  - ``labgrid-exporter`` **already installed at** ``/usr/local/bin/labgrid-exporter`` - the
+    generated systemd unit runs that exact path. The up-front check only runs
+    ``command -v labgrid-exporter``, so an install in a venv or ``~/.local/bin`` passes the
+    check but the service then fails to start; symlink it into ``/usr/local/bin`` first.
 
 Usage
 -----
@@ -41,7 +54,7 @@ Usage
 .. code-block:: console
 
     $ adi-lg netbox add-hardware
-    Available board templates: vcu118_ad9081, zcu102
+    Available board templates: rpi, vcu118_ad9081, zcu102
     Board template: zcu102
     Hardware / place / exporter name (e.g. zcu102-lab3-001): zcu102-lab3-001
     Carrier (board/FPGA, e.g. zcu102, vcu118): zcu102
@@ -70,11 +83,150 @@ Usage
 
 Use ``--dry-run`` to render and schema-validate the exporter config and print the full plan
 without touching NetBox, SSH, or the coordinator - useful for checking your answers before
-committing to a real board.
+committing to a real board. A dry run never asks for NetBox or coordinator credentials.
 
 Leaving a template field blank uses that template's own default (see
 ``exporter_configs/templates/*.yaml``); fields with no default (like ``target_ip``) are
 effectively required and the command fails clearly if left blank.
+
+The boot-strategy prompt only accepts the ADI strategy classes this package registers
+(``BootFPGASoC``, ``BootFPGASoCSSH``, ``BootFPGASoCTFTP``, ``BootSelMap``, ``BootFabric``,
+``BootRPI``, ``BootVPK180``, ``BootZynqMPJTAG``, ``BootZynq7000JTAGRecovery``,
+``BootNoOSJTAG``, ``BootOpenFPGALoader``, ``BootTickFPGASSH``).
+
+Options
+~~~~~~~
+
+Every option is optional; anything not supplied is prompted for.
+
+* ``--netbox-url <url>``: NetBox base URL (env: ``NETBOX_URL``).
+* ``--netbox-token <token>``: NetBox API token (env: ``NETBOX_TOKEN``).
+* ``--coord <host:port>``: coordinator to deploy against and create the place on (default:
+  ``$LG_COORDINATOR``).
+* ``--coord-user <name>``: coordinator API username (env: ``LG_API_USERNAME``).
+* ``--coord-password <password>``: coordinator API password (env: ``LG_API_PASSWORD``).
+* ``--exporter-configs-dir <path>``: the ``exporter_configs/`` directory (default: searched
+  upward from the current directory for ``exporter_configs/validate.py``).
+* ``--dry-run``: render, validate, and print the plan; make no changes.
+
+NetBox and coordinator credentials that are not set by option or environment are prompted for
+only *after* you confirm ``Proceed?``, with the token and password entered hidden.
+
+What it creates
+---------------
+
+In NetBox
+~~~~~~~~~
+
+Schema objects are created only if missing, so the first run against a fresh NetBox sets them
+up and later runs reuse them:
+
+- **Device role** ``labgrid-target`` ("Labgrid Target").
+- **Manufacturer** ``adi-lab`` ("Analog Devices, Inc. (lab hardware)").
+- **Device type** per carrier: slug is the carrier lowercased with ``_`` → ``-``, model is the
+  carrier uppercased (``zcu102`` → slug ``zcu102``, model ``ZCU102``).
+- **Custom fields** on ``dcim.device`` (all text):
+
+  .. list-table::
+     :header-rows: 1
+     :widths: 25 35 40
+
+     * - Field
+       - Label
+       - Value written
+     * - ``carrier``
+       - Carrier
+       - the carrier you entered
+     * - ``daughter_board``
+       - Daughter board / chip
+       - the daughter board you entered
+     * - ``boot_strategy``
+       - Boot strategy
+       - the chosen strategy class
+     * - ``exporter_host``
+       - Exporter SSH target
+       - ``user@host``
+     * - ``runner_label``
+       - GitHub runner label
+       - the runner label
+
+Then the **device** itself, named after the hardware name, with that device type and role,
+under the existing site. The command prints its URL
+(``<netbox>/dcim/devices/<id>/``) when done.
+
+On the exporter host
+~~~~~~~~~~~~~~~~~~~~
+
+Files are staged under ``/tmp/adi-lg-netbox-stage/<name>/`` and then moved into place with
+``sudo``:
+
+- ``/etc/labgrid/exporters/<name>/resources.yaml`` - the rendered exporter config.
+- ``/etc/systemd/system/labgrid-exporter-<name>.service`` - a unit that runs
+  ``/usr/local/bin/labgrid-exporter`` as the SSH user, pointed at the coordinator, with
+  ``Restart=always``.
+
+The unit is enabled and started (``systemctl enable --now``), then polled with
+``systemctl is-active`` (10 attempts, 2 s apart). If it never becomes active, the command
+fails and prints the last 50 lines of its journal.
+
+On the coordinator
+~~~~~~~~~~~~~~~~~~
+
+Through the coordinator REST API (:doc:`coordinator`), authenticated as the coordinator user:
+
+- ``POST /api/places`` - create the place, named after the hardware name.
+- ``POST /api/places/<name>/matches`` - one match per resource group in the rendered config.
+- ``PUT /api/places/<name>/tags`` - ``daughter-board`` and ``carrier`` (lowercased),
+  ``boot-strategy``, and ``runner``, the keys the hardware-CI preflight matches on (see the tag
+  table in :doc:`onboarding-a-lab-host`, Step 3).
+
+Finally it re-reads ``/api/places`` and prints the new place's tags, or a warning if the place
+is not listed.
+
+Re-running for an existing board
+--------------------------------
+
+The command is not fully idempotent; each stage handles an existing board differently:
+
+- **NetBox** - an existing device (matched by name) has its custom fields updated in place.
+  Its site and device type are left unchanged.
+- **Exporter host** - the config and unit files are overwritten, but
+  ``systemctl enable --now`` does not restart a unit that is already running, so the old config
+  stays loaded. Restart it yourself:
+  ``sudo systemctl restart labgrid-exporter-<name>``.
+- **Coordinator** - the coordinator rejects a match that already exists, so a re-run for an
+  already-onboarded board stops at the coordinator step with an error, after the NetBox and
+  exporter stages have run. Tags are written last, so for a tag-only change use the
+  dashboard or ``labgrid-client set-tags`` instead.
+
+Troubleshooting
+---------------
+
+``could not find exporter_configs/validate.py above the current directory``
+    Run from inside a ``labgrid-plugins`` checkout, or pass ``--exporter-configs-dir``.
+
+``template <name> is missing a required field``
+    A template variable with no default (typically ``target_ip``) was left blank.
+
+``rendered exporter config failed validation``
+    ``exporter_configs/validate.py`` rejected the rendered file; the listed issues name the
+    offending group/resource. Fix the template answers, or the template itself.
+
+``NetBox site '<slug>' does not exist``
+    Create the site in NetBox first (or use an existing slug); the command never creates sites.
+
+``labgrid-exporter not found on <host>``
+    Install labgrid on the exporter host (``pip install labgrid``) and make sure it is at
+    ``/usr/local/bin/labgrid-exporter``.
+
+``failed to install/start labgrid-exporter-<name>``
+    Usually missing passwordless sudo for the SSH user.
+
+``labgrid-exporter-<name> did not become active``
+    Read the journal lines printed with the error, or run
+    ``journalctl -u labgrid-exporter-<name>`` on the host. Common causes are a wrong
+    coordinator address, a ``labgrid-exporter`` not at ``/usr/local/bin``, or a serial port
+    / device path in the config that doesn't exist on the host.
 
 How it maps to the manual procedure
 ------------------------------------

@@ -6,11 +6,14 @@ The ``adi-lg`` command provides a convenient way to execute boot strategies dire
 Installation
 ------------
 
-The CLI is automatically installed when you install ``labgrid-plugins``. Ensure you have the necessary dependencies:
+The CLI (``click`` and ``rich`` included) is installed with the package. A few subcommands
+need an optional extra:
 
 .. code-block:: bash
 
-    pip install labgrid-plugins[cli]  # or just pip install . if you have click and rich
+    pip install -e .              # adi-lg and every subcommand below
+    pip install -e ".[netbox]"    # + adi-lg netbox add-hardware
+    pip install -e ".[kuiper]"    # + Kuiper image extraction (pytsk3, needs a C toolchain)
 
 Global Options
 --------------
@@ -48,14 +51,17 @@ Options:
 * ``--part`` (required): part / daughter-board, e.g. ``adrv9002``.
 * ``--carrier``: optional FPGA carrier filter, e.g. ``zcu102``. Omit to match any free carrier.
 * ``--mode`` (default ``uri``): ``uri`` boots Linux and exports ``IIO_URI``; ``flash`` JTAG-flashes a
-  no-os ``.elf`` instead of booting Kuiper (see the flash-mode note below).
+  no-os ``.elf`` instead of booting Kuiper (see the flash-mode note below); ``reserve`` only
+  acquires the board, without booting it, and exports ``LG_ENV`` (the rendered labgrid env
+  YAML) so the ``--run`` command drives the board itself, e.g. through the labgrid pytest plugin.
+* ``--no-boot``: shortcut for ``--mode reserve``.
 * ``--bootfile``: pin an image version. Defaults to the coordinator catalog's default image.
 * ``--wait`` (default ``1800``): seconds to queue for a free matching board. ``0`` fails fast.
 * ``--power-down``: power the board off after release (default: leave it powered for the next user).
 * ``--coord``: coordinator ``host:port`` (default: ``$LG_COORDINATOR``).
 * ``--run '<cmd>'``: run ``<cmd>`` with ``IIO_URI``, ``LG_PLACE``, ``LG_CARRIER``,
-  ``HW_DAUGHTER`` and ``HW_CARRIER`` exported into its environment. The command's own
-  exit code is propagated.
+  ``HW_DAUGHTER`` and ``HW_CARRIER`` (plus ``LG_ENV`` in reserve mode) exported into its
+  environment. The command's own exit code is propagated.
 
 Exit codes (so CI can tell an infra problem from a real test failure):
 
@@ -129,6 +135,39 @@ guided wizard.
 * ``--non-interactive, --unattended``: Run without interactive prompts.
 * ``--dry-run``: Preview planned actions without modifying system files.
 * ``--check-only``: Run prerequisite diagnostics and exit.
+
+``adi-lg runner-setup`` is an alias, and the same command is installed as the standalone
+``adi-lg-setup-runner`` console script.
+
+netbox add-hardware
+~~~~~~~~~~~~~~~~~~~
+
+Onboard one new board in a single interactive pass: register it as a device in NetBox,
+render and validate its exporter config from ``exporter_configs/templates/``, deploy that
+config to the exporter host as a ``labgrid-exporter-<name>`` systemd service, and create and
+tag the matching place on the coordinator. Requires the ``netbox`` extra and must be run from
+a ``labgrid-plugins`` checkout.
+
+.. code-block:: bash
+
+    # Check the plan and the rendered exporter config without changing anything
+    adi-lg netbox add-hardware --dry-run
+
+    # Real run, with credentials from the environment instead of prompts
+    export NETBOX_URL=https://netbox.example.com NETBOX_TOKEN=<token>
+    export LG_API_USERNAME=admin LG_API_PASSWORD=<password>
+    adi-lg netbox add-hardware --coord coordinator.example.com:20408
+
+**Options:**
+
+* ``--netbox-url <url>`` / ``--netbox-token <token>``: NetBox API (env: ``NETBOX_URL`` / ``NETBOX_TOKEN``).
+* ``--coord <host:port>``: Coordinator (default: ``$LG_COORDINATOR``).
+* ``--coord-user <name>`` / ``--coord-password <password>``: Coordinator API login (env: ``LG_API_USERNAME`` / ``LG_API_PASSWORD``).
+* ``--exporter-configs-dir <path>``: ``exporter_configs/`` directory (default: searched upward from the current directory).
+* ``--dry-run``: Render, validate, and print the plan; make no changes.
+
+See :doc:`netbox-onboarding` for prerequisites, exactly what is created in NetBox, on the
+exporter host, and on the coordinator, and re-run behavior.
 
 boot-fabric
 ~~~~~~~~~~~
@@ -342,6 +381,58 @@ the target YAML, or export the env vars before invoking this command, if
 you're not using ``--post-boot-file`` for the Virtex artifacts. See
 :doc:`strategies` for the full ``BootSelMap`` attribute reference.
 
+recover
+~~~~~~~
+
+Recover a Zynq-7000 board whose SD card no longer boots, using the
+``BootZynq7000JTAGRecovery`` strategy: bootstrap U-Boot over JTAG, TFTP-boot a
+RAM-rooted recovery Linux, then reflash the SD card from the board itself.
+
+.. warning::
+
+   Destructive: the board's SD card (``/dev/mmcblk0``) is overwritten.
+
+.. code-block:: bash
+
+    adi-lg recover --config zc706.yaml --release 2023_R2_P1
+
+    # Write a specific image instead of the strategy's configured one
+    adi-lg recover --config zc706.yaml --sd-image kuiper.img
+
+**Options:**
+
+* ``-c, --config <path>``: (Required) Labgrid configuration file.
+* ``--release <version>``: Kuiper release version; overrides the ``KuiperRelease`` resource.
+* ``--sd-image <path>``: SD card image to flash, overriding the strategy's configured image.
+* ``-t, --target <name>``: Target name in the configuration (default: ``main``).
+* ``--state <name>``: Target state to transition to (default: ``sd_flash_done``).
+
+The recovery Linux needs a recovery initramfs on the TFTP server - build it with
+``build-recovery-initramfs`` below. See :doc:`strategies` for the full
+``BootZynq7000JTAGRecovery`` state machine and configuration.
+
+build-recovery-initramfs
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Build the recovery initramfs that ``BootZynq7000JTAGRecovery`` TFTP-boots: an
+``/init`` script, a DHCP hook, and the applet symlinks around a static busybox
+you supply, packaged as a U-Boot uImage ready for ``bootm`` (or a raw
+``cpio.gz``).
+
+.. code-block:: bash
+
+    adi-lg build-recovery-initramfs \
+        --busybox ./busybox-armv7l \
+        --out /var/lib/tftpboot/uInitrd.recovery
+
+**Options:**
+
+* ``--busybox <path>``: (Required) Cross-compiled static busybox binary (ARM EABI for Zynq-7000).
+* ``-o, --out <path>``: (Required) Destination file, e.g. ``/var/lib/tftpboot/uInitrd.recovery``.
+* ``--work-dir <path>``: Staging directory for the cpio and rootfs (default: ``<out>.workdir``).
+* ``--image-name <name>``: uImage "Image Name" field (default: ``ZC706-recovery``).
+* ``--raw-cpio-gz / --uimage``: Emit a raw ``cpio.gz`` and skip ``mkimage`` (default: ``--uimage``).
+
 generate-config
 ~~~~~~~~~~~~~~~
 
@@ -447,6 +538,7 @@ Requires the ``CLOUDSMITH_API_TOKEN`` environment variable.
 * ``--cache-path <path>``: Cache directory (default ``~/.labgrid/cloudsmith_releases/``).
 * ``--out <path>``: Copy the artifact here after download. If the path is an existing directory the file is copied into it keeping its filename; otherwise the path is used as the destination file.
 
+The standalone ``cloudsmithdl`` console script (below) exposes the same resolution and download, with a different default cache path.
 
 list-hardware
 ~~~~~~~~~~~~~
@@ -472,13 +564,11 @@ List live places on a coordinator along with their attributes (carrier, daughter
 * ``--force-cli``: Skip the REST API and query via the ``labgrid-client`` CLI instead.
 * ``--json``: Output the places as a JSON list on stdout.
 
-The standalone ``cloudsmithdl`` console script (below) exposes the same resolution and download, with a different default cache path.
-
-Standalone download tools
--------------------------
+Standalone tools
+----------------
 
 In addition to ``adi-lg``, the package installs small standalone
-download utilities as console scripts.
+console scripts.
 
 cloudsmithdl
 ~~~~~~~~~~~~
@@ -506,6 +596,42 @@ an exact one. Requires ``CLOUDSMITH_API_TOKEN`` in the environment.
 The downloaded file's SHA256 is verified against the Cloudsmith API
 checksum. See :doc:`drivers` → CloudsmithDLDriver for using the same
 resolution from a boot strategy.
+
+adi-lg-prism-upload
+~~~~~~~~~~~~~~~~~~~
+
+Upload a JUnit XML result to a Prism server. This is the
+uploader the reusable hardware workflows run for ``prism-upload: true``; it is
+stdlib-only, so it also works from any CI job or shell.
+
+.. code-block:: bash
+
+    PRISM_URL=https://prism.example.com PRISM_TOKEN=<token> \
+    adi-lg-prism-upload results.xml \
+        --project lab-infra --run-name "$GITHUB_RUN_ID" \
+        --tag branch=main --tag sha="$GITHUB_SHA" --wait
+
+**Options** (each also reads a ``PRISM_<NAME>`` environment variable):
+
+* ``junit``: (Required, positional) JUnit XML file to upload.
+* ``--url <url>``: Prism API base URL (env: ``PRISM_URL``; default ``http://localhost:8000``).
+* ``--token <token>``: Bearer API token (env: ``PRISM_TOKEN``), or log in with
+  ``--email`` / ``--password`` (env: ``PRISM_EMAIL`` / ``PRISM_PASSWORD``).
+* ``--project <slug>``: Target project (env: ``PRISM_PROJECT``).
+* ``--auto-create-project``: Create the project if it doesn't exist.
+* ``--run-name <name>``: Name for the run (env: ``PRISM_RUN_NAME``).
+* ``--tag key=value``: Tag on the run. Repeatable.
+* ``--archive <zip>``: ``.zip`` of measurement artifacts to upload with the JUnit.
+* ``--measurement name=value[:unit[:min[:max]]]``: Add a numeric measurement, with optional
+  limits, to the JUnit's single test case. Repeatable; the JUnit must contain exactly one
+  ``<testcase>``.
+* ``--wait [SECONDS]``: After uploading, poll until Prism finishes ingesting (60 s if no value).
+* ``-q, --quiet`` / ``-v, --verbose``: Print only the result line / every step.
+
+Exit codes: ``0`` success, ``2`` bad argument or missing file, ``3`` authentication failed,
+``4`` project not found (pass ``--auto-create-project``), ``5`` upload failed, ``6`` ``--wait``
+timed out. See :doc:`prism-reporting` for the workflow integration and enriched pytest
+reporting.
 
 ``adi-lg-hw-ci`` — Hardware-CI helper
 =====================================
@@ -613,6 +739,71 @@ templates, as JSON. Exits non-zero if a known strategy is missing its template.
 .. code-block:: bash
 
     adi-lg-hw-ci list-strategies
+
+Infra boot-smoke
+----------------
+
+The ``infra-smoke.yml`` reusable workflow boots every live board once, to
+check lab health rather than a consumer's code. These three subcommands are its
+building blocks.
+
+all-places-matrix
+~~~~~~~~~~~~~~~~~
+
+Emit one matrix leg per free live place, with no consumer markers or manifest.
+Places whose ``boot-strategy`` boots Linux get a real boot (``mode: uri``);
+flash-only places (no-os/JTAG, which need consumer firmware) get an
+acquire-only check (``mode: reserve``). Acquired places are skipped with a
+``::notice::``, and places tagged ``disabled=<reason>`` with a ``::warning::``.
+An unreachable coordinator, or
+one with no live places, exits ``3`` so the preflight fails loudly.
+
+.. code-block:: bash
+
+    adi-lg-hw-ci all-places-matrix --check-reachability --github-output
+
+* ``--coord``: coordinator ``host:port`` (default ``$LG_COORDINATOR``).
+* ``--check-reachability``: drop places whose exporter host doesn't answer on SSH, so a
+  powered-down host doesn't produce a leg that queues forever.
+* ``--github-output``: also write ``matrix=`` / ``count=`` to ``$GITHUB_OUTPUT``.
+
+boot-status
+~~~~~~~~~~~
+
+Map an ``adi-lg request`` exit code to a boot-smoke status and print it:
+``0`` → ``pass``; ``11`` (board busy) → ``skip``; anything else, including
+``10`` (no matching board) and ``12`` (boot failed), → ``fail``.
+
+.. code-block:: bash
+
+    status=$(adi-lg-hw-ci boot-status --rc "$rc")
+
+boot-junit
+~~~~~~~~~~
+
+Write one boot outcome as a single-test-case JUnit file (suite
+``infra-boot-smoke``) for the test-report and Prism upload steps. ``fail``
+adds a ``<failure>`` with ``--message``; ``skip`` adds a ``<skipped>``, which
+does not fail the run.
+
+.. code-block:: bash
+
+    adi-lg-hw-ci boot-junit --place my-zcu102 --part adrv9002 --carrier zcu102 \
+        --status "$status" --seconds 312 --out results-my-zcu102.xml
+
+* ``--place``, ``--part``, ``--status pass|fail|skip``, ``--out``: required.
+* ``--carrier``, ``--mode`` (default ``uri``), ``--seconds`` (default ``0``), ``--message``: optional.
+
+Consumer onboarding helpers
+---------------------------
+
+``init`` (scaffold a consumer repo's hw-CI files for ``uri`` / ``flash`` /
+``matlab`` mode), ``doctor`` (validate the whole onboarding chain in one pass),
+``lint-markers`` (flag ``iio_hardware`` / ``iio_carrier`` markers that aren't
+string literals), and ``matlab-matrix`` (build the MATLAB CI matrix from a
+``board_map.yaml``) are documented step by step in
+:doc:`onboarding-a-consumer-repo`. ``adi-lg-hw-ci setup-runner`` (alias
+``runner-setup``) is the same command as ``adi-lg setup-runner`` above.
 
 no-os build and XSA
 -------------------

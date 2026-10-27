@@ -18,13 +18,19 @@ Drivers in labgrid-plugins:
 - Are activated/deactivated explicitly by strategies or tests
 - Provide high-level methods abstracting hardware complexity
 
-The plugin provides fifteen drivers across these hardware-control scenarios:
+The plugin provides sixteen drivers across these hardware-control scenarios:
 
-- **Power Drivers**: Control device power via smart outlets and PDUs
+- **Power Drivers**: Control device power via smart outlets and PDUs (APC, VeSync,
+  CyberPower, Home Assistant, TP-Link Kasa)
 - **Shell Driver**: Execute commands and transfer files via serial console or SSH
 - **Storage Drivers**: Mount and manage SD card filesystems
 - **Kuiper Driver**: Download and extract ADI Kuiper Linux releases
 - **Cloudsmith Driver**: Download boot artifacts from a Cloudsmith repo
+- **FPGA Programming Drivers**: Program FPGAs and load ELFs over JTAG with ``xsdb`` or
+  openFPGALoader
+- **Network Driver**: Serve boot files over TFTP
+- **Software Provisioning Driver**: Install packages and build/test software on a DUT
+- **Tick Runtime Drivers**: Deploy the Tick IP onto a booted board (see :doc:`tick`)
 
 Driver Lifecycle
 ----------------
@@ -589,6 +595,100 @@ In the Home Assistant web UI: user profile → *Security* → *Long-Lived Access
 - **401 Unauthorized**: Token missing or expired. Regenerate it.
 - **Connection refused / timeout**: Verify ``url`` is reachable from the host and that the Home Assistant API is enabled.
 - **404 on entity**: Confirm ``entity_id`` with *Developer Tools → States* in the UI; the domain prefix must match (``switch.*`` vs ``light.*``).
+
+.. _kasapowerdriver:
+
+KasaPowerDriver
+~~~~~~~~~~~~~~~
+
+**Purpose**: Control a TP-Link Kasa smart plug or power strip over the local network with
+``python-kasa`` (no cloud round-trip). Install the ``kasa`` extra
+(``pip install -e ".[kasa]"``) on the client, which needs it to register the driver, and,
+for a ``RemotePlace``, on the exporter, which talks to the device (see :doc:`access-topology`).
+
+**Required Resource**: KasaOutlet
+
+**Bindings**: Implements ``PowerProtocol`` and ``PowerResetMixin``
+
+**Configuration**
+
+.. tab-set::
+
+    .. tab-item:: Exporter
+
+        ``resources.yaml`` (on exporter host):
+
+        .. code-block:: yaml
+
+            my_group:
+              KasaOutlet:
+                cls: KasaOutlet
+                host: '192.168.1.60'
+                outlets: 'Bench DUT'               # strip socket alias or 0-based index
+                delay: 5.0
+
+        ``target.yaml`` (on client):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              lab_device:
+                resources:
+                  RemotePlace:
+                    name: my_place
+                drivers:
+                  KasaPowerDriver: {}
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              lab_device:
+                resources:
+                  KasaOutlet:
+                    host: '192.168.1.60'
+                    outlets: 'Bench DUT'
+                    delay: 5.0
+                drivers:
+                  KasaPowerDriver: {}
+
+**Key Parameters** (on ``KasaOutlet``)
+
+- **host** (required): IP address or hostname of the plug or strip
+- **outlets** (optional): Comma-separated strip sockets to control, each a 0-based index or
+  a socket alias. Unset controls a single plug, or every socket of a strip together.
+- **username** / **password** (optional): TP-Link account credentials. Newer devices
+  (KLAP/SMART protocol) need them even for local control; legacy devices do not. Default to
+  the ``KASA_USERNAME`` / ``KASA_PASSWORD`` environment variables.
+- **delay** (default=5.0): Seconds between power off and power on during ``cycle``/``reset``
+
+**Methods**
+
+.. code-block:: python
+
+    power = target.get_driver("KasaPowerDriver")
+    target.activate(power)
+
+    power.on()
+    power.off()
+    power.cycle()           # off → sleep(delay) → on
+    is_on = power.get()
+
+Each call connects to the device, acts on the selected sockets, and disconnects, so there is
+no long-lived connection to go stale.
+
+**Troubleshooting**
+
+- **Authentication failure**: The device uses the newer protocol; set ``username`` /
+  ``password`` (or ``KASA_USERNAME`` / ``KASA_PASSWORD``) to the TP-Link account it is
+  registered to.
+- **Driver not found**: ``python-kasa`` isn't installed, so ``KasaPowerDriver`` was skipped
+  at import (a warning is logged). Install the ``kasa`` extra.
 
 Shell and File Transfer Driver
 ------------------------------
@@ -1389,6 +1489,54 @@ coordinator/exporter topology where the JTAG cable lives on the exporter host.
 - **Bitstream flash fails**: Run ``xsdb -interactive`` on the host owning the JTAG cable and issue ``targets`` — confirm ``root_target`` matches.
 - **Remote ssh prompts for password**: Set up passwordless SSH keys to the exporter host; the driver never sends a password.
 - **``load_and_run_elf`` fails with "can't open file"**: Ensure all paths passed to ``load_and_run_elf`` are absolute (the method does this automatically) or exist on the host running ``xsdb``; if using remote execution the paths must exist on the exporter host, not the test-runner host.
+
+OpenFPGALoaderDriver
+~~~~~~~~~~~~~~~~~~~~
+
+**Purpose**: Program FPGA fabric with `openFPGALoader <https://github.com/trabucayre/openFPGALoader>`_
+through one exactly selected USB JTAG probe - no Vivado install required. Used by the
+``BootOpenFPGALoader`` strategy.
+
+**Required Resource**: ``USBDebugger``, ``NetworkUSBDebugger``, or ``XilinxDeviceJTAG`` (the
+``interface`` binding), identifying the exporter that owns the probe.
+
+**Configuration** (driver arguments)
+
+.. code-block:: yaml
+
+    drivers:
+      OpenFPGALoaderDriver:
+        cable: ft2232                 # or board: arty (mutually exclusive)
+        fpga_part: xc7z035ffg676
+        usb_busnum: 1                 # with usb_devnum, or usb_serial
+        usb_devnum: 5
+        allow_flash: false
+        timeout: 300
+
+**Key Parameters**
+
+- **board** / **cable**: A named openFPGALoader board, or an explicit cable type when no board
+  profile exists (one or the other)
+- **fpga_part** (optional): Exact FPGA part and package
+- **usb_busnum** + **usb_devnum**, or **usb_serial**: Select exactly one probe, so a host
+  with several identical cables programs the right board
+- **frequency** (optional): JTAG clock in Hz
+- **allow_flash** (default=False): ``load()`` always writes volatile SRAM. Writing flash needs
+  both ``allow_flash: true`` here and an explicit ``program(path, write_flash=True)`` call.
+- **timeout** (default=300): Seconds allowed for one openFPGALoader run
+
+The bitstream is staged to the exporter and openFPGALoader runs there, next to the probe. See
+:doc:`../yaml-reference/drivers` for complete Exporter and Local examples.
+
+Tick Runtime Drivers
+--------------------
+
+``TickFpgaManagerDriver`` (program the FPGA through the ``fpga_manager`` sysfs),
+``TickOverlayDriver`` (apply/remove a device-tree overlay through configfs), and
+``TickModuleDriver`` (``insmod`` the kernel module and optionally restart ``iiod``) deploy the
+Tick ``axi_timed_command_scheduler`` IP onto a board that has already booted Linux. They read
+their artifact paths from a ``TickArtifacts`` resource and are orchestrated by the
+``BootTickFPGASSH`` strategy. See :doc:`tick` for a complete environment.
 
 Software Provisioning Driver
 ----------------------------

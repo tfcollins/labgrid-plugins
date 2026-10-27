@@ -5,7 +5,7 @@ Drivers provide low-level hardware control and protocol implementations.
 
 **On this page:**
 
-- `Power Drivers`_ — `APCDriver`_, `APCPdu`_, `VesyncPowerDriver`_, `CyberPowerDriver`_, `CyberPowerPdu`_, `HomeAssistantPowerDriver`_, `HomeAssistantClient`_
+- `Power Drivers`_ — `APCDriver`_, `APCPdu`_, `VesyncPowerDriver`_, `CyberPowerDriver`_, `CyberPowerPdu`_, `HomeAssistantPowerDriver`_, `HomeAssistantClient`_, `KasaPowerDriver`_
 - `Shell and File Transfer`_ — `ADIShellDriver`_
 - `Storage Drivers`_ — `MassStorageDriver`_
 - `Kuiper Drivers`_ — `KuiperDLDriver`_
@@ -13,6 +13,7 @@ Drivers provide low-level hardware control and protocol implementations.
 - `FPGA/JTAG Drivers`_ — `XilinxJTAGDriver`_, `OpenFPGALoaderDriver`_
 - `Network Drivers`_ — `TFTPServerDriver`_, `Utility Classes`_
 - `Software Installer`_ — `SoftwareInstallerDriver`_
+- `Tick Runtime Drivers`_ — `TickFpgaManagerDriver`_, `TickOverlayDriver`_, `TickModuleDriver`_
 
 Power Drivers
 -------------
@@ -69,6 +70,14 @@ HomeAssistantClient
 ~~~~~~~~~~~~~~~~~~~
 
 .. autoclass:: adi_lg_plugins.drivers.homeassistantdriver.HomeAssistantClient
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+KasaPowerDriver
+~~~~~~~~~~~~~~~
+
+.. autoclass:: adi_lg_plugins.drivers.kasadriver.KasaPowerDriver
    :members:
    :undoc-members:
    :show-inheritance:
@@ -174,6 +183,33 @@ SoftwareInstallerDriver
 ~~~~~~~~~~~~~~~~~~~~~~~
 
 .. autoclass:: adi_lg_plugins.drivers.softwareinstaller.SoftwareInstallerDriver
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+Tick Runtime Drivers
+--------------------
+
+TickFpgaManagerDriver
+~~~~~~~~~~~~~~~~~~~~~
+
+.. autoclass:: adi_lg_plugins.drivers.tickfpgamanagerdriver.TickFpgaManagerDriver
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+TickOverlayDriver
+~~~~~~~~~~~~~~~~~
+
+.. autoclass:: adi_lg_plugins.drivers.tickoverlaydriver.TickOverlayDriver
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
+TickModuleDriver
+~~~~~~~~~~~~~~~~
+
+.. autoclass:: adi_lg_plugins.drivers.tickmoduledriver.TickModuleDriver
    :members:
    :undoc-members:
    :show-inheritance:
