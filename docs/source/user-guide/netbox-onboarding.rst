@@ -136,6 +136,9 @@ Every option is optional; anything not supplied is prompted for.
 
 * ``--netbox-url <url>``: NetBox base URL (env: ``NETBOX_URL``).
 * ``--netbox-token <token>``: NetBox API token (env: ``NETBOX_TOKEN``).
+* ``--netbox-ca-bundle <path>``: CA bundle to verify NetBox's TLS certificate, for a NetBox
+  behind an internal CA (env: ``NETBOX_CA_BUNDLE``).
+* ``--netbox-insecure``: skip NetBox TLS certificate verification.
 * ``--coord <host:port>``: coordinator to deploy against and create the place on (default:
   ``$LG_COORDINATOR``).
 * ``--coord-user <name>``: coordinator API username (env: ``LG_API_USERNAME``).
@@ -145,7 +148,9 @@ Every option is optional; anything not supplied is prompted for.
 * ``--dry-run``: render, validate, and print the plan; make no changes.
 
 NetBox and coordinator credentials that are not set by option or environment are prompted for
-only *after* you confirm ``Proceed?``, with the token and password entered hidden.
+only *after* you confirm ``Proceed?``. The token and password prompts hide what you type or
+paste, so nothing appears on screen; after each one the command prints how many characters it
+received. Blank answers are asked again.
 
 What it creates
 ---------------
@@ -249,6 +254,17 @@ Troubleshooting
 ``rendered exporter config failed validation``
     ``exporter_configs/validate.py`` rejected the rendered file; the listed issues name the
     offending group/resource. Fix the template answers, or the template itself.
+
+``TLS verification failed for <url>`` (``certificate verify failed: self-signed certificate in certificate chain``)
+    NetBox's certificate is signed by a CA that Python doesn't trust. A pip-installed
+    ``requests`` checks certificates against its own bundle (``certifi``), not the host's trust
+    store, so an internal CA installed on the host still fails. Pass that CA with
+    ``--netbox-ca-bundle`` (on Debian/Ubuntu, ``/etc/ssl/certs/ca-certificates.crt`` is the
+    host's trust store), or ``--netbox-insecure`` to skip the check.
+
+``NetBox rejected the request: ... 403 Forbidden``
+    The API token is wrong, expired, or lacks write permission. Create a token in NetBox under
+    your user profile and pass it with ``--netbox-token`` or ``NETBOX_TOKEN``.
 
 ``NetBox site '<slug>' does not exist``
     Create the site in NetBox first (or use an existing slug); the command never creates sites.

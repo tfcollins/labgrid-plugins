@@ -93,15 +93,33 @@ def _ask_power() -> tuple[str, dict[str, str]]:
 def _ask_required(prompt: str, **kwargs) -> str:
     """Ask until the answer is non-blank (the field has no default to fall back on)."""
     while True:
-        answer = Prompt.ask(prompt, **kwargs)
-        if answer not in (None, ""):
+        answer = (Prompt.ask(prompt, **kwargs) or "").strip()
+        if answer:
             return answer
         console.print("    [red]required - this field has no default[/red]")
+
+
+def _ask_secret(prompt: str) -> str:
+    """Ask for a token/password without echoing it.
+
+    Hidden input shows nothing while typing or pasting, so confirm how much arrived.
+    """
+    secret = _ask_required(f"{prompt} (input hidden)", password=True)
+    console.print(f"    [dim]received {len(secret)} characters[/dim]")
+    return secret
 
 
 @netbox_group.command(name="add-hardware")
 @click.option("--netbox-url", envvar="NETBOX_URL", default=None, help="NetBox base URL")
 @click.option("--netbox-token", envvar="NETBOX_TOKEN", default=None, help="NetBox API token")
+@click.option(
+    "--netbox-ca-bundle",
+    envvar="NETBOX_CA_BUNDLE",
+    type=click.Path(exists=True),
+    default=None,
+    help="CA bundle for NetBox's TLS certificate (e.g. an internal CA)",
+)
+@click.option("--netbox-insecure", is_flag=True, help="Skip NetBox TLS certificate verification")
 @click.option("--coord", default=None, help="Coordinator host:port (default: $LG_COORDINATOR)")
 @click.option(
     "--coord-user", envvar="LG_API_USERNAME", default=None, help="Coordinator API username"
@@ -117,7 +135,15 @@ def _ask_required(prompt: str, **kwargs) -> str:
 )
 @click.option("--dry-run", is_flag=True, help="Render/print the plan; make no changes")
 def add_hardware(
-    netbox_url, netbox_token, coord, coord_user, coord_password, exporter_configs_dir, dry_run
+    netbox_url,
+    netbox_token,
+    netbox_ca_bundle,
+    netbox_insecure,
+    coord,
+    coord_user,
+    coord_password,
+    exporter_configs_dir,
+    dry_run,
 ):
     """Interactively register a new board: NetBox + exporter host + labgrid place."""
     try:
@@ -238,33 +264,37 @@ def add_hardware(
         raise click.Abort()
 
     if not netbox_url:
-        netbox_url = Prompt.ask("NetBox URL")
+        netbox_url = _ask_required("NetBox URL")
     if not netbox_token:
-        netbox_token = Prompt.ask("NetBox API token", password=True)
+        netbox_token = _ask_secret("NetBox API token")
 
     coord_resolved = resolve_coordinator(coord)
     if not coord_user:
-        coord_user = Prompt.ask("Coordinator API username")
+        coord_user = _ask_required("Coordinator API username")
     if not coord_password:
-        coord_password = Prompt.ask("Coordinator API password", password=True)
+        coord_password = _ask_secret("Coordinator API password")
 
     # 1. NetBox: register the device (source of truth for inventory).
+    verify = False if netbox_insecure else (netbox_ca_bundle or True)
+    if verify is False:
+        console.print("[yellow]Warning: NetBox TLS certificate verification is off.[/yellow]")
     try:
-        nb = client.connect(netbox_url, netbox_token)
-        client.ensure_schema(nb)
-        device = client.create_or_update_device(
-            nb,
-            name,
-            carrier=carrier,
-            site_slug=site_slug,
-            custom_fields={
-                "carrier": carrier,
-                "daughter_board": daughter_board,
-                "boot_strategy": boot_strategy,
-                "exporter_host": ssh_target,
-                "runner_label": runner_label,
-            },
-        )
+        with client.reported_errors(netbox_url):
+            nb = client.connect(netbox_url, netbox_token, verify=verify)
+            client.ensure_schema(nb)
+            device = client.create_or_update_device(
+                nb,
+                name,
+                carrier=carrier,
+                site_slug=site_slug,
+                custom_fields={
+                    "carrier": carrier,
+                    "daughter_board": daughter_board,
+                    "boot_strategy": boot_strategy,
+                    "exporter_host": ssh_target,
+                    "runner_label": runner_label,
+                },
+            )
     except RuntimeError as e:
         raise click.ClickException(str(e)) from e
     console.print(

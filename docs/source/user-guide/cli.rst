@@ -161,6 +161,7 @@ a ``labgrid-plugins`` checkout.
 **Options:**
 
 * ``--netbox-url <url>`` / ``--netbox-token <token>``: NetBox API (env: ``NETBOX_URL`` / ``NETBOX_TOKEN``).
+* ``--netbox-ca-bundle <path>``: CA bundle for NetBox's TLS certificate (env: ``NETBOX_CA_BUNDLE``); ``--netbox-insecure`` skips verification.
 * ``--coord <host:port>``: Coordinator (default: ``$LG_COORDINATOR``).
 * ``--coord-user <name>`` / ``--coord-password <password>``: Coordinator API login (env: ``LG_API_USERNAME`` / ``LG_API_PASSWORD``).
 * ``--exporter-configs-dir <path>``: ``exporter_configs/`` directory (default: searched upward from the current directory).

@@ -68,7 +68,7 @@ def test_add_hardware_matches_resources_under_the_deployed_exporter_name(monkeyp
 
     monkeypatch.setattr(cli.Prompt, "ask", staticmethod(_ask))
     monkeypatch.setattr(cli.Confirm, "ask", staticmethod(lambda *a, **k: True))
-    monkeypatch.setattr(cli.client, "connect", lambda url, token: object())
+    monkeypatch.setattr(cli.client, "connect", lambda url, token, **k: object())
     monkeypatch.setattr(cli.client, "ensure_schema", lambda nb: None)
     monkeypatch.setattr(
         cli.client, "create_or_update_device", lambda nb, name, **kw: type("D", (), {"id": 7})()
@@ -247,7 +247,7 @@ def test_netbox_errors_are_reported_without_a_traceback(monkeypatch):
 
     monkeypatch.setattr(cli.Prompt, "ask", staticmethod(_ask))
     monkeypatch.setattr(cli.Confirm, "ask", staticmethod(lambda *a, **k: True))
-    monkeypatch.setattr(cli.client, "connect", lambda url, token: object())
+    monkeypatch.setattr(cli.client, "connect", lambda url, token, **k: object())
     monkeypatch.setattr(cli.client, "ensure_schema", lambda nb: None)
     monkeypatch.setattr(cli.client, "create_or_update_device", no_site)
     monkeypatch.setattr(cli, "resolve_coordinator", lambda coord: "coord:20408")
@@ -272,3 +272,166 @@ def test_netbox_errors_are_reported_without_a_traceback(monkeypatch):
     assert result.exit_code == 1
     assert not isinstance(result.exception, RuntimeError)
     assert "does not exist" in result.output
+
+
+_SOC_SSH_REPLIES = {
+    "Board template": "soc-ssh",
+    "Hardware / place / exporter name": "b1",
+    "Carrier": "zcu102",
+    "Daughter board / chip": "ad9081",
+    "Power category": "Network PDU",
+    "Power type": "cyberpower",
+    "  PDU hostname or IP": "10.0.0.20",
+    "  Outlet number": "4",
+    "NetBox site slug": "lab3",
+    "Exporter host SSH target": "root@h",
+    "  target_ip": "10.0.0.5",
+}
+
+
+def _run_until_netbox(monkeypatch, args, replies=None, *, connect=None, schema_error=None):
+    """Answer every prompt, then stop the run at the NetBox schema step."""
+    replies = {**_SOC_SSH_REPLIES, **(replies or {})}
+    asked = []
+
+    def _ask(prompt, *a, **k):
+        asked.append(prompt)
+        for key, value in replies.items():
+            if prompt.startswith(key):
+                return value.pop(0) if isinstance(value, list) else value
+        return k.get("default")
+
+    def ensure_schema(nb):
+        raise schema_error or RuntimeError("stop after connecting")
+
+    monkeypatch.setattr(cli.Prompt, "ask", staticmethod(_ask))
+    monkeypatch.setattr(cli.Confirm, "ask", staticmethod(lambda *a, **k: True))
+    monkeypatch.setattr(cli.client, "connect", connect or (lambda url, token, **k: object()))
+    monkeypatch.setattr(cli.client, "ensure_schema", ensure_schema)
+    monkeypatch.setattr(cli, "resolve_coordinator", lambda coord: "coord:20408")
+    result = CliRunner().invoke(
+        cli.netbox_group,
+        ["add-hardware", "--exporter-configs-dir", str(EXPORTER_CONFIGS_DIR), *args],
+    )
+    return result, asked
+
+
+def test_netbox_token_prompt_says_input_is_hidden_and_confirms_what_it_read(monkeypatch):
+    """A pasted token doesn't echo, so the operator needs proof it arrived."""
+    seen = {}
+
+    def connect(url, token, **kwargs):
+        seen.update(url=url, token=token)
+        return object()
+
+    result, asked = _run_until_netbox(
+        monkeypatch,
+        ["--coord-user", "u", "--coord-password", "p"],
+        {"NetBox URL": "https://netbox.test", "NetBox API token": ["", "  tok123\n"]},
+        connect=connect,
+    )
+
+    assert seen == {"url": "https://netbox.test", "token": "tok123"}
+    token_prompts = [p for p in asked if p.startswith("NetBox API token")]
+    assert len(token_prompts) == 2  # blank answer re-asked
+    assert "hidden" in token_prompts[0]
+    assert "received 6 characters" in result.output
+
+
+@pytest.mark.parametrize(
+    ("args", "expected"),
+    [([], True), (["--netbox-insecure"], False), (["--netbox-ca-bundle", "CA"], "CA")],
+)
+def test_tls_options_reach_the_netbox_client(monkeypatch, tmp_path, args, expected):
+    ca = tmp_path / "ca.pem"
+    ca.write_text("")
+    args = [str(ca) if a == "CA" else a for a in args]
+    expected = str(ca) if expected == "CA" else expected
+    seen = {}
+
+    def connect(url, token, *, verify):
+        seen["verify"] = verify
+        return object()
+
+    _run_until_netbox(
+        monkeypatch,
+        [
+            "--netbox-url",
+            "https://nb",
+            "--netbox-token",
+            "t",
+            "--coord-user",
+            "u",
+            "--coord-password",
+            "p",
+            *args,
+        ],
+        connect=connect,
+    )
+
+    assert seen == {"verify": expected}
+
+
+def test_connect_applies_tls_verification_to_the_session(tmp_path):
+    from adi_lg_plugins.tools.netbox import client
+
+    assert client.connect("https://nb", "t").http_session.verify is True
+    assert client.connect("https://nb", "t", verify=False).http_session.verify is False
+    ca = str(tmp_path / "ca.pem")
+    assert client.connect("https://nb", "t", verify=ca).http_session.verify == ca
+
+
+def test_tls_failure_suggests_a_ca_bundle(monkeypatch):
+    import requests
+
+    result, _ = _run_until_netbox(
+        monkeypatch,
+        [
+            "--netbox-url",
+            "https://nb",
+            "--netbox-token",
+            "t",
+            "--coord-user",
+            "u",
+            "--coord-password",
+            "p",
+        ],
+        schema_error=requests.exceptions.SSLError(
+            "certificate verify failed: self-signed certificate in certificate chain"
+        ),
+    )
+
+    assert result.exit_code == 1
+    assert not isinstance(result.exception, requests.exceptions.SSLError)
+    assert "--netbox-ca-bundle" in result.output
+
+
+def test_rejected_token_is_reported_without_a_traceback(monkeypatch):
+    import pynetbox
+
+    class _Forbidden:
+        status_code, reason, url, text = 403, "Forbidden", "https://nb/api/", ""
+        request = type("R", (), {"body": None})()
+
+        def json(self):
+            return {"detail": "Invalid v1 token"}
+
+    result, _ = _run_until_netbox(
+        monkeypatch,
+        [
+            "--netbox-url",
+            "https://nb",
+            "--netbox-token",
+            "t",
+            "--coord-user",
+            "u",
+            "--coord-password",
+            "p",
+        ],
+        schema_error=pynetbox.RequestError(_Forbidden()),
+    )
+
+    assert result.exit_code == 1
+    assert not isinstance(result.exception, pynetbox.RequestError)
+    assert "Invalid v1 token" in result.output
+    assert "token" in result.output.lower()
