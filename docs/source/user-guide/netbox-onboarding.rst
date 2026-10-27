@@ -59,31 +59,64 @@ Usage
 .. code-block:: console
 
     $ adi-lg netbox add-hardware
-    Available board templates: fabric-jtag, rpi-ssh, soc-sdmux, soc-ssh, soc-tftp, zynqmp-jtag
-    Board template: soc-sdmux
+    Board templates
+    #   Template      Boot strategy     Description
+    ──────────────────────────────────────────────────────────────────────────────
+    1   fabric-jtag   BootFabric        FPGA fabric loaded over JTAG
+    2   rpi-ssh       BootRPI           Raspberry Pi driven over SSH
+    3   soc-sdmux     BootFPGASoC       SoC booted from an SD card through a USB SD mux
+    4   soc-ssh       BootFPGASoCSSH    SoC whose boot files are updated over SSH
+    5   soc-tftp      BootFPGASoCTFTP   SoC booted over TFTP from U-Boot
+    6   zynqmp-jtag   BootZynqMPJTAG    ZynqMP board strapped for JTAG boot
+    Board template (fabric-jtag): 3
     Hardware / place / exporter name (e.g. zcu102-lab3-001): zcu102-lab3-001
     Carrier (board/FPGA, e.g. zcu102, vcu118): zcu102
     Daughter board / chip (e.g. ad9081): ad9081
-    Boot strategy [BootFPGASoC/BootFPGASoCSSH/.../BootTickFPGASSH] (BootFPGASoC):
+
+    Boot strategies
+     #   Strategy                   Description
+    ──────────────────────────────────────────────────────────────────────────────
+     1   BootFPGASoC                BootFPGASoC strategy for FPGA SoC devices using
+                                    Kuiper releases.
+     2   BootFPGASoCSSH             Strategy to boot an FPGA SoC device using
+                                    ShellDriver and SSHDriver.
+     ...
+    12   BootTickFPGASSH            BootFPGASoCSSH + runtime Tick deploy (bitstream,
+                                    overlay, module).
+    Boot strategy (BootFPGASoC):
+
     Power control
-      Network PDU: apc, cyberpower, network-pdu, pdudaemon
-      Smart plug / home automation: vesync, kasa, homeassistant, tasmota
-      USB-switched port: usb-hub, ykush, sispm
-      Relay / digital output: modbus, waveshare-modbus, http-output, gpio, gpio-matched,
-      lxa-iobus, onewire, deditec, hid-relay, eth008
-      Bench power supply: sigrok
-      Other: laa, manual
-    Power category [Network PDU/.../Other] (Smart plug / home automation): Relay / digital output
-    Power type [modbus/waveshare-modbus/.../eth008] (modbus): modbus
+    #   Category                       Types
+    ──────────────────────────────────────────────────────────────────────────────
+    1   Network PDU                    apc, cyberpower, network-pdu, pdudaemon
+    2   Smart plug / home automation   vesync, kasa, homeassistant, tasmota
+    3   USB-switched port              usb-hub, ykush, sispm
+    4   Relay / digital output         modbus, waveshare-modbus, http-output, gpio,
+                                       gpio-matched, lxa-iobus, onewire, deditec,
+                                       hid-relay, eth008
+    5   Bench power supply             sigrok
+    6   Other                          laa, manual
+    Power category (Smart plug / home automation): 4
+     #   Type               Description                  Driver
+    ──────────────────────────────────────────────────────────────────────────────
+     1   modbus             Modbus/TCP coil              ModbusCoilDriver +
+                                                         DigitalOutputPowerDriver
+     2   waveshare-modbus   Waveshare Modbus/TCP relay   WaveShareModbusCoilDriver +
+                                                         DigitalOutputPowerDriver
+     ...
+    Power type (modbus):
       Device hostname or IP: 10.0.0.50
       Coil number: 2
       Invert output (true/false) (false):
     GitHub runner label (hw-zcu102):
     NetBox site slug (must already exist): lab3
     Exporter host SSH target (user@host): labadmin@lab-host-03
-    Template fields for soc-sdmux: boot_partition, kuiper_bootbin, kuiper_devicetree,
-    kuiper_kernel, kuiper_release, sdmux_path, serial_port, target_ip, target_password,
-    target_username
+
+    Template fields for soc-sdmux
+      - target_ip (required)
+      - boot_partition
+      - kuiper_bootbin
+      ...
       target_ip (required): 10.0.0.42
       boot_partition (blank = template default):
       kuiper_bootbin (blank = template default): release:zynqmp-zcu102-rev10-ad9081/m8_l4/BOOT.BIN
@@ -103,6 +136,9 @@ Usage
     Proceed? [y/n] (y): y
     ...
     Done. zcu102-lab3-001 tags: {'daughter-board': 'ad9081', 'carrier': 'zcu102', ...}
+
+Each set of options is listed as a numbered table; answer with the number or the name,
+or press Enter for the default shown in parentheses.
 
 Use ``--dry-run`` to render and schema-validate the exporter config and print the full plan
 without touching NetBox, SSH, or the coordinator - useful for checking your answers before

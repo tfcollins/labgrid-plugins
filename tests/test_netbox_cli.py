@@ -483,3 +483,39 @@ def test_unusable_ca_bundle_is_reported_without_a_traceback(monkeypatch):
     assert result.exit_code == 1
     assert not isinstance(result.exception, OSError)
     assert "Could not find a suitable TLS CA certificate bundle" in result.output
+
+
+def test_options_are_listed_one_per_row_not_run_together(monkeypatch):
+    kwargs_by_prompt = {}
+
+    def _ask(prompt, *args, **kwargs):
+        kwargs_by_prompt[prompt.strip()] = kwargs
+        return next(
+            (v for k, v in _SOC_SSH_REPLIES.items() if prompt.startswith(k)), kwargs.get("default")
+        )
+
+    monkeypatch.setattr(cli.Prompt, "ask", staticmethod(_ask))
+
+    result = CliRunner().invoke(
+        cli.netbox_group,
+        ["add-hardware", "--dry-run", "--exporter-configs-dir", str(EXPORTER_CONFIGS_DIR)],
+    )
+
+    assert result.exit_code == 0, result.output
+    lines = result.output.splitlines()
+
+    def row(*tokens):
+        return any(all(t in line for t in tokens) for line in lines)
+
+    assert row("fabric-jtag", "BootFabric")  # template + the strategy it's written for
+    assert row("soc-ssh", "BootFPGASoCSSH")
+    assert not row("fabric-jtag", "rpi-ssh")
+    assert row("BootZynqMPJTAG", "JTAG")  # strategy + its description
+    assert row("Network PDU", "cyberpower")  # category + its types
+    assert row("cyberpower", "CyberPower PDU")  # type + its label
+    assert row("target_ip", "required")
+    assert not row("Template fields", ", ")
+    for prompt in ("Board template", "Boot strategy", "Power category", "Power type"):
+        assert kwargs_by_prompt[prompt]["show_choices"] is False, prompt
+    # an empty default would otherwise print as "()" after the prompt
+    assert kwargs_by_prompt["serial_port (blank = template default)"]["show_default"] is False

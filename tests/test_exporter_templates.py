@@ -102,6 +102,13 @@ def test_template_declares_a_known_boot_strategy(template):
     assert provision.template_strategy(template) in KNOWN_STRATEGIES
 
 
+@pytest.mark.parametrize("template", TEMPLATES, ids=lambda p: p.stem)
+def test_template_has_a_one_line_title(template):
+    """Shown next to the template's name when add-hardware lists templates."""
+    title = provision.template_title(template)
+    assert title and "\n" not in title and not title.startswith("##")
+
+
 @pytest.mark.parametrize("power", POWER)
 @pytest.mark.parametrize("template", TEMPLATES, ids=lambda p: p.stem)
 def test_template_exports_everything_its_strategy_binds(template, power):

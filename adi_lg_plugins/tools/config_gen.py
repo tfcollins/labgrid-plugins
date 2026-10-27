@@ -6,6 +6,8 @@ import yaml
 from rich.console import Console
 from rich.prompt import Confirm, IntPrompt, Prompt
 
+from adi_lg_plugins.tools._choices import ask_choice
+
 try:
     import serial.tools.list_ports
 
@@ -58,9 +60,14 @@ class ConfigGenerator:
 
     def configure_power(self):
         console.print("[bold cyan]Configuring Power Protocol[/bold cyan]")
-        driver_type = Prompt.ask(
+        driver_type = ask_choice(
+            console,
             "Select Power Driver",
-            choices=["VesyncPowerDriver", "CyberPowerDriver", "Skip"],
+            [
+                ("VesyncPowerDriver", "VeSync smart plug"),
+                ("CyberPowerDriver", "CyberPower PDU (SNMP)"),
+                ("Skip", "no power control"),
+            ],
             default="VesyncPowerDriver",
         )
 
@@ -99,19 +106,18 @@ class ConfigGenerator:
 
         if ports_info:
             console.print("Detected Serial Ports:")
-            for dev, desc in ports_info:
-                console.print(f"  - [bold]{dev}[/bold]: {desc}")
-
-            port_choices = [p[0] for p in ports_info] + ["Manual Entry"]
+            port_choices = [*ports_info, ("Manual Entry", "type a device path")]
             default_port = ports_info[0][0]
         else:
             console.print("No serial ports detected.")
-            port_choices = ["Manual Entry"]
+            port_choices = [("Manual Entry", "type a device path")]
             default_port = "Manual Entry"
 
-        selected_port = Prompt.ask(
+        selected_port = ask_choice(
+            console,
             "Select Serial Port",
-            choices=port_choices,
+            port_choices,
+            headers=("Port", "Description"),
             default=default_port,
         )
 
@@ -203,8 +209,14 @@ class ConfigGenerator:
             self.add_driver("USBStorageDriver")
 
     def run(self):
-        strategies = ["BootFPGASoC", "BootFPGASoCTFTP", "BootFPGASoCSSH"]
-        selected_strategy = Prompt.ask("Select Strategy", choices=strategies, default="BootFPGASoC")
+        strategies = [
+            ("BootFPGASoC", "SD card through a USB SD mux"),
+            ("BootFPGASoCTFTP", "kernel over TFTP from U-Boot"),
+            ("BootFPGASoCSSH", "boot files copied over SSH"),
+        ]
+        selected_strategy = ask_choice(
+            console, "Select Strategy", strategies, default="BootFPGASoC"
+        )
 
         self.target_name = Prompt.ask("Target Name", default="main")
         if self.target_name != "main":

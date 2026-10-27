@@ -25,6 +25,7 @@ from adi_lg_plugins.hw_ci.coordinator import (
     resolve_coordinator,
     set_place_tags,
 )
+from adi_lg_plugins.tools._choices import ask_choice
 
 from . import client, provision
 
@@ -59,32 +60,49 @@ def _discover_templates(exporter_configs_dir: Path) -> dict[str, Path]:
     return {p.stem: p for p in sorted(templates_dir.glob("*.yaml"))}
 
 
+def _strategy_summary(name: str) -> str:
+    """First line of a boot strategy's docstring, if the strategy is registered."""
+    from labgrid.factory import target_factory
+
+    cls = target_factory.all_classes.get(name)
+    lines = (cls.__doc__ or "").strip().splitlines() if cls else []
+    return lines[0].removeprefix(f"{name} - ") if lines else ""
+
+
 def _ask_power() -> tuple[str, dict[str, str]]:
     """Ask for a power type by category, then that type's fields.
 
     Returns the type key and the template context for its ``power_*`` fields;
     optional fields left blank are omitted so the fragment's default applies.
     """
-    console.print("[bold]Power control[/bold]")
-    for category in power_types.CATEGORIES:
-        keys = ", ".join(t.key for t in power_types.types_in(category))
-        console.print(f"  {category}: {keys}")
-    category = Prompt.ask(
-        "Power category", choices=list(power_types.CATEGORIES), default=power_types.PLUG
+    console.print("\n[bold]Power control[/bold]")
+    category = ask_choice(
+        console,
+        "Power category",
+        [(c, ", ".join(t.key for t in power_types.types_in(c))) for c in power_types.CATEGORIES],
+        headers=("Category", "Types"),
+        default=power_types.PLUG,
     )
-    in_category = [t.key for t in power_types.types_in(category)]
-    power = Prompt.ask(
+    in_category = power_types.types_in(category)
+    keys = [t.key for t in in_category]
+    power = ask_choice(
+        console,
         "Power type",
-        choices=in_category,
-        default="vesync" if "vesync" in in_category else in_category[0],
+        [(t.key, t.label, " + ".join(t.drivers)) for t in in_category],
+        headers=("Type", "Description", "Driver"),
+        default="vesync" if "vesync" in keys else keys[0],
     )
     context = {}
     for f in power_types.POWER_TYPES[power].fields:
-        choices = power_types.choices_for(f.choices) if f.choices else None
-        if f.default is None:
-            context[f.var] = _ask_required(f"  {f.prompt}", choices=choices)
+        if f.choices:
+            context[f.var] = ask_choice(
+                console, f"  {f.prompt}", power_types.choices_for(f.choices), default=f.default
+            )
             continue
-        answer = Prompt.ask(f"  {f.prompt}", choices=choices, default=f.default)
+        if f.default is None:
+            context[f.var] = _ask_required(f"  {f.prompt}")
+            continue
+        answer = Prompt.ask(f"  {f.prompt}", default=f.default)
         if answer not in (None, ""):
             context[f.var] = answer
     return power, context
@@ -164,18 +182,28 @@ def add_hardware(
     if not templates:
         raise click.ClickException(f"no templates found under {exporter_configs_dir / 'templates'}")
 
-    console.print(f"[bold]Available board templates:[/bold] {', '.join(sorted(templates))}")
-    template_key = Prompt.ask(
-        "Board template", choices=sorted(templates), default=sorted(templates)[0]
+    console.print("[bold]Board templates[/bold]")
+    template_key = ask_choice(
+        console,
+        "Board template",
+        [
+            (key, provision.template_strategy(path) or "", provision.template_title(path))
+            for key, path in sorted(templates.items())
+        ],
+        headers=("Template", "Boot strategy", "Description"),
+        default=sorted(templates)[0],
     )
     template_path = templates[template_key]
 
     name = Prompt.ask("Hardware / place / exporter name (e.g. zcu102-lab3-001)")
     carrier = Prompt.ask("Carrier (board/FPGA, e.g. zcu102, vcu118)")
     daughter_board = Prompt.ask("Daughter board / chip (e.g. ad9081)")
-    boot_strategy = Prompt.ask(
+    console.print("\n[bold]Boot strategies[/bold]")
+    boot_strategy = ask_choice(
+        console,
         "Boot strategy",
-        choices=KNOWN_BOOT_STRATEGIES,
+        [(s, _strategy_summary(s)) for s in KNOWN_BOOT_STRATEGIES],
+        headers=("Strategy", "Description"),
         default=provision.template_strategy(template_path),
     )
     power, power_context = _ask_power()
@@ -207,16 +235,21 @@ def add_hardware(
     except RuntimeError as e:
         raise click.ClickException(str(e)) from e
 
-    console.print(
-        f"[bold]Template fields for {template_key}:[/bold] {', '.join(var_names) or '(none)'}"
-    )
     # Required fields first, so they're not lost among the defaulted ones.
-    for var in sorted(var_names, key=lambda v: v not in required):
+    var_names.sort(key=lambda v: v not in required)
+    console.print(f"\n[bold]Template fields for {template_key}[/bold]")
+    for var in var_names:
+        console.print(f"  - {var}" + (" [bold](required)[/bold]" if var in required else ""))
+    if not var_names:
+        console.print("  (none)")
+    for var in var_names:
         secret = "password" in var
         if var in required:
             context[var] = _ask_required(f"  {var} (required)", password=secret)
             continue
-        answer = Prompt.ask(f"  {var} (blank = template default)", default="", password=secret)
+        answer = Prompt.ask(
+            f"  {var} (blank = template default)", default="", show_default=False, password=secret
+        )
         if answer:
             context[var] = answer
 
