@@ -362,7 +362,7 @@ def run_health_check(
     default=False,
     help="Query and return list of IIO device drivers discovered on the DUT (e.g. ad9361-phy, cf-ad9361-lpc)",
 )
-@click.option("--timeout", default=600.0, type=float, help="Overall timeout in seconds")
+@click.option("--timeout", default=900.0, type=float, help="Overall timeout in seconds")
 @click.option("--json", "json_out", is_flag=True, help="Emit result as JSON")
 def health_check_cmd(place, coord, image, power_down, fetch_drivers, timeout, json_out):
     """Run an automated boot health check on a deployed board."""

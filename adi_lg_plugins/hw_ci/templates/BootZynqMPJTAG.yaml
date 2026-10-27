@@ -86,6 +86,7 @@ targets:
         pmufw_timeout_ms: 10000
         power_off_settle_s: 5
         power_on_settle_s: 8
+        kuiper_boot_timeout: 600
         # Direct-JTAG RAM recovery Linux (transition "recovery_linux") and the
         # destructive SD reflash are opt-in — uncomment and stage the extra
         # payloads before using those states.

@@ -141,7 +141,7 @@ class BootZynqMPJTAG(Strategy):
     sd_boot_command = attr.ib(default="setenv partid 1; run sdboot")
     kuiper_kernel_marker = attr.ib(default="Starting kernel")
     kuiper_shell_marker = attr.ib(default=r"root@analog:.*#")
-    kuiper_boot_timeout = attr.ib(default=300)
+    kuiper_boot_timeout = attr.ib(default=600)
     kuiper_verify_timeout = attr.ib(default=120)
     kuiper_verify_commands = attr.ib(
         factory=lambda: [
@@ -420,6 +420,7 @@ class BootZynqMPJTAG(Strategy):
             self.shell.console.sendline(self.sd_boot_command)
             self.shell.console.expect(self.kuiper_kernel_marker, timeout=self.kuiper_boot_timeout)
             self.shell.console.expect(self.kuiper_shell_marker, timeout=self.kuiper_boot_timeout)
+
             self.shell.prompt = self.kuiper_shell_marker
             self.shell._check_prompt()
             self.shell._inject_run()
