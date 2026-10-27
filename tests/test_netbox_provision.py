@@ -14,6 +14,7 @@ from unittest.mock import MagicMock
 import labgrid.util.ssh as ssh_mod
 import pytest
 from labgrid.driver.exception import ExecutionError
+from labgrid.remote.config import ResourceConfig
 
 from adi_lg_plugins.tools.netbox import provision
 
@@ -42,12 +43,12 @@ def test_find_exporter_configs_dir_raises_when_missing(tmp_path):
 def test_discover_template_vars_zcu102():
     template = EXPORTER_CONFIGS_DIR / "templates" / "zcu102.yaml"
     names = provision.discover_template_vars(template)
-    assert {"exporter_name", "target_ip", "chip", "serial_port", "sdmux_path"} <= names
+    assert {"target_ip", "chip", "serial_port", "sdmux_path"} <= names
 
 
 def test_render_and_validate_zcu102_round_trips_group_name():
     template = EXPORTER_CONFIGS_DIR / "templates" / "zcu102.yaml"
-    context = {"exporter_name": "lab-host-03", "target_ip": "10.0.0.5"}
+    context = {"target_ip": "10.0.0.5"}
 
     path, groups = provision.render_and_validate(template, context, EXPORTER_CONFIGS_DIR)
 
@@ -58,12 +59,42 @@ def test_render_and_validate_zcu102_round_trips_group_name():
 def test_render_and_validate_missing_required_field_raises():
     template = EXPORTER_CONFIGS_DIR / "templates" / "zcu102.yaml"
     with pytest.raises(RuntimeError, match="missing a required field"):
-        provision.render_and_validate(template, {"exporter_name": "h"}, EXPORTER_CONFIGS_DIR)
+        provision.render_and_validate(template, {}, EXPORTER_CONFIGS_DIR)
+
+
+# Values for every template field without a default, so each template renders.
+_REQUIRED_FIELDS = {
+    "target_ip": "10.0.0.5",
+    "bitstream_path": "/srv/vcu118/system_top.bit",
+    "kernel_path": "/srv/vcu118/simpleImage.strip",
+}
+
+
+@pytest.mark.parametrize(
+    "template",
+    sorted((EXPORTER_CONFIGS_DIR / "templates").glob("*.yaml")),
+    ids=lambda p: p.stem,
+)
+def test_rendered_template_loads_in_labgrid_exporter(template):
+    """The rendered file must load the way `labgrid-exporter` itself loads it.
+
+    labgrid re-renders exporter configs as Jinja with ``#`` line statements and
+    ``##`` line comments, then treats every top-level key as a resource group.
+    """
+    path, groups = provision.render_and_validate(template, _REQUIRED_FIELDS, EXPORTER_CONFIGS_DIR)
+
+    data = ResourceConfig(str(path), {"env": {}, "isolated": False, "hostname": "h", "name": "n"})
+
+    assert list(data.data) == groups
+    known = provision._load_validate_module(EXPORTER_CONFIGS_DIR).KNOWN_CLASSES
+    for group in data.data.values():
+        for params in group.values():
+            assert params["cls"] in known
 
 
 def test_unit_text_shape():
-    text = provision._unit_text("coord:20408", "rack1", "labuser")
-    assert "ExecStart=/usr/local/bin/labgrid-exporter -c coord:20408 -n rack1 " in text
+    text = provision._unit_text("coord:20408", "rack1", "labuser", "/opt/lg/bin/labgrid-exporter")
+    assert "ExecStart=/opt/lg/bin/labgrid-exporter -c coord:20408 -n rack1 " in text
     assert "User=labuser" in text
     assert "Restart=always" in text
     assert "WantedBy=multi-user.target" in text
@@ -82,6 +113,46 @@ def test_check_prerequisites_raises_when_exporter_missing(monkeypatch):
 
     with pytest.raises(RuntimeError, match="not found on"):
         provision.check_prerequisites("lab-host-03")
+
+
+def test_check_prerequisites_returns_resolved_exporter_path(monkeypatch):
+    conn = _fake_conn()
+    conn.run_check.return_value = ["/home/labuser/.local/bin/labgrid-exporter"]
+    monkeypatch.setattr(ssh_mod.sshmanager, "get", lambda host: conn)
+
+    assert provision.check_prerequisites("lab-host-03") == (
+        "/home/labuser/.local/bin/labgrid-exporter"
+    )
+
+
+def test_check_prerequisites_rejects_non_path_resolution(monkeypatch):
+    conn = _fake_conn()
+    conn.run_check.return_value = ["alias labgrid-exporter='lg-exp'"]
+    monkeypatch.setattr(ssh_mod.sshmanager, "get", lambda host: conn)
+
+    with pytest.raises(RuntimeError, match="absolute path"):
+        provision.check_prerequisites("lab-host-03")
+
+
+def test_deploy_exporter_unit_runs_given_exporter_path(tmp_path, monkeypatch):
+    conn = _fake_conn()
+    monkeypatch.setattr(ssh_mod.sshmanager, "get", lambda host: conn)
+    rendered = tmp_path / "resources.yaml"
+    rendered.write_text("group: {}\n")
+
+    provision.deploy_exporter(
+        "lab-host-03",
+        "labuser",
+        "rack1",
+        rendered,
+        "coord:20408",
+        exporter_bin="/home/labuser/.local/bin/labgrid-exporter",
+    )
+
+    unit_local_path = conn.put_file.call_args_list[1].args[0]
+    assert (
+        "ExecStart=/home/labuser/.local/bin/labgrid-exporter " in Path(unit_local_path).read_text()
+    )
 
 
 def test_deploy_exporter_stages_and_installs(tmp_path, monkeypatch):

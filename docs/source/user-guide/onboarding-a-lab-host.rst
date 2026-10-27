@@ -60,7 +60,9 @@ resources with the coordinator. Per host:
 #. Copy a template from ``exporter_configs/templates/`` (``vcu118_ad9081.yaml``, ``rpi.yaml``,
    ``zcu102.yaml``) to a ``resources.yaml`` and fill in serial ports, JTAG targets, power,
    and network for that host. Group names follow ``<BOARD>_<CHIP>`` (e.g. ``VCU118_AD9081``)
-   so match patterns are host-independent.
+   so match patterns are host-independent. Keep comments as ``## ...``: labgrid loads the
+   file as a Jinja2 template where a line starting with ``#`` is a template statement
+   (see :doc:`exporter-setup`).
 #. Validate it: ``python exporter_configs/validate.py resources.yaml``.
 #. Run it: ``labgrid-exporter -c <coordinator-host>:20408 -n <unique-host-name> resources.yaml``.
 

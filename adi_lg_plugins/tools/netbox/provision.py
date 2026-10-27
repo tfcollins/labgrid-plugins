@@ -23,6 +23,7 @@ import yaml
 logger = logging.getLogger(__name__)
 
 STAGE_DIR = "/tmp/adi-lg-netbox-stage"
+DEFAULT_EXPORTER_BIN = "/usr/local/bin/labgrid-exporter"
 
 
 def _require_jinja2():
@@ -76,11 +77,11 @@ def render_and_validate(
     """Render + schema-validate the template.
 
     Returns the path to the rendered file and the list of resource-group
-    names found under its exporter-name key (e.g. ``["ZCU102_AD9081"]``) -
-    the caller needs these verbatim to build a correct `add-match` pattern,
-    and they vary per template (some bake the chip into the group name,
-    some templatize it), so they're read back from the actual rendered YAML
-    rather than guessed from the template's filename.
+    names it defines (e.g. ``["ZCU102_AD9081"]``) - the caller needs these
+    verbatim to build a correct `add-match` pattern, and they vary per
+    template (some bake the chip into the group name, some templatize it),
+    so they're read back from the actual rendered YAML rather than guessed
+    from the template's filename.
     """
     jinja2 = _require_jinja2()
 
@@ -95,28 +96,18 @@ def render_and_validate(
     out_path.write_text(rendered)
 
     validate = _load_validate_module(exporter_configs_dir)
-    # Deliberately no schema_path: exporter_schema.json only matches the flat
-    # {group: {resource: params}} shape. Every exporter_configs/templates/
-    # file renders to the *wrapped* {exporter_name: {group: {resource}}}
-    # shape instead (exporter_name has to be the real per-deployment name,
-    # so it can't be flattened away) - passing the schema here fails on
-    # every real template (confirmed against zcu102.yaml). validate_config's
-    # own per-resource `cls`/known-class check (always run, schema or not)
-    # already understands both shapes and is the meaningful check for a
-    # rendered file.
     issues = validate.validate_config(str(out_path))
     if issues:
         detail = "\n".join(f"  - {i}" for i in issues)
         raise RuntimeError(f"rendered exporter config failed validation:\n{detail}")
 
+    # labgrid's exporter format: {group_name: {resource: params}}. The
+    # exporter's own name comes from `labgrid-exporter -n`, not the file.
     data = yaml.safe_load(rendered)
-    # {exporter_name: {group_name: {resource: params}}} - exactly one
-    # top-level exporter-name key per rendered template, per convention.
-    (groups,) = data.values()
-    return out_path, list(groups.keys())
+    return out_path, list(data.keys())
 
 
-def _unit_text(coord: str, name: str, user: str) -> str:
+def _unit_text(coord: str, name: str, user: str, exporter_bin: str) -> str:
     """Systemd unit text for `labgrid-exporter`, for remote-only paths.
 
     Deliberately not reusing
@@ -136,7 +127,7 @@ After=network.target
 Type=simple
 User={user}
 WorkingDirectory=/etc/labgrid/exporters/{name}
-ExecStart=/usr/local/bin/labgrid-exporter -c {coord} -n {name} {resource_path}
+ExecStart={exporter_bin} -c {coord} -n {name} {resource_path}
 Restart=always
 RestartSec=5s
 
@@ -145,23 +136,41 @@ WantedBy=multi-user.target
 """
 
 
-def check_prerequisites(ssh_host: str) -> None:
-    """Fail fast if `labgrid-exporter` isn't installed on the exporter host."""
+def check_prerequisites(ssh_host: str) -> str:
+    """Fail fast if `labgrid-exporter` isn't installed on the exporter host.
+
+    Returns its absolute path as the SSH user's PATH resolves it, so the
+    systemd unit runs the same install (venv, ``~/.local/bin``, ...).
+    """
     from labgrid.driver.exception import ExecutionError
     from labgrid.util.ssh import sshmanager
 
     conn = sshmanager.get(ssh_host)
     try:
-        conn.run_check("command -v labgrid-exporter")
+        out = conn.run_check("command -v labgrid-exporter")
     except ExecutionError as e:
         raise RuntimeError(
             f"labgrid-exporter not found on {ssh_host} - install it there "
             f"(pip install labgrid on that host) before running this command: {e}"
         ) from e
+    lines = out if isinstance(out, list) else str(out).splitlines()
+    path = lines[0].strip() if lines else ""
+    if not path.startswith("/"):
+        raise RuntimeError(
+            f"`command -v labgrid-exporter` on {ssh_host} returned {path!r}, not an "
+            "absolute path - make labgrid-exporter an executable on that user's PATH"
+        )
+    return path
 
 
 def deploy_exporter(
-    ssh_host: str, ssh_user: str, name: str, rendered_yaml: Path, coord: str
+    ssh_host: str,
+    ssh_user: str,
+    name: str,
+    rendered_yaml: Path,
+    coord: str,
+    *,
+    exporter_bin: str = DEFAULT_EXPORTER_BIN,
 ) -> None:
     """SSH-deploy the rendered exporter config as a systemd service and start it.
 
@@ -179,7 +188,7 @@ def deploy_exporter(
     unit_name = f"labgrid-exporter-{name}.service"
 
     unit_path = Path(tempfile.mkdtemp(prefix="adi-lg-netbox-unit-")) / unit_name
-    unit_path.write_text(_unit_text(coord, name, ssh_user))
+    unit_path.write_text(_unit_text(coord, name, ssh_user, exporter_bin))
 
     try:
         conn.run_check(f"mkdir -p {stage}")

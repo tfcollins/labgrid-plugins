@@ -73,18 +73,44 @@ def _validate_group(prefix: str, group_name: str, resources: dict, issues: list[
             )
 
 
+def _check_labgrid_template(text: str) -> list[str]:
+    """Parse the file the way labgrid-exporter does before it reads the YAML.
+
+    labgrid renders exporter configs as a Jinja template with ``#`` as the
+    line-statement prefix and ``##`` as the line-comment prefix, so a plain
+    YAML ``# comment`` line is a template statement there. jinja2 ships with
+    labgrid; without it this check is skipped.
+    """
+    try:
+        import jinja2
+    except ImportError:
+        return []
+    env = jinja2.Environment(line_statement_prefix="#", line_comment_prefix="##")
+    try:
+        env.parse(text)
+    except jinja2.TemplateSyntaxError as e:
+        return [
+            f"line {e.lineno}: labgrid loads exporter configs as a Jinja template, where a "
+            f"line starting with '#' is a template statement ({e.message}); "
+            "use '##' for comments"
+        ]
+    return []
+
+
 def validate_config(config_path: str, schema_path: str | None = None) -> list[str]:
     """Validate an exporter config YAML and return a list of issues."""
-    issues: list[str] = []
-
     with open(config_path) as f:
-        try:
-            data = yaml.safe_load(f)
-        except yaml.YAMLError as e:
-            return [f"YAML parse error: {e}"]
+        text = f.read()
+
+    issues: list[str] = _check_labgrid_template(text)
+
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError as e:
+        return issues + [f"YAML parse error: {e}"]
 
     if not isinstance(data, dict):
-        return ["Config must be a YAML mapping at the top level"]
+        return issues + ["Config must be a YAML mapping at the top level"]
 
     fmt = _detect_format(data)
 

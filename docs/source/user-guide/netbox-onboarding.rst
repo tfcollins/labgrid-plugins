@@ -43,10 +43,9 @@ Prerequisites
 - SSH access to the exporter host as ``user@host``, with:
 
   - **passwordless sudo** for that user (needed to write under ``/etc`` and run ``systemctl``),
-  - ``labgrid-exporter`` **already installed at** ``/usr/local/bin/labgrid-exporter`` - the
-    generated systemd unit runs that exact path. The up-front check only runs
-    ``command -v labgrid-exporter``, so an install in a venv or ``~/.local/bin`` passes the
-    check but the service then fails to start; symlink it into ``/usr/local/bin`` first.
+  - ``labgrid-exporter`` **already installed** and on that user's ``PATH`` over SSH -
+    checked up front with ``command -v labgrid-exporter``, and the generated systemd unit
+    runs the absolute path that resolves to, so a venv or ``~/.local/bin`` install works.
 
 Usage
 -----
@@ -76,6 +75,7 @@ Usage
       boot-strategy=BootFPGASoC, runner=hw-zcu102)
       Rendered + validated exporter config: /tmp/adi-lg-netbox-xxxxx/zcu102.yaml
       Resource group(s): ZCU102_AD9081
+      Place match(es): zcu102-lab3-001/ZCU102_AD9081/*
 
     Proceed? [y/n] (y): y
     ...
@@ -162,8 +162,9 @@ Files are staged under ``/tmp/adi-lg-netbox-stage/<name>/`` and then moved into 
 
 - ``/etc/labgrid/exporters/<name>/resources.yaml`` - the rendered exporter config.
 - ``/etc/systemd/system/labgrid-exporter-<name>.service`` - a unit that runs
-  ``/usr/local/bin/labgrid-exporter`` as the SSH user, pointed at the coordinator, with
-  ``Restart=always``.
+  ``labgrid-exporter -n <name>`` (the absolute path found by the prerequisite check) as the
+  SSH user, pointed at the coordinator, with ``Restart=always``. The exporter registers on the
+  coordinator under the hardware name, so one host can run a separate exporter per board.
 
 The unit is enabled and started (``systemctl enable --now``), then polled with
 ``systemctl is-active`` (10 attempts, 2 s apart). If it never becomes active, the command
@@ -175,7 +176,8 @@ On the coordinator
 Through the coordinator REST API (:doc:`coordinator`), authenticated as the coordinator user:
 
 - ``POST /api/places`` - create the place, named after the hardware name.
-- ``POST /api/places/<name>/matches`` - one match per resource group in the rendered config.
+- ``POST /api/places/<name>/matches`` - one ``<name>/<group>/*`` match per resource group in
+  the rendered config (``<name>`` is the exporter name the unit registers).
 - ``PUT /api/places/<name>/tags`` - ``daughter-board`` and ``carrier`` (lowercased),
   ``boot-strategy``, and ``runner``, the keys the hardware-CI preflight matches on (see the tag
   table in :doc:`onboarding-a-lab-host`, Step 3).
@@ -216,8 +218,8 @@ Troubleshooting
     Create the site in NetBox first (or use an existing slug); the command never creates sites.
 
 ``labgrid-exporter not found on <host>``
-    Install labgrid on the exporter host (``pip install labgrid``) and make sure it is at
-    ``/usr/local/bin/labgrid-exporter``.
+    Install labgrid on the exporter host (``pip install labgrid``) so ``labgrid-exporter`` is
+    on the SSH user's ``PATH`` for non-interactive SSH commands.
 
 ``failed to install/start labgrid-exporter-<name>``
     Usually missing passwordless sudo for the SSH user.
@@ -225,8 +227,8 @@ Troubleshooting
 ``labgrid-exporter-<name> did not become active``
     Read the journal lines printed with the error, or run
     ``journalctl -u labgrid-exporter-<name>`` on the host. Common causes are a wrong
-    coordinator address, a ``labgrid-exporter`` not at ``/usr/local/bin``, or a serial port
-    / device path in the config that doesn't exist on the host.
+    coordinator address, or a serial port / device path in the config that doesn't exist on
+    the host.
 
 How it maps to the manual procedure
 ------------------------------------

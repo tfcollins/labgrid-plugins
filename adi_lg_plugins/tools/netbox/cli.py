@@ -106,14 +106,14 @@ def add_hardware(
     ssh_user, ssh_host = ssh_target.split("@", 1)
 
     try:
-        var_names = sorted(provision.discover_template_vars(template_path) - {"exporter_name"})
+        var_names = sorted(provision.discover_template_vars(template_path))
     except RuntimeError as e:
         raise click.ClickException(str(e)) from e
 
     console.print(
         f"[bold]Template fields for {template_key}:[/bold] {', '.join(var_names) or '(none)'}"
     )
-    context = {"exporter_name": ssh_host}
+    context = {}
     for var in var_names:
         answer = Prompt.ask(f"  {var} (blank = template default)", default="")
         if answer:
@@ -136,8 +136,12 @@ def add_hardware(
         )
     except RuntimeError as e:
         raise click.ClickException(str(e)) from e
+    # The systemd unit runs `labgrid-exporter -n <name>`, so the coordinator
+    # sees these resources under exporter <name>, not the SSH host name.
+    match_patterns = [f"{name}/{group}/*" for group in groups]
     console.print(f"  Rendered + validated exporter config: {rendered_path}")
     console.print(f"  Resource group(s): {', '.join(groups)}")
+    console.print(f"  Place match(es): {', '.join(match_patterns)}")
 
     if dry_run:
         console.print("\n[yellow]Dry run - no NetBox/SSH/coordinator changes made.[/yellow]")
@@ -179,8 +183,10 @@ def add_hardware(
 
     # 2. Exporter host: deploy + verify the systemd service.
     try:
-        provision.check_prerequisites(ssh_host)
-        provision.deploy_exporter(ssh_host, ssh_user, name, rendered_path, coord_resolved)
+        exporter_bin = provision.check_prerequisites(ssh_host)
+        provision.deploy_exporter(
+            ssh_host, ssh_user, name, rendered_path, coord_resolved, exporter_bin=exporter_bin
+        )
         provision.verify_exporter_active(ssh_host, name)
     except RuntimeError as e:
         raise click.ClickException(str(e)) from e
@@ -191,8 +197,8 @@ def add_hardware(
     try:
         cookie = coord_mod.login(api, coord_user, coord_password)
         create_place(api, cookie, name)
-        for group in groups:
-            add_match(api, cookie, name, f"{ssh_host}/{group}/*")
+        for pattern in match_patterns:
+            add_match(api, cookie, name, pattern)
         set_place_tags(
             api,
             cookie,

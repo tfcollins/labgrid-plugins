@@ -42,7 +42,20 @@ Standardized templates are provided in ``exporter_configs/templates/``:
 - ``rpi.yaml`` - Raspberry Pi
 - ``zcu102.yaml`` - ZCU102 SoC
 
-These use Jinja2 variables that labgrid's resource config loader can resolve.
+Each template is a single exporter's ``resources.yaml`` with Jinja2 fields
+(``{{ target_ip }}``, ``{{ serial_port | default(...) }}``, ...). Fill them in
+by hand, or let ``adi-lg netbox add-hardware`` render them
+(:doc:`netbox-onboarding`). labgrid does not supply these fields itself — its
+loader only provides ``env``, ``hostname``, ``name``, and ``isolated`` — so an
+unfilled field renders as an empty string.
+
+.. important::
+
+   labgrid loads every exporter config as a Jinja2 template in which a line
+   starting with ``#`` is a *template statement* and ``##`` starts a comment.
+   Write comments in exporter configs as ``## ...``; a plain YAML ``# ...``
+   line stops ``labgrid-exporter`` from starting with
+   ``TemplateSyntaxError: Encountered unknown tag``.
 
 Validating Configurations
 -------------------------
@@ -55,9 +68,11 @@ Before deploying an exporter, validate the config:
 
 This checks:
 
+- The file parses the way ``labgrid-exporter`` loads it (Jinja2 with ``#``
+  line statements and ``##`` comments)
 - YAML structure is valid
 - All resource classes are recognized
-- Required parameters are present
+- Every resource declares a ``cls`` (JSON schema)
 
 Running the Exporter
 --------------------
