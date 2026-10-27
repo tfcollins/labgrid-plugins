@@ -169,3 +169,106 @@ def test_required_fields_are_re_asked_until_answered(monkeypatch):
     # Required template fields are labelled as such, optional ones as defaulted.
     assert any(p.startswith("  target_ip (required)") for p in asked)
     assert any(p.startswith("  serial_port (blank = template default)") for p in asked)
+
+
+def test_missing_netbox_extra_fails_before_any_prompt(monkeypatch):
+    """Without pynetbox the command must stop at once, not after every prompt."""
+    import sys
+
+    monkeypatch.setitem(sys.modules, "pynetbox", None)  # `import pynetbox` -> ImportError
+    asked = []
+    monkeypatch.setattr(
+        cli.Prompt, "ask", staticmethod(lambda prompt, *a, **k: asked.append(prompt))
+    )
+
+    result = CliRunner().invoke(
+        cli.netbox_group, ["add-hardware", "--exporter-configs-dir", str(EXPORTER_CONFIGS_DIR)]
+    )
+
+    assert result.exit_code == 1
+    assert asked == []
+    assert not isinstance(result.exception, RuntimeError)  # a clean error, not a traceback
+    assert 'pip install -e ".[netbox]"' in result.output
+
+
+def test_dry_run_does_not_need_pynetbox(monkeypatch):
+    import sys
+
+    monkeypatch.setitem(sys.modules, "pynetbox", None)
+    replies = {
+        "Board template": "soc-ssh",
+        "Hardware / place / exporter name": "b1",
+        "Carrier": "zcu102",
+        "Daughter board / chip": "ad9081",
+        "Power category": "Network PDU",
+        "Power type": "cyberpower",
+        "  PDU hostname or IP": "10.0.0.20",
+        "  Outlet number": "4",
+        "NetBox site slug": "lab3",
+        "Exporter host SSH target": "root@h",
+        "  target_ip": "10.0.0.5",
+    }
+
+    def _ask(prompt, *args, **kwargs):
+        return next((v for k, v in replies.items() if prompt.startswith(k)), kwargs.get("default"))
+
+    monkeypatch.setattr(cli.Prompt, "ask", staticmethod(_ask))
+
+    result = CliRunner().invoke(
+        cli.netbox_group,
+        ["add-hardware", "--dry-run", "--exporter-configs-dir", str(EXPORTER_CONFIGS_DIR)],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "Dry run" in result.output
+
+
+def test_netbox_errors_are_reported_without_a_traceback(monkeypatch):
+    """e.g. a site slug that doesn't exist in NetBox."""
+    replies = {
+        "Board template": "soc-ssh",
+        "Hardware / place / exporter name": "b1",
+        "Carrier": "zcu102",
+        "Daughter board / chip": "ad9081",
+        "Power category": "Network PDU",
+        "Power type": "cyberpower",
+        "  PDU hostname or IP": "10.0.0.20",
+        "  Outlet number": "4",
+        "NetBox site slug": "nosuchsite",
+        "Exporter host SSH target": "root@h",
+        "  target_ip": "10.0.0.5",
+    }
+
+    def _ask(prompt, *args, **kwargs):
+        return next((v for k, v in replies.items() if prompt.startswith(k)), kwargs.get("default"))
+
+    def no_site(*a, **k):
+        raise RuntimeError("NetBox site 'nosuchsite' does not exist")
+
+    monkeypatch.setattr(cli.Prompt, "ask", staticmethod(_ask))
+    monkeypatch.setattr(cli.Confirm, "ask", staticmethod(lambda *a, **k: True))
+    monkeypatch.setattr(cli.client, "connect", lambda url, token: object())
+    monkeypatch.setattr(cli.client, "ensure_schema", lambda nb: None)
+    monkeypatch.setattr(cli.client, "create_or_update_device", no_site)
+    monkeypatch.setattr(cli, "resolve_coordinator", lambda coord: "coord:20408")
+
+    result = CliRunner().invoke(
+        cli.netbox_group,
+        [
+            "add-hardware",
+            "--exporter-configs-dir",
+            str(EXPORTER_CONFIGS_DIR),
+            "--netbox-url",
+            "https://netbox.test",
+            "--netbox-token",
+            "t",
+            "--coord-user",
+            "u",
+            "--coord-password",
+            "p",
+        ],
+    )
+
+    assert result.exit_code == 1
+    assert not isinstance(result.exception, RuntimeError)
+    assert "does not exist" in result.output

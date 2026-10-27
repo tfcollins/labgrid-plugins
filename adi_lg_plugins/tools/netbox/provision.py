@@ -61,7 +61,7 @@ def _require_jinja2():
     except ImportError as e:
         raise RuntimeError(
             "jinja2 is required for `adi-lg netbox` commands; "
-            "install with: pip install adi-labgrid-plugins[netbox]"
+            'run `pip install -e ".[netbox]"` in your labgrid-plugins checkout'
         ) from e
     return jinja2
 
