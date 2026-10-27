@@ -58,14 +58,39 @@ def test_health_check_json_output(mock_run, runner):
         ip_address="192.168.1.102",
         iiod_reachable=True,
         duration=25.4,
+        drivers=["cf-ad9361-lpc", "ad9361-phy"],
     )
 
-    result = runner.invoke(cli, ["health-check", "-p", "mini2", "--json"])
+    result = runner.invoke(cli, ["health-check", "-p", "mini2", "--json", "-d"])
     assert result.exit_code == EXIT_SUCCESS
+    mock_run.assert_called_once_with(
+        "mini2", coord=None, image=None, power_down=True, fetch_drivers=True, timeout=600.0
+    )
     data = json.loads(result.output)
     assert data["place"] == "mini2"
     assert data["status"] == "passed"
     assert data["iiod_reachable"] is True
+    assert data["drivers"] == ["cf-ad9361-lpc", "ad9361-phy"]
+
+
+@patch("adi_lg_plugins.tools.health_check_cli.run_health_check")
+def test_health_check_with_drivers_text(mock_run, runner):
+    mock_run.return_value = HealthCheckResult(
+        place="mini2",
+        status="passed",
+        boot_strategy="BootFPGASoC",
+        image="2023_R2_P1",
+        ip_address="192.168.1.102",
+        iiod_reachable=True,
+        duration=25.4,
+        drivers=["cf-ad9361-lpc", "ad9361-phy"],
+    )
+
+    result = runner.invoke(cli, ["health-check", "-p", "mini2", "--drivers"])
+    assert result.exit_code == EXIT_SUCCESS
+    assert "Drivers Found (2):" in result.output
+    assert "cf-ad9361-lpc" in result.output
+    assert "ad9361-phy" in result.output
 
 
 @patch("adi_lg_plugins.tools.health_check_cli.run_health_check")

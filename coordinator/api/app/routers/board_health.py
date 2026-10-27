@@ -25,6 +25,7 @@ class TriggerRunRequest(BaseModel):
     places: list[str] = Field(..., min_length=1, description="List of place names to check")
     image: str | None = Field(default=None, description="Golden boot image version override")
     power_down: bool = Field(default=True, description="Power off board after check completes")
+    drivers: bool = Field(default=True, description="Query and return discovered IIO device drivers")
 
 
 class CreateScheduleRequest(BaseModel):
@@ -121,6 +122,7 @@ async def get_summary(request: Request, _user: User = Depends(current_user)):
                 "error_message": last_run.error_message,
                 "trigger": last_run.trigger,
                 "triggered_by": last_run.triggered_by,
+                "drivers": last_run.drivers,
             }
         else:
             untested_count += 1
@@ -176,6 +178,7 @@ async def list_runs(
             "trigger": r.trigger,
             "triggered_by": r.triggered_by,
             "schedule_id": r.schedule_id,
+            "drivers": r.drivers,
         }
         for r in runs
     ]
@@ -205,6 +208,7 @@ async def get_run(run_id: int, request: Request, _user: User = Depends(current_u
         "trigger": run.trigger,
         "triggered_by": run.triggered_by,
         "schedule_id": run.schedule_id,
+        "drivers": run.drivers,
     }
 
 
@@ -231,6 +235,7 @@ async def trigger_runs(
             place_name=place_name,
             image=body.image,
             power_down=body.power_down,
+            fetch_drivers=body.drivers,
         )
         created_runs.append(
             {

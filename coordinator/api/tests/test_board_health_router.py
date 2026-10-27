@@ -131,6 +131,7 @@ def test_runs_list_and_detail(health_client):
             duration=35.0,
             ip_address="192.168.1.102",
             iiod_reachable=True,
+            drivers=["ad9361-phy", "cf-ad9361-lpc"],
             log_output="Boot logs...",
         )
     )
@@ -144,6 +145,7 @@ def test_runs_list_and_detail(health_client):
     assert runs[0]["place_name"] == "mini2"
     assert runs[0]["status"] == "passed"
     assert runs[0]["duration"] == 35.0
+    assert runs[0]["drivers"] == ["ad9361-phy", "cf-ad9361-lpc"]
 
     # Get run detail
     detail_resp = health_client.get(f"/api/board-health/runs/{run.id}")
@@ -151,6 +153,7 @@ def test_runs_list_and_detail(health_client):
     detail = detail_resp.json()
     assert detail["log_output"] == "Boot logs..."
     assert detail["iiod_reachable"] is True
+    assert detail["drivers"] == ["ad9361-phy", "cf-ad9361-lpc"]
 
 
 def test_cancel_run(health_client):

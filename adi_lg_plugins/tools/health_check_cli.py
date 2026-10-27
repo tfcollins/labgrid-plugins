@@ -48,6 +48,7 @@ class HealthCheckResult:
     duration: float = 0.0
     error_message: str | None = None
     uname: str | None = None
+    drivers: list[str] | None = None
 
 
 def _log_step(step: int, total: int, msg: str) -> None:
@@ -142,6 +143,7 @@ def run_health_check(
     coord: str | None = None,
     image: str | None = None,
     power_down: bool = True,
+    fetch_drivers: bool = False,
     timeout: float = 600.0,
 ) -> HealthCheckResult:
     """Run an automated boot health check on `place_name`."""
@@ -268,6 +270,24 @@ def run_health_check(
             except Exception:
                 pass
 
+        # 10. Query discovered IIO device drivers if requested
+        drivers_list: list[str] | None = None
+        if fetch_drivers:
+            _log_info("Querying discovered IIO device drivers from DUT (/sys/bus/iio)...")
+            cmd = 'for d in /sys/bus/iio/devices/iio:device*; do [ -f "$d/name" ] && cat "$d/name"; done'
+            for drv_name in ("ADIShellDriver", "ShellDriver"):
+                try:
+                    sh = target.get_driver(drv_name)
+                    out, _, rc = sh.run(cmd)
+                    if rc == 0 and out:
+                        drivers_list = [line.strip() for line in out if line.strip()]
+                        _log_info(
+                            f"Discovered {len(drivers_list)} IIO driver(s): {', '.join(drivers_list)}"
+                        )
+                        break
+                except Exception as e:
+                    logger.debug("Failed querying IIO drivers: %s", e)
+
         duration = time.monotonic() - start_time
         _log_info(f"✓ Health check completed successfully in {duration:.1f}s")
         return HealthCheckResult(
@@ -279,6 +299,7 @@ def run_health_check(
             iiod_reachable=iiod_ok,
             duration=duration,
             uname=uname_str,
+            drivers=drivers_list,
         )
 
     except ProvisionError as e:
@@ -333,15 +354,24 @@ def run_health_check(
     default=True,
     help="Power off board after health check completes (default: True)",
 )
+@click.option(
+    "--drivers",
+    "-d",
+    "fetch_drivers",
+    is_flag=True,
+    default=False,
+    help="Query and return list of IIO device drivers discovered on the DUT (e.g. ad9361-phy, cf-ad9361-lpc)",
+)
 @click.option("--timeout", default=600.0, type=float, help="Overall timeout in seconds")
 @click.option("--json", "json_out", is_flag=True, help="Emit result as JSON")
-def health_check_cmd(place, coord, image, power_down, timeout, json_out):
+def health_check_cmd(place, coord, image, power_down, fetch_drivers, timeout, json_out):
     """Run an automated boot health check on a deployed board."""
     res = run_health_check(
         place,
         coord=coord,
         image=image,
         power_down=power_down,
+        fetch_drivers=fetch_drivers,
         timeout=timeout,
     )
 
@@ -358,6 +388,10 @@ def health_check_cmd(place, coord, image, power_down, timeout, json_out):
             console.print(f"  • IIOD Reachable: {res.iiod_reachable}")
             if res.uname:
                 console.print(f"  • Kernel: {res.uname}")
+            if res.drivers:
+                console.print(f"  • Drivers Found ({len(res.drivers)}):")
+                for drv in res.drivers:
+                    console.print(f"    - {drv}")
         elif res.status == "busy":
             console.print(
                 f"[bold yellow]⚠ Place '{res.place}' is busy: {res.error_message}[/bold yellow]"

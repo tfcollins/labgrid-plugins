@@ -35,6 +35,7 @@ export interface HealthCheckRunSummary {
   image: string | null;
   ip_address: string | null;
   iiod_reachable: boolean;
+  drivers?: string[] | null;
   error_message: string | null;
   trigger: "manual" | "scheduled";
   triggered_by: string | null;
@@ -84,6 +85,7 @@ export interface TriggerRunInput {
   places: string[];
   image?: string | null;
   power_down?: boolean;
+  drivers?: boolean;
 }
 
 export interface CreateScheduleInput {
