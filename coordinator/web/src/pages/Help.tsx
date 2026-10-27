@@ -399,6 +399,18 @@ labgrid-client -x <coordinator>:20408 -p vcu118-lab1 \\
                 (BootFPGASoC)
               </ListItem>
               <ListItem>
+                <Code fontSize="xs">soc-ssh.yaml</Code> — Zynq / ZynqMP SoC without
+                an SD mux, boot files copied over SSH (BootFPGASoCSSH)
+              </ListItem>
+              <ListItem>
+                <Code fontSize="xs">soc-tftp.yaml</Code> — Zynq / ZynqMP SoC booted
+                over TFTP from U-Boot (BootFPGASoCTFTP)
+              </ListItem>
+              <ListItem>
+                <Code fontSize="xs">zynqmp-jtag.yaml</Code> — UltraScale+ board
+                strapped for JTAG boot (BootZynqMPJTAG)
+              </ListItem>
+              <ListItem>
                 <Code fontSize="xs">fabric-jtag.yaml</Code> — FPGA with a
                 MicroBlaze soft CPU (VCU118, …) loaded over JTAG (BootFabric)
               </ListItem>
@@ -411,8 +423,11 @@ labgrid-client -x <coordinator>:20408 -p vcu118-lab1 \\
               These use Jinja2 variables for host-specific values; the resource
               group is named <Code fontSize="xs">{"<CARRIER>_<CHIP>"}</Code> from
               the <Code fontSize="xs">carrier</Code> and{" "}
-              <Code fontSize="xs">chip</Code> fields. Fill them in and use
-              directly with <Code fontSize="xs">labgrid-exporter</Code>.
+              <Code fontSize="xs">chip</Code> fields. Set{" "}
+              <Code fontSize="xs">power</Code> (vesync or homeassistant) and{" "}
+              <Code fontSize="xs">power_outlet</Code>; outlet credentials are read
+              from the exporter&apos;s environment. Fill them in and use directly
+              with <Code fontSize="xs">labgrid-exporter</Code>.
             </Text>
           </Section>
         </VStack>

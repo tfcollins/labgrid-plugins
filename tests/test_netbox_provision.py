@@ -48,6 +48,9 @@ def test_stock_templates_are_named_by_boot_path():
         "fabric-jtag.yaml",
         "rpi-ssh.yaml",
         "soc-sdmux.yaml",
+        "soc-ssh.yaml",
+        "soc-tftp.yaml",
+        "zynqmp-jtag.yaml",
     ]
 
 
@@ -59,16 +62,22 @@ def test_discover_template_vars_soc_sdmux():
 @pytest.mark.parametrize(
     ("template", "context", "expected_group"),
     [
-        ("soc-sdmux.yaml", {"target_ip": "10.0.0.5"}, "ZCU102_AD9081"),
+        ("soc-sdmux.yaml", {"target_ip": "10.0.0.5", "power_outlet": "Bench DUT"}, "ZCU102_AD9081"),
         (
             "soc-sdmux.yaml",
-            {"target_ip": "10.0.0.5", "carrier": "zc706", "chip": "adrv9009"},
+            {
+                "target_ip": "10.0.0.5",
+                "power_outlet": "Bench DUT",
+                "carrier": "zc706",
+                "chip": "adrv9009",
+            },
             "ZC706_ADRV9009",
         ),
         (
             "fabric-jtag.yaml",
             {
                 "target_ip": "10.0.0.5",
+                "power_outlet": "Bench DUT",
                 "bitstream_path": "/srv/a.bit",
                 "kernel_path": "/srv/k.strip",
                 "carrier": "vcu118",
@@ -95,6 +104,7 @@ def test_render_and_validate_missing_required_field_raises():
 # Values for every template field without a default, so each template renders.
 _REQUIRED_FIELDS = {
     "target_ip": "10.0.0.5",
+    "power_outlet": "Bench DUT",
     "bitstream_path": "/srv/vcu118/system_top.bit",
     "kernel_path": "/srv/vcu118/simpleImage.strip",
 }
@@ -128,6 +138,8 @@ def test_unit_text_shape():
     assert "User=labuser" in text
     assert "Restart=always" in text
     assert "WantedBy=multi-user.target" in text
+    # Power credentials are read by labgrid from the exporter's environment.
+    assert f"EnvironmentFile=-{provision.EXPORTER_ENV_FILE}" in text
 
 
 def _fake_conn():
@@ -162,6 +174,21 @@ def test_check_prerequisites_rejects_non_path_resolution(monkeypatch):
 
     with pytest.raises(RuntimeError, match="absolute path"):
         provision.check_prerequisites("lab-host-03")
+
+
+def test_missing_power_env_reports_unset_variables(monkeypatch):
+    conn = _fake_conn()
+
+    def run_check(cmd):
+        if "VESYNC_PASSWORD" in cmd:
+            raise ExecutionError(cmd, [], [])
+        return []
+
+    conn.run_check.side_effect = run_check
+    monkeypatch.setattr(ssh_mod.sshmanager, "get", lambda host: conn)
+
+    assert provision.missing_power_env("lab-host-03", "vesync") == ["VESYNC_PASSWORD"]
+    assert all(provision.EXPORTER_ENV_FILE in c.args[0] for c in conn.run_check.call_args_list)
 
 
 def test_deploy_exporter_unit_runs_given_exporter_path(tmp_path, monkeypatch):

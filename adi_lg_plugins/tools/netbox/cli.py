@@ -97,7 +97,17 @@ def add_hardware(
     name = Prompt.ask("Hardware / place / exporter name (e.g. zcu102-lab3-001)")
     carrier = Prompt.ask("Carrier (board/FPGA, e.g. zcu102, vcu118)")
     daughter_board = Prompt.ask("Daughter board / chip (e.g. ad9081)")
-    boot_strategy = Prompt.ask("Boot strategy", choices=KNOWN_BOOT_STRATEGIES)
+    boot_strategy = Prompt.ask(
+        "Boot strategy",
+        choices=KNOWN_BOOT_STRATEGIES,
+        default=provision.template_strategy(template_path),
+    )
+    power = Prompt.ask("Power control", choices=sorted(provision.POWER_DRIVERS), default="vesync")
+    power_outlet = Prompt.ask(
+        "Power outlet (Home Assistant entity_id, e.g. switch.lab_outlet_1)"
+        if power == "homeassistant"
+        else "Power outlet (VeSync outlet name)"
+    )
     runner_label = Prompt.ask("GitHub runner label", default=f"hw-{carrier.lower()}")
     site_slug = Prompt.ask("NetBox site slug (must already exist)")
     ssh_target = Prompt.ask("Exporter host SSH target (user@host)")
@@ -105,11 +115,21 @@ def add_hardware(
         raise click.ClickException("SSH target must be in `user@host` form")
     ssh_user, ssh_host = ssh_target.split("@", 1)
 
-    # Templates name their resource group <CARRIER>_<CHIP> from these fields,
-    # so fill them from the answers above instead of asking twice.
-    context = {"carrier": carrier, "chip": daughter_board}
+    # Templates name their resource group <CARRIER>_<CHIP> from these fields
+    # and pick the outlet resource from `power`, so fill them from the answers
+    # above instead of asking twice.
+    context = {
+        "carrier": carrier,
+        "chip": daughter_board,
+        "power": power,
+        "power_outlet": power_outlet,
+    }
     try:
-        var_names = sorted(provision.discover_template_vars(template_path) - set(context))
+        var_names = sorted(
+            provision.discover_template_vars(template_path)
+            - set(context)
+            - provision.EXPORTER_RUNTIME_VARS
+        )
     except RuntimeError as e:
         raise click.ClickException(str(e)) from e
 
@@ -117,7 +137,9 @@ def add_hardware(
         f"[bold]Template fields for {template_key}:[/bold] {', '.join(var_names) or '(none)'}"
     )
     for var in var_names:
-        answer = Prompt.ask(f"  {var} (blank = template default)", default="")
+        answer = Prompt.ask(
+            f"  {var} (blank = template default)", default="", password="password" in var
+        )
         if answer:
             context[var] = answer
 
@@ -129,7 +151,13 @@ def add_hardware(
     console.print(
         f"  Coordinator place: {name}  "
         f"(tags: daughter-board={daughter_board.lower()}, carrier={carrier.lower()}, "
-        f"boot-strategy={boot_strategy}, runner={runner_label})"
+        f"boot-strategy={boot_strategy}, runner={runner_label}, "
+        f"power-driver={provision.POWER_DRIVERS[power]})"
+    )
+    console.print(
+        f"  Power: {power} outlet {power_outlet!r}; credentials "
+        f"{', '.join(provision.POWER_ENV[power])} from {provision.EXPORTER_ENV_FILE} "
+        "on the exporter host"
     )
 
     try:
@@ -190,9 +218,16 @@ def add_hardware(
             ssh_host, ssh_user, name, rendered_path, coord_resolved, exporter_bin=exporter_bin
         )
         provision.verify_exporter_active(ssh_host, name)
+        missing_env = provision.missing_power_env(ssh_host, power)
     except RuntimeError as e:
         raise click.ClickException(str(e)) from e
     console.print(f"[green]labgrid-exporter-{name} is active on {ssh_host}[/green]")
+    if missing_env:
+        console.print(
+            f"[yellow]Warning: {', '.join(missing_env)} not set in "
+            f"{provision.EXPORTER_ENV_FILE} on {ssh_host} - power control will fail "
+            f"until they are set and labgrid-exporter-{name} is restarted.[/yellow]"
+        )
 
     # 3. Coordinator: create the place, match the live resources, tag it.
     api = _resolve_api(coord_resolved)
@@ -210,6 +245,7 @@ def add_hardware(
                 "carrier": carrier.lower(),
                 "boot-strategy": boot_strategy,
                 "runner": runner_label,
+                "power-driver": provision.POWER_DRIVERS[power],
             },
         )
     except RuntimeError as e:

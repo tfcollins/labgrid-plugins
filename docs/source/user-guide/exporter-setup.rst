@@ -50,6 +50,16 @@ Each is named for the boot path it serves:
    * - ``soc-sdmux.yaml``
      - Zynq / ZynqMP SoC (ZCU102, ZC706, ...) whose SD card is written through a USB SD mux
      - ``BootFPGASoC``, or ``BootFPGASoCSSH``
+   * - ``soc-ssh.yaml``
+     - Zynq / ZynqMP SoC without an SD mux; boot files copied over SSH into the running Linux
+     - ``BootFPGASoCSSH``
+   * - ``soc-tftp.yaml``
+     - Zynq / ZynqMP SoC (ZC706, ADRV9361, ...) booted over TFTP from U-Boot, with JTAG to
+       start U-Boot when needed
+     - ``BootFPGASoCTFTP``
+   * - ``zynqmp-jtag.yaml``
+     - UltraScale+ board strapped for JTAG boot (ADRV9009-ZU11EG, ...)
+     - ``BootZynqMPJTAG``
    * - ``fabric-jtag.yaml``
      - FPGA with a MicroBlaze soft CPU (VCU118, ...), bitstream and kernel loaded over JTAG
      - ``BootFabric``
@@ -58,7 +68,22 @@ Each is named for the boot path it serves:
      - ``BootRPI``
 
 The resource group is named ``<CARRIER>_<CHIP>`` from the ``carrier`` and ``chip`` fields
-(e.g. ``ZCU102_AD9081``); the Raspberry Pi template uses ``RPI_<VARIANT>``.
+(e.g. ``ZCU102_AD9081``); the Raspberry Pi template uses ``RPI_<VARIANT>``. Each template's
+``## boot-strategy:`` line names its strategy, and it exports every resource that strategy's
+client environment binds - checked in CI by ``tests/test_exporter_templates.py``.
+
+Every template also exports ``NetworkService`` (the board's IP, which ``adi-lg request``
+reads for ``IIO_URI``) and a power outlet:
+
+- ``power`` - ``vesync`` (default) or ``homeassistant``. Tag the place
+  ``power-driver=VesyncPowerDriver`` or ``power-driver=HomeAssistantPowerDriver`` to match;
+  ``render-env`` uses the tag to choose the client's power driver.
+- ``power_outlet`` - the VeSync outlet name, or the Home Assistant ``entity_id``
+  (e.g. ``switch.lab_outlet_1``).
+- Outlet credentials are not written into the file. labgrid reads them from the exporter's
+  environment when it starts: ``VESYNC_USERNAME`` / ``VESYNC_PASSWORD``, or
+  ``HOMEASSISTANT_URL`` / ``HOMEASSISTANT_TOKEN``. For a systemd service, put them in
+  ``/etc/labgrid/exporter.env`` (mode ``600``) and reference it with ``EnvironmentFile=``.
 
 Each template is a single exporter's ``resources.yaml`` with Jinja2 fields
 (``{{ target_ip }}``, ``{{ serial_port | default(...) }}``, ...). Fill them in

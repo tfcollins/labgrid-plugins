@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import importlib.util
 import logging
+import re
 import tempfile
 import time
 from pathlib import Path
@@ -24,6 +25,26 @@ logger = logging.getLogger(__name__)
 
 STAGE_DIR = "/tmp/adi-lg-netbox-stage"
 DEFAULT_EXPORTER_BIN = "/usr/local/bin/labgrid-exporter"
+# Read by systemd into the exporter's environment; templates reference these
+# variables as `{{ env["NAME"] }}`, which labgrid resolves when it starts.
+EXPORTER_ENV_FILE = "/etc/labgrid/exporter.env"
+
+# Template `power` value -> client power driver (the place's `power-driver` tag,
+# read by render-env) and the credential variables its outlet resource reads.
+POWER_DRIVERS = {"vesync": "VesyncPowerDriver", "homeassistant": "HomeAssistantPowerDriver"}
+POWER_ENV = {
+    "vesync": ("VESYNC_USERNAME", "VESYNC_PASSWORD"),
+    "homeassistant": ("HOMEASSISTANT_URL", "HOMEASSISTANT_TOKEN"),
+}
+# Provided by labgrid-exporter when it renders the file - never prompted for.
+EXPORTER_RUNTIME_VARS = frozenset({"env", "hostname", "name", "isolated"})
+
+
+class _ExporterEnv(dict):
+    """Re-emit ``env["NAME"]`` lookups so labgrid resolves them on the exporter."""
+
+    def __missing__(self, key):
+        return f'{{{{ env["{key}"] }}}}'
 
 
 def _require_jinja2():
@@ -61,6 +82,15 @@ def _load_validate_module(exporter_configs_dir: Path) -> ModuleType:
     return module
 
 
+_STRATEGY_HEADER = re.compile(r"^##\s*boot-strategy:\s*(\S+)\s*$", re.M)
+
+
+def template_strategy(template_path: Path) -> str | None:
+    """Boot strategy a template is written for, from its ``## boot-strategy:`` line."""
+    match = _STRATEGY_HEADER.search(template_path.read_text())
+    return match.group(1) if match else None
+
+
 def discover_template_vars(template_path: Path) -> set[str]:
     """Undeclared Jinja2 variables referenced by the template."""
     jinja2 = _require_jinja2()
@@ -87,7 +117,9 @@ def render_and_validate(
 
     env = jinja2.Environment(undefined=jinja2.StrictUndefined)
     try:
-        rendered = env.from_string(template_path.read_text()).render(**context)
+        rendered = env.from_string(template_path.read_text()).render(
+            **{"env": _ExporterEnv(), **context}
+        )
     except jinja2.UndefinedError as e:
         raise RuntimeError(f"template {template_path.name} is missing a required field: {e}") from e
 
@@ -127,6 +159,7 @@ After=network.target
 Type=simple
 User={user}
 WorkingDirectory=/etc/labgrid/exporters/{name}
+EnvironmentFile=-{EXPORTER_ENV_FILE}
 ExecStart={exporter_bin} -c {coord} -n {name} {resource_path}
 Restart=always
 RestartSec=5s
@@ -161,6 +194,25 @@ def check_prerequisites(ssh_host: str) -> str:
             "absolute path - make labgrid-exporter an executable on that user's PATH"
         )
     return path
+
+
+def missing_power_env(ssh_host: str, power: str) -> list[str]:
+    """Return the power-credential variables not set in the host's exporter env file.
+
+    An unset variable renders as an empty string, so the exporter still starts
+    and the place only fails at its first power operation - worth a warning.
+    """
+    from labgrid.driver.exception import ExecutionError
+    from labgrid.util.ssh import sshmanager
+
+    conn = sshmanager.get(ssh_host)
+    missing = []
+    for name in POWER_ENV[power]:
+        try:
+            conn.run_check(f"sudo grep -qE '^{name}=.' {EXPORTER_ENV_FILE}")
+        except ExecutionError:
+            missing.append(name)
+    return missing
 
 
 def deploy_exporter(

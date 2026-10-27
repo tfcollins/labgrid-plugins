@@ -58,7 +58,8 @@ Every host with physically attached hardware runs a labgrid **exporter** that re
 resources with the coordinator. Per host:
 
 #. Copy a template from ``exporter_configs/templates/`` (``soc-sdmux.yaml``,
-   ``fabric-jtag.yaml``, ``rpi-ssh.yaml`` - see :doc:`exporter-setup` for which fits) to a ``resources.yaml`` and fill in serial ports, JTAG targets, power,
+   ``soc-ssh.yaml``, ``soc-tftp.yaml``, ``zynqmp-jtag.yaml``, ``fabric-jtag.yaml``,
+   ``rpi-ssh.yaml`` - one per boot strategy; see :doc:`exporter-setup` for which fits) to a ``resources.yaml`` and fill in serial ports, JTAG targets, power,
    and network for that host. Group names follow ``<BOARD>_<CHIP>`` (e.g. ``VCU118_AD9081``)
    so match patterns are host-independent. Keep comments as ``## ...``: labgrid loads the
    file as a Jinja2 template where a line starting with ``#`` is a template statement
@@ -108,6 +109,11 @@ per board and **tag it with the keys the consumer preflight matches on**:
      - optional
      - self-hosted runner label co-located with the board; routes each CI leg to the right
        host (Step 5)
+   * - ``power-driver``
+     - optional
+     - client power driver class matching the outlet the place exports
+       (``VesyncPowerDriver``, the default, or ``HomeAssistantPowerDriver``); read by
+       ``render-env``
 
 .. note::
 
