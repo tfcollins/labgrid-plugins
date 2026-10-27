@@ -217,7 +217,7 @@ def run_health_check(
 
     try:
         # 5. Render environment yaml and initialize target
-        _log_step(4, 7, f"Rendering Labgrid environment config and initializing drivers...")
+        _log_step(4, 7, "Rendering Labgrid environment config and initializing drivers...")
         render_env_to(place, env_path)
 
         from labgrid import Environment
