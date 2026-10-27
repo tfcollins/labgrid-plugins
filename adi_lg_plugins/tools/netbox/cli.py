@@ -105,15 +105,17 @@ def add_hardware(
         raise click.ClickException("SSH target must be in `user@host` form")
     ssh_user, ssh_host = ssh_target.split("@", 1)
 
+    # Templates name their resource group <CARRIER>_<CHIP> from these fields,
+    # so fill them from the answers above instead of asking twice.
+    context = {"carrier": carrier, "chip": daughter_board}
     try:
-        var_names = sorted(provision.discover_template_vars(template_path))
+        var_names = sorted(provision.discover_template_vars(template_path) - set(context))
     except RuntimeError as e:
         raise click.ClickException(str(e)) from e
 
     console.print(
         f"[bold]Template fields for {template_key}:[/bold] {', '.join(var_names) or '(none)'}"
     )
-    context = {}
     for var in var_names:
         answer = Prompt.ask(f"  {var} (blank = template default)", default="")
         if answer:

@@ -40,26 +40,56 @@ def test_find_exporter_configs_dir_raises_when_missing(tmp_path):
         provision.find_exporter_configs_dir(tmp_path)
 
 
-def test_discover_template_vars_zcu102():
-    template = EXPORTER_CONFIGS_DIR / "templates" / "zcu102.yaml"
-    names = provision.discover_template_vars(template)
-    assert {"target_ip", "chip", "serial_port", "sdmux_path"} <= names
+TEMPLATES = EXPORTER_CONFIGS_DIR / "templates"
 
 
-def test_render_and_validate_zcu102_round_trips_group_name():
-    template = EXPORTER_CONFIGS_DIR / "templates" / "zcu102.yaml"
-    context = {"target_ip": "10.0.0.5"}
+def test_stock_templates_are_named_by_boot_path():
+    assert sorted(p.name for p in TEMPLATES.glob("*.yaml")) == [
+        "fabric-jtag.yaml",
+        "rpi-ssh.yaml",
+        "soc-sdmux.yaml",
+    ]
 
-    path, groups = provision.render_and_validate(template, context, EXPORTER_CONFIGS_DIR)
+
+def test_discover_template_vars_soc_sdmux():
+    names = provision.discover_template_vars(TEMPLATES / "soc-sdmux.yaml")
+    assert {"carrier", "chip", "target_ip", "serial_port", "sdmux_path"} <= names
+
+
+@pytest.mark.parametrize(
+    ("template", "context", "expected_group"),
+    [
+        ("soc-sdmux.yaml", {"target_ip": "10.0.0.5"}, "ZCU102_AD9081"),
+        (
+            "soc-sdmux.yaml",
+            {"target_ip": "10.0.0.5", "carrier": "zc706", "chip": "adrv9009"},
+            "ZC706_ADRV9009",
+        ),
+        (
+            "fabric-jtag.yaml",
+            {
+                "target_ip": "10.0.0.5",
+                "bitstream_path": "/srv/a.bit",
+                "kernel_path": "/srv/k.strip",
+                "carrier": "vcu118",
+                "chip": "ad9084",
+            },
+            "VCU118_AD9084",
+        ),
+    ],
+)
+def test_render_and_validate_group_name_from_carrier_and_chip(template, context, expected_group):
+    path, groups = provision.render_and_validate(
+        TEMPLATES / template, context, EXPORTER_CONFIGS_DIR
+    )
 
     assert path.exists()
-    assert groups == ["ZCU102_AD9081"]
+    assert groups == [expected_group]
 
 
 def test_render_and_validate_missing_required_field_raises():
-    template = EXPORTER_CONFIGS_DIR / "templates" / "zcu102.yaml"
     with pytest.raises(RuntimeError, match="missing a required field"):
-        provision.render_and_validate(template, {}, EXPORTER_CONFIGS_DIR)
+        provision.render_and_validate(TEMPLATES / "soc-sdmux.yaml", {}, EXPORTER_CONFIGS_DIR)
 
 
 # Values for every template field without a default, so each template renders.

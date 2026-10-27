@@ -1,19 +1,21 @@
-## Exporter template: ZCU102 SoC
+## Exporter template: SoC booted from an SD card through a USB SD mux
+## For Zynq / ZynqMP carriers (ZCU102, ZC706, ...) served by BootFPGASoC, or
+## BootFPGASoCSSH over NetworkService.
 ## Comments use "##": labgrid renders this file as Jinja2, where a line starting
 ## with a single "#" is a template statement.
-## Group naming convention: <BOARD>_<CHIP>
+## Group naming convention: <CARRIER>_<CHIP>, from the carrier and chip fields.
 ##
 ## Place tags (required for the hw-matrix dynamic_mode allocator):
 ## After creating the matching place on the coordinator, set its tags using the
-## existing convention `daughter-board=<chip>` plus `carrier=zcu102`:
+## existing convention `daughter-board=<chip>` plus `carrier=<carrier>`:
 ##   labgrid-client -x <coordinator>:20408 -p <place_name> set-tags \
-##       daughter-board=<chip_lower> carrier=zcu102
-## Substitute <chip_lower> with the lowercased chip name (e.g. ad9081).
+##       daughter-board=<chip_lower> carrier=<carrier_lower>
+## Substitute the lowercased chip and carrier names (e.g. ad9081, zcu102).
 ## Optional `runner` tag overrides the GH Actions runner label:
 ##   labgrid-client -x <coordinator>:20408 -p <place_name> set-tags runner=hw-zcu102
 ## See exporter_configs/scripts/seed-place-tags.sh for a one-shot helper.
 
-ZCU102_{{ chip | default("AD9081") }}:
+{{ carrier | default("zcu102") | upper }}_{{ chip | default("ad9081") | upper }}:
   NetworkService:
     cls: NetworkService
     address: "{{ target_ip }}"

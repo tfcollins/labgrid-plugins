@@ -16,27 +16,29 @@ from adi_lg_plugins.tools.netbox import cli
 EXPORTER_CONFIGS_DIR = Path(__file__).resolve().parents[1] / "exporter_configs"
 
 _ANSWERS = {
-    "Board template": "zcu102",
-    "Hardware / place / exporter name": "zcu102-lab3-001",
-    "Carrier": "zcu102",
-    "Daughter board / chip": "ad9081",
+    "Board template": "soc-sdmux",
+    "Hardware / place / exporter name": "zc706-lab3-001",
+    "Carrier": "zc706",
+    "Daughter board / chip": "adrv9009",
     "Boot strategy": "BootFPGASoC",
-    "GitHub runner label": "hw-zcu102",
+    "GitHub runner label": "hw-zc706",
     "NetBox site slug": "lab3",
     "Exporter host SSH target": "labadmin@lab-host-03",
     "  target_ip": "10.0.0.42",
 }
 
 
-def _ask(prompt, *args, **kwargs):
-    for prefix, answer in _ANSWERS.items():
-        if prompt.startswith(prefix):
-            return answer
-    return kwargs.get("default", "")
-
-
 def test_add_hardware_matches_resources_under_the_deployed_exporter_name(monkeypatch):
     calls = {}
+    asked = []
+
+    def _ask(prompt, *args, **kwargs):
+        asked.append(prompt)
+        for prefix, answer in _ANSWERS.items():
+            if prompt.startswith(prefix):
+                return answer
+        return kwargs.get("default", "")
+
     monkeypatch.setattr(cli.Prompt, "ask", staticmethod(_ask))
     monkeypatch.setattr(cli.Confirm, "ask", staticmethod(lambda *a, **k: True))
     monkeypatch.setattr(cli.client, "connect", lambda url, token: object())
@@ -81,5 +83,8 @@ def test_add_hardware_matches_resources_under_the_deployed_exporter_name(monkeyp
     )
 
     assert result.exit_code == 0, result.output
-    assert calls["exporter_name"] == "zcu102-lab3-001"
-    assert calls["patterns"] == ["zcu102-lab3-001/ZCU102_AD9081/*"]
+    assert calls["exporter_name"] == "zc706-lab3-001"
+    # The group name comes from the Carrier / Daughter board answers ...
+    assert calls["patterns"] == ["zc706-lab3-001/ZC706_ADRV9009/*"]
+    # ... so they are not asked for again as template fields.
+    assert not [p for p in asked if p.startswith(("  carrier", "  chip"))]

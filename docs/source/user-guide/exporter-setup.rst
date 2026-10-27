@@ -38,9 +38,27 @@ Using Templates
 
 Standardized templates are provided in ``exporter_configs/templates/``:
 
-- ``vcu118_ad9081.yaml`` - VCU118 with AD9081 transceiver
-- ``rpi.yaml`` - Raspberry Pi
-- ``zcu102.yaml`` - ZCU102 SoC
+Each is named for the boot path it serves:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 22 48 30
+
+   * - Template
+     - For
+     - Boot strategy
+   * - ``soc-sdmux.yaml``
+     - Zynq / ZynqMP SoC (ZCU102, ZC706, ...) whose SD card is written through a USB SD mux
+     - ``BootFPGASoC``, or ``BootFPGASoCSSH``
+   * - ``fabric-jtag.yaml``
+     - FPGA with a MicroBlaze soft CPU (VCU118, ...), bitstream and kernel loaded over JTAG
+     - ``BootFabric``
+   * - ``rpi-ssh.yaml``
+     - Raspberry Pi driven over SSH
+     - ``BootRPI``
+
+The resource group is named ``<CARRIER>_<CHIP>`` from the ``carrier`` and ``chip`` fields
+(e.g. ``ZCU102_AD9081``); the Raspberry Pi template uses ``RPI_<VARIANT>``.
 
 Each template is a single exporter's ``resources.yaml`` with Jinja2 fields
 (``{{ target_ip }}``, ``{{ serial_port | default(...) }}``, ...). Fill them in
