@@ -603,8 +603,9 @@ KasaPowerDriver
 
 **Purpose**: Control a TP-Link Kasa smart plug or power strip over the local network with
 ``python-kasa`` (no cloud round-trip). Install the ``kasa`` extra
-(``pip install -e ".[kasa]"``) on the client, which needs it to register the driver, and,
-for a ``RemotePlace``, on the exporter, which talks to the device (see :doc:`access-topology`).
+(``pip install -e ".[kasa]"``) on whichever host talks to the device: the exporter for a
+``RemotePlace``, or the client for a local ``KasaOutlet`` (see :doc:`access-topology`). The
+driver registers without it, so a client that only drives remote places doesn't need it.
 
 **Required Resource**: KasaOutlet
 
@@ -687,8 +688,9 @@ no long-lived connection to go stale.
 - **Authentication failure**: The device uses the newer protocol; set ``username`` /
   ``password`` (or ``KASA_USERNAME`` / ``KASA_PASSWORD``) to the TP-Link account it is
   registered to.
-- **Driver not found**: ``python-kasa`` isn't installed, so ``KasaPowerDriver`` was skipped
-  at import (a warning is logged). Install the ``kasa`` extra.
+- **"python-kasa is required to control a local KasaOutlet"**: the client is driving a local
+  outlet without ``python-kasa``. Install the ``kasa`` extra on the client, or use a
+  ``RemotePlace`` so the exporter talks to the device.
 
 Shell and File Transfer Driver
 ------------------------------

@@ -54,9 +54,9 @@ CLI, and MCP dependencies are installed by default.
      - Sphinx, Furo, and extensions
      - building this documentation
 
-Combine extras as needed, e.g. ``pip install -e ".[kasa,netbox]"``. A driver whose
-optional dependency is missing is skipped with a warning when ``adi_lg_plugins`` is
-imported, rather than failing the import.
+Combine extras as needed, e.g. ``pip install -e ".[kasa,netbox]"``. Every driver
+registers without these extras; each package is imported only when a feature that needs
+it runs, so install an extra only on the hosts that use that feature.
 
 Using pip
 ---------

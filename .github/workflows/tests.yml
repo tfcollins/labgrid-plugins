@@ -113,6 +113,7 @@ jobs:
           tests/hw_ci/test_doctor_gh.py \
           tests/test_kuiperdl_download_image.py \
           tests/test_kasa.py \
+          tests/test_kasa_optional_dep.py \
           tests/test_pin_release_refs.py \
           tests/test_transport_matrix.py \
           tests/test_docs_diagrams.py \
