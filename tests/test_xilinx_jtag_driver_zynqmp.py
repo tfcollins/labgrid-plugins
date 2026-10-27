@@ -217,6 +217,8 @@ def test_load_zynqmp_production_uboot_programs_pl_and_scrubs_ddr(driver):
     )
     assert "fpga -file /tmp/system_top-xsdb.bin" in tcl
     assert "FPGA_STATE=" in tcl
+    fpga_idx = tcl.index("fpga -file /tmp/system_top-xsdb.bin")
+    assert tcl.rindex("psu_ps_pl_isolation_removal") > fpga_idx
     assert tcl.index("dow /tmp/ddr-ecc-scrub.elf") < tcl.index("dow -force -data /tmp/u-boot.bin")
 
 

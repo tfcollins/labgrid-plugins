@@ -462,3 +462,11 @@ def test_bootzynqmpjtag_defaults_to_tmp_recovery():
     assert boot["spl_elf"] == "/tmp/recovery/spl.elf"
     assert boot["serial_host_override"] == ""
     assert boot["serial_protocol_override"] == ""
+    assert "fdt set /axi/ethernet@a0000000 status disabled" in boot["sd_boot_command"]
+
+
+def test_bootzynqmpjtag_overrides_sd_boot_command():
+    p = _place("BootZynqMPJTAG", extra_tags={"sd-boot-command": "run custom_boot"})
+    doc = yaml.safe_load(render_env(p))
+    boot = doc["targets"]["main"]["drivers"]["BootZynqMPJTAG"]
+    assert boot["sd_boot_command"] == "run custom_boot"

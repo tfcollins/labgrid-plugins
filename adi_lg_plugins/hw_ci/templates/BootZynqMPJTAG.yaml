@@ -87,6 +87,7 @@ targets:
         power_off_settle_s: 5
         power_on_settle_s: 8
         kuiper_boot_timeout: 600
+        sd_boot_command: '${sd_boot_command}'
         # Direct-JTAG RAM recovery Linux (transition "recovery_linux") and the
         # destructive SD reflash are opt-in — uncomment and stage the extra
         # payloads before using those states.

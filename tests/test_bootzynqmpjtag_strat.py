@@ -247,7 +247,7 @@ def test_kuiper_shell_runs_explicit_sd_boot_and_runtime_checks():
     s.status = Status.production_uboot_prompt
     s.shell.console.expect.return_value = 0
     s.transition("kuiper_shell")
-    s.shell.console.sendline.assert_any_call("setenv partid 1; run sdboot")
+    s.shell.console.sendline.assert_any_call(s.sd_boot_command)
     s.shell.console.expect.assert_any_call("Starting kernel", timeout=s.kuiper_boot_timeout)
     s.shell.console.expect.assert_any_call(s.kuiper_shell_marker, timeout=s.kuiper_boot_timeout)
     s.shell._inject_run.assert_called_once()

@@ -634,6 +634,10 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
                 'targets -set -filter {name == "PL"}',
                 f"fpga -file {_tcl_quote_path(bitstream_path)}",
                 'puts "FPGA_STATE=[fpga -state]"',
+                'targets -set -nocase -filter {name =~ "PSU"}',
+                "psu_post_config",
+                "psu_ps_pl_reset_config",
+                "psu_ps_pl_isolation_removal",
             ]
 
         lines += [

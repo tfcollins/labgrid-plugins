@@ -138,14 +138,20 @@ class BootZynqMPJTAG(Strategy):
     # Target-side completion criteria for the production handoff.
     production_uboot_prompt = attr.ib(default=r"ZynqMP>")
     production_prompt_timeout = attr.ib(default=60)
-    sd_boot_command = attr.ib(default="setenv partid 1; run sdboot")
+    sd_boot_command = attr.ib(
+        default=(
+            "setenv partid 1; mmc dev $sdbootdev && mmcinfo && run uenvboot || run qspi_extraenv || run sdroot$sdbootdev; "
+            "load mmc $sdbootdev:$partid $fdt_addr system.dtb; fdt addr $fdt_addr; fdt resize; "
+            "fdt set /axi/ethernet@a0000000 status disabled; load mmc $sdbootdev:$partid $kernel_addr Image; booti $kernel_addr - $fdt_addr"
+        )
+    )
     kuiper_kernel_marker = attr.ib(default="Starting kernel")
     kuiper_shell_marker = attr.ib(default=r"root@analog:.*#")
     kuiper_boot_timeout = attr.ib(default=600)
     kuiper_verify_timeout = attr.ib(default=120)
     kuiper_verify_commands = attr.ib(
         factory=lambda: [
-            "i=0; until ip -4 addr show dev eth0 | grep -q 'inet '; do i=$((i+1)); test $i -lt 90 || exit 1; sleep 1; done",
+            "i=0; until ip -4 addr show | grep -v '127.0.0.1' | grep -q 'inet '; do i=$((i+1)); if [ $i -ge 90 ]; then ip addr; ip link; exit 1; fi; sleep 1; done",
             "test $(for n in /sys/bus/iio/devices/iio:device*/name; do cat \"$n\"; done | grep -c '^adrv9009-phy') -eq 2",
             "test $(dmesg | grep -c 'successfully initialized via jesd204-fsm') -ge 2",
         ]

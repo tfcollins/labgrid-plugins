@@ -197,6 +197,14 @@ def render_env(
         "jtag_url": place.extra_tags.get("jtag-url", "TCP:127.0.0.1:3121"),
         "serial_host_override": place.extra_tags.get("serial-host-override", ""),
         "serial_protocol_override": place.extra_tags.get("serial-protocol-override", ""),
+        "sd_boot_command": place.extra_tags.get(
+            "sd-boot-command",
+            (
+                "setenv partid 1; mmc dev $sdbootdev && mmcinfo && run uenvboot || run qspi_extraenv || run sdroot$sdbootdev; "
+                "load mmc $sdbootdev:$partid $fdt_addr system.dtb; fdt addr $fdt_addr; fdt resize; "
+                "fdt set /axi/ethernet@a0000000 status disabled; load mmc $sdbootdev:$partid $kernel_addr Image; booti $kernel_addr - $fdt_addr"
+            ),
+        ),
     }
     if extra_subs:
         subs.update({str(k): str(v) for k, v in extra_subs.items()})
