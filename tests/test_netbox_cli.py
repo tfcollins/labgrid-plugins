@@ -434,4 +434,4 @@ def test_rejected_token_is_reported_without_a_traceback(monkeypatch):
     assert result.exit_code == 1
     assert not isinstance(result.exception, pynetbox.RequestError)
     assert "Invalid v1 token" in result.output
-    assert "token" in result.output.lower()
+    assert "--netbox-token" in result.output

@@ -36,7 +36,7 @@ dev = [
     # Duplicated from the `netbox` extra (not referenced via a self-extra)
     # so `nox -s tests` (which only installs `.[dev]`) can exercise the
     # tests/test_netbox_*.py / test_coordinator_writes.py suites.
-    "pynetbox>=7,<8",
+    "pynetbox>=7.6,<8",  # 7.6: NetBox 4.5+ v2 (nbt_) tokens
     "jinja2>=3",
     "jsonschema",
 ]
@@ -53,7 +53,7 @@ kasa = [
 ## + exporter-host provisioning). jinja2 is already pulled in transitively
 ## (fastmcp/sphinx) but wasn't declared or used directly until this command.
 netbox = [
-    "pynetbox>=7,<8",
+    "pynetbox>=7.6,<8",  # 7.6: NetBox 4.5+ v2 (nbt_) tokens
     "jinja2>=3",
     # exporter_configs/validate.py's schema check is a silent no-op (an
     # "issue" string, not a skip) without this installed - see

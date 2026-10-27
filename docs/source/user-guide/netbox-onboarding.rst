@@ -260,7 +260,9 @@ Troubleshooting
     ``requests`` checks certificates against its own bundle (``certifi``), not the host's trust
     store, so an internal CA installed on the host still fails. Pass that CA with
     ``--netbox-ca-bundle`` (on Debian/Ubuntu, ``/etc/ssl/certs/ca-certificates.crt`` is the
-    host's trust store), or ``--netbox-insecure`` to skip the check.
+    host's trust store), or ``--netbox-insecure`` to skip the check. Either option is ignored
+    while ``REQUESTS_CA_BUNDLE`` or ``CURL_CA_BUNDLE`` is set in the environment - those take
+    precedence.
 
 ``NetBox rejected the request: ... 403 Forbidden``
     The API token is wrong, expired, or lacks write permission. Create a token in NetBox under
