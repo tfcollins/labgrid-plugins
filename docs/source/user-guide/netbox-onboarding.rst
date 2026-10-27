@@ -84,10 +84,9 @@ Usage
     Template fields for soc-sdmux: boot_partition, kuiper_bootbin, kuiper_devicetree,
     kuiper_kernel, kuiper_release, sdmux_path, serial_port, target_ip, target_password,
     target_username
+      target_ip (required): 10.0.0.42
       boot_partition (blank = template default):
       kuiper_bootbin (blank = template default): release:zynqmp-zcu102-rev10-ad9081/m8_l4/BOOT.BIN
-      ...
-      target_ip (blank = template default): 10.0.0.42
       ...
 
     Plan
@@ -109,9 +108,10 @@ Use ``--dry-run`` to render and schema-validate the exporter config and print th
 without touching NetBox, SSH, or the coordinator - useful for checking your answers before
 committing to a real board. A dry run never asks for NetBox or coordinator credentials.
 
-Leaving a template field blank uses that template's own default (see
-``exporter_configs/templates/*.yaml``); fields with no default (like ``target_ip``) are
-effectively required and the command fails clearly if left blank.
+Fields with no default (``target_ip`` in every template, plus ``bitstream_path`` and
+``kernel_path`` in ``fabric-jtag``) are asked first, marked *(required)*, and asked again
+if left blank; the same applies to a power type's required fields. Leaving any other field
+blank uses the template's own default (see ``exporter_configs/templates/*.yaml``).
 
 The templates name their resource group ``<CARRIER>_<CHIP>`` (e.g. ``ZCU102_AD9081``) from
 the ``carrier`` and ``chip`` fields. The command fills those from the *Carrier* and

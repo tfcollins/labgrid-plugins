@@ -109,6 +109,21 @@ def discover_template_vars(template_path: Path) -> set[str]:
     return meta.find_undeclared_variables(ast)
 
 
+def required_template_vars(template_path: Path) -> set[str]:
+    """Template variables used at least once without a ``| default(...)`` filter.
+
+    These have no fallback, so rendering fails unless the operator supplies them.
+    """
+    jinja2 = _require_jinja2()
+    from jinja2 import nodes
+
+    ast = jinja2.Environment().parse(template_path.read_text())
+    defaulted = {id(f.node) for f in ast.find_all(nodes.Filter) if f.name == "default"}
+    return {
+        n.name for n in ast.find_all(nodes.Name) if n.ctx == "load" and id(n) not in defaulted
+    } & discover_template_vars(template_path)
+
+
 def render_and_validate(
     template_path: Path, context: dict, exporter_configs_dir: Path
 ) -> tuple[Path, list[str]]:
