@@ -54,6 +54,21 @@ def test_stock_templates_are_named_by_boot_path():
     ]
 
 
+@pytest.mark.parametrize(
+    ("template", "required"),
+    [
+        ("soc-sdmux.yaml", {"target_ip"}),
+        ("soc-ssh.yaml", {"target_ip"}),
+        ("soc-tftp.yaml", {"target_ip"}),
+        ("zynqmp-jtag.yaml", {"target_ip"}),
+        ("fabric-jtag.yaml", {"target_ip", "bitstream_path", "kernel_path"}),
+        ("rpi-ssh.yaml", {"target_ip"}),
+    ],
+)
+def test_required_template_vars_are_the_fields_without_a_default(template, required):
+    assert provision.required_template_vars(TEMPLATES / template) == required
+
+
 def test_discover_template_vars_soc_sdmux():
     names = provision.discover_template_vars(TEMPLATES / "soc-sdmux.yaml")
     assert {"carrier", "chip", "target_ip", "serial_port", "sdmux_path"} <= names

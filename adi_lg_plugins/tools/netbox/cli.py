@@ -81,10 +81,22 @@ def _ask_power() -> tuple[str, dict[str, str]]:
     context = {}
     for f in power_types.POWER_TYPES[power].fields:
         choices = power_types.choices_for(f.choices) if f.choices else None
+        if f.default is None:
+            context[f.var] = _ask_required(f"  {f.prompt}", choices=choices)
+            continue
         answer = Prompt.ask(f"  {f.prompt}", choices=choices, default=f.default)
         if answer not in (None, ""):
             context[f.var] = answer
     return power, context
+
+
+def _ask_required(prompt: str, **kwargs) -> str:
+    """Ask until the answer is non-blank (the field has no default to fall back on)."""
+    while True:
+        answer = Prompt.ask(prompt, **kwargs)
+        if answer not in (None, ""):
+            return answer
+        console.print("    [red]required - this field has no default[/red]")
 
 
 @netbox_group.command(name="add-hardware")
@@ -156,16 +168,20 @@ def add_hardware(
             - provision.EXPORTER_RUNTIME_VARS
             - {f.var for t in power_types.POWER_TYPES.values() for f in t.fields}
         )
+        required = provision.required_template_vars(template_path)
     except RuntimeError as e:
         raise click.ClickException(str(e)) from e
 
     console.print(
         f"[bold]Template fields for {template_key}:[/bold] {', '.join(var_names) or '(none)'}"
     )
-    for var in var_names:
-        answer = Prompt.ask(
-            f"  {var} (blank = template default)", default="", password="password" in var
-        )
+    # Required fields first, so they're not lost among the defaulted ones.
+    for var in sorted(var_names, key=lambda v: v not in required):
+        secret = "password" in var
+        if var in required:
+            context[var] = _ask_required(f"  {var} (required)", password=secret)
+            continue
+        answer = Prompt.ask(f"  {var} (blank = template default)", default="", password=secret)
         if answer:
             context[var] = answer
 

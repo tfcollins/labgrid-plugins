@@ -129,3 +129,43 @@ def test_add_hardware_matches_resources_under_the_deployed_exporter_name(monkeyp
     # A missing credential on the exporter host is reported, not fatal.
     if missing:
         assert missing in result.output
+
+
+def test_required_fields_are_re_asked_until_answered(monkeypatch):
+    """A blank answer to a field with no default must not reach the render step."""
+    replies = {
+        "Board template": ["soc-ssh"],
+        "Hardware / place / exporter name": ["adrv9009zu11eg"],
+        "Carrier": ["adrv2crr-fmc"],
+        "Daughter board / chip": ["adrv9009zu11eg"],
+        "Power category": ["Network PDU"],
+        "Power type": ["cyberpower"],
+        "  PDU hostname or IP": ["", "10.68.152.20"],
+        "  Outlet number": ["", "4"],
+        "NetBox site slug": ["chelm"],
+        "Exporter host SSH target": ["root@10.68.152.131"],
+        "  target_ip": ["", "10.68.152.140"],
+    }
+    asked = []
+
+    def _ask(prompt, *args, **kwargs):
+        asked.append(prompt)
+        for prefix, answers in replies.items():
+            if prompt.startswith(prefix):
+                return answers.pop(0) if len(answers) > 1 else answers[0]
+        return kwargs.get("default")
+
+    monkeypatch.setattr(cli.Prompt, "ask", staticmethod(_ask))
+
+    result = CliRunner().invoke(
+        cli.netbox_group,
+        ["add-hardware", "--dry-run", "--exporter-configs-dir", str(EXPORTER_CONFIGS_DIR)],
+    )
+
+    assert result.exit_code == 0, result.output
+    assert "Dry run" in result.output
+    assert sum(p.startswith("  target_ip") for p in asked) == 2
+    assert sum(p.startswith("  PDU hostname") for p in asked) == 2
+    # Required template fields are labelled as such, optional ones as defaulted.
+    assert any(p.startswith("  target_ip (required)") for p in asked)
+    assert any(p.startswith("  serial_port (blank = template default)") for p in asked)
