@@ -55,7 +55,7 @@ class HealthCheckRunner:
         image: str | None = None,
         power_down: bool = True,
         fetch_drivers: bool = True,
-        timeout: float = 600.0,
+        timeout: float = 900.0,
     ) -> asyncio.Task:
         task = asyncio.create_task(
             self._execute_check(

@@ -101,6 +101,9 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
         """
         xsdb = self.xilinxvivado.xsdb_path
 
+        if not tcl_script.strip().endswith("exit"):
+            tcl_script = tcl_script.rstrip() + "\nexit\n"
+
         with tempfile.NamedTemporaryFile(mode="w", suffix=".tcl", delete=False) as f:
             f.write(tcl_script)
             local_tcl = f.name
@@ -109,6 +112,7 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
             remote_tcl = self._stage_file(local_tcl)
             result = subprocess.run(
                 self._remote_prefix() + [xsdb, remote_tcl],
+                stdin=subprocess.DEVNULL,
                 capture_output=True,
                 text=True,
                 timeout=timeout,
