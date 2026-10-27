@@ -20,7 +20,8 @@ _ANSWERS = {
     "Hardware / place / exporter name": "zc706-lab3-001",
     "Carrier": "zc706",
     "Daughter board / chip": "adrv9009",
-    "Boot strategy": "BootFPGASoC",
+    "Power control": "homeassistant",
+    "Power outlet": "switch.zc706_bench",
     "GitHub runner label": "hw-zc706",
     "NetBox site slug": "lab3",
     "Exporter host SSH target": "labadmin@lab-host-03",
@@ -34,6 +35,7 @@ def test_add_hardware_matches_resources_under_the_deployed_exporter_name(monkeyp
 
     def _ask(prompt, *args, **kwargs):
         asked.append(prompt)
+        calls.setdefault("defaults", {})[prompt] = kwargs.get("default")
         for prefix, answer in _ANSWERS.items():
             if prompt.startswith(prefix):
                 return answer
@@ -52,6 +54,9 @@ def test_add_hardware_matches_resources_under_the_deployed_exporter_name(monkeyp
         calls["exporter_name"] = name
 
     monkeypatch.setattr(cli.provision, "deploy_exporter", deploy)
+    monkeypatch.setattr(
+        cli.provision, "missing_power_env", lambda host, power: ["HOMEASSISTANT_TOKEN"]
+    )
     monkeypatch.setattr(cli.provision, "verify_exporter_active", lambda host, name: None)
     monkeypatch.setattr(cli, "resolve_coordinator", lambda coord: "coord:20408")
     monkeypatch.setattr(cli, "_resolve_api", lambda coord: "http://coord:8000/api")
@@ -62,7 +67,9 @@ def test_add_hardware_matches_resources_under_the_deployed_exporter_name(monkeyp
         "add_match",
         lambda api, cookie, name, pattern: calls.setdefault("patterns", []).append(pattern),
     )
-    monkeypatch.setattr(cli, "set_place_tags", lambda api, cookie, name, tags: None)
+    monkeypatch.setattr(
+        cli, "set_place_tags", lambda api, cookie, name, tags: calls.update(tags=tags)
+    )
     monkeypatch.setattr(cli, "fetch_raw_places", lambda coord: ([], []))
 
     result = CliRunner().invoke(
@@ -86,5 +93,13 @@ def test_add_hardware_matches_resources_under_the_deployed_exporter_name(monkeyp
     assert calls["exporter_name"] == "zc706-lab3-001"
     # The group name comes from the Carrier / Daughter board answers ...
     assert calls["patterns"] == ["zc706-lab3-001/ZC706_ADRV9009/*"]
-    # ... so they are not asked for again as template fields.
-    assert not [p for p in asked if p.startswith(("  carrier", "  chip"))]
+    # ... so they are not asked for again as template fields, nor are the power
+    # answers or labgrid's own runtime `env`.
+    assert not [p for p in asked if p.startswith(("  carrier", "  chip", "  power", "  env"))]
+    # The strategy defaults to the one the template declares.
+    assert calls["defaults"]["Boot strategy"] == "BootFPGASoC"
+    assert calls["tags"]["boot-strategy"] == "BootFPGASoC"
+    # render-env picks the power driver from this tag.
+    assert calls["tags"]["power-driver"] == "HomeAssistantPowerDriver"
+    # A missing credential on the exporter host is reported, not fatal.
+    assert "HOMEASSISTANT_TOKEN" in result.output

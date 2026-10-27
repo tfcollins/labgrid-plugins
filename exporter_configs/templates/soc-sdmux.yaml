@@ -1,25 +1,30 @@
 ## Exporter template: SoC booted from an SD card through a USB SD mux
-## For Zynq / ZynqMP carriers (ZCU102, ZC706, ...) served by BootFPGASoC, or
-## BootFPGASoCSSH over NetworkService.
+## boot-strategy: BootFPGASoC
+## For Zynq / ZynqMP carriers (ZCU102, ZC706, ...). Boot files are written to the
+## SD card through the mux, then the board boots from it. Also serves
+## BootFPGASoCSSH (tag the place boot-strategy=BootFPGASoCSSH).
+## Group naming convention: <CARRIER>_<CHIP>, from the carrier and chip fields.
 ## Comments use "##": labgrid renders this file as Jinja2, where a line starting
 ## with a single "#" is a template statement.
-## Group naming convention: <CARRIER>_<CHIP>, from the carrier and chip fields.
+## Power: `power` is vesync (default) or homeassistant; `power_outlet` is the
+## VeSync outlet name or Home Assistant entity_id. Outlet credentials are read
+## from labgrid-exporter's environment (e.g. EnvironmentFile=/etc/labgrid/exporter.env):
+## VESYNC_USERNAME / VESYNC_PASSWORD, or HOMEASSISTANT_URL / HOMEASSISTANT_TOKEN.
 ##
-## Place tags (required for the hw-matrix dynamic_mode allocator):
-## After creating the matching place on the coordinator, set its tags using the
-## existing convention `daughter-board=<chip>` plus `carrier=<carrier>`:
+## Place tags (read by hardware-CI discovery and render-env):
 ##   labgrid-client -x <coordinator>:20408 -p <place_name> set-tags \
-##       daughter-board=<chip_lower> carrier=<carrier_lower>
-## Substitute the lowercased chip and carrier names (e.g. ad9081, zcu102).
-## Optional `runner` tag overrides the GH Actions runner label:
-##   labgrid-client -x <coordinator>:20408 -p <place_name> set-tags runner=hw-zcu102
+##       daughter-board=<chip_lower> carrier=<carrier_lower> \
+##       boot-strategy=BootFPGASoC power-driver=VesyncPowerDriver
+## Use power-driver=HomeAssistantPowerDriver for a Home Assistant outlet. An
+## optional `runner` tag overrides the GH Actions runner label.
 ## See exporter_configs/scripts/seed-place-tags.sh for a one-shot helper.
 
 {{ carrier | default("zcu102") | upper }}_{{ chip | default("ad9081") | upper }}:
   NetworkService:
     cls: NetworkService
     address: "{{ target_ip }}"
-    username: "root"
+    username: "{{ target_username | default('root') }}"
+    password: "{{ target_password | default('analog') }}"
   RawSerialPort:
     cls: RawSerialPort
     port: "{{ serial_port | default('/dev/ttyUSB0') }}"
@@ -27,3 +32,27 @@
   USBSDMuxDevice:
     cls: USBSDMuxDevice
     control_path: "{{ sdmux_path | default('/dev/sg0') }}"
+  MassStorageDevice:
+    cls: MassStorageDevice
+    path: "{{ boot_partition | default('/dev/disk/by-label/BOOT') }}"
+    use_with_sdmux: true
+  KuiperRelease:
+    cls: KuiperRelease
+    release_version: "{{ kuiper_release | default('2023_R2_P1') }}"
+    cache_path: /tmp/kuiper_cache
+    BOOTBIN_path: {{ kuiper_bootbin | default(none) | tojson }}
+    device_tree_path: {{ kuiper_devicetree | default(none) | tojson }}
+    kernel_path: {{ kuiper_kernel | default(none) | tojson }}
+{% if power | default("vesync") == "homeassistant" %}
+  HomeAssistantOutlet:
+    cls: HomeAssistantOutlet
+    url: '{{ env["HOMEASSISTANT_URL"] }}'
+    token: '{{ env["HOMEASSISTANT_TOKEN"] }}'
+    entity_id: "{{ power_outlet }}"
+{% else %}
+  VesyncOutlet:
+    cls: VesyncOutlet
+    outlet_names: "{{ power_outlet }}"
+    username: '{{ env["VESYNC_USERNAME"] }}'
+    password: '{{ env["VESYNC_PASSWORD"] }}'
+{% endif %}

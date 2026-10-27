@@ -1,0 +1,58 @@
+## Exporter template: SoC booted over TFTP from U-Boot
+## boot-strategy: BootFPGASoCTFTP
+## For Zynq / ZynqMP carriers (ZC706, ADRV9361, ...). U-Boot is started over JTAG
+## when needed, then loads the kernel and device tree over TFTP; the client
+## serves the files, so no TFTP resource is exported here.
+## Group naming convention: <CARRIER>_<CHIP>, from the carrier and chip fields.
+## Comments use "##": labgrid renders this file as Jinja2, where a line starting
+## with a single "#" is a template statement.
+## Power: `power` is vesync (default) or homeassistant; `power_outlet` is the
+## VeSync outlet name or Home Assistant entity_id. Outlet credentials are read
+## from labgrid-exporter's environment (e.g. EnvironmentFile=/etc/labgrid/exporter.env):
+## VESYNC_USERNAME / VESYNC_PASSWORD, or HOMEASSISTANT_URL / HOMEASSISTANT_TOKEN.
+##
+## Place tags (read by hardware-CI discovery and render-env):
+##   labgrid-client -x <coordinator>:20408 -p <place_name> set-tags \
+##       daughter-board=<chip_lower> carrier=<carrier_lower> \
+##       boot-strategy=BootFPGASoCTFTP power-driver=VesyncPowerDriver
+## Use power-driver=HomeAssistantPowerDriver for a Home Assistant outlet. An
+## optional `runner` tag overrides the GH Actions runner label.
+## See exporter_configs/scripts/seed-place-tags.sh for a one-shot helper.
+
+{{ carrier | default("zc706") | upper }}_{{ chip | default("adrv9009") | upper }}:
+  NetworkService:
+    cls: NetworkService
+    address: "{{ target_ip }}"
+    username: "{{ target_username | default('root') }}"
+    password: "{{ target_password | default('analog') }}"
+  RawSerialPort:
+    cls: RawSerialPort
+    port: "{{ serial_port | default('/dev/ttyUSB0') }}"
+    speed: 115200
+  XilinxDeviceJTAG:
+    cls: XilinxDeviceJTAG
+    root_target: {{ root_target | default(1) }}
+  XilinxVivadoTool:
+    cls: XilinxVivadoTool
+    vivado_path: "{{ vivado_path | default('/tools/Xilinx/2025.1/Vivado') }}"
+    xsdb_path: {{ xsdb_path | default(none) | tojson }}
+  KuiperRelease:
+    cls: KuiperRelease
+    release_version: "{{ kuiper_release | default('2023_R2_P1') }}"
+    cache_path: /tmp/kuiper_cache
+    BOOTBIN_path: {{ kuiper_bootbin | default(none) | tojson }}
+    device_tree_path: {{ kuiper_devicetree | default(none) | tojson }}
+    kernel_path: {{ kuiper_kernel | default(none) | tojson }}
+{% if power | default("vesync") == "homeassistant" %}
+  HomeAssistantOutlet:
+    cls: HomeAssistantOutlet
+    url: '{{ env["HOMEASSISTANT_URL"] }}'
+    token: '{{ env["HOMEASSISTANT_TOKEN"] }}'
+    entity_id: "{{ power_outlet }}"
+{% else %}
+  VesyncOutlet:
+    cls: VesyncOutlet
+    outlet_names: "{{ power_outlet }}"
+    username: '{{ env["VESYNC_USERNAME"] }}'
+    password: '{{ env["VESYNC_PASSWORD"] }}'
+{% endif %}

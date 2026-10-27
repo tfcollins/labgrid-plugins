@@ -40,6 +40,11 @@ Prerequisites
 - Coordinator API credentials for a user who can create places (``LG_API_USERNAME`` /
   ``LG_API_PASSWORD``, or ``--coord-user`` / ``--coord-password``) - every write endpoint under
   ``/places`` requires an authenticated session, unlike the read-only ``/api/places``.
+- Outlet credentials in ``/etc/labgrid/exporter.env`` on the exporter host (root-owned,
+  mode ``600``): ``VESYNC_USERNAME`` / ``VESYNC_PASSWORD``, or ``HOMEASSISTANT_URL`` /
+  ``HOMEASSISTANT_TOKEN``. The generated unit loads this file; the deployed config only
+  references the variables, so secrets never pass through the command. Missing variables are
+  reported as a warning after deploy.
 - SSH access to the exporter host as ``user@host``, with:
 
   - **passwordless sudo** for that user (needed to write under ``/etc`` and run ``systemctl``),
@@ -53,25 +58,33 @@ Usage
 .. code-block:: console
 
     $ adi-lg netbox add-hardware
-    Available board templates: fabric-jtag, rpi-ssh, soc-sdmux
+    Available board templates: fabric-jtag, rpi-ssh, soc-sdmux, soc-ssh, soc-tftp, zynqmp-jtag
     Board template: soc-sdmux
     Hardware / place / exporter name (e.g. zcu102-lab3-001): zcu102-lab3-001
     Carrier (board/FPGA, e.g. zcu102, vcu118): zcu102
     Daughter board / chip (e.g. ad9081): ad9081
-    Boot strategy [BootFPGASoC/BootFPGASoCSSH/.../BootTickFPGASSH]: BootFPGASoC
+    Boot strategy [BootFPGASoC/BootFPGASoCSSH/.../BootTickFPGASSH] (BootFPGASoC):
+    Power control [homeassistant/vesync] (vesync): homeassistant
+    Power outlet (Home Assistant entity_id, e.g. switch.lab_outlet_1): switch.board_3
     GitHub runner label (hw-zcu102):
     NetBox site slug (must already exist): lab3
     Exporter host SSH target (user@host): labadmin@lab-host-03
-    Template fields for soc-sdmux: sdmux_path, serial_port, target_ip
-      sdmux_path (blank = template default):
-      serial_port (blank = template default):
+    Template fields for soc-sdmux: boot_partition, kuiper_bootbin, kuiper_devicetree,
+    kuiper_kernel, kuiper_release, sdmux_path, serial_port, target_ip, target_password,
+    target_username
+      boot_partition (blank = template default):
+      kuiper_bootbin (blank = template default): release:zynqmp-zcu102-rev10-ad9081/m8_l4/BOOT.BIN
+      ...
       target_ip (blank = template default): 10.0.0.42
+      ...
 
     Plan
       NetBox device: zcu102-lab3-001  (carrier=zcu102, chip=ad9081, site=lab3)
       Exporter: labadmin@lab-host-03 -> systemd unit labgrid-exporter-zcu102-lab3-001
       Coordinator place: zcu102-lab3-001  (tags: daughter-board=ad9081, carrier=zcu102,
-      boot-strategy=BootFPGASoC, runner=hw-zcu102)
+      boot-strategy=BootFPGASoC, runner=hw-zcu102, power-driver=HomeAssistantPowerDriver)
+      Power: homeassistant outlet 'switch.board_3'; credentials HOMEASSISTANT_URL,
+      HOMEASSISTANT_TOKEN from /etc/labgrid/exporter.env on the exporter host
       Rendered + validated exporter config: /tmp/adi-lg-netbox-xxxxx/soc-sdmux.yaml
       Resource group(s): ZCU102_AD9081
       Place match(es): zcu102-lab3-001/ZCU102_AD9081/*
@@ -91,8 +104,9 @@ effectively required and the command fails clearly if left blank.
 The templates name their resource group ``<CARRIER>_<CHIP>`` (e.g. ``ZCU102_AD9081``) from
 the ``carrier`` and ``chip`` fields. The command fills those from the *Carrier* and
 *Daughter board / chip* answers, so they are not asked again as template fields. Choose the
-template by boot path: ``soc-sdmux``, ``fabric-jtag``, or ``rpi-ssh`` (see
-:doc:`exporter-setup`).
+template by boot strategy (see :doc:`exporter-setup`); the *Boot strategy* prompt defaults to
+the one the template declares. *Power control* and *Power outlet* fill the template's
+``power`` and ``power_outlet`` fields and set the place's ``power-driver`` tag.
 
 The boot-strategy prompt only accepts the ADI strategy classes this package registers
 (``BootFPGASoC``, ``BootFPGASoCSSH``, ``BootFPGASoCTFTP``, ``BootSelMap``, ``BootFabric``,
@@ -168,7 +182,8 @@ Files are staged under ``/tmp/adi-lg-netbox-stage/<name>/`` and then moved into 
 - ``/etc/labgrid/exporters/<name>/resources.yaml`` - the rendered exporter config.
 - ``/etc/systemd/system/labgrid-exporter-<name>.service`` - a unit that runs
   ``labgrid-exporter -n <name>`` (the absolute path found by the prerequisite check) as the
-  SSH user, pointed at the coordinator, with ``Restart=always``. The exporter registers on the
+  SSH user, pointed at the coordinator, with ``Restart=always`` and
+  ``EnvironmentFile=-/etc/labgrid/exporter.env`` (optional, for outlet credentials). The exporter registers on the
   coordinator under the hardware name, so one host can run a separate exporter per board.
 
 The unit is enabled and started (``systemctl enable --now``), then polled with
@@ -184,7 +199,7 @@ Through the coordinator REST API (:doc:`coordinator`), authenticated as the coor
 - ``POST /api/places/<name>/matches`` - one ``<name>/<group>/*`` match per resource group in
   the rendered config (``<name>`` is the exporter name the unit registers).
 - ``PUT /api/places/<name>/tags`` - ``daughter-board`` and ``carrier`` (lowercased),
-  ``boot-strategy``, and ``runner``, the keys the hardware-CI preflight matches on (see the tag
+  ``boot-strategy``, ``runner``, and ``power-driver``, the keys the hardware-CI preflight matches on (see the tag
   table in :doc:`onboarding-a-lab-host`, Step 3).
 
 Finally it re-reads ``/api/places`` and prints the new place's tags, or a warning if the place
@@ -234,6 +249,11 @@ Troubleshooting
     ``journalctl -u labgrid-exporter-<name>`` on the host. Common causes are a wrong
     coordinator address, or a serial port / device path in the config that doesn't exist on
     the host.
+
+``Warning: ... not set in /etc/labgrid/exporter.env``
+    The exporter is running, but the outlet credentials are empty, so power operations will
+    fail. Add the listed variables to the file and run
+    ``sudo systemctl restart labgrid-exporter-<name>``.
 
 How it maps to the manual procedure
 ------------------------------------

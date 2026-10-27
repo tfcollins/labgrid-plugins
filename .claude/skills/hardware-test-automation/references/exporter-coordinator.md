@@ -29,10 +29,13 @@ entry for its board, the right **tags**, and (for CI) a runner that can reach it
 
 YAML templates for deploying labgrid exporters, plus validation:
 
-- `exporter_configs/templates/*.yaml` — templates named by boot path: `soc-sdmux.yaml`
-  (Zynq/ZynqMP SoC via SD mux, BootFPGASoC), `fabric-jtag.yaml` (MicroBlaze FPGA over JTAG,
-  BootFabric), `rpi-ssh.yaml` (Raspberry Pi over SSH, BootRPI). Resource groups are
-  `<CARRIER>_<CHIP>` from the `carrier`/`chip` fields. Start from the closest template; don't
+- `exporter_configs/templates/*.yaml` — one template per boot strategy, each declaring it in a
+  `## boot-strategy:` line: `soc-sdmux` (BootFPGASoC), `soc-ssh` (BootFPGASoCSSH), `soc-tftp`
+  (BootFPGASoCTFTP), `zynqmp-jtag` (BootZynqMPJTAG), `fabric-jtag` (BootFabric), `rpi-ssh`
+  (BootRPI). Resource groups are `<CARRIER>_<CHIP>` from the `carrier`/`chip` fields. Each
+  exports a power outlet chosen by `power` (vesync|homeassistant) — tag the place
+  `power-driver=VesyncPowerDriver|HomeAssistantPowerDriver` to match; outlet credentials come
+  from the exporter's environment (`/etc/labgrid/exporter.env`), never the file. Start from the closest template; don't
   author an exporter config from scratch.
 - `exporter_configs/validate.py` + `exporter_configs/schemas/*.json` — **validate every config
   you produce** against the schema before deploying. A malformed exporter config fails to export

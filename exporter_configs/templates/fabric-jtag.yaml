@@ -1,30 +1,29 @@
 ## Exporter template: FPGA fabric loaded over JTAG
+## boot-strategy: BootFabric
 ## For FPGA carriers with a MicroBlaze soft CPU (VCU118, ...) whose bitstream and
-## kernel are loaded with Vivado's xsdb, served by BootFabric.
+## kernel are loaded with Vivado's xsdb.
+## Group naming convention: <CARRIER>_<CHIP>, from the carrier and chip fields.
 ## Comments use "##": labgrid renders this file as Jinja2, where a line starting
 ## with a single "#" is a template statement.
-## Group naming convention: <CARRIER>_<CHIP>, from the carrier and chip fields.
+## Power: `power` is vesync (default) or homeassistant; `power_outlet` is the
+## VeSync outlet name or Home Assistant entity_id. Outlet credentials are read
+## from labgrid-exporter's environment (e.g. EnvironmentFile=/etc/labgrid/exporter.env):
+## VESYNC_USERNAME / VESYNC_PASSWORD, or HOMEASSISTANT_URL / HOMEASSISTANT_TOKEN.
 ##
-## Usage: Fill in the Jinja2 variables for your specific host, then run the
-## exporter with:
-##   labgrid-exporter -c <coordinator>:20408 -n <exporter_name> this_file.yaml
-##
-## Place tags (required for the hw-matrix dynamic_mode allocator):
-## After the matching place has been created on the coordinator, set its tags so
-## the dynamic-mode preflight in hw-matrix.yml can discover it. Existing lab
-## convention is `daughter-board=<chip>` (the IC) plus `carrier=<fpga>`:
+## Place tags (read by hardware-CI discovery and render-env):
 ##   labgrid-client -x <coordinator>:20408 -p <place_name> set-tags \
-##       daughter-board=ad9081 carrier=vcu118
-## The optional `runner` tag overrides the default GH Actions runner label for
-## the matrix leg:
-##   labgrid-client -x <coordinator>:20408 -p <place_name> set-tags runner=hw-vcu118
+##       daughter-board=<chip_lower> carrier=<carrier_lower> \
+##       boot-strategy=BootFabric power-driver=VesyncPowerDriver
+## Use power-driver=HomeAssistantPowerDriver for a Home Assistant outlet. An
+## optional `runner` tag overrides the GH Actions runner label.
 ## See exporter_configs/scripts/seed-place-tags.sh for a one-shot helper.
 
 {{ carrier | default("vcu118") | upper }}_{{ chip | default("ad9081") | upper }}:
   NetworkService:
     cls: NetworkService
     address: "{{ target_ip }}"
-    username: "root"
+    username: "{{ target_username | default('root') }}"
+    password: "{{ target_password | default('analog') }}"
   RawSerialPort:
     cls: RawSerialPort
     port: "{{ serial_port | default('/dev/ttyUSB1') }}"
@@ -38,3 +37,17 @@
   XilinxVivadoTool:
     cls: XilinxVivadoTool
     vivado_path: "{{ vivado_path | default('/tools/Xilinx/2025.1/Vivado') }}"
+    xsdb_path: {{ xsdb_path | default(none) | tojson }}
+{% if power | default("vesync") == "homeassistant" %}
+  HomeAssistantOutlet:
+    cls: HomeAssistantOutlet
+    url: '{{ env["HOMEASSISTANT_URL"] }}'
+    token: '{{ env["HOMEASSISTANT_TOKEN"] }}'
+    entity_id: "{{ power_outlet }}"
+{% else %}
+  VesyncOutlet:
+    cls: VesyncOutlet
+    outlet_names: "{{ power_outlet }}"
+    username: '{{ env["VESYNC_USERNAME"] }}'
+    password: '{{ env["VESYNC_PASSWORD"] }}'
+{% endif %}

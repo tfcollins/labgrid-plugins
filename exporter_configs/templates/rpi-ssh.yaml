@@ -1,20 +1,42 @@
 ## Exporter template: Raspberry Pi driven over SSH
-## For Raspberry Pi hosts (CM4, Pi 4, ...) served by BootRPI.
+## boot-strategy: BootRPI
+## For Raspberry Pi hosts (CM4, Pi 4, ...).
+## Group naming convention: RPI_<VARIANT>, from the variant field.
 ## Comments use "##": labgrid renders this file as Jinja2, where a line starting
 ## with a single "#" is a template statement.
-## Group naming convention: <BOARD>_<VARIANT>
+## Power: `power` is vesync (default) or homeassistant; `power_outlet` is the
+## VeSync outlet name or Home Assistant entity_id. Outlet credentials are read
+## from labgrid-exporter's environment (e.g. EnvironmentFile=/etc/labgrid/exporter.env):
+## VESYNC_USERNAME / VESYNC_PASSWORD, or HOMEASSISTANT_URL / HOMEASSISTANT_TOKEN.
 ##
-## Place tags (required for the hw-matrix dynamic_mode allocator):
-## After creating the matching place on the coordinator, set its tags using the
-## existing convention `daughter-board=<chip>` plus `carrier=rpi`:
+## Place tags (read by hardware-CI discovery and render-env):
 ##   labgrid-client -x <coordinator>:20408 -p <place_name> set-tags \
-##       daughter-board=rpi_<variant_lower> carrier=rpi
-## Optional `runner` tag overrides the GH Actions runner label:
-##   labgrid-client -x <coordinator>:20408 -p <place_name> set-tags runner=hw-rpi
+##       daughter-board=<chip_lower> carrier=<carrier_lower> \
+##       boot-strategy=BootRPI power-driver=VesyncPowerDriver
+## Use power-driver=HomeAssistantPowerDriver for a Home Assistant outlet. An
+## optional `runner` tag overrides the GH Actions runner label.
 ## See exporter_configs/scripts/seed-place-tags.sh for a one-shot helper.
 
-RPI_{{ variant | default("CM4") }}:
+{{ "RPI_" ~ (variant | default("CM4") | upper) }}:
   NetworkService:
     cls: NetworkService
     address: "{{ target_ip }}"
-    username: "{{ username | default('root') }}"
+    username: "{{ target_username | default('root') }}"
+    password: "{{ target_password | default('analog') }}"
+  RawSerialPort:
+    cls: RawSerialPort
+    port: "{{ serial_port | default('/dev/ttyUSB0') }}"
+    speed: 115200
+{% if power | default("vesync") == "homeassistant" %}
+  HomeAssistantOutlet:
+    cls: HomeAssistantOutlet
+    url: '{{ env["HOMEASSISTANT_URL"] }}'
+    token: '{{ env["HOMEASSISTANT_TOKEN"] }}'
+    entity_id: "{{ power_outlet }}"
+{% else %}
+  VesyncOutlet:
+    cls: VesyncOutlet
+    outlet_names: "{{ power_outlet }}"
+    username: '{{ env["VESYNC_USERNAME"] }}'
+    password: '{{ env["VESYNC_PASSWORD"] }}'
+{% endif %}
