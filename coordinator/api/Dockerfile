@@ -1,6 +1,6 @@
 FROM python:3.12-slim
 
-RUN apt-get update && apt-get install -y --no-install-recommends git libiio0 libiio-dev && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends git openssh-client rsync libiio0 libiio-dev && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -28,6 +28,7 @@ RUN pip install --no-cache-dir --no-deps /tmp/adi \
         attrs \
         python-kasa \
         pylibiio \
+        rich \
     && rm -rf /tmp/adi
 
 # 3. Drop a sitecustomize.py that:
@@ -42,7 +43,10 @@ RUN cp /tmp/sitecustomize.py "$(python -c 'import site; print(site.getsitepackag
 # 4. Copy the API application code
 COPY coordinator/api/app/ app/
 COPY coordinator/api/board_catalog.yaml ./board_catalog.yaml
+COPY coordinator/api/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
 
 EXPOSE 8000
 
+ENTRYPOINT ["/entrypoint.sh"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
