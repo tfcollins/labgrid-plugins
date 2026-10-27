@@ -117,9 +117,13 @@ def _ask_secret(prompt: str) -> str:
     envvar="NETBOX_CA_BUNDLE",
     type=click.Path(exists=True),
     default=None,
-    help="CA bundle for NetBox's TLS certificate (e.g. an internal CA)",
+    help="Verify NetBox's TLS certificate against this CA bundle (e.g. an internal CA)",
 )
-@click.option("--netbox-insecure", is_flag=True, help="Skip NetBox TLS certificate verification")
+@click.option(
+    "--netbox-verify",
+    is_flag=True,
+    help="Verify NetBox's TLS certificate against Python's CA bundle (default: not verified)",
+)
 @click.option("--coord", default=None, help="Coordinator host:port (default: $LG_COORDINATOR)")
 @click.option(
     "--coord-user", envvar="LG_API_USERNAME", default=None, help="Coordinator API username"
@@ -138,7 +142,7 @@ def add_hardware(
     netbox_url,
     netbox_token,
     netbox_ca_bundle,
-    netbox_insecure,
+    netbox_verify,
     coord,
     coord_user,
     coord_password,
@@ -275,9 +279,13 @@ def add_hardware(
         coord_password = _ask_secret("Coordinator API password")
 
     # 1. NetBox: register the device (source of truth for inventory).
-    verify = False if netbox_insecure else (netbox_ca_bundle or True)
+    # Lab NetBoxes commonly sit behind an internal CA, so checking is opt-in.
+    verify = netbox_ca_bundle or netbox_verify
     if verify is False:
-        console.print("[yellow]Warning: NetBox TLS certificate verification is off.[/yellow]")
+        console.print(
+            "[dim]NetBox TLS certificate not verified "
+            "(--netbox-verify or --netbox-ca-bundle to check it)[/dim]"
+        )
     try:
         with client.reported_errors(netbox_url):
             nb = client.connect(netbox_url, netbox_token, verify=verify)

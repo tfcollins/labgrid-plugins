@@ -48,6 +48,20 @@ def _require_pynetbox():
     return pynetbox
 
 
+class _Session(requests.Session):
+    """A session whose ``verify=False`` or CA-bundle path isn't overridden by the environment.
+
+    requests otherwise swaps in ``REQUESTS_CA_BUNDLE`` / ``CURL_CA_BUNDLE`` for every request
+    pynetbox makes, since pynetbox never passes ``verify`` itself.
+    """
+
+    def merge_environment_settings(self, url, proxies, stream, verify, cert):
+        settings = super().merge_environment_settings(url, proxies, stream, verify, cert)
+        if self.verify is not True:
+            settings["verify"] = self.verify
+        return settings
+
+
 def connect(url: str, token: str, *, verify: bool | str = True):
     """Return a connected ``pynetbox.api`` instance.
 
@@ -56,6 +70,7 @@ def connect(url: str, token: str, *, verify: bool | str = True):
     """
     pynetbox = _require_pynetbox()
     nb = pynetbox.api(url, token=token)
+    nb.http_session = _Session()
     nb.http_session.verify = verify
     if verify is False:
         urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -72,10 +87,10 @@ def reported_errors(url: str):
         raise RuntimeError(
             f"TLS verification failed for {url}: {e}\n"
             "If NetBox uses an internal CA, pass --netbox-ca-bundle <ca.pem> (on Debian/Ubuntu "
-            "the system trust store is /etc/ssl/certs/ca-certificates.crt), or "
-            "--netbox-insecure to skip verification"
+            "the system trust store is /etc/ssl/certs/ca-certificates.crt), or drop "
+            "--netbox-verify / --netbox-ca-bundle to skip verification"
         ) from e
-    except requests.exceptions.RequestException as e:
+    except OSError as e:  # RequestException, or a CA bundle path that doesn't exist
         raise RuntimeError(f"could not reach NetBox at {url}: {e}") from e
     except pynetbox.RequestError as e:
         hint = ""

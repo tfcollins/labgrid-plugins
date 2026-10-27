@@ -136,9 +136,11 @@ Every option is optional; anything not supplied is prompted for.
 
 * ``--netbox-url <url>``: NetBox base URL (env: ``NETBOX_URL``).
 * ``--netbox-token <token>``: NetBox API token (env: ``NETBOX_TOKEN``).
-* ``--netbox-ca-bundle <path>``: CA bundle to verify NetBox's TLS certificate, for a NetBox
-  behind an internal CA (env: ``NETBOX_CA_BUNDLE``).
-* ``--netbox-insecure``: skip NetBox TLS certificate verification.
+* ``--netbox-verify``: verify NetBox's TLS certificate against Python's CA bundle. Off by
+  default: lab NetBox instances often sit behind an internal CA, so the certificate is not
+  checked unless you ask.
+* ``--netbox-ca-bundle <path>``: verify NetBox's TLS certificate against this CA bundle, for a
+  NetBox behind an internal CA (env: ``NETBOX_CA_BUNDLE``).
 * ``--coord <host:port>``: coordinator to deploy against and create the place on (default:
   ``$LG_COORDINATOR``).
 * ``--coord-user <name>``: coordinator API username (env: ``LG_API_USERNAME``).
@@ -256,13 +258,14 @@ Troubleshooting
     offending group/resource. Fix the template answers, or the template itself.
 
 ``TLS verification failed for <url>`` (``certificate verify failed: self-signed certificate in certificate chain``)
-    NetBox's certificate is signed by a CA that Python doesn't trust. A pip-installed
-    ``requests`` checks certificates against its own bundle (``certifi``), not the host's trust
-    store, so an internal CA installed on the host still fails. Pass that CA with
-    ``--netbox-ca-bundle`` (on Debian/Ubuntu, ``/etc/ssl/certs/ca-certificates.crt`` is the
-    host's trust store), or ``--netbox-insecure`` to skip the check. Either option is ignored
-    while ``REQUESTS_CA_BUNDLE`` or ``CURL_CA_BUNDLE`` is set in the environment - those take
-    precedence.
+    Only with ``--netbox-verify`` or ``--netbox-ca-bundle``. NetBox's certificate is signed by
+    a CA that Python doesn't trust. A pip-installed ``requests`` checks certificates against its
+    own bundle (``certifi``), not the host's trust store, so an internal CA installed on the
+    host still fails. Pass that CA with ``--netbox-ca-bundle`` (on Debian/Ubuntu,
+    ``/etc/ssl/certs/ca-certificates.crt`` is the host's trust store), or drop both options to
+    skip the check. With ``--netbox-verify`` alone, a ``REQUESTS_CA_BUNDLE`` or
+    ``CURL_CA_BUNDLE`` environment variable replaces Python's bundle; the other two settings
+    ignore them.
 
 ``NetBox rejected the request: ... 403 Forbidden``
     The API token is wrong, expired, or lacks write permission. Create a token in NetBox under

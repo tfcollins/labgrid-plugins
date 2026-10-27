@@ -340,7 +340,7 @@ def test_netbox_token_prompt_says_input_is_hidden_and_confirms_what_it_read(monk
 
 @pytest.mark.parametrize(
     ("args", "expected"),
-    [([], True), (["--netbox-insecure"], False), (["--netbox-ca-bundle", "CA"], "CA")],
+    [([], False), (["--netbox-verify"], True), (["--netbox-ca-bundle", "CA"], "CA")],
 )
 def test_tls_options_reach_the_netbox_client(monkeypatch, tmp_path, args, expected):
     ca = tmp_path / "ca.pem"
@@ -353,7 +353,7 @@ def test_tls_options_reach_the_netbox_client(monkeypatch, tmp_path, args, expect
         seen["verify"] = verify
         return object()
 
-    _run_until_netbox(
+    result, _ = _run_until_netbox(
         monkeypatch,
         [
             "--netbox-url",
@@ -370,6 +370,7 @@ def test_tls_options_reach_the_netbox_client(monkeypatch, tmp_path, args, expect
     )
 
     assert seen == {"verify": expected}
+    assert ("not verified" in result.output) == (expected is False)
 
 
 def test_connect_applies_tls_verification_to_the_session(tmp_path):
@@ -379,6 +380,30 @@ def test_connect_applies_tls_verification_to_the_session(tmp_path):
     assert client.connect("https://nb", "t", verify=False).http_session.verify is False
     ca = str(tmp_path / "ca.pem")
     assert client.connect("https://nb", "t", verify=ca).http_session.verify == ca
+
+
+@pytest.mark.parametrize("verify", [False, "/etc/netbox-ca.pem"])
+def test_tls_choice_wins_over_ca_bundle_env_vars(monkeypatch, verify):
+    """requests lets REQUESTS_CA_BUNDLE override session.verify; the CLI choice must not lose."""
+    from adi_lg_plugins.tools.netbox import client
+
+    monkeypatch.setenv("REQUESTS_CA_BUNDLE", "/elsewhere/ca.pem")
+    session = client.connect("https://nb", "t", verify=verify).http_session
+
+    settings = session.merge_environment_settings("https://nb/api/", {}, None, None, None)
+
+    assert settings["verify"] == verify
+
+
+def test_verification_on_still_honors_ca_bundle_env_vars(monkeypatch):
+    from adi_lg_plugins.tools.netbox import client
+
+    monkeypatch.setenv("REQUESTS_CA_BUNDLE", "/elsewhere/ca.pem")
+    session = client.connect("https://nb", "t", verify=True).http_session
+
+    settings = session.merge_environment_settings("https://nb/api/", {}, None, None, None)
+
+    assert settings["verify"] == "/elsewhere/ca.pem"
 
 
 def test_tls_failure_suggests_a_ca_bundle(monkeypatch):
@@ -435,3 +460,26 @@ def test_rejected_token_is_reported_without_a_traceback(monkeypatch):
     assert not isinstance(result.exception, pynetbox.RequestError)
     assert "Invalid v1 token" in result.output
     assert "--netbox-token" in result.output
+
+
+def test_unusable_ca_bundle_is_reported_without_a_traceback(monkeypatch):
+    """requests raises a bare OSError for a CA bundle path that doesn't exist."""
+    result, _ = _run_until_netbox(
+        monkeypatch,
+        [
+            "--netbox-url",
+            "https://nb",
+            "--netbox-token",
+            "t",
+            "--coord-user",
+            "u",
+            "--coord-password",
+            "p",
+            "--netbox-verify",
+        ],
+        schema_error=OSError("Could not find a suitable TLS CA certificate bundle"),
+    )
+
+    assert result.exit_code == 1
+    assert not isinstance(result.exception, OSError)
+    assert "Could not find a suitable TLS CA certificate bundle" in result.output
