@@ -19,6 +19,7 @@ import AdminUsers from "./pages/AdminUsers";
 import RequireAuth from "./auth/RequireAuth";
 import RequireAdmin from "./auth/RequireAdmin";
 import Deployments from "./pages/Deployments";
+import BoardHealth from "./pages/BoardHealth";
 
 function App() {
   return (
@@ -32,6 +33,10 @@ function App() {
         <Route
           path="/deployments"
           element={<RequireAuth><Deployments /></RequireAuth>}
+        />
+        <Route
+          path="/board-health"
+          element={<RequireAuth><BoardHealth /></RequireAuth>}
         />
         <Route
           path="/reservations"

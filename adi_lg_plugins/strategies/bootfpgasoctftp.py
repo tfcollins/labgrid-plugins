@@ -162,10 +162,32 @@ class BootFPGASoCTFTP(Strategy):
         """
         self.logger.info(
             "sd_autoboot: U-Boot will autoboot the SD's Kuiper; waiting for "
-            "kernel 'Linux' banner then '%s'...",
+            "kernel 'Starting kernel' / 'Booting Linux' banner then '%s'...",
             self.reached_linux_marker,
         )
-        self.shell.console.expect("Linux", timeout=self.wait_for_linux_prompt_timeout)
+        kernel_banners = ["Starting kernel", "Booting Linux", "Linux version"]
+        prompt_targets = list(
+            dict.fromkeys(
+                [
+                    self.uboot_prompt,
+                    self.uboot_prompt.rstrip(".*"),
+                    "Zynq>",
+                    "ZynqMP>",
+                    "=>",
+                ]
+            )
+        )
+        idx = self.shell.console.expect(
+            [*kernel_banners, *prompt_targets],
+            timeout=self.wait_for_linux_prompt_timeout,
+        )
+        match_idx = idx[0] if isinstance(idx, (list, tuple)) else idx
+        if isinstance(match_idx, int) and match_idx >= len(kernel_banners):
+            self.logger.info(
+                "U-Boot prompt seen before Linux; executing 'run sdboot' to start SD Kuiper..."
+            )
+            self.shell.console.sendline("run sdboot")
+            self.shell.console.expect(kernel_banners, timeout=self.wait_for_linux_prompt_timeout)
         self.shell.console.expect(
             self.reached_linux_marker, timeout=self.wait_for_linux_prompt_timeout
         )

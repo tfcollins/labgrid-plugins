@@ -248,7 +248,7 @@ resolution-markers = [
     "python_full_version < '3.11'",
 ]
 dependencies = [
-    { name = "colorama", marker = "python_full_version < '3.11' and sys_platform == 'win32'" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/29/3c/b266df0e8f3af371692d429eee4901d9392a14c864fa658d1cc7a5145881/asyncclick-8.3.0.3.tar.gz", hash = "sha256:2325fa89c13fab81430d4aca8bac17cb191c1b10a7aa7c13a7eea51cab5812c5", size = 288749, upload-time = "2025-10-03T09:03:23.586Z" }
 wheels = [
@@ -264,7 +264,7 @@ resolution-markers = [
     "python_full_version == '3.11.*'",
 ]
 dependencies = [
-    { name = "colorama", marker = "python_full_version >= '3.11' and sys_platform == 'win32'" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/fd/b2/2c90a32d9b9cf1a4a90ed39cc1177890d146f3f89ae375b061d72110659a/asyncclick-8.4.2.1.tar.gz", hash = "sha256:8f259376ae8d4fcd91961c8ad3e85e9b63c9cf181a122201c7dfed3d7f6024b8", size = 340830, upload-time = "2026-06-30T12:40:33.842Z" }
 wheels = [
@@ -1223,7 +1223,11 @@ dependencies = [
 
 [package.optional-dependencies]
 dev = [
+    { name = "jinja2" },
+    { name = "jsonschema" },
     { name = "pylibiio" },
+    { name = "pynetbox", version = "7.8.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "pynetbox", version = "7.9.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
     { name = "pytest" },
     { name = "pytest-asyncio" },
     { name = "python-kasa", version = "0.7.7", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -1248,15 +1252,27 @@ kasa = [
 kuiper = [
     { name = "pytsk3" },
 ]
+netbox = [
+    { name = "jinja2" },
+    { name = "jsonschema" },
+    { name = "pynetbox", version = "7.8.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "pynetbox", version = "7.9.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
+]
 
 [package.metadata]
 requires-dist = [
     { name = "click" },
     { name = "fastmcp" },
     { name = "furo", marker = "extra == 'docs'", specifier = ">=2024.0.0" },
+    { name = "jinja2", marker = "extra == 'dev'", specifier = ">=3" },
+    { name = "jinja2", marker = "extra == 'netbox'", specifier = ">=3" },
+    { name = "jsonschema", marker = "extra == 'dev'" },
+    { name = "jsonschema", marker = "extra == 'netbox'" },
     { name = "labgrid", specifier = ">=25.0" },
     { name = "pylibiio" },
     { name = "pylibiio", marker = "extra == 'dev'" },
+    { name = "pynetbox", marker = "extra == 'dev'", specifier = ">=7,<8" },
+    { name = "pynetbox", marker = "extra == 'netbox'", specifier = ">=7,<8" },
     { name = "pysnmp" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.21.0" },
@@ -1275,7 +1291,7 @@ requires-dist = [
     { name = "ty", marker = "extra == 'dev'" },
     { name = "usbsdmux" },
 ]
-provides-extras = ["dev", "kuiper", "kasa", "docs"]
+provides-extras = ["dev", "kuiper", "kasa", "netbox", "docs"]
 
 [[package]]
 name = "markdown-it-py"
@@ -1379,7 +1395,7 @@ name = "mashumaro"
 version = "3.22"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "typing-extensions", marker = "python_full_version >= '3.11'" },
+    { name = "typing-extensions" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/d1/e3/a06dcd2e6df094c5e294721926f1f76da30f50823e2ac233a9198e804891/mashumaro-3.22.tar.gz", hash = "sha256:64538cc365204402a060ebde683a86505b5a4344acf6870d79021e9fbfe57360", size = 197845, upload-time = "2026-05-26T14:39:21.859Z" }
 wheels = [
@@ -2020,6 +2036,40 @@ wheels = [
 ]
 
 [[package]]
+name = "pynetbox"
+version = "7.8.0"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version == '3.11.*'",
+    "python_full_version < '3.11'",
+]
+dependencies = [
+    { name = "packaging" },
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/0e/83/2fa04ce44f3b8b5f6090d9cfd6a4b0a8f6945aa304e2c69901cfe53a36d0/pynetbox-7.8.0.tar.gz", hash = "sha256:c359e9b9ed599d145a987c755dbe786da967caf236e3afe1e94a154cf5aeab5c", size = 138670, upload-time = "2026-06-18T16:35:33.983Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/96/ec/bf45fc25fa1e41840a1240cd90851cc4ae9c32bbeab74512582fa7394ac3/pynetbox-7.8.0-py3-none-any.whl", hash = "sha256:1dbcee4479d5aeefff42d5c115f6f7aae68ea61f905b68bde33fe0c543db773d", size = 54271, upload-time = "2026-06-18T16:35:32.848Z" },
+]
+
+[[package]]
+name = "pynetbox"
+version = "7.9.0"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version >= '3.12'",
+]
+dependencies = [
+    { name = "packaging" },
+    { name = "requests" },
+    { name = "urllib3" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/58/66/9156cd3486c9017be6923e2e44e01110a85dcdfdf7a03558aadbaf4ffc4d/pynetbox-7.9.0.tar.gz", hash = "sha256:a50e5caa07df1795a9706e5262a864cf371ae63592585191c1ad361d42695d8b", size = 149198, upload-time = "2026-10-08T21:48:15.788Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/4f/ce/7dbb8a2ec85161af46d2004f8669f8ae22eb133c7b45247aa884a62f16ae/pynetbox-7.9.0-py3-none-any.whl", hash = "sha256:f0bc3c07f71ae9d564f14b37111fc749084601ed98d5c3c1ec8e94a08810892f", size = 56109, upload-time = "2026-10-08T21:48:14.805Z" },
+]
+
+[[package]]
 name = "pyperclip"
 version = "1.11.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2098,13 +2148,13 @@ resolution-markers = [
     "python_full_version < '3.11'",
 ]
 dependencies = [
-    { name = "aiohttp", marker = "python_full_version < '3.11'" },
-    { name = "async-timeout", marker = "python_full_version < '3.11'" },
-    { name = "asyncclick", version = "8.3.0.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "cryptography", marker = "python_full_version < '3.11'" },
-    { name = "pydantic", marker = "python_full_version < '3.11'" },
-    { name = "typing-extensions", marker = "python_full_version < '3.11'" },
-    { name = "tzdata", marker = "python_full_version < '3.11' and sys_platform == 'win32'" },
+    { name = "aiohttp" },
+    { name = "async-timeout" },
+    { name = "asyncclick", version = "8.3.0.3", source = { registry = "https://pypi.org/simple" } },
+    { name = "cryptography" },
+    { name = "pydantic" },
+    { name = "typing-extensions" },
+    { name = "tzdata", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/e4/dc/fb94928521a528f976ac979c76b1ff08bbb2ac17dd0dee1d27dbbbe441d0/python_kasa-0.7.7.tar.gz", hash = "sha256:702e79e29f0ff0776ef20032b16bf78f485ebfa010af68ea327b7e66921872db", size = 338077, upload-time = "2024-11-04T16:00:26.515Z" }
 wheels = [
@@ -2120,11 +2170,11 @@ resolution-markers = [
     "python_full_version == '3.11.*'",
 ]
 dependencies = [
-    { name = "aiohttp", marker = "python_full_version >= '3.11'" },
-    { name = "asyncclick", version = "8.4.2.1", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11'" },
-    { name = "cryptography", marker = "python_full_version >= '3.11'" },
-    { name = "mashumaro", marker = "python_full_version >= '3.11'" },
-    { name = "tzdata", marker = "python_full_version >= '3.11' and sys_platform == 'win32'" },
+    { name = "aiohttp" },
+    { name = "asyncclick", version = "8.4.2.1", source = { registry = "https://pypi.org/simple" } },
+    { name = "cryptography" },
+    { name = "mashumaro" },
+    { name = "tzdata", marker = "sys_platform == 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/09/44/b3c88bb2560c55e57078aed1777ead1b60981e6d852c9d8b9c7351bd5c6e/python_kasa-0.10.2.tar.gz", hash = "sha256:4a75b72dc354b43b0b038d5f8ca142049879c76415728a9f24473fb15af45562", size = 458421, upload-time = "2025-02-12T19:32:12.025Z" }
 wheels = [
@@ -2522,23 +2572,23 @@ resolution-markers = [
     "python_full_version < '3.11'",
 ]
 dependencies = [
-    { name = "alabaster", marker = "python_full_version < '3.11'" },
-    { name = "babel", marker = "python_full_version < '3.11'" },
-    { name = "colorama", marker = "python_full_version < '3.11' and sys_platform == 'win32'" },
-    { name = "docutils", version = "0.21.2", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
-    { name = "imagesize", marker = "python_full_version < '3.11'" },
-    { name = "jinja2", marker = "python_full_version < '3.11'" },
-    { name = "packaging", marker = "python_full_version < '3.11'" },
-    { name = "pygments", marker = "python_full_version < '3.11'" },
-    { name = "requests", marker = "python_full_version < '3.11'" },
-    { name = "snowballstemmer", marker = "python_full_version < '3.11'" },
-    { name = "sphinxcontrib-applehelp", marker = "python_full_version < '3.11'" },
-    { name = "sphinxcontrib-devhelp", marker = "python_full_version < '3.11'" },
-    { name = "sphinxcontrib-htmlhelp", marker = "python_full_version < '3.11'" },
-    { name = "sphinxcontrib-jsmath", marker = "python_full_version < '3.11'" },
-    { name = "sphinxcontrib-qthelp", marker = "python_full_version < '3.11'" },
-    { name = "sphinxcontrib-serializinghtml", marker = "python_full_version < '3.11'" },
-    { name = "tomli", marker = "python_full_version < '3.11'" },
+    { name = "alabaster" },
+    { name = "babel" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "docutils", version = "0.21.2", source = { registry = "https://pypi.org/simple" } },
+    { name = "imagesize" },
+    { name = "jinja2" },
+    { name = "packaging" },
+    { name = "pygments" },
+    { name = "requests" },
+    { name = "snowballstemmer" },
+    { name = "sphinxcontrib-applehelp" },
+    { name = "sphinxcontrib-devhelp" },
+    { name = "sphinxcontrib-htmlhelp" },
+    { name = "sphinxcontrib-jsmath" },
+    { name = "sphinxcontrib-qthelp" },
+    { name = "sphinxcontrib-serializinghtml" },
+    { name = "tomli" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/6f/6d/be0b61178fe2cdcb67e2a92fc9ebb488e3c51c4f74a36a7824c0adf23425/sphinx-8.1.3.tar.gz", hash = "sha256:43c1911eecb0d3e161ad78611bc905d1ad0e523e4ddc202a58a821773dc4c927", size = 8184611, upload-time = "2024-10-13T20:27:13.93Z" }
 wheels = [
@@ -2553,23 +2603,23 @@ resolution-markers = [
     "python_full_version == '3.11.*'",
 ]
 dependencies = [
-    { name = "alabaster", marker = "python_full_version == '3.11.*'" },
-    { name = "babel", marker = "python_full_version == '3.11.*'" },
-    { name = "colorama", marker = "python_full_version == '3.11.*' and sys_platform == 'win32'" },
-    { name = "docutils", version = "0.22.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
-    { name = "imagesize", marker = "python_full_version == '3.11.*'" },
-    { name = "jinja2", marker = "python_full_version == '3.11.*'" },
-    { name = "packaging", marker = "python_full_version == '3.11.*'" },
-    { name = "pygments", marker = "python_full_version == '3.11.*'" },
-    { name = "requests", marker = "python_full_version == '3.11.*'" },
-    { name = "roman-numerals", marker = "python_full_version == '3.11.*'" },
-    { name = "snowballstemmer", marker = "python_full_version == '3.11.*'" },
-    { name = "sphinxcontrib-applehelp", marker = "python_full_version == '3.11.*'" },
-    { name = "sphinxcontrib-devhelp", marker = "python_full_version == '3.11.*'" },
-    { name = "sphinxcontrib-htmlhelp", marker = "python_full_version == '3.11.*'" },
-    { name = "sphinxcontrib-jsmath", marker = "python_full_version == '3.11.*'" },
-    { name = "sphinxcontrib-qthelp", marker = "python_full_version == '3.11.*'" },
-    { name = "sphinxcontrib-serializinghtml", marker = "python_full_version == '3.11.*'" },
+    { name = "alabaster" },
+    { name = "babel" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "docutils", version = "0.22.4", source = { registry = "https://pypi.org/simple" } },
+    { name = "imagesize" },
+    { name = "jinja2" },
+    { name = "packaging" },
+    { name = "pygments" },
+    { name = "requests" },
+    { name = "roman-numerals" },
+    { name = "snowballstemmer" },
+    { name = "sphinxcontrib-applehelp" },
+    { name = "sphinxcontrib-devhelp" },
+    { name = "sphinxcontrib-htmlhelp" },
+    { name = "sphinxcontrib-jsmath" },
+    { name = "sphinxcontrib-qthelp" },
+    { name = "sphinxcontrib-serializinghtml" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/42/50/a8c6ccc36d5eacdfd7913ddccd15a9cee03ecafc5ee2bc40e1f168d85022/sphinx-9.0.4.tar.gz", hash = "sha256:594ef59d042972abbc581d8baa577404abe4e6c3b04ef61bd7fc2acbd51f3fa3", size = 8710502, upload-time = "2025-12-04T07:45:27.343Z" }
 wheels = [
@@ -2584,23 +2634,23 @@ resolution-markers = [
     "python_full_version >= '3.12'",
 ]
 dependencies = [
-    { name = "alabaster", marker = "python_full_version >= '3.12'" },
-    { name = "babel", marker = "python_full_version >= '3.12'" },
-    { name = "colorama", marker = "python_full_version >= '3.12' and sys_platform == 'win32'" },
-    { name = "docutils", version = "0.22.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
-    { name = "imagesize", marker = "python_full_version >= '3.12'" },
-    { name = "jinja2", marker = "python_full_version >= '3.12'" },
-    { name = "packaging", marker = "python_full_version >= '3.12'" },
-    { name = "pygments", marker = "python_full_version >= '3.12'" },
-    { name = "requests", marker = "python_full_version >= '3.12'" },
-    { name = "roman-numerals", marker = "python_full_version >= '3.12'" },
-    { name = "snowballstemmer", marker = "python_full_version >= '3.12'" },
-    { name = "sphinxcontrib-applehelp", marker = "python_full_version >= '3.12'" },
-    { name = "sphinxcontrib-devhelp", marker = "python_full_version >= '3.12'" },
-    { name = "sphinxcontrib-htmlhelp", marker = "python_full_version >= '3.12'" },
-    { name = "sphinxcontrib-jsmath", marker = "python_full_version >= '3.12'" },
-    { name = "sphinxcontrib-qthelp", marker = "python_full_version >= '3.12'" },
-    { name = "sphinxcontrib-serializinghtml", marker = "python_full_version >= '3.12'" },
+    { name = "alabaster" },
+    { name = "babel" },
+    { name = "colorama", marker = "sys_platform == 'win32'" },
+    { name = "docutils", version = "0.22.4", source = { registry = "https://pypi.org/simple" } },
+    { name = "imagesize" },
+    { name = "jinja2" },
+    { name = "packaging" },
+    { name = "pygments" },
+    { name = "requests" },
+    { name = "roman-numerals" },
+    { name = "snowballstemmer" },
+    { name = "sphinxcontrib-applehelp" },
+    { name = "sphinxcontrib-devhelp" },
+    { name = "sphinxcontrib-htmlhelp" },
+    { name = "sphinxcontrib-jsmath" },
+    { name = "sphinxcontrib-qthelp" },
+    { name = "sphinxcontrib-serializinghtml" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/cd/bd/f08eb0f4eed5c83f1ba2a3bd18f7745a2b1525fad70660a1c00224ec468a/sphinx-9.1.0.tar.gz", hash = "sha256:7741722357dd75f8190766926071fed3bdc211c74dd2d7d4df5404da95930ddb", size = 8718324, upload-time = "2025-12-31T15:09:27.646Z" }
 wheels = [
@@ -2643,7 +2693,7 @@ resolution-markers = [
     "python_full_version < '3.11'",
 ]
 dependencies = [
-    { name = "sphinx", version = "8.1.3", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
+    { name = "sphinx", version = "8.1.3", source = { registry = "https://pypi.org/simple" } },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/2b/69/b34e0cb5336f09c6866d53b4a19d76c227cdec1bbc7ac4de63ca7d58c9c7/sphinx_design-0.6.1.tar.gz", hash = "sha256:b44eea3719386d04d765c1a8257caca2b3e6f8421d7b3a5e742c0fd45f84e632", size = 2193689, upload-time = "2024-08-02T13:48:44.277Z" }
 wheels = [
@@ -2659,7 +2709,7 @@ resolution-markers = [
     "python_full_version == '3.11.*'",
 ]
 dependencies = [
-    { name = "sphinx", version = "9.0.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version == '3.11.*'" },
+    { name = "sphinx", version = "9.0.4", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
     { name = "sphinx", version = "9.1.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/13/7b/804f311da4663a4aecc6cf7abd83443f3d4ded970826d0c958edc77d4527/sphinx_design-0.7.0.tar.gz", hash = "sha256:d2a3f5b19c24b916adb52f97c5f00efab4009ca337812001109084a740ec9b7a", size = 2203582, upload-time = "2026-01-19T13:12:53.297Z" }

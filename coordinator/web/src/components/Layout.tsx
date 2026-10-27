@@ -26,6 +26,7 @@ import {
   MdMovie,
   MdOpenInNew,
   MdSystemUpdateAlt,
+  MdHealthAndSafety,
 } from "react-icons/md";
 import ChipIcon from "./ChipIcon";
 import NavItem from "./ui/NavItem";
@@ -34,6 +35,7 @@ const navItems = [
   { to: "/", icon: MdDashboard, label: "Dashboard" },
   { to: "/resources", icon: MdStorage, label: "Resources" },
   { to: "/deployments", icon: MdSystemUpdateAlt, label: "Deployments" },
+  { to: "/board-health", icon: MdHealthAndSafety, label: "Board Health" },
   { to: "/places", icon: MdPlace, label: "Places" },
   { to: "/reservations", icon: MdBookmarkBorder, label: "Reservations" },
   { to: "/topology", icon: MdAccountTree, label: "Topology" },

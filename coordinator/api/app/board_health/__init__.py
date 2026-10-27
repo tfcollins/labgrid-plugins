@@ -1,0 +1,1 @@
+"""Board health check module."""

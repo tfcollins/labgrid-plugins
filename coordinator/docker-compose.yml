@@ -1,8 +1,7 @@
 services:
   coordinator:
     build: ./labgrid-coordinator
-    ports:
-      - "${LG_COORDINATOR_PORT:-20408}:20408"
+    network_mode: host
     volumes:
       - coordinator-data:/var/lib/labgrid
     restart: unless-stopped
@@ -11,10 +10,9 @@ services:
     build:
       context: ..
       dockerfile: coordinator/api/Dockerfile
-    ports:
-      - "${API_PORT:-8000}:8000"
+    network_mode: host
     environment:
-      - LG_COORDINATOR_ADDRESS=coordinator:20408
+      - LG_COORDINATOR_ADDRESS=127.0.0.1:20408
       - LG_OIDC_ISSUER_URL
       - LG_OIDC_CLIENT_ID
       - LG_OIDC_CLIENT_SECRET
@@ -28,14 +26,14 @@ services:
       - LG_DEPLOYMENT_TOKEN
     volumes:
       - api-data:/data
+      - ~/.ssh:/etc/ssh-host-keys:ro
     depends_on:
       - coordinator
     restart: unless-stopped
 
   web:
     build: ./web
-    ports:
-      - "${WEB_PORT:-3000}:80"
+    network_mode: host
     depends_on:
       - api
     restart: unless-stopped

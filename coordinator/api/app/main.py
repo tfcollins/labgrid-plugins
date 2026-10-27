@@ -6,12 +6,16 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .auth.store import AuthStore
+from .board_health.runner import HealthCheckRunner
+from .board_health.scheduler import HealthCheckScheduler
+from .board_health.store import BoardHealthStore
 from .config import settings
 from .deployments.store import DeploymentStore
 from .grpc_client import CoordinatorClient
 from .recorder import Recorder
 from .routers import (
     auth,
+    board_health,
     catalog,
     console,
     deployments,
@@ -67,6 +71,10 @@ async def lifespan(app: FastAPI):
     deployment_store = DeploymentStore(settings.database_path)
     await deployment_store.initialize()
     app.state.deployment_store = deployment_store
+
+    board_health_store = BoardHealthStore(settings.database_path)
+    await board_health_store.initialize()
+    app.state.board_health_store = board_health_store
 
     from .places.store import PlaceAcquisitionStore
 
@@ -165,7 +173,15 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("Reconcile loop failed: %s", e)
 
+    board_health_runner = HealthCheckRunner(board_health_store, client)
+    app.state.board_health_runner = board_health_runner
+
+    board_health_scheduler = HealthCheckScheduler(board_health_store, board_health_runner, client)
+    board_health_scheduler.start()
+    app.state.board_health_scheduler = board_health_scheduler
+
     yield
+    await board_health_scheduler.stop()
     retention_task.cancel()
     try:
         await retention_task
@@ -191,6 +207,7 @@ app.add_middleware(
 )
 
 app.include_router(health.router, prefix="/api")
+app.include_router(board_health.router, prefix="/api")
 app.include_router(catalog.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
 app.include_router(deployments.router, prefix="/api")

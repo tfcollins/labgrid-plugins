@@ -125,8 +125,26 @@ def test_sd_autoboot_skips_tftp_and_waits_for_linux():
     assert not s.shell.run_uboot.called
     # Waited for the kernel banner and the Linux login marker.
     expect_args = [c.args[0] for c in s.shell.console.expect.call_args_list]
-    assert "Linux" in expect_args
+    assert any("Starting kernel" in arg or "Booting Linux" in arg for arg in expect_args)
     assert "analog" in expect_args
+
+
+def test_sd_autoboot_kicks_run_sdboot_when_uboot_prompt_seen_first():
+    """If U-Boot drops to prompt (e.g. board boot mode switches in JTAG mode),
+    the strategy sends 'run sdboot'."""
+    s = _make_strategy(sd_autoboot=True, reached_linux_marker="analog")
+
+    # SerialDriver.expect returns a 4-tuple (index, before, match, after)
+    s.shell.console.expect.side_effect = [
+        (3, b"", b"", b""),
+        (0, b"", b"", b""),
+        (0, b"", b"", b""),
+    ]
+
+    s.transition(Status.booted)
+
+    assert s.status == Status.booted
+    s.shell.console.sendline.assert_called_with("run sdboot")
 
 
 def test_default_path_still_uses_tftp_boot():
