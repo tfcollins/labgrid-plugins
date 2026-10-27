@@ -1234,7 +1234,7 @@ individual files served over a CDN.
                 cls: CloudsmithRelease
                 fpga_carrier: 'zcu102'
                 daughter_card: 'adrv9009'
-                # version: '...'   # optional pin; omit for latest
+                ## version: '...'   # optional pin; omit for latest
 
         ``target.yaml`` (on client):
 
@@ -1344,7 +1344,7 @@ cable; see :doc:`hardware-ci-runner-setup` for host setup.
               XilinxVivadoTool:
                 cls: XilinxVivadoTool
                 vivado_path: '/tools/Xilinx/2025.1/Vivado'
-                # xsdb_path is auto-derived from vivado_path if omitted.
+                ## xsdb_path is auto-derived from vivado_path if omitted.
 
               XilinxDeviceJTAG:
                 cls: XilinxDeviceJTAG

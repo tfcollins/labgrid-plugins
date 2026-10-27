@@ -584,7 +584,7 @@ Cloudsmith package repository, resolved by FPGA carrier + daughter card.
                 cls: CloudsmithRelease
                 fpga_carrier: 'zcu102'
                 daughter_card: 'adrv9009'
-                # Reproducible: resolve this exact package instead of latest.
+                ## Reproducible: resolve this exact package instead of latest.
                 version: 'boot_partition/main/2025_06_14-07_18_12/zynqmp-zcu102-rev10-adrv9009/'
 
     .. tab-item:: Local (Non-Exporter)
@@ -873,7 +873,7 @@ Never commit credentials to git:
 
         .. code-block:: yaml
 
-            # BAD - Don't do this!
+            ## BAD - Don't do this!
             my_group:
               VesyncOutlet:
                 cls: VesyncOutlet
@@ -902,7 +902,7 @@ Never commit credentials to git:
 
         .. code-block:: yaml
 
-            # GOOD - Use environment variables in exporter resources.yaml
+            ## GOOD - Use environment variables in exporter resources.yaml
             my_group:
               VesyncOutlet:
                 cls: VesyncOutlet
@@ -1056,10 +1056,10 @@ Configuration Documentation
         .. code-block:: yaml
 
             zcu102_dev:
-              # Main test device in lab
-              # Power controlled via PDU outlet 3
-              # Serial: /dev/ttyUSB0 (mapped via udev)
-              # SD card: /dev/sdb (SanDisk Ultra, blue connector)
+              ## Main test device in lab
+              ## Power controlled via PDU outlet 3
+              ## Serial: /dev/ttyUSB0 (mapped via udev)
+              ## SD card: /dev/sdb (SanDisk Ultra, blue connector)
 
               CyberPowerOutlet:
                 cls: CyberPowerOutlet
@@ -1104,8 +1104,8 @@ Configuration Documentation
             my_group:
               VesyncOutlet:
                 cls: VesyncOutlet
-                # Note: WiFi outlet firmware requires IP in 192.168.x.x range
-                # If lab network is 10.0.x.x, outlet won't connect to account
+                ## Note: WiFi outlet firmware requires IP in 192.168.x.x range
+                ## If lab network is 10.0.x.x, outlet won't connect to account
                 outlet_names: 'Lab Bench Power'
                 username: 'lab@example.com'
                 password: 'password'
@@ -1337,7 +1337,7 @@ Environment Variable Integration
 
         .. code-block:: yaml
 
-            # resources.yaml
+            ## resources.yaml
             my_group:
               MassStorageDevice:
                 cls: MassStorageDevice

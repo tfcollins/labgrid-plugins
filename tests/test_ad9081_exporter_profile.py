@@ -2,11 +2,22 @@ from pathlib import Path
 
 import pytest
 import yaml
+from labgrid.remote.config import ResourceConfig
 
 EXAMPLES = (
     Path("examples/lg_ad9081_zcu102_exporter.yaml"),
     Path("examples/lg_ad9081_zcu102_mini2_exporter.yaml"),
 )
+
+
+@pytest.mark.parametrize("config_path", EXAMPLES)
+def test_example_loads_in_labgrid_exporter(config_path):
+    """labgrid-exporter renders the file as Jinja (``#`` statements, ``##`` comments)."""
+    config = ResourceConfig(
+        str(config_path), {"env": {}, "isolated": False, "hostname": "h", "name": "n"}
+    )
+
+    assert config.data == yaml.safe_load(config_path.read_text())
 
 
 @pytest.mark.parametrize("config_path", EXAMPLES)

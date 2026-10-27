@@ -25,7 +25,9 @@ class TriggerRunRequest(BaseModel):
     places: list[str] = Field(..., min_length=1, description="List of place names to check")
     image: str | None = Field(default=None, description="Golden boot image version override")
     power_down: bool = Field(default=True, description="Power off board after check completes")
-    drivers: bool = Field(default=True, description="Query and return discovered IIO device drivers")
+    drivers: bool = Field(
+        default=True, description="Query and return discovered IIO device drivers"
+    )
 
 
 class CreateScheduleRequest(BaseModel):

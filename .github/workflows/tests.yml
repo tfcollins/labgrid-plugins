@@ -119,7 +119,9 @@ jobs:
           tests/test_docs_homepage.py \
           tests/hw_ci/test_coordinator_writes.py \
           tests/test_netbox_client.py \
-          tests/test_netbox_provision.py
+          tests/test_netbox_provision.py \
+          tests/test_netbox_cli.py \
+          tests/test_exporter_configs_validate.py
 
   coordinator-api:
     # The coordinator FastAPI subproject has its own pyproject + test suite
