@@ -77,9 +77,7 @@ def _fake_conn():
 
 def test_check_prerequisites_raises_when_exporter_missing(monkeypatch):
     conn = _fake_conn()
-    conn.run_check.side_effect = ExecutionError(
-        "command -v labgrid-exporter", [], ["not found"]
-    )
+    conn.run_check.side_effect = ExecutionError("command -v labgrid-exporter", [], ["not found"])
     monkeypatch.setattr(ssh_mod.sshmanager, "get", lambda host: conn)
 
     with pytest.raises(RuntimeError, match="not found on"):
@@ -107,9 +105,7 @@ def test_deploy_exporter_stages_and_installs(tmp_path, monkeypatch):
 
 def test_deploy_exporter_wraps_execution_error(tmp_path, monkeypatch):
     conn = _fake_conn()
-    conn.run_check.side_effect = ExecutionError(
-        "sudo systemctl ...", [], ["permission denied"]
-    )
+    conn.run_check.side_effect = ExecutionError("sudo systemctl ...", [], ["permission denied"])
     monkeypatch.setattr(ssh_mod.sshmanager, "get", lambda host: conn)
 
     rendered = tmp_path / "resources.yaml"
