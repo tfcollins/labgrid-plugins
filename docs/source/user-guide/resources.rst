@@ -896,25 +896,37 @@ Never commit credentials to git:
 
 **Use Environment Variables**
 
+labgrid has no ``!env`` tag; the substitution syntax depends on which file holds the credential
+(see `Environment Variable Integration`_):
+
 .. tab-set::
 
     .. tab-item:: Exporter
 
         .. code-block:: yaml
 
-            ## GOOD - Use environment variables in exporter resources.yaml
+            ## GOOD - read credentials from the exporter's environment
             my_group:
               VesyncOutlet:
                 cls: VesyncOutlet
                 outlet_names: 'Device Power'
-                username: !env VESYNC_USERNAME
-                password: !env VESYNC_PASSWORD
+                username: '{{ env["VESYNC_USERNAME"] }}'
+                password: '{{ env["VESYNC_PASSWORD"] }}'
+
+        Provide the variables to the exporter process - for a systemd service, through an
+        ``EnvironmentFile=`` readable only by the service user:
+
+        .. code-block:: ini
+
+            # /etc/labgrid/exporter.env (mode 600)
+            VESYNC_USERNAME=user@example.com
+            VESYNC_PASSWORD=secure_password
 
     .. tab-item:: Local (Non-Exporter)
 
         .. code-block:: yaml
 
-            # GOOD - Use environment variables in target.yaml
+            # GOOD - read credentials from LG_* environment variables
             imports:
               - adi_lg_plugins
             targets:
@@ -922,16 +934,14 @@ Never commit credentials to git:
                 resources:
                   VesyncOutlet:
                     outlet_names: 'Device Power'
-                    username: !env VESYNC_USERNAME
-                    password: !env VESYNC_PASSWORD
+                    username: !template $LG_VESYNC_USERNAME
+                    password: !template $LG_VESYNC_PASSWORD
 
-Then set environment before running:
+        .. code-block:: bash
 
-.. code-block:: bash
-
-    export VESYNC_USERNAME="user@example.com"
-    export VESYNC_PASSWORD="secure_password"
-    labgrid-client -c target.yaml ...
+            export LG_VESYNC_USERNAME="user@example.com"
+            export LG_VESYNC_PASSWORD="secure_password"
+            labgrid-client -c target.yaml ...
 
 **Separate Credential Files**
 
@@ -1331,37 +1341,47 @@ Multiple Targets Sharing Resources
 Environment Variable Integration
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+labgrid has no ``!env`` tag. How a value comes from the environment depends on which file it is in:
+
 .. tab-set::
 
     .. tab-item:: Exporter
 
+        ``labgrid-exporter`` renders ``resources.yaml`` as a Jinja2 template with its own process
+        environment available as ``env``:
+
         .. code-block:: yaml
 
-            ## resources.yaml
             my_group:
               MassStorageDevice:
                 cls: MassStorageDevice
-                path: !env STORAGE_DEVICE
+                path: '{{ env["STORAGE_DEVICE"] }}'
+
+        Set ``STORAGE_DEVICE=/dev/sdb1`` in the exporter's environment before it starts. An
+        unset variable renders as an empty string, not an error.
 
     .. tab-item:: Local (Non-Exporter)
 
+        labgrid substitutes ``!template`` values in ``target.yaml`` from environment variables
+        whose names start with ``LG_`` (plus ``$BASE``, the config file's directory):
+
         .. code-block:: yaml
 
-            # template.yaml
             imports:
               - adi_lg_plugins
             targets:
               main:
                 resources:
                   MassStorageDevice:
-                    path: !env STORAGE_DEVICE
+                    path: !template $LG_STORAGE_DEVICE
 
-Set before use:
+        .. code-block:: bash
 
-.. code-block:: bash
+            export LG_STORAGE_DEVICE="/dev/sdb1"
+            labgrid-client -c target.yaml ...
 
-    export STORAGE_DEVICE="/dev/sdb1"
-    labgrid-client -c template.yaml ...
+        An unset ``LG_`` variable fails config loading with
+        ``refers to unknown variable 'LG_STORAGE_DEVICE'``.
 
 Common Configuration Issues
 ----------------------------
