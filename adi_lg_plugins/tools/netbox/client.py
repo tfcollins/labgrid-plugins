@@ -39,7 +39,7 @@ def _require_pynetbox():
     except ImportError as e:
         raise RuntimeError(
             "pynetbox is required for `adi-lg netbox` commands; "
-            "install with: pip install adi-labgrid-plugins[netbox]"
+            'run `pip install -e ".[netbox]"` in your labgrid-plugins checkout'
         ) from e
     return pynetbox
 

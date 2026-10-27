@@ -122,6 +122,11 @@ def add_hardware(
     """Interactively register a new board: NetBox + exporter host + labgrid place."""
     try:
         exporter_configs_dir = exporter_configs_dir or provision.find_exporter_configs_dir()
+        # Check the optional `netbox` extra before asking anything; a dry run
+        # never talks to NetBox, so it only needs the template renderer.
+        provision._require_jinja2()
+        if not dry_run:
+            client._require_pynetbox()
     except RuntimeError as e:
         raise click.ClickException(str(e)) from e
 
@@ -244,21 +249,24 @@ def add_hardware(
         coord_password = Prompt.ask("Coordinator API password", password=True)
 
     # 1. NetBox: register the device (source of truth for inventory).
-    nb = client.connect(netbox_url, netbox_token)
-    client.ensure_schema(nb)
-    device = client.create_or_update_device(
-        nb,
-        name,
-        carrier=carrier,
-        site_slug=site_slug,
-        custom_fields={
-            "carrier": carrier,
-            "daughter_board": daughter_board,
-            "boot_strategy": boot_strategy,
-            "exporter_host": ssh_target,
-            "runner_label": runner_label,
-        },
-    )
+    try:
+        nb = client.connect(netbox_url, netbox_token)
+        client.ensure_schema(nb)
+        device = client.create_or_update_device(
+            nb,
+            name,
+            carrier=carrier,
+            site_slug=site_slug,
+            custom_fields={
+                "carrier": carrier,
+                "daughter_board": daughter_board,
+                "boot_strategy": boot_strategy,
+                "exporter_host": ssh_target,
+                "runner_label": runner_label,
+            },
+        )
+    except RuntimeError as e:
+        raise click.ClickException(str(e)) from e
     console.print(
         f"[green]NetBox device ready:[/green] {netbox_url.rstrip('/')}/dcim/devices/{device.id}/"
     )
