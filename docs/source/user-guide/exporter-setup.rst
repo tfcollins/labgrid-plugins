@@ -13,7 +13,7 @@ convention is ``<BOARD>_<CHIP>`` to ensure consistency across exporters:
 
 .. code-block:: yaml
 
-   # resources.yaml for a VCU118+AD9081 setup
+   ## resources.yaml for a VCU118+AD9081 setup
    VCU118_AD9081:
      NetworkService:
        cls: NetworkService
