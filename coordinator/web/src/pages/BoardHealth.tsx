@@ -114,6 +114,7 @@ export default function BoardHealth() {
   const [checkPlaces, setCheckPlaces] = useState<string[]>([]);
   const [checkImage, setCheckImage] = useState<string>("");
   const [checkPowerDown, setCheckPowerDown] = useState<boolean>(true);
+  const [checkDrivers, setCheckDrivers] = useState<boolean>(true);
 
   // Schedule Form State
   const [schedName, setSchedName] = useState("");
@@ -145,6 +146,7 @@ export default function BoardHealth() {
     setCheckPlaces([placeName]);
     setCheckImage("");
     setCheckPowerDown(true);
+    setCheckDrivers(true);
     onOpenCheck();
   };
 
@@ -153,6 +155,7 @@ export default function BoardHealth() {
     setCheckPlaces(summary.places.map((p) => p.name));
     setCheckImage("");
     setCheckPowerDown(true);
+    setCheckDrivers(true);
     onOpenCheck();
   };
 
@@ -163,6 +166,7 @@ export default function BoardHealth() {
         places: checkPlaces,
         image: checkImage.trim() || null,
         power_down: checkPowerDown,
+        drivers: checkDrivers,
       });
       toast({
         title: "Health Check Triggered",
@@ -398,14 +402,25 @@ export default function BoardHealth() {
                           </Td>
                           <Td fontSize="xs">
                             {p.last_run?.ip_address ? (
-                              <HStack spacing={1}>
-                                <Text>{p.last_run.ip_address}</Text>
-                                {p.last_run.iiod_reachable && (
-                                  <Badge colorScheme="green" fontSize="xx-small">
-                                    IIOD
+                              <VStack align="start" spacing={1}>
+                                <HStack spacing={1}>
+                                  <Text>{p.last_run.ip_address}</Text>
+                                  {p.last_run.iiod_reachable && (
+                                    <Badge colorScheme="green" fontSize="xx-small">
+                                      IIOD
+                                    </Badge>
+                                  )}
+                                </HStack>
+                                {p.last_run.drivers && p.last_run.drivers.length > 0 && (
+                                  <Badge
+                                    colorScheme="purple"
+                                    fontSize="xx-small"
+                                    title={p.last_run.drivers.join(", ")}
+                                  >
+                                    {p.last_run.drivers.length} drivers
                                   </Badge>
                                 )}
-                              </HStack>
+                              </VStack>
                             ) : (
                               "—"
                             )}
@@ -612,7 +627,24 @@ export default function BoardHealth() {
                         <Td fontSize="xs">
                           {r.duration !== null ? `${r.duration.toFixed(1)}s` : "—"}
                         </Td>
-                        <Td fontSize="xs">{r.ip_address || "—"}</Td>
+                        <Td fontSize="xs">
+                          {r.ip_address ? (
+                            <HStack spacing={1}>
+                              <Text>{r.ip_address}</Text>
+                              {r.drivers && r.drivers.length > 0 && (
+                                <Badge
+                                  colorScheme="purple"
+                                  fontSize="xx-small"
+                                  title={r.drivers.join(", ")}
+                                >
+                                  {r.drivers.length} drivers
+                                </Badge>
+                              )}
+                            </HStack>
+                          ) : (
+                            "—"
+                          )}
+                        </Td>
                         <Td fontSize="xs" color="text.secondary">
                           {new Date(r.started_at * 1000).toLocaleString()}
                         </Td>
@@ -697,6 +729,36 @@ export default function BoardHealth() {
                     </Badge>
                   </Box>
                 </SimpleGrid>
+
+                {selectedRun.drivers && selectedRun.drivers.length > 0 && (
+                  <Box bg="purple.50" _dark={{ bg: "purple.900" }} p={3} borderRadius="md">
+                    <Text
+                      fontSize="xs"
+                      fontWeight="700"
+                      color="purple.700"
+                      _dark={{ color: "purple.200" }}
+                      mb={2}
+                      textTransform="uppercase"
+                    >
+                      Discovered Drivers ({selectedRun.drivers.length})
+                    </Text>
+                    <Flex wrap="wrap" gap={1.5}>
+                      {selectedRun.drivers.map((drv) => (
+                        <Badge
+                          key={drv}
+                          colorScheme="purple"
+                          variant="solid"
+                          fontSize="xs"
+                          px={2}
+                          py={0.5}
+                          borderRadius="md"
+                        >
+                          {drv}
+                        </Badge>
+                      ))}
+                    </Flex>
+                  </Box>
+                )}
 
                 {selectedRun.error_message && (
                   <Alert status="error" borderRadius="md" size="sm">
@@ -794,6 +856,15 @@ export default function BoardHealth() {
                 colorScheme="blue"
               >
                 Power down DUT after health check completes
+              </Checkbox>
+
+              <Checkbox
+                isChecked={checkDrivers}
+                onChange={(e) => setCheckDrivers(e.target.checked)}
+                size="sm"
+                colorScheme="blue"
+              >
+                Discover and record IIO device drivers (--drivers)
               </Checkbox>
             </VStack>
           </ModalBody>

@@ -110,11 +110,13 @@ async def test_runs_lifecycle(store: BoardHealthStore):
         duration=42.5,
         ip_address="192.168.1.100",
         iiod_reachable=True,
+        drivers=["cf-ad9361-lpc", "ad9361-phy"],
     )
     assert finished.status == "passed"
     assert finished.duration == 42.5
     assert finished.ip_address == "192.168.1.100"
     assert finished.iiod_reachable is True
+    assert finished.drivers == ["cf-ad9361-lpc", "ad9361-phy"]
     assert "Step 1" in finished.log_output
     assert "Step 2" in finished.log_output
 

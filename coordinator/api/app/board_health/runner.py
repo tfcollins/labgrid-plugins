@@ -54,6 +54,7 @@ class HealthCheckRunner:
         place_name: str,
         image: str | None = None,
         power_down: bool = True,
+        fetch_drivers: bool = True,
         timeout: float = 600.0,
     ) -> asyncio.Task:
         task = asyncio.create_task(
@@ -62,6 +63,7 @@ class HealthCheckRunner:
                 place_name=place_name,
                 image=image,
                 power_down=power_down,
+                fetch_drivers=fetch_drivers,
                 timeout=timeout,
             )
         )
@@ -76,6 +78,7 @@ class HealthCheckRunner:
         place_name: str,
         image: str | None,
         power_down: bool,
+        fetch_drivers: bool = True,
         timeout: float,
     ) -> None:
         start_time = time.monotonic()
@@ -108,6 +111,8 @@ class HealthCheckRunner:
             cmd.extend(["--image", image])
         if not power_down:
             cmd.append("--no-power-down")
+        if fetch_drivers:
+            cmd.append("--drivers")
 
         await self.store.append_run_log(run_id, f"Starting health check for '{place_name}'...\n")
         await self.store.append_run_log(run_id, f"Command: {' '.join(cmd)}\n\n")
@@ -246,6 +251,7 @@ class HealthCheckRunner:
                     error_message=parsed.get("error_message"),
                     boot_strategy=parsed.get("boot_strategy"),
                     image=parsed.get("image", image),
+                    drivers=parsed.get("drivers"),
                 )
             else:
                 status = "passed" if proc.returncode == 0 else "failed"

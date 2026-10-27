@@ -44,7 +44,8 @@ CREATE TABLE IF NOT EXISTS board_health_runs (
     log_output TEXT,
     trigger TEXT NOT NULL,         -- 'manual', 'scheduled'
     triggered_by TEXT,             -- username or schedule name
-    schedule_id INTEGER REFERENCES board_health_schedules(id) ON DELETE SET NULL
+    schedule_id INTEGER REFERENCES board_health_schedules(id) ON DELETE SET NULL,
+    drivers TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_board_health_runs_place ON board_health_runs(place_name, started_at DESC);
@@ -85,6 +86,7 @@ class HealthCheckRun:
     trigger: str
     triggered_by: str | None
     schedule_id: int | None
+    drivers: list[str] | None = None
 
 
 def _calc_next_run(cron_expr: str, base_time: float) -> float | None:
@@ -120,6 +122,13 @@ def _row_to_schedule(row: tuple) -> HealthCheckSchedule:
 
 
 def _row_to_run(row: tuple) -> HealthCheckRun:
+    drivers: list[str] | None = None
+    if len(row) > 15 and row[15]:
+        try:
+            drivers = json.loads(row[15])
+        except Exception:
+            drivers = None
+
     return HealthCheckRun(
         id=row[0],
         place_name=row[1],
@@ -136,6 +145,7 @@ def _row_to_run(row: tuple) -> HealthCheckRun:
         trigger=row[12],
         triggered_by=row[13],
         schedule_id=row[14],
+        drivers=drivers,
     )
 
 
@@ -147,6 +157,10 @@ class BoardHealthStore:
         async with aiosqlite.connect(self.db_path) as conn:
             await conn.execute("PRAGMA foreign_keys = ON")
             await conn.executescript(SCHEMA_SQL)
+            try:
+                await conn.execute("ALTER TABLE board_health_runs ADD COLUMN drivers TEXT")
+            except Exception:
+                pass
             await conn.commit()
 
     # --- Schedule operations ---
@@ -376,8 +390,10 @@ class BoardHealthStore:
         log_output: str | None = None,
         boot_strategy: str | None = None,
         image: str | None = None,
+        drivers: list[str] | None = None,
     ) -> HealthCheckRun | None:
         now = time.time()
+        drivers_json = json.dumps(drivers) if drivers is not None else None
         async with aiosqlite.connect(self.db_path) as conn:
             if log_output is not None:
                 await conn.execute(
@@ -386,7 +402,8 @@ class BoardHealthStore:
                     SET status = ?, finished_at = ?, duration = ?, ip_address = ?,
                         iiod_reachable = ?, error_message = ?, log_output = ?,
                         boot_strategy = COALESCE(?, boot_strategy),
-                        image = COALESCE(?, image)
+                        image = COALESCE(?, image),
+                        drivers = COALESCE(?, drivers)
                     WHERE id = ?
                     """,
                     (
@@ -399,6 +416,7 @@ class BoardHealthStore:
                         log_output,
                         boot_strategy,
                         image,
+                        drivers_json,
                         run_id,
                     ),
                 )
@@ -409,7 +427,8 @@ class BoardHealthStore:
                     SET status = ?, finished_at = ?, duration = ?, ip_address = ?,
                         iiod_reachable = ?, error_message = ?,
                         boot_strategy = COALESCE(?, boot_strategy),
-                        image = COALESCE(?, image)
+                        image = COALESCE(?, image),
+                        drivers = COALESCE(?, drivers)
                     WHERE id = ?
                     """,
                     (
@@ -421,6 +440,7 @@ class BoardHealthStore:
                         error_message,
                         boot_strategy,
                         image,
+                        drivers_json,
                         run_id,
                     ),
                 )
@@ -433,7 +453,7 @@ class BoardHealthStore:
                 """
                 SELECT id, place_name, status, started_at, finished_at, duration, boot_strategy,
                        image, ip_address, iiod_reachable, error_message, log_output, trigger,
-                       triggered_by, schedule_id
+                       triggered_by, schedule_id, drivers
                 FROM board_health_runs
                 WHERE id = ?
                 """,
@@ -463,7 +483,7 @@ class BoardHealthStore:
         sql = f"""
             SELECT id, place_name, status, started_at, finished_at, duration, boot_strategy,
                    image, ip_address, iiod_reachable, error_message, log_output, trigger,
-                   triggered_by, schedule_id
+                   triggered_by, schedule_id, drivers
             FROM board_health_runs
             {where}
             ORDER BY started_at DESC
@@ -483,7 +503,7 @@ class BoardHealthStore:
                 """
                 SELECT r.id, r.place_name, r.status, r.started_at, r.finished_at, r.duration,
                        r.boot_strategy, r.image, r.ip_address, r.iiod_reachable, r.error_message,
-                       r.log_output, r.trigger, r.triggered_by, r.schedule_id
+                       r.log_output, r.trigger, r.triggered_by, r.schedule_id, r.drivers
                 FROM board_health_runs r
                 INNER JOIN (
                     SELECT place_name, MAX(started_at) as max_started
