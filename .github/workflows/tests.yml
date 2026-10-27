@@ -117,6 +117,7 @@ jobs:
           tests/test_transport_matrix.py \
           tests/test_docs_diagrams.py \
           tests/test_docs_homepage.py \
+          tests/test_docs_yaml_examples.py \
           tests/hw_ci/test_coordinator_writes.py \
           tests/test_netbox_client.py \
           tests/test_netbox_provision.py \
