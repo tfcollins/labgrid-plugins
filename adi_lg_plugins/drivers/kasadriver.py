@@ -10,13 +10,17 @@ via ``asyncio.run``. Every operation connects fresh, updates, acts on the
 resolved sockets, then disconnects — power operations are infrequent, so the
 reconnect cost is irrelevant and it avoids stale-connection / event-loop reuse
 issues.
+
+``python-kasa`` is imported on first local use, not at import time: it is an
+optional extra, and a client driving a RemotePlace never needs it (the
+exporter's power agent talks to the device), so the driver must register
+without it.
 """
 
 import asyncio
 import time
 
 import attr
-from kasa import Discover
 from labgrid.driver.common import Driver
 from labgrid.driver.powerdriver import PowerResetMixin
 from labgrid.factory import target_factory
@@ -24,6 +28,18 @@ from labgrid.protocol import PowerProtocol
 from labgrid.step import step
 
 from ._power_agent import ExporterPowerAgentMixin
+
+
+def _discover():
+    """Return ``kasa.Discover``, explaining the optional extra if it is missing."""
+    try:
+        from kasa import Discover
+    except ImportError as e:
+        raise RuntimeError(
+            "python-kasa is required to control a local KasaOutlet; "
+            'install it with: pip install "adi-labgrid-plugins[kasa]"'
+        ) from e
+    return Discover
 
 
 @target_factory.reg_driver
@@ -54,7 +70,7 @@ class KasaPowerDriver(ExporterPowerAgentMixin, Driver, PowerResetMixin, PowerPro
         if res.username and res.password:
             kwargs["username"] = res.username
             kwargs["password"] = res.password
-        device = await Discover.discover_single(res.host, **kwargs)
+        device = await _discover().discover_single(res.host, **kwargs)
         if device is None:
             raise Exception(f"No Kasa device found at {res.host!r}")
         await device.update()

@@ -14,6 +14,8 @@ from labgrid.binding import BindingState
 
 pytest.importorskip("kasa")
 
+import kasa
+
 from adi_lg_plugins.drivers import kasadriver as kd
 from adi_lg_plugins.drivers.kasadriver import KasaPowerDriver
 from adi_lg_plugins.resources.kasa import KasaOutlet
@@ -66,7 +68,7 @@ def _patch_device(monkeypatch, device):
         calls["kwargs"] = kwargs
         return device
 
-    monkeypatch.setattr(kd.Discover, "discover_single", fake_discover_single)
+    monkeypatch.setattr(kasa.Discover, "discover_single", fake_discover_single)
     return calls
 
 

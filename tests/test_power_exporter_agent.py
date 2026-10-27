@@ -247,7 +247,7 @@ def test_proxy_required_fails_before_agent_creation():
             KasaPowerDriver,
             KasaOutlet,
             {"host": "10.0.0.12"},
-            "adi_lg_plugins.drivers.kasadriver.Discover.discover_single",
+            "kasa.Discover.discover_single",
         ),
         (
             VesyncPowerDriver,
