@@ -102,6 +102,12 @@ def render_env(
     # `VesyncPowerDriver` for back-compat with the first generation of
     # ADI lab places.
     power_driver = place.extra_tags.get("power-driver", "VesyncPowerDriver")
+    # Relay-style power (DigitalOutputPowerDriver) also needs the relay's own
+    # DigitalOutputProtocol driver, created first so the power driver can bind
+    # it: the optional `power-output-driver` tag names it (e.g.
+    # `ModbusCoilDriver`). Empty for every other power type - see
+    # adi_lg_plugins/hw_ci/power.py.
+    power_output_driver = place.extra_tags.get("power-output-driver", "")
     # Per-place local TFTP root used by templates that need a writable
     # root for KuiperDLDriver (BootFPGASoCTFTP). Per-place to avoid two
     # parallel runs colliding; overridable via extra_subs / a tag.
@@ -154,6 +160,7 @@ def render_env(
         "hdl_config": place.hdl_config or "",
         "board_location": place.board_location or "",
         "power_driver": power_driver,
+        "power_output_driver": f"{power_output_driver}: {{}}" if power_output_driver else "",
         "tftp_root": tftp_root,
         "ps7_init_tcl": place.extra_tags.get("ps7-init-tcl", ""),
         "uboot_elf": place.extra_tags.get("uboot-elf", ""),

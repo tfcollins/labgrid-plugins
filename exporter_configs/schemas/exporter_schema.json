@@ -11,7 +11,9 @@
         "^[a-zA-Z0-9_-]+$": {
           "type": "object",
           "description": "Individual resource definition",
-          "required": ["cls"],
+          "required": [
+            "cls"
+          ],
           "properties": {
             "cls": {
               "type": "string",
@@ -25,7 +27,6 @@
     }
   },
   "additionalProperties": false,
-
   "$defs": {
     "known_resource_classes": {
       "enum": [
@@ -34,12 +35,34 @@
         "XilinxDeviceJTAG",
         "XilinxVivadoTool",
         "USBSDMuxDevice",
+        "USBMassStorage",
         "MassStorageDevice",
-        "CyberPowerOutlet",
-        "VesyncOutlet",
-        "HomeAssistantOutlet",
         "TFTPServerResource",
-        "KuiperRelease"
+        "KuiperRelease",
+        "TickArtifacts",
+        "APCOutlet",
+        "CyberPowerOutlet",
+        "DeditecRelais8",
+        "Eth008DigitalOutput",
+        "HIDRelay",
+        "HomeAssistantOutlet",
+        "HttpDigitalOutput",
+        "KasaOutlet",
+        "LAAPowerPort",
+        "LXAIOBusPIO",
+        "MatchedSysfsGPIO",
+        "ModbusTCPCoil",
+        "NetworkPowerPort",
+        "OneWirePIO",
+        "PDUDaemonPort",
+        "SiSPMPowerPort",
+        "SigrokUSBSerialDevice",
+        "SysfsGPIO",
+        "TasmotaPowerPort",
+        "USBPowerPort",
+        "VesyncOutlet",
+        "WaveshareModbusTCPCoil",
+        "YKUSHPowerPort"
       ]
     }
   }

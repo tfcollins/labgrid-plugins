@@ -1,6 +1,7 @@
 """Contract test: each stock exporter template serves its boot strategy.
 
-For every ``exporter_configs/templates/*.yaml`` and each supported power type,
+For every ``exporter_configs/templates/*.yaml`` and every power type in
+``adi_lg_plugins.hw_ci.power``,
 render the template the way ``adi-lg netbox add-hardware`` does, load it the
 way ``labgrid-exporter`` does, then render the strategy's client env with
 ``adi-lg-hw-ci render-env`` and check every driver's resource bindings are
@@ -11,7 +12,6 @@ binding).
 from __future__ import annotations
 
 import logging
-import re
 from pathlib import Path
 
 import pytest
@@ -21,6 +21,7 @@ from labgrid.remote.config import ResourceConfig
 from labgrid.remote.exporter import SerialPortExport, USBGenericExport, exports
 
 import adi_lg_plugins  # noqa: F401 - registers the ADI drivers/resources
+from adi_lg_plugins.hw_ci import power as power_types
 from adi_lg_plugins.hw_ci.render_env import render_env
 from adi_lg_plugins.hw_ci.schema import KNOWN_STRATEGIES, Place
 from adi_lg_plugins.tools.netbox import provision
@@ -29,24 +30,28 @@ logging.getLogger("adi_lg_plugins").setLevel(logging.ERROR)
 
 EXPORTER_CONFIGS_DIR = Path(__file__).resolve().parents[1] / "exporter_configs"
 TEMPLATES = sorted((EXPORTER_CONFIGS_DIR / "templates").glob("*.yaml"))
-POWER_DRIVERS = {"vesync": "VesyncPowerDriver", "homeassistant": "HomeAssistantPowerDriver"}
-# Fields without a template default.
+POWER = sorted(power_types.POWER_TYPES)
+# Board fields without a template default.
 REQUIRED_FIELDS = {
     "target_ip": "10.0.0.5",
-    "power_outlet": "Bench DUT",
     "bitstream_path": "/srv/fabric/system_top.bit",
     "kernel_path": "/srv/fabric/simpleImage.strip",
 }
+# Every power credential, as the exporter host's environment would provide it.
 EXPORTER_ENV = {
-    "VESYNC_USERNAME": "lab@example.com",
-    "VESYNC_PASSWORD": "vesync-secret",
-    "HOMEASSISTANT_URL": "http://ha.example.test:8123",
-    "HOMEASSISTANT_TOKEN": "ha-secret",
+    c.env: f"{c.env.lower()}-secret"
+    for t in power_types.POWER_TYPES.values()
+    for c in t.credentials
+}
+POWER_CLIENT_CLS = {
+    t.exporter_cls: t.client_cls for t in power_types.POWER_TYPES.values() if t.exporter_cls
 }
 
 
 def _client_cls(exported_cls: str) -> str:
     """Class name a client sees for a resource exported as ``exported_cls``."""
+    if exported_cls in POWER_CLIENT_CLS:
+        return POWER_CLIENT_CLS[exported_cls]
     export = exports.get(exported_cls)
     if export is not None and issubclass(export, SerialPortExport):
         return "NetworkSerialPort"
@@ -55,9 +60,15 @@ def _client_cls(exported_cls: str) -> str:
     return exported_cls
 
 
+def _power_answers(power: str) -> dict[str, str]:
+    from test_power_types import sample_context
+
+    return sample_context(power_types.POWER_TYPES[power])
+
+
 def _load_as_exporter(template: Path, power: str):
     path, groups = provision.render_and_validate(
-        template, {**REQUIRED_FIELDS, "power": power}, EXPORTER_CONFIGS_DIR
+        template, {**REQUIRED_FIELDS, **_power_answers(power)}, EXPORTER_CONFIGS_DIR
     )
     env = {"env": EXPORTER_ENV, "isolated": False, "hostname": "h", "name": "n"}
     return path, groups, ResourceConfig(str(path), env).data
@@ -70,7 +81,7 @@ def _client_env(strategy: str, power: str) -> dict:
         daughter_board="ad9081",
         boot_strategy=strategy,
         hdl_config="m8_l4",
-        extra_tags={"power-driver": POWER_DRIVERS[power]},
+        extra_tags=provision.power_tags(power),
     )
     return yaml.safe_load(render_env(place))["targets"]["main"]
 
@@ -91,7 +102,7 @@ def test_template_declares_a_known_boot_strategy(template):
     assert provision.template_strategy(template) in KNOWN_STRATEGIES
 
 
-@pytest.mark.parametrize("power", sorted(POWER_DRIVERS))
+@pytest.mark.parametrize("power", POWER)
 @pytest.mark.parametrize("template", TEMPLATES, ids=lambda p: p.stem)
 def test_template_exports_everything_its_strategy_binds(template, power):
     strategy = provision.template_strategy(template)
@@ -115,7 +126,7 @@ def test_template_exports_everything_its_strategy_binds(template, power):
     assert not problems, f"{template.name} ({power}) for {strategy}: {problems}"
 
 
-@pytest.mark.parametrize("power", sorted(POWER_DRIVERS))
+@pytest.mark.parametrize("power", POWER)
 @pytest.mark.parametrize("template", TEMPLATES, ids=lambda p: p.stem)
 def test_exported_adi_resources_accept_their_rendered_parameters(template, power):
     """The client builds ADI resources from these exact params; bad fields fail there."""
@@ -129,24 +140,17 @@ def test_exported_adi_resources_accept_their_rendered_parameters(template, power
             cls(Target(f"t-{template.stem}-{power}-{name}"), name=None, **params)
 
 
+@pytest.mark.parametrize(
+    "power", [t.key for t in power_types.POWER_TYPES.values() if t.credentials]
+)
 @pytest.mark.parametrize("template", TEMPLATES, ids=lambda p: p.stem)
-def test_power_credentials_come_from_the_exporter_environment(template):
+def test_power_credentials_come_from_the_exporter_environment(template, power):
     """Secrets are not written into the deployed file; labgrid reads them at start."""
-    path, groups, data = _load_as_exporter(template, "vesync")
+    t = power_types.POWER_TYPES[power]
+    path, groups, data = _load_as_exporter(template, power)
     rendered = path.read_text()
-    assert "vesync-secret" not in rendered
-    assert re.search(r"""\{\{ env\["VESYNC_PASSWORD"\] \}\}""", rendered)
-    outlet = data[groups[0]]["VesyncOutlet"]
-    assert (outlet["username"], outlet["password"], outlet["outlet_names"]) == (
-        "lab@example.com",
-        "vesync-secret",
-        "Bench DUT",
-    )
-
-    _, groups, data = _load_as_exporter(template, "homeassistant")
-    outlet = data[groups[0]]["HomeAssistantOutlet"]
-    assert (outlet["url"], outlet["token"], outlet["entity_id"]) == (
-        "http://ha.example.test:8123",
-        "ha-secret",
-        "Bench DUT",
-    )
+    outlet = data[groups[0]][t.exporter_cls]
+    for c in t.credentials:
+        assert f"{c.env.lower()}-secret" not in rendered
+        assert f'{{{{ env["{c.env}"] }}}}' in rendered
+        assert outlet[c.param] == f"{c.env.lower()}-secret"

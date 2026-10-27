@@ -28,6 +28,7 @@ targets:
 
     drivers:
       XilinxJTAGDriver: {}
+      ${power_output_driver}
       ${power_driver}: {}
       SerialDriver: {}
       ADIShellDriver:

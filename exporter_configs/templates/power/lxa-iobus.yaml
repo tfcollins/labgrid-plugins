@@ -1,0 +1,8 @@
+## Power fragment: LXA IOBus PIO (lxa-iobus), included by the stock exporter
+## templates. Generated from adi_lg_plugins/hw_ci/power.py - edit there, then run
+## `python -m adi_lg_plugins.hw_ci.power exporter_configs/templates/power`.
+  LXAIOBusPIO:
+    cls: LXAIOBusPIO
+    host: "{{ power_host }}"
+    node: "{{ power_node }}"
+    pin: "{{ power_pin }}"

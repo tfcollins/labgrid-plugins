@@ -19,9 +19,6 @@ DriverConfigFactory = Callable[[ResourceModel], dict[str, Any]]
 RESOURCE_DRIVER_MAP: dict[str, list[tuple[str, DriverConfigFactory]]] = {
     "NetworkSerialPort": [("SerialDriver", lambda _r: {})],
     "NetworkService": [("SSHDriver", lambda _r: {})],
-    "APCOutlet": [("APCDriver", lambda _r: {})],
-    "VesyncOutlet": [("VesyncPowerDriver", lambda _r: {})],
-    "HomeAssistantOutlet": [("HomeAssistantPowerDriver", lambda _r: {})],
     "NetworkUSBSDMuxDevice": [("USBSDMuxDriver", lambda _r: {})],
     "NetworkUSBMassStorage": [
         (
@@ -34,6 +31,47 @@ RESOURCE_DRIVER_MAP: dict[str, list[tuple[str, DriverConfigFactory]]] = {
     "XilinxVivadoTool": [],  # consumed by XilinxJTAGDriver, no standalone driver
     "TFTPServerResource": [("TFTPServerDriver", lambda _r: {})],
 }
+
+
+def _no_config(_resource: ResourceModel) -> dict[str, Any]:
+    return {}
+
+
+# Power resource class (coordinator view) -> client driver(s), in creation
+# order. Relay-style outputs need their DigitalOutputProtocol driver before
+# DigitalOutputPowerDriver, which binds it. Mirrors adi_lg_plugins/hw_ci/power.py
+# (this package can't import it); tests/test_power_types.py checks the two agree.
+_RELAY_DRIVERS = {
+    "ModbusTCPCoil": "ModbusCoilDriver",
+    "WaveshareModbusTCPCoil": "WaveShareModbusCoilDriver",
+    "HttpDigitalOutput": "HttpDigitalOutputDriver",
+    "NetworkSysfsGPIO": "GpioDigitalOutputDriver",
+    "NetworkLXAIOBusPIO": "LXAIOBusPIODriver",
+    "OneWirePIO": "OneWirePIODriver",
+    "NetworkDeditecRelais8": "DeditecRelaisDriver",
+    "NetworkHIDRelay": "HIDRelayDriver",
+    "Eth008DigitalOutput": "Eth008DigitalOutputDriver",
+}
+POWER_RESOURCE_DRIVERS: dict[str, list[tuple[str, DriverConfigFactory]]] = {
+    "APCOutlet": [("APCDriver", _no_config)],
+    "CyberPowerOutlet": [("CyberPowerDriver", _no_config)],
+    "NetworkPowerPort": [("NetworkPowerDriver", _no_config)],
+    "PDUDaemonPort": [("PDUDaemonDriver", _no_config)],
+    "VesyncOutlet": [("VesyncPowerDriver", _no_config)],
+    "KasaOutlet": [("KasaPowerDriver", _no_config)],
+    "HomeAssistantOutlet": [("HomeAssistantPowerDriver", _no_config)],
+    "TasmotaPowerPort": [("TasmotaPowerDriver", _no_config)],
+    "NetworkUSBPowerPort": [("USBPowerDriver", _no_config)],
+    "NetworkYKUSHPowerPort": [("YKUSHPowerDriver", _no_config)],
+    "NetworkSiSPMPowerPort": [("SiSPMPowerDriver", _no_config)],
+    "NetworkSigrokUSBSerialDevice": [("SigrokPowerDriver", _no_config)],
+    "LAAPowerPort": [("LAAPowerDriver", _no_config)],
+    **{
+        cls: [(relay, _no_config), ("DigitalOutputPowerDriver", _no_config)]
+        for cls, relay in _RELAY_DRIVERS.items()
+    },
+}
+RESOURCE_DRIVER_MAP.update(POWER_RESOURCE_DRIVERS)
 
 SHELL_DEFAULTS: dict[str, dict[str, str]] = {
     "BootFPGASoC": {
@@ -148,10 +186,7 @@ def infer_strategy(resource_classes: set[str]) -> str | None:
     has_jtag = "XilinxDeviceJTAG" in resource_classes
     has_vivado = "XilinxVivadoTool" in resource_classes
     has_net = "NetworkService" in resource_classes
-    has_power = any(
-        resource_class in resource_classes
-        for resource_class in ("APCOutlet", "HomeAssistantOutlet", "VesyncOutlet")
-    )
+    has_power = not resource_classes.isdisjoint(POWER_RESOURCE_DRIVERS)
     has_tftp = "TFTPServerResource" in resource_classes
 
     # Zynq-7000 boards staged for JTAG-bootstrap + SD-boot have all of

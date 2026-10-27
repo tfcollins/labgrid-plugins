@@ -1,0 +1,8 @@
+## Power fragment: labgrid NetworkPowerPort (Gude, NETIO, Raritan, Eaton, ...) (network-pdu), included by the stock exporter
+## templates. Generated from adi_lg_plugins/hw_ci/power.py - edit there, then run
+## `python -m adi_lg_plugins.hw_ci.power exporter_configs/templates/power`.
+  NetworkPowerPort:
+    cls: NetworkPowerPort
+    model: "{{ power_model }}"
+    host: "{{ power_host }}"
+    index: {{ power_index }}

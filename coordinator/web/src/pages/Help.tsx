@@ -424,10 +424,12 @@ labgrid-client -x <coordinator>:20408 -p vcu118-lab1 \\
               group is named <Code fontSize="xs">{"<CARRIER>_<CHIP>"}</Code> from
               the <Code fontSize="xs">carrier</Code> and{" "}
               <Code fontSize="xs">chip</Code> fields. Set{" "}
-              <Code fontSize="xs">power</Code> (vesync or homeassistant) and{" "}
-              <Code fontSize="xs">power_outlet</Code>; outlet credentials are read
-              from the exporter&apos;s environment. Fill them in and use directly
-              with <Code fontSize="xs">labgrid-exporter</Code>.
+              <Code fontSize="xs">power</Code> to one of the power fragments in{" "}
+              <Code fontSize="xs">templates/power/</Code> (PDUs, smart plugs, USB
+              hub ports, relays, bench supplies) and its{" "}
+              <Code fontSize="xs">power_*</Code> fields; outlet credentials are
+              read from the exporter&apos;s environment. Fill them in and use
+              directly with <Code fontSize="xs">labgrid-exporter</Code>.
             </Text>
           </Section>
         </VStack>

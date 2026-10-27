@@ -1,0 +1,7 @@
+## Power fragment: 1-Wire PIO (onewire), included by the stock exporter
+## templates. Generated from adi_lg_plugins/hw_ci/power.py - edit there, then run
+## `python -m adi_lg_plugins.hw_ci.power exporter_configs/templates/power`.
+  OneWirePIO:
+    cls: OneWirePIO
+    host: "{{ power_host }}"
+    path: "{{ power_path }}"

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from click.testing import CliRunner
 
 from adi_lg_plugins.tools.netbox import cli
@@ -20,8 +21,6 @@ _ANSWERS = {
     "Hardware / place / exporter name": "zc706-lab3-001",
     "Carrier": "zc706",
     "Daughter board / chip": "adrv9009",
-    "Power control": "homeassistant",
-    "Power outlet": "switch.zc706_bench",
     "GitHub runner label": "hw-zc706",
     "NetBox site slug": "lab3",
     "Exporter host SSH target": "labadmin@lab-host-03",
@@ -29,14 +28,40 @@ _ANSWERS = {
 }
 
 
-def test_add_hardware_matches_resources_under_the_deployed_exporter_name(monkeypatch):
+# Per power type: (category, answers to that type's own prompts, expected tags,
+# credential the stubbed host reports missing).
+_POWER_CASES = {
+    "homeassistant": (
+        "Smart plug / home automation",
+        {"  Home Assistant entity_id": "switch.zc706_bench"},
+        {"power-driver": "HomeAssistantPowerDriver"},
+        "HOMEASSISTANT_TOKEN",
+    ),
+    "modbus": (
+        "Relay / digital output",
+        {"  Device hostname": "10.0.0.50", "  Coil number": "2"},
+        {"power-driver": "DigitalOutputPowerDriver", "power-output-driver": "ModbusCoilDriver"},
+        None,
+    ),
+}
+
+
+@pytest.mark.parametrize("power", sorted(_POWER_CASES))
+def test_add_hardware_matches_resources_under_the_deployed_exporter_name(monkeypatch, power):
+    category, power_answers, expected_tags, missing = _POWER_CASES[power]
+    answers = {
+        "Power category": category,
+        "Power type": power,
+        **power_answers,
+        **_ANSWERS,
+    }
     calls = {}
     asked = []
 
     def _ask(prompt, *args, **kwargs):
         asked.append(prompt)
         calls.setdefault("defaults", {})[prompt] = kwargs.get("default")
-        for prefix, answer in _ANSWERS.items():
+        for prefix, answer in answers.items():
             if prompt.startswith(prefix):
                 return answer
         return kwargs.get("default", "")
@@ -55,7 +80,7 @@ def test_add_hardware_matches_resources_under_the_deployed_exporter_name(monkeyp
 
     monkeypatch.setattr(cli.provision, "deploy_exporter", deploy)
     monkeypatch.setattr(
-        cli.provision, "missing_power_env", lambda host, power: ["HOMEASSISTANT_TOKEN"]
+        cli.provision, "missing_power_env", lambda host, power: [missing] if missing else []
     )
     monkeypatch.setattr(cli.provision, "verify_exporter_active", lambda host, name: None)
     monkeypatch.setattr(cli, "resolve_coordinator", lambda coord: "coord:20408")
@@ -100,6 +125,7 @@ def test_add_hardware_matches_resources_under_the_deployed_exporter_name(monkeyp
     assert calls["defaults"]["Boot strategy"] == "BootFPGASoC"
     assert calls["tags"]["boot-strategy"] == "BootFPGASoC"
     # render-env picks the power driver from this tag.
-    assert calls["tags"]["power-driver"] == "HomeAssistantPowerDriver"
+    assert {k: v for k, v in calls["tags"].items() if k.startswith("power")} == expected_tags
     # A missing credential on the exporter host is reported, not fatal.
-    assert "HOMEASSISTANT_TOKEN" in result.output
+    if missing:
+        assert missing in result.output

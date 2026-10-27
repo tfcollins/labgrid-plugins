@@ -1,0 +1,9 @@
+## Power fragment: TP-Link Kasa plug / strip (kasa), included by the stock exporter
+## templates. Generated from adi_lg_plugins/hw_ci/power.py - edit there, then run
+## `python -m adi_lg_plugins.hw_ci.power exporter_configs/templates/power`.
+  KasaOutlet:
+    cls: KasaOutlet
+    host: "{{ power_host }}"
+    outlets: {{ power_outlet | default(none) | tojson }}
+    username: '{{ env["KASA_USERNAME"] }}'
+    password: '{{ env["KASA_PASSWORD"] }}'

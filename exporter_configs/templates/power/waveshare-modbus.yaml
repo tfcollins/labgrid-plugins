@@ -1,0 +1,8 @@
+## Power fragment: Waveshare Modbus/TCP relay (waveshare-modbus), included by the stock exporter
+## templates. Generated from adi_lg_plugins/hw_ci/power.py - edit there, then run
+## `python -m adi_lg_plugins.hw_ci.power exporter_configs/templates/power`.
+  WaveshareModbusTCPCoil:
+    cls: WaveshareModbusTCPCoil
+    host: "{{ power_host }}"
+    coil: {{ power_coil }}
+    invert: {{ (power_invert | default('false')) | lower }}

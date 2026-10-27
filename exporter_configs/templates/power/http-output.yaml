@@ -1,0 +1,9 @@
+## Power fragment: HTTP-controlled output (http-output), included by the stock exporter
+## templates. Generated from adi_lg_plugins/hw_ci/power.py - edit there, then run
+## `python -m adi_lg_plugins.hw_ci.power exporter_configs/templates/power`.
+  HttpDigitalOutput:
+    cls: HttpDigitalOutput
+    url: "{{ power_url }}"
+    body_asserted: "{{ power_body_on }}"
+    body_deasserted: "{{ power_body_off }}"
+    method: {{ power_method | default('PUT') | tojson }}

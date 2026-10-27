@@ -40,11 +40,12 @@ Prerequisites
 - Coordinator API credentials for a user who can create places (``LG_API_USERNAME`` /
   ``LG_API_PASSWORD``, or ``--coord-user`` / ``--coord-password``) - every write endpoint under
   ``/places`` requires an authenticated session, unlike the read-only ``/api/places``.
-- Outlet credentials in ``/etc/labgrid/exporter.env`` on the exporter host (root-owned,
-  mode ``600``): ``VESYNC_USERNAME`` / ``VESYNC_PASSWORD``, or ``HOMEASSISTANT_URL`` /
-  ``HOMEASSISTANT_TOKEN``. The generated unit loads this file; the deployed config only
-  references the variables, so secrets never pass through the command. Missing variables are
-  reported as a warning after deploy.
+- Power credentials, for the types that have them, in ``/etc/labgrid/exporter.env`` on the
+  exporter host (root-owned, mode ``600``) - e.g. ``VESYNC_USERNAME`` / ``VESYNC_PASSWORD``,
+  ``HOMEASSISTANT_URL`` / ``HOMEASSISTANT_TOKEN``, or the optional ``KASA_*`` / ``TASMOTA_*``
+  (see :ref:`power-types`). The generated unit loads this file; the deployed config only
+  references the variables, so secrets never pass through the command. Missing required
+  variables are reported as a warning after deploy.
 - SSH access to the exporter host as ``user@host``, with:
 
   - **passwordless sudo** for that user (needed to write under ``/etc`` and run ``systemctl``),
@@ -64,8 +65,19 @@ Usage
     Carrier (board/FPGA, e.g. zcu102, vcu118): zcu102
     Daughter board / chip (e.g. ad9081): ad9081
     Boot strategy [BootFPGASoC/BootFPGASoCSSH/.../BootTickFPGASSH] (BootFPGASoC):
-    Power control [homeassistant/vesync] (vesync): homeassistant
-    Power outlet (Home Assistant entity_id, e.g. switch.lab_outlet_1): switch.board_3
+    Power control
+      Network PDU: apc, cyberpower, network-pdu, pdudaemon
+      Smart plug / home automation: vesync, kasa, homeassistant, tasmota
+      USB-switched port: usb-hub, ykush, sispm
+      Relay / digital output: modbus, waveshare-modbus, http-output, gpio, gpio-matched,
+      lxa-iobus, onewire, deditec, hid-relay, eth008
+      Bench power supply: sigrok
+      Other: laa, manual
+    Power category [Network PDU/.../Other] (Smart plug / home automation): Relay / digital output
+    Power type [modbus/waveshare-modbus/.../eth008] (modbus): modbus
+      Device hostname or IP: 10.0.0.50
+      Coil number: 2
+      Invert output (true/false) (false):
     GitHub runner label (hw-zcu102):
     NetBox site slug (must already exist): lab3
     Exporter host SSH target (user@host): labadmin@lab-host-03
@@ -82,9 +94,9 @@ Usage
       NetBox device: zcu102-lab3-001  (carrier=zcu102, chip=ad9081, site=lab3)
       Exporter: labadmin@lab-host-03 -> systemd unit labgrid-exporter-zcu102-lab3-001
       Coordinator place: zcu102-lab3-001  (tags: daughter-board=ad9081, carrier=zcu102,
-      boot-strategy=BootFPGASoC, runner=hw-zcu102, power-driver=HomeAssistantPowerDriver)
-      Power: homeassistant outlet 'switch.board_3'; credentials HOMEASSISTANT_URL,
-      HOMEASSISTANT_TOKEN from /etc/labgrid/exporter.env on the exporter host
+      boot-strategy=BootFPGASoC, runner=hw-zcu102, power-driver=DigitalOutputPowerDriver,
+      power-output-driver=ModbusCoilDriver)
+      Power: Modbus/TCP coil (modbus), via ModbusCoilDriver + DigitalOutputPowerDriver
       Rendered + validated exporter config: /tmp/adi-lg-netbox-xxxxx/soc-sdmux.yaml
       Resource group(s): ZCU102_AD9081
       Place match(es): zcu102-lab3-001/ZCU102_AD9081/*
@@ -105,8 +117,12 @@ The templates name their resource group ``<CARRIER>_<CHIP>`` (e.g. ``ZCU102_AD90
 the ``carrier`` and ``chip`` fields. The command fills those from the *Carrier* and
 *Daughter board / chip* answers, so they are not asked again as template fields. Choose the
 template by boot strategy (see :doc:`exporter-setup`); the *Boot strategy* prompt defaults to
-the one the template declares. *Power control* and *Power outlet* fill the template's
-``power`` and ``power_outlet`` fields and set the place's ``power-driver`` tag.
+the one the template declares. *Power category* and *Power type* choose the template's
+``power`` fragment - any of the types in :ref:`power-types`, covering this package's outlets
+and all of labgrid's power options - and that type's own fields follow. The command sets the
+place's ``power-driver`` tag, plus ``power-output-driver`` for relay types. Credentials,
+reachability notes (e.g. ``tasmota`` and ``laa`` connect from the client) and required host
+tools are printed in the plan.
 
 The boot-strategy prompt only accepts the ADI strategy classes this package registers
 (``BootFPGASoC``, ``BootFPGASoCSSH``, ``BootFPGASoCTFTP``, ``BootSelMap``, ``BootFabric``,
@@ -199,7 +215,7 @@ Through the coordinator REST API (:doc:`coordinator`), authenticated as the coor
 - ``POST /api/places/<name>/matches`` - one ``<name>/<group>/*`` match per resource group in
   the rendered config (``<name>`` is the exporter name the unit registers).
 - ``PUT /api/places/<name>/tags`` - ``daughter-board`` and ``carrier`` (lowercased),
-  ``boot-strategy``, ``runner``, and ``power-driver``, the keys the hardware-CI preflight matches on (see the tag
+  ``boot-strategy``, ``runner``, ``power-driver``, and (relay types) ``power-output-driver``, the keys the hardware-CI preflight matches on (see the tag
   table in :doc:`onboarding-a-lab-host`, Step 3).
 
 Finally it re-reads ``/api/places`` and prints the new place's tags, or a warning if the place
