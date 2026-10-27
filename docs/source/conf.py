@@ -74,6 +74,7 @@ autodoc_mock_imports = [
     "pylibiio",
     "iio",
     "pexpect",
+    "kasa",
 ]
 
 # -- Autosummary settings ----------------------------------------------------

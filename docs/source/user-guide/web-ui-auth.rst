@@ -29,7 +29,7 @@ Route access falls into three tiers:
        exporter detail pages
    * - Signed-in user
      - Reservations, place creation wizard, place detail, console, recordings
-       and playback
+       and playback, node deployments
    * - Admin only
      - :ref:`web-ui-admin-users` (``/admin/users``)
 

@@ -2325,6 +2325,148 @@ SoftwareProvisioningStrategy
 - Each transition cascades through the prior states, so ``transition("tested")`` from ``unknown`` runs everything end-to-end.
 - ``packages``, ``repos``, ``build_steps``, and ``test_steps`` all default to empty lists, so the strategy is a no-op until configured.
 
+BootOpenFPGALoader Strategy
+---------------------------
+
+**Purpose**: Program FPGA fabric (PL SRAM) with openFPGALoader through one exactly selected
+JTAG probe, as an open-source alternative to the Vivado/``xsdb`` path of ``BootFabric``.
+
+**State Machine**: ``unknown`` → ``powered_off`` → ``powered_on`` → ``programmed`` → ``shell``
+
+- ``programmed`` means only that openFPGALoader exited successfully.
+- ``shell`` additionally waits for ``boot_marker`` on the serial console, so it needs the
+  optional ``shell`` (``ADIShellDriver``) binding and a design that prints something.
+- The strategy does not initialize a Zynq PS or DDR and does not start software; it only
+  programs the fabric.
+
+**Bindings**: ``power`` (``PowerProtocol``), ``programmer`` (``OpenFPGALoaderDriver``),
+optional ``shell``.
+
+**Key attributes**: ``bitstream_path`` (required, a path on the client, staged to the
+exporter), ``boot_marker``, ``boot_timeout`` (default 60 s), ``power_settle_time``
+(default 2 s).
+
+.. code-block:: python
+
+    strategy = target.get_driver("BootOpenFPGALoader")
+    strategy.transition("programmed")
+
+See ``examples/openfpgaloader_adrv9361z7035/`` for a worked board and
+:doc:`../yaml-reference/strategies` for the complete YAML.
+
+BootTickFPGASSH Strategy
+------------------------
+
+**Purpose**: Boot a board from its existing Kuiper SD card, then deploy the Tick
+``axi_timed_command_scheduler`` IP at runtime over SSH: program the FPGA, apply the device-tree
+overlay, and load the kernel module.
+
+**State Machine**: every ``BootFPGASoCSSH`` state, plus
+``tick_fpga_loaded`` → ``tick_overlay_applied`` → ``tick_module_loaded``. ``tick_off``
+reverses the deploy and powers the board down.
+
+**Bindings**: all ``BootFPGASoCSSH`` bindings plus ``tick_fpga``
+(``TickFpgaManagerDriver``), ``tick_overlay`` (``TickOverlayDriver``), and ``tick_module``
+(``TickModuleDriver``); the artifact paths come from a ``TickArtifacts`` resource.
+
+.. code-block:: python
+
+    strategy = target.get_driver("BootTickFPGASSH")
+    strategy.transition("tick_module_loaded")   # boot to shell, then full Tick deploy
+
+See :doc:`tick` for a complete environment.
+
+BootVPK180 Strategy
+-------------------
+
+**Purpose**: Boot an AMD Versal Premium VPK180, which has two Linux systems: a Zynq-based
+**system controller** (SC) that orchestrates the board, and the **Versal** target that tests
+run on.
+
+**State Machine**: ``unknown`` → ``powered_off`` → [``sd_mux_to_host`` →]
+``update_boot_files`` [→ ``sd_mux_to_dut``] → ``booting`` → ``booted`` → ``shell``;
+``soft_off`` shuts down.
+
+**Bindings**: ``power``, plus two ``ADIShellDriver`` instances distinguished by name:
+``sc_shell`` (SC UART, typically ``ttyUSB3``) and ``target_shell`` (Versal UART, typically
+``ttyUSB1``). Optional bindings select how boot files are updated:
+
+- **SD-mux** (``sdmux`` + ``mass_storage``, optionally ``image_writer`` for full images) -
+  the same flow as ``BootFPGASoC``; works from a cold board.
+- **SSH** (``ssh``) - copies boot files into the running Versal's boot partition and reboots;
+  requires a usable Linux already running.
+- **Neither** - set ``update_boot_files: false`` and boot whatever is on QSPI/SD.
+
+The SC runs ``sc_commands`` after login (empty by default; configure the reset/boot-mode
+commands for your SC firmware). Each failure point (SC login, SC command, Versal kernel banner)
+cold-cycles the board and retries, bounded by ``sc_login_retries``, ``sc_command_retries``,
+and ``kernel_banner_retries``. The Versal UART is only read during boot, never written, so
+U-Boot autoboot is never interrupted.
+
+See :doc:`../yaml-reference/strategies` for the full attribute list and YAML.
+
+ReflashVPK180SD Strategy
+------------------------
+
+**Purpose**: Re-image a VPK180's Versal SD card with a Kuiper release, without an SD mux, by
+booting a rescue image from QSPI and writing the card over TFTP.
+
+**State Machine**: ``unknown`` → ``powered_off`` → ``image_staged`` → ``sc_in_qspi`` →
+``recovery_booted`` → ``sd_written`` → ``sc_in_sd`` → ``done``
+
+#. ``image_staged`` - download the Kuiper SD image and place it in the TFTP server root.
+#. ``sc_in_qspi`` - the SC switches the Versal boot mode to QSPI and resets it.
+#. ``recovery_booted`` - log in to the QSPI rescue Linux on ``target_shell``.
+#. ``sd_written`` - the rescue Linux TFTPs the image and ``dd``\ s it to the SD device
+   (optionally verifying it by sha256).
+#. ``sc_in_sd`` - the SC restores SD boot mode and resets the Versal.
+#. ``done`` - the board is powered off (by default), ready for ``BootVPK180``.
+
+**Bindings**: ``power``, ``sc_shell``, ``target_shell``, ``kuiper`` (``KuiperDLDriver``),
+``tftp`` (``TFTPServerDriver``).
+
+**Precondition**: QSPI must already hold a bootable rescue image (U-Boot plus a minimal Linux
+with BusyBox ``tftp`` and ``dd``) - a one-time step per board.
+
+If the write succeeds but the SC cannot restore SD boot mode, the strategy raises
+``BoardLeftInQSPIMode``. Recover by running ``sc_app -c setbootmode -t SD`` and
+``sc_app -c reset`` on the SC console, or by re-running the strategy to ``sc_in_sd``.
+
+.. warning::
+
+   Destructive: the Versal SD card is overwritten.
+
+BootZynqMPJTAG Strategy
+-----------------------
+
+**Purpose**: Bring up a ZynqMP (UltraScale+) board strapped for JTAG boot - the UltraScale+
+counterpart of ``BootZynq7000JTAGRecovery``. It JTAG-loads the Xilinx "mini" U-Boot SPL,
+which runs at EL3 without ARM Trusted Firmware or PMU firmware, both of which are unavailable
+in JTAG boot mode.
+
+**State Machine**: ``unknown`` → ``powered_off`` → ``powered_on``, then one of:
+
+- ``jtag_bootstrap`` - mini SPL loaded and running; console output is captured over DCC to
+  ``dcc_log_path`` on the host that runs ``xsdb``.
+- ``production_boot`` → ``production_uboot_prompt`` → ``kuiper_shell`` - JTAG-load PMU
+  firmware, the bitstream, and production U-Boot, hand off to EL2, then boot Kuiper from SD
+  and run ``kuiper_verify_commands``. ``transition("shell")`` is an alias for
+  ``kuiper_shell``.
+- ``recovery_linux`` → ``sd_flash_done`` - JTAG-boot a RAM-rooted recovery Linux, then stream
+  ``sd_image_url`` onto the SD card and verify the head and tail sha256.
+
+**Bindings**: ``power``, ``jtag`` (``XilinxJTAGDriver``), optional ``shell``
+(``ADIShellDriver``; required for ``production_uboot_prompt``, ``kuiper_shell``,
+``recovery_linux``, and ``sd_flash_done``).
+
+**Key attributes**: ``psu_init_tcl`` (the board's generated ``psu_init.tcl``) and
+``spl_elf`` for every path; ``pmufw_bin``, ``uboot_bin``, and BL31 or ``handoff_bin``
+artifacts for ``production_boot``; ``recovery_*`` and ``sd_*`` inputs for the recovery path.
+All paths must be readable on the host that runs ``xsdb``.
+
+See ``examples/ultrascale_jtag_boot/`` for building the SPL and a per-board YAML, and
+:doc:`../yaml-reference/strategies` for every attribute.
+
 State Transition Reference
 ---------------------------
 

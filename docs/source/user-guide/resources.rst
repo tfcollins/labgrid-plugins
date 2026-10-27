@@ -803,6 +803,60 @@ XilinxDeviceJTAG
 
 - The default target IDs match typical VCU118 + Microblaze designs. Run ``xsdb`` ``targets`` on your hardware to verify.
 
+KasaOutlet
+~~~~~~~~~~
+
+**Purpose**: Describes a TP-Link Kasa smart plug or power strip, controlled over the local
+network.
+
+**Use With**: KasaPowerDriver
+
+**Required Parameters**
+
+- **host** (str): IP address or hostname of the plug or strip.
+
+**Optional Parameters**
+
+- **outlets** (str): Comma-separated strip sockets to control, each a 0-based index or a socket
+  alias. Unset controls a single plug, or all of a strip's sockets together.
+- **username** / **password** (str): TP-Link account credentials, needed by newer
+  (KLAP/SMART) devices even for local control. Default to ``KASA_USERNAME`` /
+  ``KASA_PASSWORD`` from the environment.
+- **delay** (float, default=5.0): Seconds between off and on during a power cycle.
+
+**Example**
+
+.. code-block:: yaml
+
+    KasaOutlet:
+      cls: KasaOutlet
+      host: '192.168.1.60'
+      outlets: '0,2'
+
+See :ref:`the KasaPowerDriver section <kasapowerdriver>` in :doc:`drivers` for the full
+Exporter and Local configuration.
+
+TickArtifacts
+~~~~~~~~~~~~~
+
+**Purpose**: Paths and target-side names for a runtime Tick deploy.
+
+**Use With**: TickFpgaManagerDriver, TickOverlayDriver, TickModuleDriver, BootTickFPGASSH
+
+**Required Parameters**
+
+- **bitstream_path** (str): Path to the FPGA ``.bit``.
+- **overlay_dtbo_path** (str): Path to the prebuilt device-tree overlay (``.dtbo``).
+- **module_ko_path** (str): Path to ``axi_timed_command_scheduler.ko``.
+
+**Optional Parameters**
+
+- **firmware_name** (str, default ``tick.bit``): File name written under ``/lib/firmware`` on the target.
+- **overlay_name** (str, default ``tick``): configfs overlay directory name.
+- **remote_dir** (str, default ``/tmp/tick``): Scratch directory on the target for staged files.
+
+See :doc:`tick` for a complete environment.
+
 Configuration Best Practices
 -----------------------------
 

@@ -25,12 +25,38 @@ Prerequisites
    Code that constructs an :class:`~labgrid.Environment` directly can
    instead ``import adi_lg_plugins`` once at startup to register everything.
 
-**Optional Dependencies**:
+VeSync (``pyvesync``), APC/CyberPower PDU (``pysnmp``), IIO (``pylibiio``), USB SD-mux,
+CLI, and MCP dependencies are installed by default.
 
-- ``pyvesync``: For VeSync smart outlet control
-- ``pysnmp``: For APC and CyberPower PDU control
-- ``pytsk3``: For disk image file extraction
-- ``pylibiio``: For IIO device testing
+**Optional extras**:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 15 35 50
+
+   * - Extra
+     - Adds
+     - Needed for
+   * - ``kasa``
+     - ``python-kasa``
+     - ``KasaPowerDriver`` (TP-Link Kasa smart plugs and power strips)
+   * - ``kuiper``
+     - ``pytsk3``
+     - ``KuiperDLDriver`` extracting files from Kuiper disk images (needs a C toolchain;
+       ``pytsk3`` ships only as an sdist)
+   * - ``netbox``
+     - ``pynetbox``, ``jinja2``, ``jsonschema``
+     - ``adi-lg netbox add-hardware`` (:doc:`../user-guide/netbox-onboarding`)
+   * - ``dev``
+     - ruff, ty, pytest, plus the ``kasa`` and ``netbox`` packages
+     - running the test suite and linters
+   * - ``docs``
+     - Sphinx, Furo, and extensions
+     - building this documentation
+
+Combine extras as needed, e.g. ``pip install -e ".[kasa,netbox]"``. A driver whose
+optional dependency is missing is skipped with a warning when ``adi_lg_plugins`` is
+imported, rather than failing the import.
 
 Using pip
 ---------

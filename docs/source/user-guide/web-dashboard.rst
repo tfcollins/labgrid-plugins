@@ -7,7 +7,8 @@ including exporters, places, resources, and reservations.
 Access the dashboard at ``http://localhost:3000`` after starting the Docker
 compose stack (see :doc:`coordinator`). Most pages are viewable without
 signing in; acquiring/releasing places, creating reservations, opening a
-console, and managing users require an account — see :doc:`web-ui-auth`.
+console, viewing node deployments, and managing users require an account —
+see :doc:`web-ui-auth`.
 
 Dashboard Page
 --------------
@@ -135,6 +136,27 @@ Recordings & Playback
 resource, duration, size, and end reason). Selecting one opens
 ``/recordings/:id``, which replays the session with the asciinema player.
 Admins can delete recordings from the list.
+
+Deployments Page
+----------------
+
+``/deployments`` (sign-in required) tracks lab nodes - runner or exporter
+hosts - as they are installed. Nothing reports automatically: your OS
+installer and first-boot scripts must post each stage to the coordinator
+(see :ref:`coordinator-deployments` for the endpoint and a ``curl``
+example). The page shows one row per reporting hostname:
+
+- **Table**: hostname, attempt number, current stage, a status badge
+  (in progress / succeeded / failed), a progress bar, first/last seen, and
+  the latest error
+- **Expandable rows**: click a row to see the node's IP and MAC addresses
+  and its full event timeline, across all attempts
+
+Stages advance ``installer_started`` (5%) → ``storage_configured`` (25%) →
+``packages_installed`` (50%) → ``install_complete`` (75%) → ``first_boot``
+(80%) → ``setup_started`` (90%) → ``runner_ready`` (100%); a ``failed``
+event marks the node failed. Reinstalling a node starts a new attempt on the
+same row. The page refreshes every 10 seconds.
 
 Exporter Detail
 ----------------

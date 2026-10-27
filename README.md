@@ -15,13 +15,16 @@
 
 ## Features
 
-- **Power Control** -- VeSync smart outlets and CyberPower PDU support
+- **Power Control** -- VeSync, TP-Link Kasa, and Home Assistant outlets; APC and CyberPower PDUs
 - **Shell Access** -- XMODEM file transfer over serial console
-- **Boot Strategies** -- Automated FPGA SoC, Fabric, SelMap, TFTP, SSH, and Raspberry Pi boot workflows
-- **Mass Storage** -- SD card file management via USB SD-Mux
-- **Kuiper Linux** -- Download and manage ADI Kuiper releases
+- **Boot Strategies** -- FPGA SoC (SD-mux, SSH, TFTP), Fabric, SelMap, openFPGALoader, VPK180, ZynqMP and Zynq-7000 JTAG recovery, no-os JTAG, Tick runtime deploy, and Raspberry Pi workflows
+- **FPGA Programming** -- Xilinx `xsdb` and openFPGALoader JTAG programming, run on the exporter next to the probe
+- **Mass Storage** -- SD card file management and full-image writes via USB SD-Mux
+- **Kuiper / Cloudsmith** -- Download ADI Kuiper releases and Cloudsmith boot artifacts
+- **Hardware CI** -- Reusable GitHub Actions workflows that request boards by part, plus a daily lab boot-smoke and Prism result upload
+- **Lab Onboarding** -- `adi-lg netbox add-hardware` registers a board in NetBox, deploys its exporter, and creates its place; `adi-lg setup-runner` sets up self-hosted runners
 - **MCP Server** -- FastMCP interface for LLM-driven hardware control with coordinator support
-- **Coordinator** -- Docker-based labgrid coordinator with REST API and React web dashboard
+- **Coordinator** -- Docker-based labgrid coordinator with REST API, authentication, node-deployment tracking, and a React web dashboard
 
 ## Quick Start
 
@@ -43,6 +46,8 @@ pip install -e ".[dev]"
 
 ```yaml
 # target.yaml
+imports:
+  - adi_lg_plugins   # registers the ADI drivers/resources/strategies with labgrid
 targets:
   my_device:
     resources:
@@ -97,6 +102,7 @@ Key sections:
 - [User Guide](https://labgrid-plugins.readthedocs.io/en/latest/user-guide/index.html) -- drivers, strategies, CLI, MCP, coordinator
 - [API Reference](https://labgrid-plugins.readthedocs.io/en/latest/api/index.html)
 - [Exporter Deployment](https://labgrid-plugins.readthedocs.io/en/latest/user-guide/exporter-deployment.html)
+- [NetBox Onboarding](https://labgrid-plugins.readthedocs.io/en/latest/user-guide/netbox-onboarding.html)
 - [Running Coordinator Tests](https://labgrid-plugins.readthedocs.io/en/latest/user-guide/coordinator-testing.html)
 
 ## License
