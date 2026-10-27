@@ -50,6 +50,24 @@ class HealthCheckResult:
     uname: str | None = None
 
 
+def _log_step(step: int, total: int, msg: str) -> None:
+    """Emit formatted step progress to stderr and logger."""
+    timestamp = time.strftime("%H:%M:%S")
+    formatted = f"[{timestamp}] [{step}/{total}] {msg}"
+    logger.info("[%d/%d] %s", step, total, msg)
+    sys.stderr.write(f"{formatted}\n")
+    sys.stderr.flush()
+
+
+def _log_info(msg: str) -> None:
+    """Emit indented progress detail to stderr and logger."""
+    timestamp = time.strftime("%H:%M:%S")
+    formatted = f"[{timestamp}]        {msg}"
+    logger.info("%s", msg)
+    sys.stderr.write(f"{formatted}\n")
+    sys.stderr.flush()
+
+
 def _get_catalog_image(api_url: str, daughter_board: str) -> str | None:
     """Fetch default golden boot image from coordinator catalog."""
     try:
@@ -133,6 +151,7 @@ def run_health_check(
     api = _resolve_api(coord)
 
     # 1. Discover place
+    _log_step(1, 7, f"Discovering target place '{place_name}' on coordinator {coord}...")
     places, _ = list_live_places(coord)
     place: Place | None = None
     for p in places:
@@ -141,6 +160,7 @@ def run_health_check(
             break
 
     if place is None:
+        _log_info(f"Place '{place_name}' not found among live coordinator places")
         return HealthCheckResult(
             place=place_name,
             status="error",
@@ -148,13 +168,22 @@ def run_health_check(
             duration=time.monotonic() - start_time,
         )
 
+    _log_info(
+        f"Place found: carrier={place.carrier or 'none'}, "
+        f"daughter-board={place.daughter_board or 'none'}, strategy={place.boot_strategy}"
+    )
+
     # 2. Resolve golden image
+    _log_step(2, 7, "Resolving golden boot image...")
     resolved_image = image
     if not resolved_image and place.daughter_board:
         resolved_image = _get_catalog_image(api, place.daughter_board)
+    _log_info(f"Target golden boot image: {resolved_image or '(default catalog image)'}")
 
     # 3. Check acquisition status
+    _log_step(3, 7, f"Checking acquisition status and acquiring place '{place_name}'...")
     if _is_place_acquired(coord, place_name):
+        _log_info(f"Place '{place_name}' is currently acquired by another user or job")
         return HealthCheckResult(
             place=place_name,
             status="busy",
@@ -167,7 +196,9 @@ def run_health_check(
     # 4. Acquire place
     try:
         _acquire_place(coord, place_name)
+        _log_info(f"Place '{place_name}' acquired successfully on coordinator {coord}")
     except Exception as e:
+        _log_info(f"Failed to acquire place '{place_name}': {e}")
         return HealthCheckResult(
             place=place_name,
             status="error",
@@ -183,10 +214,10 @@ def run_health_check(
     strategy = None
 
     try:
-        # 5. Render environment yaml
+        # 5. Render environment yaml and initialize target
+        _log_step(4, 7, f"Rendering Labgrid environment config and initializing drivers...")
         render_env_to(place, env_path)
 
-        # 6. Construct Labgrid Environment and boot target
         from labgrid import Environment
 
         env = Environment(str(env_path))
@@ -196,23 +227,33 @@ def run_health_check(
             try:
                 kuiper_res = target.get_resource("KuiperRelease")
                 kuiper_res.release_version = resolved_image
-                logger.info("Pinned Kuiper image %s for %s", resolved_image, place_name)
+                _log_info(f"Pinned Kuiper image {resolved_image} on KuiperRelease resource")
             except Exception as e:
                 logger.info("KuiperRelease resource not present or could not pin: %s", e)
 
         strategy_name = place.boot_strategy
         strategy = target.get_driver(strategy_name)
+        _log_info(f"Target drivers bound. Boot strategy: {strategy_name}")
 
-        logger.info("Transitioning %s to shell using %s...", place_name, strategy_name)
+        # 6. Execute boot transition
+        _log_step(5, 7, f"Executing boot transition to 'shell' via {strategy_name}...")
+        _log_info(
+            "Cold power-cycling DUT, provisioning boot files / U-Boot, and awaiting Linux shell prompt..."
+        )
         strategy.transition("shell")
+        _log_info("Target successfully booted and reached Linux shell prompt!")
 
         # 7. Resolve DUT IP address
+        _log_step(6, 7, "Resolving live DUT IP address (waiting for DHCP lease)...")
         uri = resolve_uri(target, wait=90.0)
         ip_addr = uri[3:] if uri.startswith("ip:") else uri
+        _log_info(f"Live DUT IP address resolved: {ip_addr}")
 
         # 8. Verify iiod service
+        _log_step(7, 7, f"Verifying IIO daemon (iiod) on {uri} (port 30431)...")
         verify_iio_context(uri, timeout=60.0)
         iiod_ok = True
+        _log_info("libIIO context responsive and verified healthy!")
 
         # 9. Sanity check: uname
         uname_str = None
@@ -222,11 +263,13 @@ def run_health_check(
                 out, _, rc = sh.run("uname -a")
                 if rc == 0 and out:
                     uname_str = out[0].strip()
+                    _log_info(f"System kernel: {uname_str}")
                     break
             except Exception:
                 pass
 
         duration = time.monotonic() - start_time
+        _log_info(f"✓ Health check completed successfully in {duration:.1f}s")
         return HealthCheckResult(
             place=place_name,
             status="passed",
@@ -240,6 +283,7 @@ def run_health_check(
 
     except ProvisionError as e:
         duration = time.monotonic() - start_time
+        _log_info(f"✗ Boot verification error after {duration:.1f}s: {e}")
         return HealthCheckResult(
             place=place_name,
             status="failed",
@@ -250,6 +294,7 @@ def run_health_check(
         )
     except Exception as e:
         duration = time.monotonic() - start_time
+        _log_info(f"✗ Unexpected health check error after {duration:.1f}s: {e}")
         return HealthCheckResult(
             place=place_name,
             status="failed",
@@ -262,7 +307,9 @@ def run_health_check(
         # 10. Clean up
         if power_down and strategy is not None:
             try:
+                _log_info("Tearing down: powering off DUT...")
                 strategy.transition("powered_off")
+                _log_info("DUT powered off")
             except Exception as e:
                 logger.warning("Power off after health check failed: %s", e)
 
@@ -273,6 +320,7 @@ def run_health_check(
                 pass
 
         _release_place(coord, place_name)
+        _log_info(f"Released place '{place_name}' on coordinator {coord}")
         shutil.rmtree(temp_dir, ignore_errors=True)
 
 

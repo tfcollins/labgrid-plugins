@@ -112,6 +112,7 @@ class HealthCheckRunner:
         await self.store.append_run_log(run_id, f"Starting health check for '{place_name}'...\n")
         await self.store.append_run_log(run_id, f"Command: {' '.join(cmd)}\n\n")
 
+        env["PYTHONUNBUFFERED"] = "1"
         try:
             proc = await asyncio.create_subprocess_exec(
                 *cmd,
@@ -121,8 +122,70 @@ class HealthCheckRunner:
             )
             self._active_processes[run_id] = proc
 
+            stdout_lines: list[str] = []
+            stderr_lines: list[str] = []
+            log_queue: asyncio.Queue[str] = asyncio.Queue()
+            readers_done = asyncio.Event()
+
+            async def read_stdout():
+                assert proc.stdout is not None
+                while True:
+                    line = await proc.stdout.readline()
+                    if not line:
+                        break
+                    decoded = line.decode("utf-8", errors="replace")
+                    stdout_lines.append(decoded)
+                    await log_queue.put(decoded)
+
+            async def read_stderr():
+                assert proc.stderr is not None
+                while True:
+                    line = await proc.stderr.readline()
+                    if not line:
+                        break
+                    decoded = line.decode("utf-8", errors="replace")
+                    stderr_lines.append(decoded)
+                    await log_queue.put(decoded)
+
+            async def flush_logs():
+                batch: list[str] = []
+                last_flush = time.monotonic()
+                while True:
+                    try:
+                        line = await asyncio.wait_for(log_queue.get(), timeout=0.2)
+                        batch.append(line)
+                        log_queue.task_done()
+                    except asyncio.TimeoutError:
+                        pass
+
+                    now = time.monotonic()
+                    if batch and (now - last_flush >= 0.5 or log_queue.empty()):
+                        text = "".join(batch)
+                        batch.clear()
+                        last_flush = now
+                        try:
+                            await self.store.append_run_log(run_id, text)
+                        except Exception as e:
+                            logger.warning("Failed appending log for run %d: %s", run_id, e)
+
+                    if readers_done.is_set() and log_queue.empty():
+                        if batch:
+                            text = "".join(batch)
+                            batch.clear()
+                            try:
+                                await self.store.append_run_log(run_id, text)
+                            except Exception as e:
+                                logger.warning(
+                                    "Failed appending final log for run %d: %s", run_id, e
+                                )
+                        break
+
+            stdout_task = asyncio.create_task(read_stdout())
+            stderr_task = asyncio.create_task(read_stderr())
+            flush_task = asyncio.create_task(flush_logs())
+
             try:
-                stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout)
+                await asyncio.wait_for(proc.wait(), timeout=timeout)
             except asyncio.TimeoutError:
                 proc.kill()
                 await proc.wait()
@@ -138,16 +201,14 @@ class HealthCheckRunner:
                 )
                 return
             finally:
+                await asyncio.gather(stdout_task, stderr_task, return_exceptions=True)
+                readers_done.set()
+                await flush_task
                 self._active_processes.pop(run_id, None)
 
             duration = time.monotonic() - start_time
-            stdout_str = stdout_b.decode("utf-8", errors="replace")
-            stderr_str = stderr_b.decode("utf-8", errors="replace")
-
-            full_log = (
-                stdout_str + ("\n--- stderr ---\n" + stderr_str if stderr_str else "")
-            ).strip()
-            await self.store.append_run_log(run_id, full_log + "\n")
+            stdout_str = "".join(stdout_lines)
+            stderr_str = "".join(stderr_lines)
 
             # Try to parse json output
             parsed: dict[str, Any] | None = None
