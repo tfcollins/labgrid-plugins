@@ -945,28 +945,24 @@ labgrid has no ``!env`` tag; the substitution syntax depends on which file holds
 
 **Separate Credential Files**
 
-.. code-block:: yaml
+labgrid has no ``includes:`` key, so a committed config can't read credentials from another
+YAML file. Keep the values in a git-ignored file that is loaded into the environment, and
+reference them as shown above:
 
-    # credentials.yaml (add to .gitignore)
-    resources:
-      VesyncOutlet:
-        outlet_names: 'Device Power'
-        username: 'user@example.com'
-        password: 'password'
+- **Exporter**: the service's ``EnvironmentFile=`` (mode ``600``) is that file.
+- **Client**: put the ``LG_*`` variables in a git-ignored file and export them before running
+  labgrid:
 
-.. code-block:: yaml
+  .. code-block:: bash
 
-    # target.yaml (committed to git)
-    imports:
-      - adi_lg_plugins
-    includes:
-      - credentials.yaml
+      # lab.env (add to .gitignore)
+      LG_VESYNC_USERNAME=user@example.com
+      LG_VESYNC_PASSWORD=secure_password
 
-    targets:
-      my_device:
-        resources:
-          VesyncOutlet: {}
-        # ...
+  .. code-block:: bash
+
+      set -a; . ./lab.env; set +a
+      labgrid-client -c target.yaml ...
 
 Device Path Stability
 ~~~~~~~~~~~~~~~~~~~~~
@@ -1019,40 +1015,41 @@ Reload udev rules:
 Configuration Reusability
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
-**Define Common Resources Once**
+**Define Common Values Once**
 
-Create `common-resources.yaml`:
+labgrid has no ``includes:`` key for sharing configuration between files. Each file type has
+its own mechanism:
 
-.. code-block:: yaml
+.. tab-set::
 
-    # common-resources.yaml
-    resources:
-      lab_pdu:
-        CyberPowerOutlet:
-          address: '192.168.1.100'
-          delay: 3.0
+    .. tab-item:: Exporter
 
-      lab_storage:
-        MassStorageDevice:
-          path: '/dev/sdb1'
+        ``resources.yaml`` is a Jinja2 template, so a value can be set once with
+        ``{% set %}`` and reused:
 
-Then reference in target files:
+        .. code-block:: yaml+jinja
 
-.. code-block:: yaml
+            {% set pdu_address = '192.168.1.100' %}
+            zcu102_group:
+              CyberPowerOutlet:
+                cls: CyberPowerOutlet
+                address: '{{ pdu_address }}'
+                outlet: 3
+            vcu118_group:
+              CyberPowerOutlet:
+                cls: CyberPowerOutlet
+                address: '{{ pdu_address }}'
+                outlet: 4
 
-    # target1.yaml
-    imports:
-      - adi_lg_plugins
-    includes:
-      - common-resources.yaml
+        ``{% include 'common.yaml' %}`` inserts another file's text, resolved relative to
+        ``resources.yaml``; the included file must contain complete resource groups.
 
-    targets:
-      zcu102_device:
-        resources:
-          CyberPowerOutlet: # From common-resources
-            outlet: 3
-        drivers:
-          CyberPowerDriver: {}
+    .. tab-item:: Local (Non-Exporter)
+
+        A ``target.yaml`` is a single file: reuse values inside it with YAML anchors and
+        aliases (see `Multiple Targets Sharing Resources`_), and take values that differ per
+        machine from ``LG_*`` environment variables with ``!template`` (see
+        `Environment Variable Integration`_).
 
 Configuration Documentation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -1294,49 +1291,38 @@ Multiple Targets Sharing Resources
 
     .. tab-item:: Local (Non-Exporter)
 
+        labgrid has no ``includes:`` key, and its YAML loader rejects merge keys
+        (``<<: *name``). Share values between targets in one ``target.yaml`` with YAML anchors
+        (``&name``) and aliases (``*name``):
+
         .. code-block:: yaml
 
-            # shared.yaml
-            resources:
-              shared_pdu:
-                CyberPowerOutlet:
-                  address: '192.168.1.100'
-                  delay: 3.0
-
-              shared_kuiper:
-                KuiperRelease:
-                  release_version: '2023_R2_P1'
-                  cache_path: '/var/cache/kuiper'
-
-            # target1.yaml
             imports:
               - adi_lg_plugins
-            includes:
-              - shared.yaml
-
             targets:
               device1:
                 resources:
                   CyberPowerOutlet:
+                    address: &pdu_address '192.168.1.100'
                     outlet: 1
-                  KuiperRelease: {}
+                    delay: &pdu_delay 3.0
+                  KuiperRelease: &kuiper
+                    release_version: '2023_R2_P1'
+                    cache_path: '/var/cache/kuiper'
                 drivers:
                   CyberPowerDriver: {}
-
-            # target2.yaml
-            imports:
-              - adi_lg_plugins
-            includes:
-              - shared.yaml
-
-            targets:
               device2:
                 resources:
                   CyberPowerOutlet:
+                    address: *pdu_address
                     outlet: 2
-                  KuiperRelease: {}
+                    delay: *pdu_delay
+                  KuiperRelease: *kuiper
                 drivers:
                   CyberPowerDriver: {}
+
+        Each target still gets its own resource instances; the anchors only avoid repeating
+        the values.
 
 Environment Variable Integration
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
