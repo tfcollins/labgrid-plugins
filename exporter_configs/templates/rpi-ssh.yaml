@@ -1,4 +1,5 @@
-## Exporter template: Raspberry Pi
+## Exporter template: Raspberry Pi driven over SSH
+## For Raspberry Pi hosts (CM4, Pi 4, ...) served by BootRPI.
 ## Comments use "##": labgrid renders this file as Jinja2, where a line starting
 ## with a single "#" is a template statement.
 ## Group naming convention: <BOARD>_<VARIANT>

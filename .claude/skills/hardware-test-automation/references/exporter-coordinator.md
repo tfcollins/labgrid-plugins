@@ -29,8 +29,11 @@ entry for its board, the right **tags**, and (for CI) a runner that can reach it
 
 YAML templates for deploying labgrid exporters, plus validation:
 
-- `exporter_configs/templates/*.yaml` — per-host-class templates (RPi / VCU118 / ZCU102 …).
-  Start from the closest template; don't author an exporter config from scratch.
+- `exporter_configs/templates/*.yaml` — templates named by boot path: `soc-sdmux.yaml`
+  (Zynq/ZynqMP SoC via SD mux, BootFPGASoC), `fabric-jtag.yaml` (MicroBlaze FPGA over JTAG,
+  BootFabric), `rpi-ssh.yaml` (Raspberry Pi over SSH, BootRPI). Resource groups are
+  `<CARRIER>_<CHIP>` from the `carrier`/`chip` fields. Start from the closest template; don't
+  author an exporter config from scratch.
 - `exporter_configs/validate.py` + `exporter_configs/schemas/*.json` — **validate every config
   you produce** against the schema before deploying. A malformed exporter config fails to export
   the place, which shows up downstream as a silently-missing place.

@@ -53,8 +53,8 @@ Usage
 .. code-block:: console
 
     $ adi-lg netbox add-hardware
-    Available board templates: rpi, vcu118_ad9081, zcu102
-    Board template: zcu102
+    Available board templates: fabric-jtag, rpi-ssh, soc-sdmux
+    Board template: soc-sdmux
     Hardware / place / exporter name (e.g. zcu102-lab3-001): zcu102-lab3-001
     Carrier (board/FPGA, e.g. zcu102, vcu118): zcu102
     Daughter board / chip (e.g. ad9081): ad9081
@@ -62,18 +62,17 @@ Usage
     GitHub runner label (hw-zcu102):
     NetBox site slug (must already exist): lab3
     Exporter host SSH target (user@host): labadmin@lab-host-03
-    Template fields for zcu102: chip, sdmux_path, serial_port, target_ip
-      target_ip (blank = template default): 10.0.0.42
-      chip (blank = template default):
-      serial_port (blank = template default):
+    Template fields for soc-sdmux: sdmux_path, serial_port, target_ip
       sdmux_path (blank = template default):
+      serial_port (blank = template default):
+      target_ip (blank = template default): 10.0.0.42
 
     Plan
       NetBox device: zcu102-lab3-001  (carrier=zcu102, chip=ad9081, site=lab3)
       Exporter: labadmin@lab-host-03 -> systemd unit labgrid-exporter-zcu102-lab3-001
       Coordinator place: zcu102-lab3-001  (tags: daughter-board=ad9081, carrier=zcu102,
       boot-strategy=BootFPGASoC, runner=hw-zcu102)
-      Rendered + validated exporter config: /tmp/adi-lg-netbox-xxxxx/zcu102.yaml
+      Rendered + validated exporter config: /tmp/adi-lg-netbox-xxxxx/soc-sdmux.yaml
       Resource group(s): ZCU102_AD9081
       Place match(es): zcu102-lab3-001/ZCU102_AD9081/*
 
@@ -88,6 +87,12 @@ committing to a real board. A dry run never asks for NetBox or coordinator crede
 Leaving a template field blank uses that template's own default (see
 ``exporter_configs/templates/*.yaml``); fields with no default (like ``target_ip``) are
 effectively required and the command fails clearly if left blank.
+
+The templates name their resource group ``<CARRIER>_<CHIP>`` (e.g. ``ZCU102_AD9081``) from
+the ``carrier`` and ``chip`` fields. The command fills those from the *Carrier* and
+*Daughter board / chip* answers, so they are not asked again as template fields. Choose the
+template by boot path: ``soc-sdmux``, ``fabric-jtag``, or ``rpi-ssh`` (see
+:doc:`exporter-setup`).
 
 The boot-strategy prompt only accepts the ADI strategy classes this package registers
 (``BootFPGASoC``, ``BootFPGASoCSSH``, ``BootFPGASoCTFTP``, ``BootSelMap``, ``BootFabric``,

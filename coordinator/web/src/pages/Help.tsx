@@ -394,19 +394,25 @@ labgrid-client -x <coordinator>:20408 -p vcu118-lab1 \\
             </Text>
             <UnorderedList spacing={1}>
               <ListItem>
-                <Code fontSize="xs">vcu118_ad9081.yaml</Code> — VCU118 with
-                AD9081 transceiver
+                <Code fontSize="xs">soc-sdmux.yaml</Code> — Zynq / ZynqMP SoC
+                (ZCU102, ZC706, …) booted from an SD card via a USB SD mux
+                (BootFPGASoC)
               </ListItem>
               <ListItem>
-                <Code fontSize="xs">zcu102.yaml</Code> — ZCU102 SoC
+                <Code fontSize="xs">fabric-jtag.yaml</Code> — FPGA with a
+                MicroBlaze soft CPU (VCU118, …) loaded over JTAG (BootFabric)
               </ListItem>
               <ListItem>
-                <Code fontSize="xs">rpi.yaml</Code> — Raspberry Pi
+                <Code fontSize="xs">rpi-ssh.yaml</Code> — Raspberry Pi driven
+                over SSH (BootRPI)
               </ListItem>
             </UnorderedList>
             <Text fontSize="sm" color="text.secondary" mt={2}>
-              These use Jinja2 variables for host-specific values. Fill them in
-              and use directly with <Code fontSize="xs">labgrid-exporter</Code>.
+              These use Jinja2 variables for host-specific values; the resource
+              group is named <Code fontSize="xs">{"<CARRIER>_<CHIP>"}</Code> from
+              the <Code fontSize="xs">carrier</Code> and{" "}
+              <Code fontSize="xs">chip</Code> fields. Fill them in and use
+              directly with <Code fontSize="xs">labgrid-exporter</Code>.
             </Text>
           </Section>
         </VStack>

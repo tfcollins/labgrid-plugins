@@ -1,7 +1,9 @@
-## Exporter template: VCU118 + AD9081
+## Exporter template: FPGA fabric loaded over JTAG
+## For FPGA carriers with a MicroBlaze soft CPU (VCU118, ...) whose bitstream and
+## kernel are loaded with Vivado's xsdb, served by BootFabric.
 ## Comments use "##": labgrid renders this file as Jinja2, where a line starting
 ## with a single "#" is a template statement.
-## Group naming convention: <BOARD>_<CHIP>
+## Group naming convention: <CARRIER>_<CHIP>, from the carrier and chip fields.
 ##
 ## Usage: Fill in the Jinja2 variables for your specific host, then run the
 ## exporter with:
@@ -18,7 +20,7 @@
 ##   labgrid-client -x <coordinator>:20408 -p <place_name> set-tags runner=hw-vcu118
 ## See exporter_configs/scripts/seed-place-tags.sh for a one-shot helper.
 
-VCU118_AD9081:
+{{ carrier | default("vcu118") | upper }}_{{ chip | default("ad9081") | upper }}:
   NetworkService:
     cls: NetworkService
     address: "{{ target_ip }}"
