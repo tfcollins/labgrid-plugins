@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Alert,
   AlertIcon,
@@ -127,6 +127,14 @@ export default function BoardHealth() {
 
   // Active run query for log modal
   const { data: selectedRun, isLoading: logLoading } = useBoardHealthRun(selectedRunId);
+  const logContainerRef = useRef<HTMLDivElement>(null);
+  const [autoScroll, setAutoScroll] = useState(true);
+
+  useEffect(() => {
+    if (autoScroll && logContainerRef.current) {
+      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+    }
+  }, [selectedRun?.log_output, autoScroll]);
 
   const handleOpenLog = (runId: number) => {
     setSelectedRunId(runId);
@@ -151,7 +159,7 @@ export default function BoardHealth() {
   const handleExecuteCheck = async () => {
     if (checkPlaces.length === 0) return;
     try {
-      await triggerMutation.mutateAsync({
+      const createdRuns = await triggerMutation.mutateAsync({
         places: checkPlaces,
         image: checkImage.trim() || null,
         power_down: checkPowerDown,
@@ -164,6 +172,9 @@ export default function BoardHealth() {
         isClosable: true,
       });
       onCloseCheck();
+      if (createdRuns && createdRuns.length === 1) {
+        handleOpenLog(createdRuns[0].id);
+      }
     } catch (err: any) {
       toast({
         title: "Failed to trigger health check",
@@ -372,7 +383,14 @@ export default function BoardHealth() {
                           </Td>
                           <Td>
                             <Badge colorScheme={STATUS_COLOR_SCHEME[status]}>
-                              {status.toUpperCase()}
+                              {status === "running" ? (
+                                <HStack spacing={1}>
+                                  <Spinner size="xs" />
+                                  <Text>RUNNING</Text>
+                                </HStack>
+                              ) : (
+                                status.toUpperCase()
+                              )}
                             </Badge>
                           </Td>
                           <Td fontSize="xs" color="text.secondary">
@@ -393,22 +411,43 @@ export default function BoardHealth() {
                             )}
                           </Td>
                           <Td textAlign="right">
-                            <ButtonGroup size="xs" variant="outline">
-                              <Button
-                                leftIcon={<Icon as={MdPlayArrow} />}
-                                onClick={() => handleQuickCheck(p.name)}
-                                colorScheme="blue"
-                              >
-                                Check
-                              </Button>
-                              {p.last_run && (
-                                <IconButton
-                                  aria-label="View Log"
-                                  icon={<Icon as={MdVisibility} />}
+                            {status === "running" && p.last_run ? (
+                              <ButtonGroup size="xs">
+                                <Button
+                                  leftIcon={<Spinner size="xs" />}
+                                  colorScheme="blue"
+                                  variant="solid"
                                   onClick={() => handleOpenLog(p.last_run!.id)}
-                                />
-                              )}
-                            </ButtonGroup>
+                                >
+                                  Live Log
+                                </Button>
+                                <Button
+                                  leftIcon={<Icon as={MdStop} />}
+                                  colorScheme="red"
+                                  variant="ghost"
+                                  onClick={() => handleCancelRun(p.last_run!.id)}
+                                >
+                                  Cancel
+                                </Button>
+                              </ButtonGroup>
+                            ) : (
+                              <ButtonGroup size="xs" variant="outline">
+                                <Button
+                                  leftIcon={<Icon as={MdPlayArrow} />}
+                                  onClick={() => handleQuickCheck(p.name)}
+                                  colorScheme="blue"
+                                >
+                                  Check
+                                </Button>
+                                {p.last_run && (
+                                  <IconButton
+                                    aria-label="View Log"
+                                    icon={<Icon as={MdVisibility} />}
+                                    onClick={() => handleOpenLog(p.last_run!.id)}
+                                  />
+                                )}
+                              </ButtonGroup>
+                            )}
                           </Td>
                         </Tr>
                       );
@@ -620,11 +659,17 @@ export default function BoardHealth() {
                   {selectedRun.status.toUpperCase()}
                 </Badge>
               )}
+              {selectedRun?.status === "running" && (
+                <HStack spacing={1.5} bg="blue.500" color="white" px={2.5} py={0.5} borderRadius="full">
+                  <Spinner size="xs" color="white" />
+                  <Text fontSize="2xs" fontWeight="bold">LIVE STREAMING</Text>
+                </HStack>
+              )}
             </HStack>
           </ModalHeader>
           <ModalCloseButton />
           <ModalBody>
-            {logLoading ? (
+            {logLoading && !selectedRun ? (
               <Flex justify="center" p={8}>
                 <Spinner color="blue.500" />
               </Flex>
@@ -638,7 +683,7 @@ export default function BoardHealth() {
                   <Box>
                     <Text fontSize="xs" color="text.secondary">Duration</Text>
                     <Text fontWeight="600">
-                      {selectedRun.duration ? `${selectedRun.duration.toFixed(1)}s` : "In progress"}
+                      {selectedRun.duration ? `${selectedRun.duration.toFixed(1)}s` : "In progress..."}
                     </Text>
                   </Box>
                   <Box>
@@ -661,10 +706,20 @@ export default function BoardHealth() {
                 )}
 
                 <Box>
-                  <Text fontSize="xs" fontWeight="700" color="text.secondary" mb={2} textTransform="uppercase">
-                    Execution Log
-                  </Text>
+                  <Flex justify="space-between" align="center" mb={2}>
+                    <Text fontSize="xs" fontWeight="700" color="text.secondary" textTransform="uppercase">
+                      Execution Log
+                    </Text>
+                    <Checkbox
+                      isChecked={autoScroll}
+                      onChange={(e) => setAutoScroll(e.target.checked)}
+                      size="sm"
+                    >
+                      <Text fontSize="xs" color="text.secondary">Auto-scroll</Text>
+                    </Checkbox>
+                  </Flex>
                   <Box
+                    ref={logContainerRef}
                     as="pre"
                     p={4}
                     bg="gray.900"
@@ -683,7 +738,20 @@ export default function BoardHealth() {
               </VStack>
             ) : null}
           </ModalBody>
-          <ModalFooter>
+          <ModalFooter display="flex" justifyContent="space-between">
+            {selectedRun?.status === "running" ? (
+              <Button
+                colorScheme="red"
+                variant="outline"
+                size="sm"
+                leftIcon={<Icon as={MdStop} />}
+                onClick={() => handleCancelRun(selectedRun.id)}
+              >
+                Cancel Check
+              </Button>
+            ) : (
+              <Box />
+            )}
             <Button onClick={onCloseLog}>Close</Button>
           </ModalFooter>
         </ModalContent>

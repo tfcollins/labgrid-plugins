@@ -10,7 +10,7 @@ export function useBoardHealthSummary() {
   return useQuery({
     queryKey: ["board-health-summary"],
     queryFn: () => boardHealthApi.getSummary(),
-    refetchInterval: 10_000,
+    refetchInterval: 5_000,
   });
 }
 
@@ -18,7 +18,7 @@ export function useBoardHealthRuns(filters: { place?: string; status?: string; l
   return useQuery({
     queryKey: ["board-health-runs", filters],
     queryFn: () => boardHealthApi.listRuns(filters),
-    refetchInterval: 10_000,
+    refetchInterval: 5_000,
   });
 }
 
@@ -30,7 +30,7 @@ export function useBoardHealthRun(runId: number | null) {
     refetchInterval: (query) => {
       const data = query.state.data;
       if (data && (data.status === "pending" || data.status === "running")) {
-        return 3_000;
+        return 1_500;
       }
       return false;
     },
