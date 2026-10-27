@@ -33,6 +33,12 @@ dev = [
     "pytest-asyncio>=0.21.0",
     "pylibiio",
     "python-kasa>=0.7",
+    # Duplicated from the `netbox` extra (not referenced via a self-extra)
+    # so `nox -s tests` (which only installs `.[dev]`) can exercise the
+    # tests/test_netbox_*.py / test_coordinator_writes.py suites.
+    "pynetbox>=7,<8",
+    "jinja2>=3",
+    "jsonschema",
 ]
 ## Installed on hosts that actually need to unpack Kuiper disk images.
 ## Requires a C toolchain (pytsk3 ships only as an sdist).
@@ -42,6 +48,17 @@ kuiper = [
 ## Installed on hosts that drive TP-Link Kasa smart plugs / power strips.
 kasa = [
     "python-kasa>=0.7",
+]
+## Installed to use `adi-lg netbox add-hardware` (NetBox inventory registration
+## + exporter-host provisioning). jinja2 is already pulled in transitively
+## (fastmcp/sphinx) but wasn't declared or used directly until this command.
+netbox = [
+    "pynetbox>=7,<8",
+    "jinja2>=3",
+    # exporter_configs/validate.py's schema check is a silent no-op (an
+    # "issue" string, not a skip) without this installed - see
+    # provision.render_and_validate.
+    "jsonschema",
 ]
 docs = [
     "sphinx>=7.0.0",
