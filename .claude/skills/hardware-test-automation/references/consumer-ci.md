@@ -70,7 +70,7 @@ jobs:
     if: >-
       github.event_name == 'workflow_dispatch' ||
       contains(github.event.pull_request.labels.*.name, 'hw-request')
-    uses: tfcollins/labgrid-plugins/.github/workflows/hw-request.yml@v3.5   # verify tag
+    uses: tfcollins/labgrid-plugins/.github/workflows/hw-request.yml@v4   # verify tag
     with:
       coordinator: ${{ vars.LG_COORDINATOR }}          # gRPC host:20408
       test-root: "test/hw"
@@ -80,7 +80,7 @@ jobs:
         set -euo pipefail
         uv pip install --quiet --python "$VENV_DIR/bin/python" <YOUR_INSTALL_ARGS>
         uv pip install --quiet --python "$VENV_DIR/bin/python" \
-          "labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins.git@v3.5"
+          "labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins.git@v4"
       # prism-upload: ${{ vars.PRISM_UPLOAD_ENABLED == 'true' }}
       # prism-project: <PRISM_PROJECT_SLUG>
     # secrets:                       # cross-org `secrets: inherit` does NOT work — pass explicitly

@@ -40,14 +40,14 @@ from memory or from this skill's prose.** Concretely:
    task requires. When you must go beyond what the building blocks cover, say so and explain
    what you built instead and why (this is the "custom fallback" — it's allowed, but flag it).
 
-The reason this matters: a consumer CI workflow that pins `@v3.4` when the repo is on `@v3.5`,
+The reason this matters: a consumer CI workflow that pins `@v3.5` when the repo is on `@v4`,
 or a script that calls a renamed strategy, *looks* right in review and only fails once it's
 burning a real board's time slot. Grounding every artifact in a freshly-read source is the
 cheapest way to avoid that.
 
 **Pinning:** consumer workflows must pin a release tag, never `@main`. Find the current tag
 with `git -C <repo> tag --sort=-creatordate | head -1` (or check GitHub releases). At the time
-of writing the latest is `v3.5`, but **verify** — don't hardcode it from this sentence.
+of writing the latest is `v4`, but **verify** — don't hardcode it from this sentence.
 
 ## Step 1 — Classify the request
 
