@@ -9,11 +9,16 @@ docs/source/user-guide/netbox-onboarding.rst for prerequisites.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import click
+from rich import box
 from rich.console import Console
+from rich.markup import escape
+from rich.padding import Padding
 from rich.prompt import Confirm, Prompt
+from rich.table import Table
 
 from adi_lg_plugins.hw_ci import coordinator as coord_mod
 from adi_lg_plugins.hw_ci import power as power_types
@@ -69,6 +74,16 @@ def _strategy_summary(name: str) -> str:
     return lines[0].removeprefix(f"{name} - ") if lines else ""
 
 
+def _plan_table(rows: list[tuple[str, list[str]]]) -> Padding:
+    """Label/value rows; each value line is printed on a line of its own."""
+    table = Table.grid(padding=(0, 3))
+    table.add_column(style="bold")
+    table.add_column(overflow="fold")
+    for label, values in rows:
+        table.add_row(label, "\n".join(values))
+    return Padding(table, (0, 0, 0, 2))
+
+
 def _ask_power() -> tuple[str, dict[str, str]]:
     """Ask for a power type by category, then that type's fields.
 
@@ -102,19 +117,35 @@ def _ask_power() -> tuple[str, dict[str, str]]:
         if f.default is None:
             context[f.var] = _ask_required(f"  {f.prompt}")
             continue
-        answer = Prompt.ask(f"  {f.prompt}", default=f.default)
+        answer = Prompt.ask(f"  {f.prompt}", default=f.default, show_default=f.default != "")
         if answer not in (None, ""):
             context[f.var] = answer
     return power, context
 
 
-def _ask_required(prompt: str, **kwargs) -> str:
-    """Ask until the answer is non-blank (the field has no default to fall back on)."""
+# Board, carrier and chip names end up in a systemd unit name, a place name, a
+# resource group and a `<name>/<group>/*` match, so no spaces or slashes.
+_NAME = (r"[A-Za-z0-9][A-Za-z0-9._-]*", "use letters, digits, '.', '_' and '-' only")
+_SLUG = (r"[A-Za-z0-9_-]+", "a slug has letters, digits, '-' and '_' only")
+_SSH_LOGIN = (r"[^@\s]+@[^@\s]+", "use the form user@host")
+_URL = (r"https?://\S+", "include the scheme, e.g. https://netbox.example.com")
+
+
+def _explain(text: str) -> None:
+    """Say what the next question's answer is used for."""
+    console.print(f"\n[dim]{escape(text)}[/dim]")
+
+
+def _ask_required(prompt: str, *, check: tuple[str, str] | None = None, **kwargs) -> str:
+    """Ask until the answer is non-blank and, given ``check`` (regex, hint), matches it."""
     while True:
         answer = (Prompt.ask(prompt, **kwargs) or "").strip()
-        if answer:
+        if not answer:
+            console.print("    [red]required - this field has no default[/red]")
+        elif check and not re.fullmatch(check[0], answer):
+            console.print(f"    [red]{escape(check[1])}[/red]")
+        else:
             return answer
-        console.print("    [red]required - this field has no default[/red]")
 
 
 def _ask_secret(prompt: str) -> str:
@@ -195,9 +226,23 @@ def add_hardware(
     )
     template_path = templates[template_key]
 
-    name = Prompt.ask("Hardware / place / exporter name (e.g. zcu102-lab3-001)")
-    carrier = Prompt.ask("Carrier (board/FPGA, e.g. zcu102, vcu118)")
-    daughter_board = Prompt.ask("Daughter board / chip (e.g. ad9081)")
+    _explain(
+        "A unique name for this board. It names the NetBox device, the coordinator place "
+        "and the exporter service (labgrid-exporter-<name>)."
+    )
+    name = _ask_required("Board name (e.g. zcu102-ad9081-lab3)", check=_NAME)
+    _explain(
+        "The FPGA or SoC board the ADI part is mounted on. Saved in NetBox and as the "
+        "place's carrier tag; most templates also use it in the resource group name."
+    )
+    carrier = _ask_required("Carrier board (e.g. zcu102, zc706, vcu118)", check=_NAME)
+    _explain(
+        "The ADI part under test. Saved in NetBox and as the place's daughter-board tag; "
+        "most templates also use it in the resource group name."
+    )
+    daughter_board = _ask_required(
+        "ADI daughter board or chip (e.g. ad9081, adrv9009)", check=_NAME
+    )
     console.print("\n[bold]Boot strategies[/bold]")
     boot_strategy = ask_choice(
         console,
@@ -208,11 +253,21 @@ def add_hardware(
     )
     power, power_context = _ask_power()
     power_type = power_types.POWER_TYPES[power]
-    runner_label = Prompt.ask("GitHub runner label", default=f"hw-{carrier.lower()}")
-    site_slug = Prompt.ask("NetBox site slug (must already exist)")
-    ssh_target = Prompt.ask("Exporter host SSH target (user@host)")
-    if "@" not in ssh_target:
-        raise click.ClickException("SSH target must be in `user@host` form")
+    _explain(
+        "The self-hosted GitHub Actions runner that runs this board's hardware-CI jobs "
+        "(the place's runner tag)."
+    )
+    runner_label = Prompt.ask("GitHub Actions runner label", default=f"hw-{carrier.lower()}")
+    _explain(
+        "The existing NetBox site the board is in (NetBox: Organization > Sites). "
+        "This command never creates sites."
+    )
+    site_slug = _ask_required("NetBox site slug (e.g. lab3)", check=_SLUG)
+    _explain(
+        "The Linux machine the board's serial, USB and power are connected to. The exporter "
+        "service is installed there over SSH, so this user needs passwordless sudo."
+    )
+    ssh_target = _ask_required("Exporter host SSH login (user@host)", check=_SSH_LOGIN)
     ssh_user, ssh_host = ssh_target.split("@", 1)
 
     # Templates name their resource group <CARRIER>_<CHIP> from these fields
@@ -232,53 +287,44 @@ def add_hardware(
             - {f.var for t in power_types.POWER_TYPES.values() for f in t.fields}
         )
         required = provision.required_template_vars(template_path)
+        defaults = provision.template_field_defaults(template_path)
     except RuntimeError as e:
         raise click.ClickException(str(e)) from e
 
     # Required fields first, so they're not lost among the defaulted ones.
     var_names.sort(key=lambda v: v not in required)
+    questions = {v: escape(provision.TEMPLATE_FIELDS.get(v, v)) for v in var_names}
+    shown_defaults = {
+        v: "required" if v in required else "unset" if defaults.get(v) is None else defaults[v]
+        for v in var_names
+    }
     console.print(f"\n[bold]Template fields for {template_key}[/bold]")
-    for var in var_names:
-        console.print(f"  - {var}" + (" [bold](required)[/bold]" if var in required else ""))
-    if not var_names:
+    if var_names:
+        table = Table(box=box.SIMPLE_HEAD, show_edge=False, pad_edge=False)
+        for header in ("Field", "Question", "Default"):
+            table.add_column(header)
+        for var in var_names:
+            table.add_row(var, questions[var], escape(str(shown_defaults[var])))
+        console.print(table)
+    else:
         console.print("  (none)")
     for var in var_names:
         secret = "password" in var
         if var in required:
-            context[var] = _ask_required(f"  {var} (required)", password=secret)
+            context[var] = _ask_required(f"  {questions[var]} (required)", password=secret)
             continue
+        default = defaults.get(var)
+        enter = "Enter to leave unset" if default is None else f"Enter for {default}"
+        # Blank keeps the template's own default rather than passing it back in,
+        # so default(none) stays null instead of becoming a string.
         answer = Prompt.ask(
-            f"  {var} (blank = template default)", default="", show_default=False, password=secret
+            f"  {questions[var]} ({escape(enter)})",
+            default="",
+            show_default=False,
+            password=secret,
         )
         if answer:
             context[var] = answer
-
-    console.print("\n[bold]Plan[/bold]")
-    console.print(
-        f"  NetBox device: {name}  (carrier={carrier}, chip={daughter_board}, site={site_slug})"
-    )
-    console.print(f"  Exporter: {ssh_target} -> systemd unit labgrid-exporter-{name}")
-    power_tags = provision.power_tags(power)
-    console.print(
-        f"  Coordinator place: {name}  "
-        f"(tags: daughter-board={daughter_board.lower()}, carrier={carrier.lower()}, "
-        f"boot-strategy={boot_strategy}, runner={runner_label}, "
-        + ", ".join(f"{k}={v}" for k, v in power_tags.items())
-        + ")"
-    )
-    console.print(f"  Power: {power_type.label} ({power}), via {' + '.join(power_type.drivers)}")
-    if power_type.credentials:
-        console.print(
-            "    credentials from "
-            f"{provision.EXPORTER_ENV_FILE} on the exporter host: "
-            + ", ".join(
-                c.env + ("" if c.required else " (optional)") for c in power_type.credentials
-            )
-        )
-    if power_type.reach == "client":
-        console.print("    [yellow]the client (test runner) must reach this device[/yellow]")
-    if power_type.note:
-        console.print(f"    {power_type.note}")
 
     try:
         rendered_path, groups = provision.render_and_validate(
@@ -289,9 +335,45 @@ def add_hardware(
     # The systemd unit runs `labgrid-exporter -n <name>`, so the coordinator
     # sees these resources under exporter <name>, not the SSH host name.
     match_patterns = [f"{name}/{group}/*" for group in groups]
-    console.print(f"  Rendered + validated exporter config: {rendered_path}")
-    console.print(f"  Resource group(s): {', '.join(groups)}")
-    console.print(f"  Place match(es): {', '.join(match_patterns)}")
+    tags = {
+        "daughter-board": daughter_board.lower(),
+        "carrier": carrier.lower(),
+        "boot-strategy": boot_strategy,
+        "runner": runner_label,
+        **provision.power_tags(power),
+    }
+
+    power_lines = [
+        escape(f"{power_type.label} ({power})"),
+        "via " + " + ".join(power_type.drivers),
+    ]
+    if power_type.credentials:
+        power_lines.append(f"credentials in {provision.EXPORTER_ENV_FILE} on the exporter host:")
+        power_lines += [
+            f"  {c.env}" + ("" if c.required else " (optional)") for c in power_type.credentials
+        ]
+    if power_type.reach == "client":
+        power_lines.append("[yellow]the client (test runner) must reach this device[/yellow]")
+    if power_type.note:
+        power_lines.append(power_type.note)
+
+    console.print("\n[bold]Plan[/bold]")
+    console.print(
+        _plan_table(
+            [
+                ("NetBox device", [escape(f"{name} (site {site_slug})")]),
+                ("Carrier / chip", [escape(f"{carrier} / {daughter_board}")]),
+                ("Exporter host", [escape(ssh_target)]),
+                ("Systemd unit", [escape(f"labgrid-exporter-{name}")]),
+                ("Exporter config", [f"{rendered_path} (rendered + validated)"]),
+                ("Resource groups", [escape(g) for g in groups]),
+                ("Coordinator place", [escape(name)]),
+                ("Place matches", [escape(m) for m in match_patterns]),
+                ("Place tags", [escape(f"{k}={v}") for k, v in tags.items()]),
+                ("Power", power_lines),
+            ]
+        )
+    )
 
     if dry_run:
         console.print("\n[yellow]Dry run - no NetBox/SSH/coordinator changes made.[/yellow]")
@@ -301,11 +383,21 @@ def add_hardware(
         raise click.Abort()
 
     if not netbox_url:
-        netbox_url = _ask_required("NetBox URL")
+        _explain("The NetBox instance to register the board in (or set NETBOX_URL).")
+        netbox_url = _ask_required("NetBox URL (e.g. https://netbox.example.com)", check=_URL)
     if not netbox_token:
+        _explain(
+            "A NetBox API token that can create devices; create one under your user profile "
+            "in NetBox (or set NETBOX_TOKEN)."
+        )
         netbox_token = _ask_secret("NetBox API token")
 
     coord_resolved = resolve_coordinator(coord)
+    if not coord_user or not coord_password:
+        _explain(
+            f"A coordinator API login ({coord_resolved}) that can create places, add matches "
+            "and set tags (or set LG_API_USERNAME / LG_API_PASSWORD)."
+        )
     if not coord_user:
         coord_user = _ask_required("Coordinator API username")
     if not coord_password:
@@ -367,18 +459,7 @@ def add_hardware(
         create_place(api, cookie, name)
         for pattern in match_patterns:
             add_match(api, cookie, name, pattern)
-        set_place_tags(
-            api,
-            cookie,
-            name,
-            {
-                "daughter-board": daughter_board.lower(),
-                "carrier": carrier.lower(),
-                "boot-strategy": boot_strategy,
-                "runner": runner_label,
-                **power_tags,
-            },
-        )
+        set_place_tags(api, cookie, name, tags)
     except RuntimeError as e:
         raise click.ClickException(str(e)) from e
     console.print(f"[green]Place {name!r} created, matched, and tagged on the coordinator.[/green]")

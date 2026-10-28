@@ -282,3 +282,14 @@ def test_verify_exporter_active_raises_after_retries_with_logs(monkeypatch):
 
     with pytest.raises(RuntimeError, match="did not become active"):
         provision.verify_exporter_active("lab-host-03", "rack1", retries=2, delay=0)
+
+
+def test_template_field_defaults_are_read_from_the_template():
+    defaults = provision.template_field_defaults(
+        EXPORTER_CONFIGS_DIR / "templates" / "soc-sdmux.yaml"
+    )
+
+    assert defaults["serial_port"] == "/dev/ttyUSB0"
+    assert defaults["kuiper_release"] == "2023_R2_P1"
+    assert defaults["kuiper_bootbin"] is None  # default(none): left unset
+    assert "target_ip" not in defaults  # required, no default

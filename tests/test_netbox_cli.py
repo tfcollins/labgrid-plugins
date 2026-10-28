@@ -2,31 +2,144 @@
 
 NetBox, SSH, and the coordinator are external services, so their client calls
 are replaced with recorders; template rendering and validation run for real
-against this repo's exporter_configs/.
+against this repo's exporter_configs/. Most tests answer prompts through
+`_stub_prompts`; `test_dry_run_through_the_real_prompts` types every answer into
+the real prompts instead.
 """
 
 from __future__ import annotations
 
+import getpass
+import re
+import sys
 from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
+from rich.prompt import Confirm, Prompt
 
 from adi_lg_plugins.tools.netbox import cli
 
 EXPORTER_CONFIGS_DIR = Path(__file__).resolve().parents[1] / "exporter_configs"
+DRY_RUN = ["add-hardware", "--dry-run", "--exporter-configs-dir", str(EXPORTER_CONFIGS_DIR)]
+CREDENTIALS = [
+    "--netbox-url",
+    "https://nb",
+    "--netbox-token",
+    "t",
+    "--coord-user",
+    "u",
+    "--coord-password",
+    "p",
+]
 
-_ANSWERS = {
-    "Board template": "soc-sdmux",
-    "Hardware / place / exporter name": "zc706-lab3-001",
-    "Carrier": "zc706",
-    "Daughter board / chip": "adrv9009",
-    "GitHub runner label": "hw-zc706",
+
+@pytest.fixture(autouse=True)
+def _no_credentials_from_the_environment(monkeypatch):
+    """These would skip the credential prompts the tests answer."""
+    for var in ("NETBOX_URL", "NETBOX_TOKEN", "NETBOX_CA_BUNDLE", "LG_API_USERNAME"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.delenv("LG_API_PASSWORD", raising=False)
+
+
+def _type_into_real_prompts(monkeypatch, conversation, *args):
+    """Run add-hardware, typing each answer of ``conversation`` into the real prompts.
+
+    Returns the result and every prompt shown, in order. Hidden answers go
+    through getpass, which would otherwise read the real terminal.
+    """
+    monkeypatch.setattr(
+        getpass, "getpass", lambda prompt="", stream=None: sys.stdin.readline().rstrip("\n")
+    )
+    prompts = []
+    for cls in (Prompt, Confirm):
+        real_ask = cls.ask
+
+        def spy(prompt, *a, _real_ask=real_ask, **k):
+            prompts.append(str(prompt))
+            return _real_ask(prompt, *a, **k)
+
+        monkeypatch.setattr(cls, "ask", staticmethod(spy))
+    result = CliRunner().invoke(
+        cli.netbox_group,
+        ["add-hardware", "--exporter-configs-dir", str(EXPORTER_CONFIGS_DIR), *args],
+        input="".join(f"{answer}\n" for _, answer in conversation),
+        catch_exceptions=False,
+    )
+    return result, prompts
+
+
+def _assert_asked_in_order(conversation, prompts):
+    assert [q for q, _ in conversation] == [
+        next((q for q, _ in conversation if p.startswith(q)), p) for p in prompts
+    ]
+    # Every question says what it is for, not a bare template variable name.
+    assert not [p for p in prompts if re.match(r"\s*[a-z]+_[a-z_]+\b", p)]
+
+
+class _Asked(list):
+    """Prompts asked, in order; ``kwargs`` maps each stripped prompt to its keyword args."""
+
+    def __init__(self):
+        super().__init__()
+        self.kwargs = {}
+
+
+def _stub_prompts(monkeypatch, replies) -> _Asked:
+    """Answer each prompt from the first ``replies`` key it starts with.
+
+    A list answers successive asks (its last item repeats). A prompt matching no
+    key gets its default; with no default the test fails at once, because a
+    required prompt would otherwise be asked again forever.
+    """
+    asked = _Asked()
+    replies = {k: list(v) if isinstance(v, list) else [v] for k, v in replies.items()}
+
+    def _ask(prompt, *args, **kwargs):
+        asked.append(prompt)
+        asked.kwargs[prompt.strip()] = kwargs
+        for prefix, answers in replies.items():
+            if prompt.startswith(prefix):
+                return answers.pop(0) if len(answers) > 1 else answers[0]
+        if kwargs.get("default") is None:
+            raise AssertionError(f"no answer for prompt {prompt!r}")
+        return kwargs["default"]
+
+    monkeypatch.setattr(Prompt, "ask", staticmethod(_ask))
+    return asked
+
+
+def _invoke(*args):
+    # Unexpected exceptions (including a stub's AssertionError) fail the test
+    # with their own traceback; click still turns ClickException into exit 1.
+    return CliRunner().invoke(cli.netbox_group, list(args), catch_exceptions=False)
+
+
+# A soc-ssh board with a CyberPower PDU, keyed by prompt prefix.
+_SOC_SSH = {
+    "Board template": "soc-ssh",
+    "Board name": "b1",
+    "Carrier board": "zcu102",
+    "ADI daughter board or chip": "ad9081",
+    "Power category": "Network PDU",
+    "Power type": "cyberpower",
+    "  PDU hostname or IP": "10.0.0.20",
+    "  Outlet number": "4",
     "NetBox site slug": "lab3",
-    "Exporter host SSH target": "labadmin@lab-host-03",
-    "  target_ip": "10.0.0.42",
+    "Exporter host SSH login": "root@h",
+    "  Board IP address": "10.0.0.5",
 }
 
+_SOC_SDMUX = {
+    "Board template": "soc-sdmux",
+    "Board name": "zc706-lab3-001",
+    "Carrier board": "zc706",
+    "ADI daughter board or chip": "adrv9009",
+    "GitHub Actions runner label": "hw-zc706",
+    "NetBox site slug": "lab3",
+    "Exporter host SSH login": "labadmin@lab-host-03",
+    "  Board IP address": "10.0.0.42",
+}
 
 # Per power type: (category, answers to that type's own prompts, expected tags,
 # credential the stubbed host reports missing).
@@ -49,24 +162,11 @@ _POWER_CASES = {
 @pytest.mark.parametrize("power", sorted(_POWER_CASES))
 def test_add_hardware_matches_resources_under_the_deployed_exporter_name(monkeypatch, power):
     category, power_answers, expected_tags, missing = _POWER_CASES[power]
-    answers = {
-        "Power category": category,
-        "Power type": power,
-        **power_answers,
-        **_ANSWERS,
-    }
+    asked = _stub_prompts(
+        monkeypatch,
+        {"Power category": category, "Power type": power, **power_answers, **_SOC_SDMUX},
+    )
     calls = {}
-    asked = []
-
-    def _ask(prompt, *args, **kwargs):
-        asked.append(prompt)
-        calls.setdefault("defaults", {})[prompt] = kwargs.get("default")
-        for prefix, answer in answers.items():
-            if prompt.startswith(prefix):
-                return answer
-        return kwargs.get("default", "")
-
-    monkeypatch.setattr(cli.Prompt, "ask", staticmethod(_ask))
     monkeypatch.setattr(cli.Confirm, "ask", staticmethod(lambda *a, **k: True))
     monkeypatch.setattr(cli.client, "connect", lambda url, token, **k: object())
     monkeypatch.setattr(cli.client, "ensure_schema", lambda nb: None)
@@ -97,21 +197,8 @@ def test_add_hardware_matches_resources_under_the_deployed_exporter_name(monkeyp
     )
     monkeypatch.setattr(cli, "fetch_raw_places", lambda coord: ([], []))
 
-    result = CliRunner().invoke(
-        cli.netbox_group,
-        [
-            "add-hardware",
-            "--exporter-configs-dir",
-            str(EXPORTER_CONFIGS_DIR),
-            "--netbox-url",
-            "https://netbox.test",
-            "--netbox-token",
-            "t",
-            "--coord-user",
-            "u",
-            "--coord-password",
-            "p",
-        ],
+    result = _invoke(
+        "add-hardware", "--exporter-configs-dir", str(EXPORTER_CONFIGS_DIR), *CREDENTIALS
     )
 
     assert result.exit_code == 0, result.output
@@ -120,9 +207,9 @@ def test_add_hardware_matches_resources_under_the_deployed_exporter_name(monkeyp
     assert calls["patterns"] == ["zc706-lab3-001/ZC706_ADRV9009/*"]
     # ... so they are not asked for again as template fields, nor are the power
     # answers or labgrid's own runtime `env`.
-    assert not [p for p in asked if p.startswith(("  carrier", "  chip", "  power", "  env"))]
+    assert not [p for p in asked if re.match(r"\s+(carrier|chip|power|env)\b", p)]
     # The strategy defaults to the one the template declares.
-    assert calls["defaults"]["Boot strategy"] == "BootFPGASoC"
+    assert asked.kwargs["Boot strategy"]["default"] == "BootFPGASoC"
     assert calls["tags"]["boot-strategy"] == "BootFPGASoC"
     # render-env picks the power driver from this tag.
     assert {k: v for k, v in calls["tags"].items() if k.startswith("power")} == expected_tags
@@ -131,93 +218,182 @@ def test_add_hardware_matches_resources_under_the_deployed_exporter_name(monkeyp
         assert missing in result.output
 
 
-def test_required_fields_are_re_asked_until_answered(monkeypatch):
-    """A blank answer to a field with no default must not reach the render step."""
-    replies = {
-        "Board template": ["soc-ssh"],
-        "Hardware / place / exporter name": ["adrv9009zu11eg"],
-        "Carrier": ["adrv2crr-fmc"],
-        "Daughter board / chip": ["adrv9009zu11eg"],
-        "Power category": ["Network PDU"],
-        "Power type": ["cyberpower"],
-        "  PDU hostname or IP": ["", "10.68.152.20"],
-        "  Outlet number": ["", "4"],
-        "NetBox site slug": ["chelm"],
-        "Exporter host SSH target": ["root@10.68.152.131"],
-        "  target_ip": ["", "10.68.152.140"],
-    }
-    asked = []
+def test_dry_run_through_the_real_prompts(monkeypatch):
+    """Type every answer into the real prompts: checks their order, wording and parsing."""
+    conversation = [
+        ("Board template", "3"),  # by row number: soc-sdmux
+        ("Board name", "zcu102-lab3-001"),
+        ("Carrier board", "zcu102"),
+        ("ADI daughter board or chip", "ad9081"),
+        ("Boot strategy", ""),  # the template's own, BootFPGASoC
+        ("Power category", "1"),
+        ("Power type", "cyberpower"),  # by name
+        ("  PDU hostname or IP", "10.0.0.20"),
+        ("  Outlet number", "4"),
+        ("GitHub Actions runner label", ""),
+        ("NetBox site slug", "lab3"),
+        ("Exporter host SSH login", "labadmin@lab-host-03"),
+        ("  Board IP address", "10.0.0.42"),
+        ("  SD card boot partition", ""),
+        ("  BOOT.BIN", "release:zynqmp-zcu102-rev10-ad9081/m8_l4/BOOT.BIN"),
+        ("  Device tree", ""),
+        ("  Kernel image", ""),
+        ("  Kuiper release", ""),
+        ("  SD mux control device", ""),
+        ("  Serial console device", "/dev/ttyUSB2"),
+        ("  Board Linux SSH password", ""),
+        ("  Board Linux SSH username", ""),
+    ]
+    result, prompts = _type_into_real_prompts(monkeypatch, conversation, "--dry-run")
 
-    def _ask(prompt, *args, **kwargs):
-        asked.append(prompt)
-        for prefix, answers in replies.items():
-            if prompt.startswith(prefix):
-                return answers.pop(0) if len(answers) > 1 else answers[0]
-        return kwargs.get("default")
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(conversation, prompts)
+    plan = result.output[result.output.index("\nPlan") :]
+    assert "ZCU102_AD9081" in plan
+    assert "power-driver=CyberPowerDriver" in plan
+    assert "Dry run" in result.output
 
-    monkeypatch.setattr(cli.Prompt, "ask", staticmethod(_ask))
 
-    result = CliRunner().invoke(
-        cli.netbox_group,
-        ["add-hardware", "--dry-run", "--exporter-configs-dir", str(EXPORTER_CONFIGS_DIR)],
+def test_full_run_through_the_real_prompts(monkeypatch):
+    """Credentials too: typed after Proceed?, hidden ones through getpass."""
+    conversation = [
+        ("Board template", "soc-ssh"),
+        ("Board name", "b1"),
+        ("Carrier board", "zcu102"),
+        ("ADI daughter board or chip", "ad9081"),
+        ("Boot strategy", ""),
+        ("Power category", "Network PDU"),
+        ("Power type", "cyberpower"),
+        ("  PDU hostname or IP", "10.0.0.20"),
+        ("  Outlet number", "4"),
+        ("GitHub Actions runner label", ""),
+        ("NetBox site slug", "lab3"),
+        ("Exporter host SSH login", "root@h"),
+        ("  Board IP address", "10.0.0.5"),
+        ("  BOOT.BIN", ""),
+        ("  Device tree", ""),
+        ("  Kernel image", ""),
+        ("  Kuiper release", ""),
+        ("  Serial console device", ""),
+        ("  Board Linux SSH password", ""),
+        ("  Board Linux SSH username", ""),
+        ("\nProceed?", "y"),
+        ("NetBox URL", "https://netbox.test"),
+        ("NetBox API token", "  tok123  "),  # pasted with stray whitespace
+        ("Coordinator API username", "admin"),
+        ("Coordinator API password", "secret"),
+    ]
+    calls = {}
+    monkeypatch.setattr(
+        cli.client, "connect", lambda url, token, **k: calls.update(url=url, token=token)
     )
+    monkeypatch.setattr(cli.client, "ensure_schema", lambda nb: None)
+    monkeypatch.setattr(
+        cli.client, "create_or_update_device", lambda nb, name, **kw: type("D", (), {"id": 7})()
+    )
+    monkeypatch.setattr(cli.provision, "check_prerequisites", lambda host: "/usr/bin/lg-exp")
+    monkeypatch.setattr(cli.provision, "deploy_exporter", lambda *a, **k: None)
+    monkeypatch.setattr(cli.provision, "verify_exporter_active", lambda host, name: None)
+    monkeypatch.setattr(cli.provision, "missing_power_env", lambda host, power: [])
+    monkeypatch.setattr(cli, "resolve_coordinator", lambda coord: "coord:20408")
+    monkeypatch.setattr(cli, "_resolve_api", lambda coord: "http://coord:8000/api")
+    monkeypatch.setattr(
+        cli.coord_mod, "login", lambda api, user, password: calls.update(login=(user, password))
+    )
+    monkeypatch.setattr(cli, "create_place", lambda api, cookie, name: None)
+    monkeypatch.setattr(cli, "add_match", lambda api, cookie, name, pattern: None)
+    monkeypatch.setattr(
+        cli, "set_place_tags", lambda api, cookie, name, tags: calls.update(tags=tags)
+    )
+    monkeypatch.setattr(cli, "fetch_raw_places", lambda coord: ([], []))
+
+    result, prompts = _type_into_real_prompts(monkeypatch, conversation)
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(conversation, prompts)
+    assert calls["url"] == "https://netbox.test"
+    assert calls["token"] == "tok123"
+    assert "received 6 characters" in result.output
+    assert calls["login"] == ("admin", "secret")
+    assert calls["tags"]["power-driver"] == "CyberPowerDriver"
+    # The credential questions explain themselves like the others.
+    output = " ".join(result.output.split())
+    assert "under your user profile in NetBox" in output
+    assert "create places" in output
+
+
+def test_required_answers_are_asked_again_until_given(monkeypatch):
+    """A blank answer to a field with no default must not reach the render step."""
+    asked = _stub_prompts(
+        monkeypatch,
+        {
+            **_SOC_SSH,
+            "Carrier board": ["", "adrv2crr-fmc"],
+            "  PDU hostname or IP": ["", "10.68.152.20"],
+            "  Outlet number": ["", "4"],
+            "  Board IP address": ["", "10.68.152.140"],
+        },
+    )
+
+    result = _invoke(*DRY_RUN)
 
     assert result.exit_code == 0, result.output
     assert "Dry run" in result.output
-    assert sum(p.startswith("  target_ip") for p in asked) == 2
-    assert sum(p.startswith("  PDU hostname") for p in asked) == 2
-    # Required template fields are labelled as such, optional ones as defaulted.
-    assert any(p.startswith("  target_ip (required)") for p in asked)
-    assert any(p.startswith("  serial_port (blank = template default)") for p in asked)
+    for question in ("Carrier board", "  PDU hostname", "  Board IP address"):
+        assert sum(p.startswith(question) for p in asked) == 2, question
+    # Required template fields say so; optional ones say what Enter gives.
+    assert "  Board IP address, for SSH to its Linux (required)" in asked
+    assert "  Serial console device on the exporter host (Enter for /dev/ttyUSB0)" in asked
+
+
+@pytest.mark.parametrize(
+    ("question", "bad"),
+    [
+        ("Board name", "my board"),
+        ("Board name", "lab3/b1"),
+        ("Carrier board", "zcu 102"),
+        ("ADI daughter board or chip", "ad9081/fmc"),
+        ("NetBox site slug", "Lab 3"),
+        ("Exporter host SSH login", "lab-host-03"),
+        ("Exporter host SSH login", "@lab-host-03"),
+    ],
+)
+def test_malformed_answers_are_asked_again(monkeypatch, question, bad):
+    asked = _stub_prompts(monkeypatch, {**_SOC_SSH, question: [bad, _SOC_SSH[question]]})
+
+    result = _invoke(*DRY_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert sum(p.startswith(question) for p in asked) == 2
+
+
+def test_each_fixed_question_explains_what_the_answer_is_for(monkeypatch):
+    _stub_prompts(monkeypatch, _SOC_SSH)
+
+    output = " ".join(_invoke(*DRY_RUN).output.split())  # explanations wrap at 80 columns
+
+    assert "NetBox device, the coordinator place and the exporter service" in output
+    assert "existing NetBox site" in output
+    assert "passwordless sudo" in output
 
 
 def test_missing_netbox_extra_fails_before_any_prompt(monkeypatch):
     """Without pynetbox the command must stop at once, not after every prompt."""
-    import sys
-
     monkeypatch.setitem(sys.modules, "pynetbox", None)  # `import pynetbox` -> ImportError
-    asked = []
-    monkeypatch.setattr(
-        cli.Prompt, "ask", staticmethod(lambda prompt, *a, **k: asked.append(prompt))
-    )
+    asked = _stub_prompts(monkeypatch, {})
 
-    result = CliRunner().invoke(
-        cli.netbox_group, ["add-hardware", "--exporter-configs-dir", str(EXPORTER_CONFIGS_DIR)]
-    )
+    result = _invoke("add-hardware", "--exporter-configs-dir", str(EXPORTER_CONFIGS_DIR))
 
     assert result.exit_code == 1
     assert asked == []
-    assert not isinstance(result.exception, RuntimeError)  # a clean error, not a traceback
     assert 'pip install -e ".[netbox]"' in result.output
 
 
 def test_dry_run_does_not_need_pynetbox(monkeypatch):
-    import sys
-
     monkeypatch.setitem(sys.modules, "pynetbox", None)
-    replies = {
-        "Board template": "soc-ssh",
-        "Hardware / place / exporter name": "b1",
-        "Carrier": "zcu102",
-        "Daughter board / chip": "ad9081",
-        "Power category": "Network PDU",
-        "Power type": "cyberpower",
-        "  PDU hostname or IP": "10.0.0.20",
-        "  Outlet number": "4",
-        "NetBox site slug": "lab3",
-        "Exporter host SSH target": "root@h",
-        "  target_ip": "10.0.0.5",
-    }
+    _stub_prompts(monkeypatch, _SOC_SSH)
 
-    def _ask(prompt, *args, **kwargs):
-        return next((v for k, v in replies.items() if prompt.startswith(k)), kwargs.get("default"))
-
-    monkeypatch.setattr(cli.Prompt, "ask", staticmethod(_ask))
-
-    result = CliRunner().invoke(
-        cli.netbox_group,
-        ["add-hardware", "--dry-run", "--exporter-configs-dir", str(EXPORTER_CONFIGS_DIR)],
-    )
+    result = _invoke(*DRY_RUN)
 
     assert result.exit_code == 0, result.output
     assert "Dry run" in result.output
@@ -225,94 +401,37 @@ def test_dry_run_does_not_need_pynetbox(monkeypatch):
 
 def test_netbox_errors_are_reported_without_a_traceback(monkeypatch):
     """e.g. a site slug that doesn't exist in NetBox."""
-    replies = {
-        "Board template": "soc-ssh",
-        "Hardware / place / exporter name": "b1",
-        "Carrier": "zcu102",
-        "Daughter board / chip": "ad9081",
-        "Power category": "Network PDU",
-        "Power type": "cyberpower",
-        "  PDU hostname or IP": "10.0.0.20",
-        "  Outlet number": "4",
-        "NetBox site slug": "nosuchsite",
-        "Exporter host SSH target": "root@h",
-        "  target_ip": "10.0.0.5",
-    }
-
-    def _ask(prompt, *args, **kwargs):
-        return next((v for k, v in replies.items() if prompt.startswith(k)), kwargs.get("default"))
 
     def no_site(*a, **k):
         raise RuntimeError("NetBox site 'nosuchsite' does not exist")
 
-    monkeypatch.setattr(cli.Prompt, "ask", staticmethod(_ask))
+    _stub_prompts(monkeypatch, {**_SOC_SSH, "NetBox site slug": "nosuchsite"})
     monkeypatch.setattr(cli.Confirm, "ask", staticmethod(lambda *a, **k: True))
     monkeypatch.setattr(cli.client, "connect", lambda url, token, **k: object())
     monkeypatch.setattr(cli.client, "ensure_schema", lambda nb: None)
     monkeypatch.setattr(cli.client, "create_or_update_device", no_site)
     monkeypatch.setattr(cli, "resolve_coordinator", lambda coord: "coord:20408")
 
-    result = CliRunner().invoke(
-        cli.netbox_group,
-        [
-            "add-hardware",
-            "--exporter-configs-dir",
-            str(EXPORTER_CONFIGS_DIR),
-            "--netbox-url",
-            "https://netbox.test",
-            "--netbox-token",
-            "t",
-            "--coord-user",
-            "u",
-            "--coord-password",
-            "p",
-        ],
+    result = _invoke(
+        "add-hardware", "--exporter-configs-dir", str(EXPORTER_CONFIGS_DIR), *CREDENTIALS
     )
 
     assert result.exit_code == 1
-    assert not isinstance(result.exception, RuntimeError)
     assert "does not exist" in result.output
-
-
-_SOC_SSH_REPLIES = {
-    "Board template": "soc-ssh",
-    "Hardware / place / exporter name": "b1",
-    "Carrier": "zcu102",
-    "Daughter board / chip": "ad9081",
-    "Power category": "Network PDU",
-    "Power type": "cyberpower",
-    "  PDU hostname or IP": "10.0.0.20",
-    "  Outlet number": "4",
-    "NetBox site slug": "lab3",
-    "Exporter host SSH target": "root@h",
-    "  target_ip": "10.0.0.5",
-}
 
 
 def _run_until_netbox(monkeypatch, args, replies=None, *, connect=None, schema_error=None):
     """Answer every prompt, then stop the run at the NetBox schema step."""
-    replies = {**_SOC_SSH_REPLIES, **(replies or {})}
-    asked = []
-
-    def _ask(prompt, *a, **k):
-        asked.append(prompt)
-        for key, value in replies.items():
-            if prompt.startswith(key):
-                return value.pop(0) if isinstance(value, list) else value
-        return k.get("default")
+    asked = _stub_prompts(monkeypatch, {**_SOC_SSH, **(replies or {})})
 
     def ensure_schema(nb):
         raise schema_error or RuntimeError("stop after connecting")
 
-    monkeypatch.setattr(cli.Prompt, "ask", staticmethod(_ask))
     monkeypatch.setattr(cli.Confirm, "ask", staticmethod(lambda *a, **k: True))
     monkeypatch.setattr(cli.client, "connect", connect or (lambda url, token, **k: object()))
     monkeypatch.setattr(cli.client, "ensure_schema", ensure_schema)
     monkeypatch.setattr(cli, "resolve_coordinator", lambda coord: "coord:20408")
-    result = CliRunner().invoke(
-        cli.netbox_group,
-        ["add-hardware", "--exporter-configs-dir", str(EXPORTER_CONFIGS_DIR), *args],
-    )
+    result = _invoke("add-hardware", "--exporter-configs-dir", str(EXPORTER_CONFIGS_DIR), *args)
     return result, asked
 
 
@@ -333,9 +452,27 @@ def test_netbox_token_prompt_says_input_is_hidden_and_confirms_what_it_read(monk
 
     assert seen == {"url": "https://netbox.test", "token": "tok123"}
     token_prompts = [p for p in asked if p.startswith("NetBox API token")]
-    assert len(token_prompts) == 2  # blank answer re-asked
+    assert len(token_prompts) == 2  # blank answer asked again
     assert "hidden" in token_prompts[0]
     assert "received 6 characters" in result.output
+
+
+def test_netbox_url_without_a_scheme_is_asked_again(monkeypatch):
+    seen = {}
+
+    def connect(url, token, **kwargs):
+        seen["url"] = url
+        return object()
+
+    _, asked = _run_until_netbox(
+        monkeypatch,
+        ["--netbox-token", "t", "--coord-user", "u", "--coord-password", "p"],
+        {"NetBox URL": ["netbox.test", "https://netbox.test"]},
+        connect=connect,
+    )
+
+    assert seen == {"url": "https://netbox.test"}
+    assert sum(p.startswith("NetBox URL") for p in asked) == 2
 
 
 @pytest.mark.parametrize(
@@ -353,21 +490,7 @@ def test_tls_options_reach_the_netbox_client(monkeypatch, tmp_path, args, expect
         seen["verify"] = verify
         return object()
 
-    result, _ = _run_until_netbox(
-        monkeypatch,
-        [
-            "--netbox-url",
-            "https://nb",
-            "--netbox-token",
-            "t",
-            "--coord-user",
-            "u",
-            "--coord-password",
-            "p",
-            *args,
-        ],
-        connect=connect,
-    )
+    result, _ = _run_until_netbox(monkeypatch, [*CREDENTIALS, *args], connect=connect)
 
     assert seen == {"verify": expected}
     assert ("not verified" in result.output) == (expected is False)
@@ -411,23 +534,13 @@ def test_tls_failure_suggests_a_ca_bundle(monkeypatch):
 
     result, _ = _run_until_netbox(
         monkeypatch,
-        [
-            "--netbox-url",
-            "https://nb",
-            "--netbox-token",
-            "t",
-            "--coord-user",
-            "u",
-            "--coord-password",
-            "p",
-        ],
+        CREDENTIALS,
         schema_error=requests.exceptions.SSLError(
             "certificate verify failed: self-signed certificate in certificate chain"
         ),
     )
 
     assert result.exit_code == 1
-    assert not isinstance(result.exception, requests.exceptions.SSLError)
     assert "--netbox-ca-bundle" in result.output
 
 
@@ -442,22 +555,10 @@ def test_rejected_token_is_reported_without_a_traceback(monkeypatch):
             return {"detail": "Invalid v1 token"}
 
     result, _ = _run_until_netbox(
-        monkeypatch,
-        [
-            "--netbox-url",
-            "https://nb",
-            "--netbox-token",
-            "t",
-            "--coord-user",
-            "u",
-            "--coord-password",
-            "p",
-        ],
-        schema_error=pynetbox.RequestError(_Forbidden()),
+        monkeypatch, CREDENTIALS, schema_error=pynetbox.RequestError(_Forbidden())
     )
 
     assert result.exit_code == 1
-    assert not isinstance(result.exception, pynetbox.RequestError)
     assert "Invalid v1 token" in result.output
     assert "--netbox-token" in result.output
 
@@ -466,56 +567,73 @@ def test_unusable_ca_bundle_is_reported_without_a_traceback(monkeypatch):
     """requests raises a bare OSError for a CA bundle path that doesn't exist."""
     result, _ = _run_until_netbox(
         monkeypatch,
-        [
-            "--netbox-url",
-            "https://nb",
-            "--netbox-token",
-            "t",
-            "--coord-user",
-            "u",
-            "--coord-password",
-            "p",
-            "--netbox-verify",
-        ],
+        [*CREDENTIALS, "--netbox-verify"],
         schema_error=OSError("Could not find a suitable TLS CA certificate bundle"),
     )
 
     assert result.exit_code == 1
-    assert not isinstance(result.exception, OSError)
     assert "Could not find a suitable TLS CA certificate bundle" in result.output
 
 
+def _rows(text):
+    lines = text.splitlines()
+    return lambda *tokens: any(all(t in line for t in tokens) for line in lines)
+
+
 def test_options_are_listed_one_per_row_not_run_together(monkeypatch):
-    kwargs_by_prompt = {}
+    asked = _stub_prompts(monkeypatch, _SOC_SSH)
 
-    def _ask(prompt, *args, **kwargs):
-        kwargs_by_prompt[prompt.strip()] = kwargs
-        return next(
-            (v for k, v in _SOC_SSH_REPLIES.items() if prompt.startswith(k)), kwargs.get("default")
-        )
-
-    monkeypatch.setattr(cli.Prompt, "ask", staticmethod(_ask))
-
-    result = CliRunner().invoke(
-        cli.netbox_group,
-        ["add-hardware", "--dry-run", "--exporter-configs-dir", str(EXPORTER_CONFIGS_DIR)],
-    )
+    result = _invoke(*DRY_RUN)
 
     assert result.exit_code == 0, result.output
-    lines = result.output.splitlines()
-
-    def row(*tokens):
-        return any(all(t in line for t in tokens) for line in lines)
-
+    row = _rows(result.output)
     assert row("fabric-jtag", "BootFabric")  # template + the strategy it's written for
     assert row("soc-ssh", "BootFPGASoCSSH")
     assert not row("fabric-jtag", "rpi-ssh")
     assert row("BootZynqMPJTAG", "JTAG")  # strategy + its description
     assert row("Network PDU", "cyberpower")  # category + its types
     assert row("cyberpower", "CyberPower PDU")  # type + its label
-    assert row("target_ip", "required")
-    assert not row("Template fields", ", ")
+    assert row("target_ip", "Board IP address", "required")  # field + question + default
+    assert row("serial_port", "/dev/ttyUSB0")
     for prompt in ("Board template", "Boot strategy", "Power category", "Power type"):
-        assert kwargs_by_prompt[prompt]["show_choices"] is False, prompt
+        assert asked.kwargs[prompt]["show_choices"] is False, prompt
     # an empty default would otherwise print as "()" after the prompt
-    assert kwargs_by_prompt["serial_port (blank = template default)"]["show_default"] is False
+    optional = "Serial console device on the exporter host (Enter for /dev/ttyUSB0)"
+    assert asked.kwargs[optional]["show_default"] is False
+
+
+def test_plan_is_a_table_with_one_tag_per_line(monkeypatch):
+    _stub_prompts(monkeypatch, _SOC_SSH)
+
+    result = _invoke(*DRY_RUN)
+
+    assert result.exit_code == 0, result.output
+    plan = result.output[result.output.index("\nPlan") :]
+    row = _rows(plan)
+    assert row("Coordinator place", "b1")
+    assert row("Systemd unit", "labgrid-exporter-b1")
+    assert row("Place matches", "b1/ZCU102_AD9081/*")
+    assert row("Power", "CyberPower PDU")
+    for tag in (
+        "daughter-board=ad9081",
+        "carrier=zcu102",
+        "boot-strategy=BootFPGASoCSSH",
+        "runner=hw-zcu102",
+        "power-driver=CyberPowerDriver",
+    ):
+        assert sum(tag in line for line in plan.splitlines()) == 1, tag
+    assert not row("daughter-board=", "carrier=")  # not run together on one line
+
+
+def test_optional_power_fields_do_not_print_an_empty_default(monkeypatch):
+    asked = _stub_prompts(
+        monkeypatch,
+        {"Power category": "2", "Power type": "kasa", "  Kasa device": "10.0.0.60"},
+    )
+
+    power, _ = cli._ask_power()
+
+    assert power == "kasa"
+    sockets = next(p for p in asked.kwargs if p.startswith("Strip socket"))
+    assert asked.kwargs[sockets]["show_default"] is False  # its default "" prints as "()"
+    assert all(k.get("show_default", True) for p, k in asked.kwargs.items() if p != sockets)

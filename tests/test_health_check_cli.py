@@ -64,7 +64,7 @@ def test_health_check_json_output(mock_run, runner):
     result = runner.invoke(cli, ["health-check", "-p", "mini2", "--json", "-d"])
     assert result.exit_code == EXIT_SUCCESS
     mock_run.assert_called_once_with(
-        "mini2", coord=None, image=None, power_down=True, fetch_drivers=True, timeout=600.0
+        "mini2", coord=None, image=None, power_down=True, fetch_drivers=True, timeout=900.0
     )
     data = json.loads(result.output)
     assert data["place"] == "mini2"
