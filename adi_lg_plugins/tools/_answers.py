@@ -187,6 +187,13 @@ class Run:
         self.saved.set(key, label, value)
         return value
 
+    def given(self, key: str, label: str, value):
+        """Save an answer taken from elsewhere (e.g. an inventory) instead of asked."""
+        if self.mode != NEW and value != self.saved.answers.get(key):
+            self.saved.done.clear()
+        self.saved.set(key, label, value)
+        return value
+
     def save_as(self, name: str) -> None:
         """Save under ``name`` from now on (e.g. the board name, once it is known)."""
         if self.directory is not None:

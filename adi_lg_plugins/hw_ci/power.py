@@ -43,6 +43,9 @@ class PowerField:
     ``match`` (a udev ``ID_PATH`` match mapping) or ``pairs`` (comma-separated
     ``a:b`` items, written as a list of two-item lists).
     ``default`` of ``None`` means required.
+    ``scope`` says what the value describes when NetBox records the board's
+    power: ``device`` identifies the power device, ``outlet`` picks the outlet
+    on it, ``board`` is a setting of this board's connection only.
     """
 
     var: str
@@ -51,6 +54,7 @@ class PowerField:
     kind: str = "str"
     default: str | None = None
     choices: str | None = None  # name of a dynamic choice list (see choices_for)
+    scope: str = "device"
 
 
 @dataclass(frozen=True)
@@ -82,12 +86,27 @@ class PowerType:
         """Client drivers, in the order labgrid must create them."""
         return (self.output_driver, self.driver) if self.output_driver else (self.driver,)
 
+    @property
+    def outlet_field(self) -> PowerField | None:
+        """The field that picks the outlet; None for a single switch (one outlet)."""
+        return next((f for f in self.fields if f.scope == "outlet"), None)
 
-def _f(var, param, prompt, kind="str", default=None, choices=None):
-    return PowerField(f"power_{var}", param, prompt, kind, default, choices)
+    @property
+    def device_fields(self) -> tuple[PowerField, ...]:
+        """The fields that identify the power device itself."""
+        return tuple(f for f in self.fields if f.scope == "device")
+
+
+def _f(var, param, prompt, kind="str", default=None, choices=None, scope="device"):
+    return PowerField(f"power_{var}", param, prompt, kind, default, choices, scope)
+
+
+def _outlet(var, param, prompt, kind="str", default=None):
+    return _f(var, param, prompt, kind, default, scope="outlet")
 
 
 _USB_PATH = _f("usb_path", "match", "udev ID_PATH of the USB device", "match")
+_INVERT = _f("invert", "invert", "Invert output (true/false)", "bool", "false", scope="board")
 _HOST = _f("host", "host", "Device hostname or IP")
 
 
@@ -120,7 +139,7 @@ POWER_TYPES: dict[str, PowerType] = {
             "APCOutlet",
             fields=(
                 _f("host", "address", "PDU hostname or IP"),
-                _f("outlet", "outlet", "Outlet number", "int"),
+                _outlet("outlet", "outlet", "Outlet number", "int"),
             ),
         ),
         PowerType(
@@ -133,7 +152,7 @@ POWER_TYPES: dict[str, PowerType] = {
             "CyberPowerOutlet",
             fields=(
                 _f("host", "address", "PDU hostname or IP"),
-                _f("outlet", "outlet", "Outlet number", "int"),
+                _outlet("outlet", "outlet", "Outlet number", "int"),
             ),
         ),
         PowerType(
@@ -147,7 +166,7 @@ POWER_TYPES: dict[str, PowerType] = {
             fields=(
                 _f("model", "model", "Backend model", choices="network_power_models"),
                 _f("host", "host", "PDU hostname, IP, or URL"),
-                _f("index", "index", "Outlet index", "int"),
+                _outlet("index", "index", "Outlet index", "int"),
             ),
         ),
         PowerType(
@@ -161,7 +180,7 @@ POWER_TYPES: dict[str, PowerType] = {
             fields=(
                 _f("host", "host", "PDUDaemon hostname or IP"),
                 _f("pdu", "pdu", "PDU name in PDUDaemon"),
-                _f("index", "index", "Outlet index", "int"),
+                _outlet("index", "index", "Outlet index", "int"),
             ),
         ),
         # --- Smart plug / home automation ---
@@ -189,7 +208,7 @@ POWER_TYPES: dict[str, PowerType] = {
             "KasaOutlet",
             fields=(
                 _f("host", "host", "Kasa device hostname or IP"),
-                _f(
+                _outlet(
                     "outlet",
                     "outlets",
                     "Strip socket(s): index or alias, comma-separated (blank = all / single plug)",
@@ -257,7 +276,7 @@ POWER_TYPES: dict[str, PowerType] = {
             "NetworkUSBPowerPort",
             fields=(
                 _f("usb_path", "match", "udev ID_PATH of the hub", "match"),
-                _f("index", "index", "Hub port number", "int"),
+                _outlet("index", "index", "Hub port number", "int"),
             ),
             note="Needs uhubctl on the exporter host.",
         ),
@@ -271,7 +290,7 @@ POWER_TYPES: dict[str, PowerType] = {
             "NetworkYKUSHPowerPort",
             fields=(
                 _f("serial", "serial", "YKUSH serial number"),
-                _f("index", "index", "Port number (1-3)"),
+                _outlet("index", "index", "Port number (1-3)"),
             ),
             note="Needs ykushcmd on the exporter host.",
         ),
@@ -283,7 +302,7 @@ POWER_TYPES: dict[str, PowerType] = {
             "SiSPMPowerDriver",
             "SiSPMPowerPort",
             "NetworkSiSPMPowerPort",
-            fields=(_USB_PATH, _f("index", "index", "Socket number (0-based)", "int", "0")),
+            fields=(_USB_PATH, _outlet("index", "index", "Socket number (0-based)", "int", "0")),
             note="Needs sispmctl on the exporter host.",
         ),
         # --- Relay / digital output (DigitalOutputPowerDriver) ---
@@ -294,8 +313,8 @@ POWER_TYPES: dict[str, PowerType] = {
             "ModbusCoilDriver",
             (
                 _HOST,
-                _f("coil", "coil", "Coil number", "int"),
-                _f("invert", "invert", "Invert output (true/false)", "bool", "false"),
+                _outlet("coil", "coil", "Coil number", "int"),
+                _INVERT,
             ),
         ),
         _relay(
@@ -305,8 +324,8 @@ POWER_TYPES: dict[str, PowerType] = {
             "WaveShareModbusCoilDriver",
             (
                 _HOST,
-                _f("coil", "coil", "Relay number", "int"),
-                _f("invert", "invert", "Invert output (true/false)", "bool", "false"),
+                _outlet("coil", "coil", "Relay number", "int"),
+                _INVERT,
             ),
         ),
         _relay(
@@ -326,7 +345,7 @@ POWER_TYPES: dict[str, PowerType] = {
             "Sysfs GPIO (by index)",
             "SysfsGPIO",
             "GpioDigitalOutputDriver",
-            (_f("gpio_index", "index", "GPIO number", "int"),),
+            (_outlet("gpio_index", "index", "GPIO number", "int"),),
             client_cls="NetworkSysfsGPIO",
             note="GPIO on the exporter host itself.",
         ),
@@ -337,7 +356,7 @@ POWER_TYPES: dict[str, PowerType] = {
             "GpioDigitalOutputDriver",
             (
                 _f("usb_path", "match", "udev ID_PATH of the GPIO chip", "match"),
-                _f("pin", "pin", "Pin on that chip", "int"),
+                _outlet("pin", "pin", "Pin on that chip", "int"),
             ),
             client_cls="NetworkSysfsGPIO",
         ),
@@ -349,7 +368,7 @@ POWER_TYPES: dict[str, PowerType] = {
             (
                 _f("host", "host", "IOBus server host:port"),
                 _f("node", "node", "IOBus node name"),
-                _f("pin", "pin", "Pin name, e.g. OUT0"),
+                _outlet("pin", "pin", "Pin name, e.g. OUT0"),
             ),
             client_cls="NetworkLXAIOBusPIO",
         ),
@@ -360,7 +379,7 @@ POWER_TYPES: dict[str, PowerType] = {
             "OneWirePIODriver",
             (
                 _f("host", "host", "OWFS server hostname or IP"),
-                _f("path", "path", "1-Wire path, e.g. 29.7D6913000000/PIO.0"),
+                _outlet("path", "path", "1-Wire path, e.g. 29.7D6913000000/PIO.0"),
             ),
         ),
         _relay(
@@ -368,7 +387,7 @@ POWER_TYPES: dict[str, PowerType] = {
             "Deditec relay card",
             "DeditecRelais8",
             "DeditecRelaisDriver",
-            (_USB_PATH, _f("index", "index", "Relay number", "int")),
+            (_USB_PATH, _outlet("index", "index", "Relay number", "int")),
             client_cls="NetworkDeditecRelais8",
         ),
         _relay(
@@ -376,7 +395,7 @@ POWER_TYPES: dict[str, PowerType] = {
             "USB HID relay",
             "HIDRelay",
             "HIDRelayDriver",
-            (_USB_PATH, _f("index", "index", "Relay number", "int", "1")),
+            (_USB_PATH, _outlet("index", "index", "Relay number", "int", "1")),
             client_cls="NetworkHIDRelay",
         ),
         _relay(
@@ -384,7 +403,7 @@ POWER_TYPES: dict[str, PowerType] = {
             "Robot Electronics ETH008 relay",
             "Eth008DigitalOutput",
             "Eth008DigitalOutputDriver",
-            (_HOST, _f("index", "index", "Relay number", "int")),
+            (_HOST, _outlet("index", "index", "Relay number", "int")),
         ),
         # --- Bench power supply ---
         PowerType(
@@ -398,7 +417,7 @@ POWER_TYPES: dict[str, PowerType] = {
             fields=(
                 _USB_PATH,
                 _f("sigrok_driver", "driver", "sigrok driver, e.g. korad-kaxxxxp"),
-                _f("channel", "channel_group", "Channel group (blank = default)", default=""),
+                _outlet("channel", "channel_group", "Channel group (blank = default)", default=""),
             ),
             note="Needs sigrok-cli on the exporter host.",
         ),
@@ -413,8 +432,20 @@ POWER_TYPES: dict[str, PowerType] = {
             "LAAPowerPort",
             fields=(
                 _f("laa_identity", "laa_identity", "LAA identity"),
-                _f("on", "power_on", "vbus:state pairs to switch on, e.g. 5v:on,12v:on", "pairs"),
-                _f("off", "power_off", "vbus:state pairs to switch off, e.g. 5v:off", "pairs"),
+                _f(
+                    "on",
+                    "power_on",
+                    "vbus:state pairs to switch on, e.g. 5v:on,12v:on",
+                    "pairs",
+                    scope="board",
+                ),
+                _f(
+                    "off",
+                    "power_off",
+                    "vbus:state pairs to switch off, e.g. 5v:off",
+                    "pairs",
+                    scope="board",
+                ),
             ),
             reach="client",
             note="Runs laacli on the client.",

@@ -123,6 +123,7 @@ jobs:
           tests/test_netbox_client.py \
           tests/test_netbox_provision.py \
           tests/test_netbox_cli.py \
+          tests/test_netbox_power.py \
           tests/test_exporter_configs_validate.py \
           tests/test_exporter_templates.py \
           tests/test_power_types.py \

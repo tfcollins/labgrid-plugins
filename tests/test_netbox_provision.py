@@ -172,6 +172,19 @@ def test_check_prerequisites_raises_when_exporter_missing(monkeypatch):
         provision.check_prerequisites("lab-host-03")
 
 
+def test_check_prerequisites_reports_a_host_it_cannot_ssh_to(monkeypatch):
+    def unreachable(host):
+        raise ExecutionError(
+            "failed to connect to nonexistent.invalid with args [...], returncode=255 b'',"
+            "b'ssh: Could not resolve hostname nonexistent.invalid'"
+        )
+
+    monkeypatch.setattr(ssh_mod.sshmanager, "get", unreachable)
+
+    with pytest.raises(RuntimeError, match="cannot SSH to nonexistent.invalid.*resolve hostname"):
+        provision.check_prerequisites("nonexistent.invalid")
+
+
 def test_check_prerequisites_returns_resolved_exporter_path(monkeypatch):
     conn = _fake_conn()
     conn.run_check.return_value = ["/home/labuser/.local/bin/labgrid-exporter"]

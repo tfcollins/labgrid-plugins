@@ -92,3 +92,20 @@ def test_delete_removes_the_file(tmp_path):
     saved.delete()
 
     assert not (tmp_path / "b1.json").exists()
+
+
+def test_an_answer_given_instead_of_asked_is_saved_and_voids_steps_it_changes(tmp_path):
+    from rich.console import Console
+
+    from adi_lg_plugins.tools._answers import Run
+
+    saved = SavedAnswers(tmp_path / "b1.json", {"power": "apc"}, done=["netbox"])
+    run = Run("cmd", Console(), tmp_path, saved, mode="resume")
+
+    assert run.given("power", "Power type", "apc") == "apc"
+    assert saved.done == ["netbox"]
+
+    run.given("power", "Power type", "cyberpower")
+    assert SavedAnswers.load(tmp_path / "b1.json").answers == {"power": "cyberpower"}
+    assert saved.labels["power"] == "Power type"
+    assert saved.done == []

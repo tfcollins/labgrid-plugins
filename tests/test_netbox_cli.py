@@ -53,6 +53,15 @@ def saved_runs(monkeypatch, tmp_path):
     return tmp_path / "cache" / "adi-lg" / "netbox-add-hardware"
 
 
+@pytest.fixture(autouse=True)
+def _netbox_inventory(monkeypatch):
+    """What NetBox holds, read before the plan: two sites, no power devices yet."""
+    monkeypatch.setattr(cli.client, "sites", lambda nb: [("lab3", "Lab 3"), ("lab4", "Lab 4")])
+    monkeypatch.setattr(cli.client, "power_devices", lambda nb, site: [])
+    monkeypatch.setattr(cli.client, "device_exists", lambda nb, name, site: False)
+    monkeypatch.setattr(cli.client, "connect_power", lambda nb, board, **kwargs: [])
+
+
 # The real prompts, even after a test has replaced them with _stub_prompts.
 _REAL_ASK = {Prompt: Prompt.ask, Confirm: Confirm.ask}
 
@@ -85,7 +94,7 @@ def _type_into_real_prompts(monkeypatch, conversation, *args):
 
 def _assert_asked_in_order(conversation, prompts):
     assert [q for q, _ in conversation] == [
-        next((q for q, _ in conversation if p.startswith(q)), p) for p in prompts
+        max((q for q, _ in conversation if p.startswith(q)), key=len, default=p) for p in prompts
     ]
     # Every question says what it is for, not a bare template variable name.
     assert not [p for p in prompts if re.match(r"\s*[a-z]+_[a-z_]+\b", p)]
@@ -129,13 +138,23 @@ def _invoke(*args):
     return CliRunner().invoke(cli.netbox_group, list(args), catch_exceptions=False)
 
 
-def _stub_services(monkeypatch, *, place=None):
+def _stub_services(monkeypatch, *, place=None, power_devices=(), taken=()):
     """Replace NetBox, the exporter host and the coordinator with recorders.
 
-    ``place`` is what the coordinator already holds under the board's name.
-    Returns the calls made; ``calls["steps"]`` lists the changes in order.
+    ``place`` is what the coordinator already holds under the board's name;
+    ``power_devices`` are NetBox's power devices at the site, ``taken`` the
+    names of its other devices. Returns the calls made; ``calls["steps"]``
+    lists the changes in order and ``calls["power"]`` the power cabling.
     """
     calls = {"steps": []}
+
+    def connect_power(nb, board, **kwargs):
+        calls["power"] = kwargs
+        return [f"connected b1 power to {kwargs['device']} outlet {kwargs['outlets'][0]}"]
+
+    monkeypatch.setattr(cli.client, "power_devices", lambda nb, site: list(power_devices))
+    monkeypatch.setattr(cli.client, "device_exists", lambda nb, name, site: name in taken)
+    monkeypatch.setattr(cli.client, "connect_power", connect_power)
 
     def connect(url, token, **kwargs):
         calls.update(url=url, token=token)
@@ -271,12 +290,12 @@ def test_dry_run_through_the_real_prompts(monkeypatch):
         ("Carrier board", "zcu102"),
         ("ADI daughter board or chip", "ad9081"),
         ("Boot strategy", ""),  # the template's own, BootFPGASoC
+        ("GitHub Actions runner label", ""),
+        ("NetBox site slug", "lab3"),  # typed: a dry run doesn't read NetBox
         ("Power category", "1"),
         ("Power type", "cyberpower"),  # by name
         ("  PDU hostname or IP", "10.0.0.20"),
         ("  Outlet number", "4"),
-        ("GitHub Actions runner label", ""),
-        ("NetBox site slug", "lab3"),
         ("Exporter host SSH login", "labadmin@lab-host-03"),
         ("  Board IP address", "10.0.0.42"),
         ("  SD card boot partition", ""),
@@ -300,18 +319,19 @@ def test_dry_run_through_the_real_prompts(monkeypatch):
 
 
 # A soc-ssh board typed in full, credentials included.
-_FULL_RUN = [
+_BOARD = [
     ("Board template", "soc-ssh"),
     ("Board name", "b1"),
     ("Carrier board", "zcu102"),
     ("ADI daughter board or chip", "ad9081"),
     ("Boot strategy", ""),
-    ("Power category", "Network PDU"),
-    ("Power type", "cyberpower"),
-    ("  PDU hostname or IP", "10.0.0.20"),
-    ("  Outlet number", "4"),
     ("GitHub Actions runner label", ""),
-    ("NetBox site slug", "lab3"),
+    # NetBox is read from here on (sites, power devices); nothing is written before Proceed?.
+    ("NetBox URL", "https://netbox.test"),
+    ("NetBox API token", "  tok123  "),  # pasted with stray whitespace
+    ("NetBox site slug", "1"),  # lab3, from NetBox's list
+]
+_FIELDS = [
     ("Exporter host SSH login", "root@h"),
     ("  Board IP address", "10.0.0.5"),
     ("  BOOT.BIN", ""),
@@ -322,15 +342,26 @@ _FULL_RUN = [
     ("  Board Linux SSH password", ""),
     ("  Board Linux SSH username", ""),
     ("\nProceed?", "y"),
-    ("NetBox URL", "https://netbox.test"),
-    ("NetBox API token", "  tok123  "),  # pasted with stray whitespace
     ("Coordinator API username", "admin"),
     ("Coordinator API password", "secret"),
+]
+_FULL_RUN = [
+    *_BOARD,
+    # No power devices at lab3 yet, so a new one is described and named.
+    ("Power category", "Network PDU"),
+    ("Power type", "cyberpower"),
+    ("  PDU hostname or IP", "10.0.0.20"),
+    ("  Outlet number", "4"),
+    ("Power device name in NetBox", ""),  # the suggested cyberpower-10.0.0.20
+    *_FIELDS,
 ]
 
 
 def test_full_run_through_the_real_prompts(monkeypatch):
-    """Credentials too: typed after Proceed?, hidden ones through getpass."""
+    """Credentials too: NetBox's before the site, the coordinator's after Proceed?.
+
+    Hidden ones go through getpass.
+    """
     calls = _stub_services(monkeypatch)
 
     result, prompts = _type_into_real_prompts(monkeypatch, _FULL_RUN)
@@ -342,10 +373,358 @@ def test_full_run_through_the_real_prompts(monkeypatch):
     assert "received 6 characters" in result.output
     assert calls["login"] == ("admin", "secret")
     assert calls["tags"]["power-driver"] == "CyberPowerDriver"
+    # The new power device is created in NetBox and cabled to the board.
+    assert calls["power"] == {
+        "site_slug": "lab3",
+        "device": "cyberpower-10.0.0.20",
+        "settings": {"type": "cyberpower", "address": "10.0.0.20"},
+        "outlets": ["4"],
+    }
+    assert _rows(result.output)("Power in NetBox", "cyberpower-10.0.0.20 outlet 4", "new")
+    assert "connected b1 power to cyberpower-10.0.0.20 outlet 4" in result.output
     # The credential questions explain themselves like the others.
     output = " ".join(result.output.split())
     assert "under your user profile in NetBox" in output
     assert "create places" in output
+
+
+def _pdu(name, settings, *outlets, address=""):
+    """A power device in NetBox; each outlet is a name, or (name, what it feeds)."""
+    return cli.client.PowerDevice(
+        name,
+        settings,
+        address,
+        tuple(cli.client.PowerOutlet(*((o,) if isinstance(o, str) else o)) for o in outlets),
+    )
+
+
+_RACK3 = _pdu(
+    "pdu-rack3",
+    {"type": "cyberpower", "address": "10.0.0.20"},
+    ("1", "zcu102-old PSU1"),
+    "2",
+    "3",
+)
+
+
+def _rendered(monkeypatch):
+    """The template context the exporter config is rendered from, once it is."""
+    rendered = {}
+    real_render = cli.provision.render_and_validate
+
+    def render(template_path, context, exporter_configs_dir):
+        rendered.update(context)
+        return real_render(template_path, context, exporter_configs_dir)
+
+    monkeypatch.setattr(cli.provision, "render_and_validate", render)
+    return rendered
+
+
+def test_a_power_device_in_netbox_is_picked_and_configures_the_power(monkeypatch):
+    calls = _stub_services(monkeypatch, power_devices=[_RACK3])
+    rendered = _rendered(monkeypatch)
+    conversation = [
+        *_BOARD,
+        ("Power device", "pdu-rack3"),
+        ("Outlet on pdu-rack3", "1"),  # feeds another board: asked again
+        ("Outlet on pdu-rack3", "2"),
+        *_FIELDS,
+    ]
+
+    result, prompts = _type_into_real_prompts(monkeypatch, conversation)
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(conversation, prompts)  # no type, host or outlet number asked
+    row = _rows(result.output)
+    assert row("pdu-rack3", "cyberpower", "10.0.0.20", "2 of 3")  # free outlets
+    assert row("1", "zcu102-old PSU1")
+    assert "already feeds zcu102-old PSU1" in result.output
+    assert calls["tags"]["power-driver"] == "CyberPowerDriver"
+    assert rendered["power_host"] == "10.0.0.20"
+    assert rendered["power_outlet"] == "2"
+    assert calls["power"] == {
+        "site_slug": "lab3",
+        "device": "pdu-rack3",
+        "settings": {"type": "cyberpower", "address": "10.0.0.20"},
+        "outlets": ["2"],
+    }
+
+
+def test_a_power_device_made_by_hand_is_described_once_with_its_address_offered(monkeypatch):
+    hand_made = _pdu("pdu-x", {}, "Outlet 1", "Outlet 2", address="10.0.0.77")
+    calls = _stub_services(monkeypatch, power_devices=[hand_made])
+    rendered = _rendered(monkeypatch)
+    conversation = [
+        *_BOARD,
+        ("Power device", "pdu-x"),
+        ("Power category", "Network PDU"),
+        ("Power type", "apc"),
+        ("  PDU hostname or IP", ""),  # Enter: its primary IP in NetBox
+        ("Outlet on pdu-x", "Outlet 2"),
+        ("  Outlet number", ""),  # Enter: the 2 in its name
+        *_FIELDS,
+    ]
+
+    result, prompts = _type_into_real_prompts(monkeypatch, conversation)
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(conversation, prompts)
+    row = _rows(result.output)
+    assert row("pdu-x", "not set", "10.0.0.77")
+    assert row("Power in NetBox", "b1 power port -> pdu-x Outlet 2")
+    assert rendered["power_host"] == "10.0.0.77"
+    assert rendered["power_outlet"] == "2"
+    assert calls["power"]["settings"] == {"type": "apc", "address": "10.0.0.77"}
+    assert calls["power"]["outlets"] == ["Outlet 2"]
+
+
+def test_an_outlet_not_in_netbox_yet_is_added(monkeypatch):
+    calls = _stub_services(monkeypatch, power_devices=[_RACK3])
+    rendered = _rendered(monkeypatch)
+    conversation = [
+        *_BOARD,
+        ("Power device", "pdu-rack3"),
+        ("Outlet on pdu-rack3", "new"),
+        ("  Outlet number", "8"),
+        *_FIELDS,
+    ]
+
+    result, prompts = _type_into_real_prompts(monkeypatch, conversation)
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(conversation, prompts)
+    assert rendered["power_outlet"] == "8"
+    assert calls["power"]["outlets"] == ["8"]
+
+
+def test_a_new_power_device_is_offered_alongside_the_ones_in_netbox(monkeypatch):
+    calls = _stub_services(monkeypatch, power_devices=[_RACK3], taken=["bench-switch"])
+    conversation = [
+        *_BOARD,
+        ("Power device", "new"),
+        ("Power category", "Smart plug / home automation"),
+        ("Power type", "vesync"),
+        ("  VeSync outlet name", "zcu102 plug"),
+        ("Power device name in NetBox", "bench-switch"),  # another device has it
+        ("Power device name in NetBox", ""),  # the suggestion, made a valid name
+        *_FIELDS,
+    ]
+
+    result, prompts = _type_into_real_prompts(monkeypatch, conversation)
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(conversation, prompts)
+    assert "bench-switch is already a device" in " ".join(result.output.split())
+    assert calls["power"] == {
+        "site_slug": "lab3",
+        "device": "vesync-zcu102-plug",
+        "settings": {"type": "vesync", "outlet_names": "zcu102 plug"},
+        "outlets": [cli.client.SINGLE_OUTLET],
+    }
+
+
+def test_a_single_switch_in_netbox_needs_no_outlet_question(monkeypatch):
+    plug = _pdu("vesync-zcu102-plug", {"type": "vesync", "outlet_names": "zcu102 plug"}, "1")
+    calls = _stub_services(monkeypatch, power_devices=[plug])
+    rendered = _rendered(monkeypatch)
+    conversation = [*_BOARD, ("Power device", "vesync-zcu102-plug"), *_FIELDS]
+
+    result, prompts = _type_into_real_prompts(monkeypatch, conversation)
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(conversation, prompts)  # its only outlet is used
+    assert rendered["power_outlet"] == "zcu102 plug"
+    assert calls["tags"]["power-driver"] == "VesyncPowerDriver"
+    assert calls["power"]["device"] == "vesync-zcu102-plug"
+    assert calls["power"]["outlets"] == ["1"]
+
+
+def test_a_netbox_without_sites_stops_before_the_power_questions(monkeypatch, saved_runs):
+    _stub_services(monkeypatch)
+    monkeypatch.setattr(cli.client, "sites", lambda nb: [])
+
+    result, prompts = _type_into_real_prompts(monkeypatch, _BOARD[:-1])
+
+    assert result.exit_code == 1
+    assert "NetBox has no sites" in result.output
+    assert not [p for p in prompts if p.startswith(("NetBox site", "Power"))]
+    assert "pick b1 to resume" in result.output
+
+
+def test_manual_power_is_not_recorded_in_netbox(monkeypatch):
+    calls = _stub_services(monkeypatch)
+    conversation = [
+        *_BOARD,
+        ("Power category", "Other"),
+        ("Power type", "manual"),
+        *_FIELDS,
+    ]
+
+    result, prompts = _type_into_real_prompts(monkeypatch, conversation)
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(conversation, prompts)  # no power device name
+    assert "power" not in calls
+    assert _rows(result.output)("Power in NetBox", "not recorded")
+
+
+def test_a_dry_run_does_not_read_netbox(monkeypatch):
+    def unreachable(*a, **k):
+        raise AssertionError("a dry run must not talk to NetBox")
+
+    for name in ("connect", "sites", "power_devices"):
+        monkeypatch.setattr(cli.client, name, unreachable)
+    _stub_prompts(monkeypatch, _SOC_SSH)
+
+    result = _invoke(*DRY_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert _rows(result.output)("Power in NetBox", "chosen from NetBox when run without --dry-run")
+
+
+def test_netbox_read_failure_before_the_plan_is_reported_and_answers_kept(monkeypatch, saved_runs):
+    import pynetbox
+
+    class _Forbidden:
+        status_code, reason, url, text = 403, "Forbidden", "https://nb/api/", ""
+        request = type("R", (), {"body": None})()
+
+        def json(self):
+            return {"detail": "Invalid authorization header"}
+
+    def forbidden(nb):
+        raise pynetbox.RequestError(_Forbidden())
+
+    _stub_services(monkeypatch)
+    monkeypatch.setattr(cli.client, "sites", forbidden)
+
+    result, _ = _type_into_real_prompts(monkeypatch, _BOARD)
+
+    assert result.exit_code == 1
+    assert "Traceback" not in result.output
+    assert "Invalid authorization header" in result.output
+    assert "Bearer/Token" in result.output
+    assert _saved(saved_runs)["answers"]["runner_label"] == "hw-zcu102"
+    assert "pick b1 to resume" in result.output
+
+
+def test_a_power_cabling_failure_leaves_the_netbox_step_to_do_again(monkeypatch, saved_runs):
+    def occupied(nb, board, **kwargs):
+        raise RuntimeError("outlet 4 on cyberpower-10.0.0.20 already feeds zc706 PSU1")
+
+    _stub_services(monkeypatch)
+    monkeypatch.setattr(cli.client, "connect_power", occupied)
+
+    result, _ = _type_into_real_prompts(monkeypatch, _FULL_RUN)
+
+    assert result.exit_code == 1
+    assert "already feeds zc706 PSU1" in result.output
+    assert _saved(saved_runs)["done"] == ["plan"]
+
+
+def test_resuming_a_run_saved_before_power_devices_asks_only_for_the_power_device(
+    monkeypatch, saved_runs
+):
+    """Runs saved by an earlier version have every answer but the NetBox power device."""
+    _stub_prompts(monkeypatch, _SOC_SSH)
+    _invoke(*DRY_RUN)
+    path = saved_runs / "b1.json"
+    old = json.loads(path.read_text())
+    assert not [k for k in old["answers"] if k.startswith("power_device")]
+    calls = _stub_services(monkeypatch)
+    conversation = [
+        ("Resume a saved run", ""),
+        ("Use the saved answers", ""),
+        ("NetBox URL", "https://netbox.test"),
+        ("NetBox API token", "tok123"),
+        ("Power device name in NetBox", ""),
+        ("\nProceed?", "y"),
+        ("Coordinator API username", "admin"),
+        ("Coordinator API password", "secret"),
+    ]
+
+    result, prompts = _type_into_real_prompts(monkeypatch, conversation)
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(conversation, prompts)  # NetBox asked once, before the plan
+    assert calls["power"]["device"] == "cyberpower-10.0.0.20"
+    assert calls["steps"] == ["netbox", "exporter", "place"]
+
+
+def test_answers_taken_from_netbox_are_saved_so_a_resume_does_not_ask_them(monkeypatch, saved_runs):
+    _stub_services(monkeypatch, power_devices=[_RACK3])
+    _fail_deploy(monkeypatch)
+    conversation = [
+        *_BOARD,
+        ("Power device", "pdu-rack3"),
+        ("Outlet on pdu-rack3", "2"),
+        *_FIELDS,
+    ]
+    _type_into_real_prompts(monkeypatch, conversation)  # stops at the exporter step
+
+    answers = _saved(saved_runs)["answers"]
+    assert answers["power_device"] == "pdu-rack3"
+    assert answers["power_netbox_outlet"] == "2"
+    assert answers["power"] == "cyberpower"
+    assert answers["power.power_host"] == "10.0.0.20"
+    assert answers["power.power_outlet"] == "2"
+
+    calls = _stub_services(monkeypatch, power_devices=[_RACK3])
+    result, prompts = _type_into_real_prompts(monkeypatch, _RESUME_TO_COORDINATOR)
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(_RESUME_TO_COORDINATOR, prompts)
+    assert calls["steps"] == ["exporter", "place"]
+
+
+def test_a_saved_new_power_device_without_its_name_asks_for_it(monkeypatch, saved_runs):
+    _stub_prompts(monkeypatch, _SOC_SSH)
+    _invoke(*DRY_RUN)
+    path = saved_runs / "b1.json"
+    saved = json.loads(path.read_text())
+    saved["answers"]["power_device"] = "new"
+    path.write_text(json.dumps(saved))
+    calls = _stub_services(monkeypatch, taken=["cyberpower-10.0.0.20"])
+    conversation = [
+        ("Resume a saved run", ""),
+        ("Use the saved answers", ""),
+        ("NetBox URL", "https://netbox.test"),  # read before the plan, to check the name
+        ("NetBox API token", "tok123"),
+        ("Power device name in NetBox", ""),  # the suggestion is taken
+        ("Power device name in NetBox", "pdu-bench"),
+        ("\nProceed?", "y"),
+        ("Coordinator API username", "admin"),
+        ("Coordinator API password", "secret"),
+    ]
+
+    result, prompts = _type_into_real_prompts(monkeypatch, conversation)
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(conversation, prompts)
+    assert calls["power"]["device"] == "pdu-bench"
+
+
+def test_a_saved_site_netbox_does_not_have_is_asked_again(monkeypatch, saved_runs):
+    _stub_prompts(monkeypatch, {**_SOC_SSH, "NetBox site slug": "lab9"})
+    _invoke(*DRY_RUN)
+    calls = _stub_services(monkeypatch)
+    conversation = [
+        ("Resume a saved run", ""),
+        ("Use the saved answers", ""),
+        ("NetBox URL", "https://netbox.test"),
+        ("NetBox API token", "tok123"),
+        ("NetBox site slug", "lab4"),
+        ("Power device name in NetBox", ""),
+        ("\nProceed?", "y"),
+        ("Coordinator API username", "admin"),
+        ("Coordinator API password", "secret"),
+    ]
+
+    result, prompts = _type_into_real_prompts(monkeypatch, conversation)
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(conversation, prompts)
+    assert calls["power"]["site_slug"] == "lab4"
 
 
 def test_rerun_for_an_onboarded_board_keeps_its_place_and_matches(monkeypatch):
@@ -732,7 +1111,7 @@ def test_netbox_errors_are_reported_without_a_traceback(monkeypatch):
     def no_site(*a, **k):
         raise RuntimeError("NetBox site 'nosuchsite' does not exist")
 
-    _stub_prompts(monkeypatch, {**_SOC_SSH, "NetBox site slug": "nosuchsite"})
+    _stub_prompts(monkeypatch, _SOC_SSH)
     monkeypatch.setattr(cli.Confirm, "ask", staticmethod(lambda *a, **k: True))
     monkeypatch.setattr(cli.client, "connect", lambda url, token, **k: object())
     monkeypatch.setattr(cli.client, "ensure_schema", lambda nb: None)
