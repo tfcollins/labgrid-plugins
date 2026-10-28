@@ -66,7 +66,12 @@ class ConfigGenerator:
     """Asks for each part of the config; ``session`` saves the answers so a run can resume."""
 
     def __init__(self, session: Run | None = None):
-        self.config = {"targets": {"main": {"resources": {}, "drivers": {}}}}
+        # labgrid has no plugin auto-discovery: this import is what lets it resolve
+        # the ADI drivers and strategies the config names.
+        self.config = {
+            "imports": ["adi_lg_plugins"],
+            "targets": {"main": {"resources": {}, "drivers": {}}},
+        }
         self.target_name = "main"
         self.session = session or Run(_COMMAND, console)
 
