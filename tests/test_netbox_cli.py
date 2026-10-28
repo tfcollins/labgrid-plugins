@@ -41,6 +41,8 @@ def _no_credentials_from_the_environment(monkeypatch):
     """These would skip the credential prompts the tests answer."""
     for var in ("NETBOX_URL", "NETBOX_TOKEN", "NETBOX_CA_BUNDLE", "LG_API_USERNAME"):
         monkeypatch.delenv(var, raising=False)
+    for var in ("LG_COORDINATOR", "ADI_LG_COORDINATOR"):
+        monkeypatch.delenv(var, raising=False)
     monkeypatch.delenv("LG_API_PASSWORD", raising=False)
 
 
@@ -149,6 +151,7 @@ def _stub_services(monkeypatch, *, place=None):
 
     def login(api, user, password):
         calls["login"] = (user, password)
+        calls["api"] = api
         return "cookie"
 
     monkeypatch.setattr(cli.client, "connect", connect)
@@ -158,8 +161,8 @@ def _stub_services(monkeypatch, *, place=None):
     monkeypatch.setattr(cli.provision, "deploy_exporter", deploy)
     monkeypatch.setattr(cli.provision, "verify_exporter_active", lambda host, name: None)
     monkeypatch.setattr(cli.provision, "missing_power_env", lambda host, power: [])
-    monkeypatch.setattr(cli, "resolve_coordinator", lambda coord: "coord:20408")
-    monkeypatch.setattr(cli, "_resolve_api", lambda coord: "coord:8000")
+    monkeypatch.setattr(cli, "resolve_coordinator", lambda coord: coord or "coord:20408")
+    monkeypatch.setattr(cli, "_resolve_api", lambda coord: coord.replace(":20408", ":8000"))
     monkeypatch.setattr(cli.coord_mod, "login", login)
     monkeypatch.setattr(cli, "get_place", lambda api, name: place)
     monkeypatch.setattr(
@@ -422,7 +425,8 @@ def test_resume_goes_straight_to_the_plan_and_skips_finished_steps(monkeypatch, 
         ("Resume a saved run", ""),  # the most recent: b1
         ("Use the saved answers", ""),  # as they are
         ("\nProceed?", "y"),
-        ("Coordinator API password", "secret"),  # the username was saved; the password never is
+        ("Coordinator API username", ""),  # Enter: the saved one
+        ("Coordinator API password", "secret"),  # never saved
     ]
 
     result, prompts = _type_into_real_prompts(monkeypatch, conversation)
@@ -437,6 +441,89 @@ def test_resume_goes_straight_to_the_plan_and_skips_finished_steps(monkeypatch, 
     assert calls["steps"] == ["exporter", "place"]  # no second NetBox update
     assert calls["login"] == ("admin", "secret")
     assert not saved_runs.exists() or not list(saved_runs.iterdir())  # finished: nothing to resume
+
+
+def _netbox_down(nb):
+    raise RuntimeError("could not reach NetBox at https://netbox.test")
+
+
+def test_resume_asks_again_for_the_netbox_url_and_coordinator_login(monkeypatch, saved_runs):
+    """A wrong URL or login is what most often stops a run, so resume lets you fix it."""
+    _stub_services(monkeypatch)
+    monkeypatch.setattr(cli.client, "ensure_schema", _netbox_down)
+    _type_into_real_prompts(monkeypatch, _FULL_RUN)
+    calls = _stub_services(monkeypatch)
+    conversation = [
+        ("Resume a saved run", ""),
+        ("Use the saved answers", ""),
+        ("\nProceed?", "y"),
+        ("NetBox URL", "https://netbox.fixed.test"),
+        ("NetBox API token", "tok123"),
+        ("Coordinator API username", ""),
+        ("Coordinator API password", "secret"),
+    ]
+
+    result, prompts = _type_into_real_prompts(monkeypatch, conversation)
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(conversation, prompts)
+    assert "(https://netbox.test):" in result.output  # the saved URL is the default
+    assert calls["url"] == "https://netbox.fixed.test"
+    assert calls["login"] == ("admin", "secret")
+    assert calls["steps"] == ["netbox", "exporter", "place"]
+
+
+def _fail_coordinator_login(monkeypatch):
+    def login(api, user, password):
+        raise RuntimeError(f"login to http://{api}/api/auth/login failed: 401")
+
+    monkeypatch.setattr(cli.coord_mod, "login", login)
+
+
+_RESUME_TO_COORDINATOR = [
+    ("Resume a saved run", ""),
+    ("Use the saved answers", ""),
+    ("\nProceed?", "y"),
+    ("Coordinator API username", ""),
+    ("Coordinator API password", "secret"),
+]
+
+
+def test_resume_uses_the_coordinator_the_saved_run_used(monkeypatch, saved_runs):
+    """The exporter it deployed points at that coordinator; --coord isn't given again."""
+    _stub_services(monkeypatch)
+    _fail_coordinator_login(monkeypatch)
+    _type_into_real_prompts(monkeypatch, _FULL_RUN, "--coord", "lab-coord:20408")
+    calls = _stub_services(monkeypatch)
+
+    result, prompts = _type_into_real_prompts(monkeypatch, _RESUME_TO_COORDINATOR)
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(_RESUME_TO_COORDINATOR, prompts)
+    assert calls["api"] == "lab-coord:8000"
+    assert calls["steps"] == ["place"]  # NetBox and the exporter were done in the first run
+
+
+def test_another_coordinator_runs_every_step_again(monkeypatch, saved_runs):
+    _stub_services(monkeypatch)
+    _fail_coordinator_login(monkeypatch)
+    _type_into_real_prompts(monkeypatch, _FULL_RUN, "--coord", "lab-coord:20408")
+    calls = _stub_services(monkeypatch)
+    conversation = [
+        *_RESUME_TO_COORDINATOR[:3],
+        ("NetBox URL", ""),  # the saved one
+        ("NetBox API token", "tok123"),
+        *_RESUME_TO_COORDINATOR[3:],
+    ]
+
+    result, prompts = _type_into_real_prompts(
+        monkeypatch, conversation, "--coord", "other-coord:20408"
+    )
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(conversation, prompts)
+    assert calls["api"] == "other-coord:8000"
+    assert calls["steps"] == ["netbox", "exporter", "place"]
 
 
 def test_review_asks_each_question_again_with_the_saved_answer_as_default(monkeypatch, saved_runs):
@@ -549,6 +636,7 @@ def test_options_win_over_saved_answers(monkeypatch, saved_runs):
         ("Use the saved answers", ""),
         ("\nProceed?", "y"),
         ("NetBox API token", "tok123"),
+        ("Coordinator API username", ""),
         ("Coordinator API password", "secret"),
     ]
 

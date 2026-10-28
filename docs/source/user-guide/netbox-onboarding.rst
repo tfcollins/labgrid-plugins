@@ -357,6 +357,12 @@ Changing any answer in **review** runs every step again; each one is safe to rep
 `Re-running for an existing board`_). Once the coordinator step succeeds the saved answers
 are deleted.
 
+After ``Proceed?`` a resumed run asks for the NetBox URL and coordinator username again, with
+the saved ones as defaults - a wrong URL or login is the usual reason a run stops, so press Enter
+to keep them or type the right one. It deploys to the same coordinator as the saved run, so
+``--coord`` need not be given again; naming a different one (``--coord`` or ``LG_COORDINATOR``)
+runs every step again, because the exporter already deployed points at the first.
+
 A dry run saves its answers too, with the plan marked as checked, so you can check the plan
 with ``--dry-run`` and then run for real, picking **resume** to go straight to
 ``Proceed?``.

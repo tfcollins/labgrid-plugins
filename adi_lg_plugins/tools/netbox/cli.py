@@ -10,6 +10,7 @@ for prerequisites.
 
 from __future__ import annotations
 
+import os
 import re
 from collections.abc import Callable, Collection
 from pathlib import Path
@@ -140,6 +141,36 @@ class _Run:
         # The steps a resumed run finished were done with its saved answers.
         if self.mode != "new" and value != self.saved.answers.get(key):
             self.saved.done.clear()
+        self.saved.set(key, label, value)
+        return value
+
+    def coordinator(self, explicit: str | None) -> str:
+        """--coord or LG_COORDINATOR / ADI_LG_COORDINATOR, else the one this run saved.
+
+        The exporter a run deployed points at its coordinator, so a different
+        one voids the steps it finished.
+        """
+        saved = self.saved.answers.get("coordinator")
+        from_env = os.environ.get("LG_COORDINATOR") or os.environ.get("ADI_LG_COORDINATOR")
+        try:
+            resolved = resolve_coordinator(explicit or (None if from_env else saved))
+        except RuntimeError as e:
+            raise click.ClickException(str(e)) from e
+        if saved is not None and resolved != saved:
+            self.saved.done.clear()
+        self.saved.set("coordinator", "Coordinator", resolved)
+        return resolved
+
+    def login(self, key: str, label: str, explicit: str | None, ask: Callable[..., str]) -> str:
+        """A login detail (not a secret): ``explicit``, else asked, the saved one as default.
+
+        Asked again even when resuming - a wrong URL or username is what most
+        often stops a run - and changing it voids nothing: the step it is for
+        is the one that failed.
+        """
+        if explicit:
+            return explicit
+        value = ask(default=self.saved.answers.get(key))
         self.saved.set(key, label, value)
         return value
 
@@ -637,19 +668,21 @@ def _onboard(
     if not Confirm.ask("\nProceed?", default=True):
         raise click.Abort()
 
+    coord_resolved = run.coordinator(coord)
     # Steps a resumed run already finished are skipped, so their credentials
     # aren't needed. Tokens and passwords are never saved.
     netbox_done = run.saved.is_done("netbox")
     if not netbox_done:
         if not netbox_url:
-            netbox_url = run.answer(
-                "netbox_url",
-                "NetBox URL",
-                lambda default: _ask_required(
-                    "NetBox URL (e.g. https://netbox.example.com)", check=_URL, default=default
-                ),
-                explain="The NetBox instance to register the board in (or set NETBOX_URL).",
-            )
+            _explain("The NetBox instance to register the board in (or set NETBOX_URL).")
+        netbox_url = run.login(
+            "netbox_url",
+            "NetBox URL",
+            netbox_url,
+            lambda default: _ask_required(
+                "NetBox URL (e.g. https://netbox.example.com)", check=_URL, default=default
+            ),
+        )
         if not netbox_token:
             _explain(
                 "A NetBox API token that can create devices; create one under your user profile "
@@ -657,18 +690,17 @@ def _onboard(
             )
             netbox_token = _ask_secret("NetBox API token")
 
-    coord_resolved = resolve_coordinator(coord)
-    if (not coord_user and run.will_ask("coord_user")) or not coord_password:
+    if not coord_user or not coord_password:
         _explain(
             f"A coordinator API login ({coord_resolved}) that can create places, add matches "
             "and set tags (or set LG_API_USERNAME / LG_API_PASSWORD)."
         )
-    if not coord_user:
-        coord_user = run.answer(
-            "coord_user",
-            "Coordinator API username",
-            lambda default: _ask_required("Coordinator API username", default=default),
-        )
+    coord_user = run.login(
+        "coord_user",
+        "Coordinator API username",
+        coord_user,
+        lambda default: _ask_required("Coordinator API username", default=default),
+    )
     if not coord_password:
         coord_password = _ask_secret("Coordinator API password")
 
