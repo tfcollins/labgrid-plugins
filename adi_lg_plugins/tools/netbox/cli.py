@@ -214,6 +214,23 @@ def _ask_required(prompt: str, *, check: tuple[str, str] | None = None, **kwargs
             return answer
 
 
+def _ask_token() -> str:
+    """Ask for the NetBox API token until it is one NetBox can parse."""
+    while True:
+        raw = _ask_secret("NetBox API token")
+        try:
+            token = client.clean_token(raw)
+        except ValueError as e:
+            console.print(f"    [red]{escape(str(e))}[/red]")
+            continue
+        if token != raw:
+            console.print(
+                "    [dim]removed the Authorization/Bearer/Token prefix or quotes "
+                f"({len(token)} characters left)[/dim]"
+            )
+        return token
+
+
 def _ask_secret(prompt: str) -> str:
     """Ask for a token/password without echoing it.
 
@@ -309,6 +326,12 @@ def add_hardware(
             client._require_pynetbox()
     except RuntimeError as e:
         raise click.ClickException(str(e)) from e
+    # Check a token given up front now, not after every question.
+    if netbox_token is not None and not dry_run:
+        try:
+            netbox_token = client.clean_token(netbox_token)
+        except ValueError as e:
+            raise click.ClickException(f"--netbox-token / NETBOX_TOKEN: {e}") from e
 
     templates = _discover_templates(exporter_configs_dir)
     if not templates:
@@ -581,7 +604,7 @@ def _onboard(
                 "A NetBox API token that can create devices; create one under your user profile "
                 "in NetBox (or set NETBOX_TOKEN)."
             )
-            netbox_token = _ask_secret("NetBox API token")
+            netbox_token = _ask_token()
 
     if not coord_user or not coord_password:
         _explain(

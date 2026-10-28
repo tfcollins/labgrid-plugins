@@ -784,6 +784,78 @@ def test_netbox_token_prompt_says_input_is_hidden_and_confirms_what_it_read(monk
     assert "received 6 characters" in result.output
 
 
+def test_a_pasted_bearer_header_is_reduced_to_the_token(monkeypatch):
+    """NetBox shows "Bearer nbt_..." as the header to send; pynetbox adds the keyword itself."""
+    seen = {}
+
+    def connect(url, token, **kwargs):
+        seen["token"] = token
+        return object()
+
+    result, asked = _run_until_netbox(
+        monkeypatch,
+        ["--netbox-url", "https://nb", "--coord-user", "u", "--coord-password", "p"],
+        {"NetBox API token": "Bearer nbt_abc123.s3cret"},
+        connect=connect,
+    )
+
+    assert seen == {"token": "nbt_abc123.s3cret"}
+    assert "Bearer" in result.output and "removed" in result.output
+
+
+def test_an_unusable_token_is_asked_for_again(monkeypatch):
+    seen = {}
+
+    def connect(url, token, **kwargs):
+        seen["token"] = token
+        return object()
+
+    result, asked = _run_until_netbox(
+        monkeypatch,
+        ["--netbox-url", "https://nb", "--coord-user", "u", "--coord-password", "p"],
+        {"NetBox API token": ["nbt_abc123", "nbt_abc123 s3cret", "nbt_abc123.s3cret"]},
+        connect=connect,
+    )
+
+    assert seen == {"token": "nbt_abc123.s3cret"}
+    assert sum(p.startswith("NetBox API token") for p in asked) == 3
+    assert "only the key" in result.output
+
+
+def test_a_bad_netbox_token_option_fails_before_any_question(monkeypatch):
+    asked = _stub_prompts(monkeypatch, {})
+
+    result = _invoke(
+        "add-hardware",
+        "--exporter-configs-dir",
+        str(EXPORTER_CONFIGS_DIR),
+        "--netbox-token",
+        "nbt_abc123 s3cret",
+    )
+
+    assert result.exit_code == 1
+    assert asked == []
+    assert "--netbox-token / NETBOX_TOKEN" in result.output
+    assert "space" in result.output
+
+
+def test_netbox_token_option_is_cleaned_too(monkeypatch):
+    monkeypatch.setenv("NETBOX_TOKEN", "Bearer nbt_abc123.s3cret")
+    seen = {}
+
+    def connect(url, token, **kwargs):
+        seen["token"] = token
+        return object()
+
+    _run_until_netbox(
+        monkeypatch,
+        ["--netbox-url", "https://nb", "--coord-user", "u", "--coord-password", "p"],
+        connect=connect,
+    )
+
+    assert seen == {"token": "nbt_abc123.s3cret"}
+
+
 def test_netbox_url_without_a_scheme_is_asked_again(monkeypatch):
     seen = {}
 

@@ -15,6 +15,7 @@ tool only looks one up by slug and fails clearly if it doesn't exist.
 from __future__ import annotations
 
 import logging
+import re
 from contextlib import contextmanager
 
 import requests
@@ -62,6 +63,32 @@ class _Session(requests.Session):
         return settings
 
 
+# NetBox 4.5+ (authentication.py) accepts exactly "Bearer nbt_<key>.<token>"
+# or "Token <token>"; pynetbox adds the keyword, so it must not be in the token.
+_TOKEN_FORMAT = "nbt_<key>.<token> (NetBox 4.5+) or the 40-character v1 token"
+_HEADER_PREFIX = re.compile(r"^(?:authorization:\s*)?(?:bearer|token)(?:\s+|$)", re.IGNORECASE)
+
+
+def clean_token(raw: str) -> str:
+    """The bare API token from what was pasted or set, or ValueError saying what's wrong.
+
+    Drops surrounding whitespace and quotes and a pasted ``Authorization:``
+    ``Bearer``/``Token`` prefix. Rejects what NetBox can't parse: spaces inside
+    the token, or only the key half of a v2 token.
+    """
+    token = _HEADER_PREFIX.sub("", raw.strip().strip("\"'").strip())
+    if not token:
+        raise ValueError(f"the token is empty - expected {_TOKEN_FORMAT}")
+    if any(c.isspace() for c in token):
+        raise ValueError(f"the token contains a space - paste only the token: {_TOKEN_FORMAT}")
+    if token.startswith("nbt_") and "." not in token:
+        raise ValueError(
+            "that is only the key of a v2 token - the full token is nbt_<key>.<token>, "
+            "shown once when the token is created"
+        )
+    return token
+
+
 def connect(url: str, token: str, *, verify: bool | str = True):
     """Return a connected ``pynetbox.api`` instance.
 
@@ -96,6 +123,11 @@ def reported_errors(url: str):
         hint = ""
         if e.req.status_code in (401, 403):
             hint = " - check the API token (--netbox-token / NETBOX_TOKEN)"
+        if "Invalid authorization header" in str(e):
+            hint = (
+                f" - give the bare token, without the Bearer/Token keyword: {_TOKEN_FORMAT} "
+                "(--netbox-token / NETBOX_TOKEN)"
+            )
         raise RuntimeError(f"NetBox rejected the request: {e}{hint}") from e
 
 
