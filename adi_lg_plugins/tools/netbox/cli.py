@@ -383,13 +383,23 @@ def add_hardware(
         raise click.Abort()
 
     if not netbox_url:
+        _explain("The NetBox instance to register the board in (or set NETBOX_URL).")
         netbox_url = _ask_required("NetBox URL (e.g. https://netbox.example.com)", check=_URL)
     if not netbox_token:
+        _explain(
+            "A NetBox API token that can create devices; create one under your user profile "
+            "in NetBox (or set NETBOX_TOKEN)."
+        )
         netbox_token = _ask_secret("NetBox API token")
 
     coord_resolved = resolve_coordinator(coord)
+    if not coord_user or not coord_password:
+        _explain(
+            f"A coordinator API login ({coord_resolved}) that can create places, add matches "
+            "and set tags (or set LG_API_USERNAME / LG_API_PASSWORD)."
+        )
     if not coord_user:
-        coord_user = _ask_required("Coordinator API username (a user that can create places)")
+        coord_user = _ask_required("Coordinator API username")
     if not coord_password:
         coord_password = _ask_secret("Coordinator API password")
 

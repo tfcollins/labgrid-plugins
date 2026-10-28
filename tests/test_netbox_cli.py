@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 from click.testing import CliRunner
-from rich.prompt import Prompt
+from rich.prompt import Confirm, Prompt
 
 from adi_lg_plugins.tools.netbox import cli
 
@@ -32,6 +32,49 @@ CREDENTIALS = [
     "--coord-password",
     "p",
 ]
+
+
+@pytest.fixture(autouse=True)
+def _no_credentials_from_the_environment(monkeypatch):
+    """These would skip the credential prompts the tests answer."""
+    for var in ("NETBOX_URL", "NETBOX_TOKEN", "NETBOX_CA_BUNDLE", "LG_API_USERNAME"):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.delenv("LG_API_PASSWORD", raising=False)
+
+
+def _type_into_real_prompts(monkeypatch, conversation, *args):
+    """Run add-hardware, typing each answer of ``conversation`` into the real prompts.
+
+    Returns the result and every prompt shown, in order. Hidden answers go
+    through getpass, which would otherwise read the real terminal.
+    """
+    monkeypatch.setattr(
+        getpass, "getpass", lambda prompt="", stream=None: sys.stdin.readline().rstrip("\n")
+    )
+    prompts = []
+    for cls in (Prompt, Confirm):
+        real_ask = cls.ask
+
+        def spy(prompt, *a, _real_ask=real_ask, **k):
+            prompts.append(str(prompt))
+            return _real_ask(prompt, *a, **k)
+
+        monkeypatch.setattr(cls, "ask", staticmethod(spy))
+    result = CliRunner().invoke(
+        cli.netbox_group,
+        ["add-hardware", "--exporter-configs-dir", str(EXPORTER_CONFIGS_DIR), *args],
+        input="".join(f"{answer}\n" for _, answer in conversation),
+        catch_exceptions=False,
+    )
+    return result, prompts
+
+
+def _assert_asked_in_order(conversation, prompts):
+    assert [q for q, _ in conversation] == [
+        next((q for q, _ in conversation if p.startswith(q)), p) for p in prompts
+    ]
+    # Every question says what it is for, not a bare template variable name.
+    assert not [p for p in prompts if re.match(r"\s*[a-z]+_[a-z_]+\b", p)]
 
 
 class _Asked(list):
@@ -201,36 +244,82 @@ def test_dry_run_through_the_real_prompts(monkeypatch):
         ("  Board Linux SSH password", ""),
         ("  Board Linux SSH username", ""),
     ]
-    # rich reads hidden input with getpass, which would use the real terminal.
-    monkeypatch.setattr(
-        getpass, "getpass", lambda prompt="", stream=None: sys.stdin.readline().rstrip("\n")
-    )
-    prompts = []
-    real_ask = Prompt.ask
-
-    def spy(prompt, *args, **kwargs):
-        prompts.append(str(prompt))
-        return real_ask(prompt, *args, **kwargs)
-
-    monkeypatch.setattr(Prompt, "ask", staticmethod(spy))
-
-    result = CliRunner().invoke(
-        cli.netbox_group,
-        DRY_RUN,
-        input="".join(f"{answer}\n" for _, answer in conversation),
-        catch_exceptions=False,
-    )
+    result, prompts = _type_into_real_prompts(monkeypatch, conversation, "--dry-run")
 
     assert result.exit_code == 0, result.output
-    assert [p for p, _ in conversation] == [
-        next((q for q, _ in conversation if p.startswith(q)), p) for p in prompts
-    ]
-    # Every question says what it is for, not a bare template variable name.
-    assert not [p for p in prompts if re.match(r"\s*[a-z]+_[a-z_]+\b", p)]
+    _assert_asked_in_order(conversation, prompts)
     plan = result.output[result.output.index("\nPlan") :]
     assert "ZCU102_AD9081" in plan
     assert "power-driver=CyberPowerDriver" in plan
     assert "Dry run" in result.output
+
+
+def test_full_run_through_the_real_prompts(monkeypatch):
+    """Credentials too: typed after Proceed?, hidden ones through getpass."""
+    conversation = [
+        ("Board template", "soc-ssh"),
+        ("Board name", "b1"),
+        ("Carrier board", "zcu102"),
+        ("ADI daughter board or chip", "ad9081"),
+        ("Boot strategy", ""),
+        ("Power category", "Network PDU"),
+        ("Power type", "cyberpower"),
+        ("  PDU hostname or IP", "10.0.0.20"),
+        ("  Outlet number", "4"),
+        ("GitHub Actions runner label", ""),
+        ("NetBox site slug", "lab3"),
+        ("Exporter host SSH login", "root@h"),
+        ("  Board IP address", "10.0.0.5"),
+        ("  BOOT.BIN", ""),
+        ("  Device tree", ""),
+        ("  Kernel image", ""),
+        ("  Kuiper release", ""),
+        ("  Serial console device", ""),
+        ("  Board Linux SSH password", ""),
+        ("  Board Linux SSH username", ""),
+        ("\nProceed?", "y"),
+        ("NetBox URL", "https://netbox.test"),
+        ("NetBox API token", "  tok123  "),  # pasted with stray whitespace
+        ("Coordinator API username", "admin"),
+        ("Coordinator API password", "secret"),
+    ]
+    calls = {}
+    monkeypatch.setattr(
+        cli.client, "connect", lambda url, token, **k: calls.update(url=url, token=token)
+    )
+    monkeypatch.setattr(cli.client, "ensure_schema", lambda nb: None)
+    monkeypatch.setattr(
+        cli.client, "create_or_update_device", lambda nb, name, **kw: type("D", (), {"id": 7})()
+    )
+    monkeypatch.setattr(cli.provision, "check_prerequisites", lambda host: "/usr/bin/lg-exp")
+    monkeypatch.setattr(cli.provision, "deploy_exporter", lambda *a, **k: None)
+    monkeypatch.setattr(cli.provision, "verify_exporter_active", lambda host, name: None)
+    monkeypatch.setattr(cli.provision, "missing_power_env", lambda host, power: [])
+    monkeypatch.setattr(cli, "resolve_coordinator", lambda coord: "coord:20408")
+    monkeypatch.setattr(cli, "_resolve_api", lambda coord: "http://coord:8000/api")
+    monkeypatch.setattr(
+        cli.coord_mod, "login", lambda api, user, password: calls.update(login=(user, password))
+    )
+    monkeypatch.setattr(cli, "create_place", lambda api, cookie, name: None)
+    monkeypatch.setattr(cli, "add_match", lambda api, cookie, name, pattern: None)
+    monkeypatch.setattr(
+        cli, "set_place_tags", lambda api, cookie, name, tags: calls.update(tags=tags)
+    )
+    monkeypatch.setattr(cli, "fetch_raw_places", lambda coord: ([], []))
+
+    result, prompts = _type_into_real_prompts(monkeypatch, conversation)
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(conversation, prompts)
+    assert calls["url"] == "https://netbox.test"
+    assert calls["token"] == "tok123"
+    assert "received 6 characters" in result.output
+    assert calls["login"] == ("admin", "secret")
+    assert calls["tags"]["power-driver"] == "CyberPowerDriver"
+    # The credential questions explain themselves like the others.
+    output = " ".join(result.output.split())
+    assert "under your user profile in NetBox" in output
+    assert "create places" in output
 
 
 def test_required_answers_are_asked_again_until_given(monkeypatch):
