@@ -127,7 +127,8 @@ jobs:
           tests/test_exporter_templates.py \
           tests/test_power_types.py \
           tests/test_choices.py \
-          tests/test_config_gen.py
+          tests/test_config_gen.py \
+          tests/test_health_check_cli.py
 
   coordinator-api:
     # The coordinator FastAPI subproject has its own pyproject + test suite
