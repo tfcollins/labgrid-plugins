@@ -10,7 +10,8 @@ class KuiperRelease(Resource):
 
     Args:
         release_version (str): Version of the Kuiper release to download and manage.
-        cache_path (str): Path to cache the downloaded Kuiper release. Defaults to /home/<user>/.labgrid/kuiper_releases/
+        cache_path (str): Path to cache the downloaded Kuiper release. Defaults to ~/.labgrid/kuiper_releases/;
+            "~" is the home directory of the user that downloads it (the exporter user, for a remote place).
         kernel_path (str): Path to the kernel file to use with the Kuiper release.
         BOOTBIN_path (str): Path to the BOOTBIN file to use with the Kuiper release.
         device_tree_path (str): Path to the device tree file to use with the Kuiper release.

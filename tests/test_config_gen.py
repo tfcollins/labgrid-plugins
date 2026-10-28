@@ -499,17 +499,15 @@ def test_ssh_uses_the_board_login_from_the_shell_questions(monkeypatch):
     assert service == {"address": "10.0.0.6", "username": "admin", "password": "analog"}
 
 
-def test_kuiper_cache_directory_is_written_without_a_tilde(monkeypatch, tmp_path):
-    """KuiperDLDriver doesn't expand ~, so "~/..." would create a directory named "~"."""
-    monkeypatch.setenv("HOME", str(tmp_path))
+def test_kuiper_cache_directory_is_written_as_given(monkeypatch):
+    """Not expanded here: on a remote place "~" must be the exporter user's home."""
     with CliRunner().isolated_filesystem():
-        result, prompts = _type(monkeypatch, _SOC)
+        result, _ = _type(monkeypatch, _SOC)
 
         assert result.exit_code == 0, result.output
         config = yaml.safe_load(open("config_zcu102.yaml"))
     release = config["targets"]["zcu102"]["resources"]["KuiperRelease"]
-    assert release["cache_path"] == f"{tmp_path}/.labgrid/kuiper_releases"
-    assert dict(prompts)["Cache Directory"] == "~/.labgrid/kuiper_releases"
+    assert release["cache_path"] == "~/.labgrid/kuiper_releases"
 
 
 # Not named `strategy`: labgrid's pytest plugin has a fixture of that name.

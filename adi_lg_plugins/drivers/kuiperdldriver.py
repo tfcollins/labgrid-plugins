@@ -195,7 +195,7 @@ class Downloader:
 
 def _cache_lookup(cache_path: str, release_version: str) -> str | None:
     """Return the cached .img path for a release if recorded + on disk, else None."""
-    cache_file = os.path.join(cache_path, "cache_info.json")
+    cache_file = os.path.join(os.path.expanduser(cache_path), "cache_info.json")
     if not os.path.exists(cache_file):
         return None
     with open(cache_file) as f:
@@ -211,8 +211,12 @@ def download_release_image(release_version: str, cache_path: str, *, logger=None
     into ``cache_path`` (idempotent: returns the cached .img if already present).
 
     Shared by ``KuiperDLDriver.download_release`` (resource-bound) and the CI
-    ``kuiper_xsa`` helper (no target). Returns the cached ``.img`` path."""
+    ``kuiper_xsa`` helper (no target). Returns the cached ``.img`` path. "~" in
+    ``cache_path`` is the home directory of the user running the download, and
+    the archive is downloaded and extracted inside ``cache_path``, not the
+    working directory."""
     log = logger or logging.getLogger(__name__)
+    cache_path = os.path.expanduser(cache_path)
     cached = _cache_lookup(cache_path, release_version)
     if cached is not None:
         log.info("Kuiper release %s already cached at %s", release_version, cached)
@@ -226,10 +230,11 @@ def download_release_image(release_version: str, cache_path: str, *, logger=None
     name_archive = rel_info["xzname"] if "xzname" in rel_info else rel_info["zipname"]
     md5_archive = rel_info["xzmd5"] if "xzmd5" in rel_info else rel_info["zipmd5"]
     tarball_path = os.path.join(cache_path, name_archive)
-    downloader.download(rel_info["link"], name_archive)
-    downloader.check(name_archive, md5_archive)
-    downloader.extract(name_archive, rel_info["imgname"])
-    img_file = downloader.check(rel_info["imgname"], rel_info["imgmd5"], find_img=True)
+    extracted = os.path.join(cache_path, rel_info["imgname"])
+    downloader.download(rel_info["link"], tarball_path)
+    downloader.check(tarball_path, md5_archive)
+    downloader.extract(tarball_path, extracted)
+    img_file = downloader.check(extracted, rel_info["imgmd5"], find_img=True)
 
     img_filename = os.path.basename(img_file)
     target_path = os.path.join(cache_path, img_filename)
@@ -237,10 +242,8 @@ def download_release_image(release_version: str, cache_path: str, *, logger=None
 
     if os.path.exists(tarball_path):
         os.remove(tarball_path)
-    if os.path.isfile(name_archive):
-        os.remove(name_archive)
-    if os.path.isdir(rel_info["imgname"]):
-        os.rmdir(rel_info["imgname"])
+    if os.path.isdir(extracted):
+        os.rmdir(extracted)
 
     cache_file = os.path.join(cache_path, "cache_info.json")
     cache_data = {}
@@ -282,6 +285,14 @@ class KuiperDLDriver(ExporterAgentMixin, Driver):
 
     def on_deactivate(self):
         self._exporter_agent_deactivate()
+
+    def _cache_path(self):
+        """The resource's cache directory, with "~" as this host's home directory.
+
+        The agent config passes ``cache_path`` on as written, so on a remote
+        place "~" is the exporter user's home, not the client's.
+        """
+        return os.path.expanduser(self.kuiper_resource.cache_path)
 
     def _agent_config(self):
         resource = self.kuiper_resource
@@ -336,7 +347,7 @@ class KuiperDLDriver(ExporterAgentMixin, Driver):
             return self._exporter_call(
                 "check_cached", "kuiper", self._agent_config(), release_version
             )
-        cache_path = self.kuiper_resource.cache_path
+        cache_path = self._cache_path()
         if not os.path.exists(cache_path):
             os.makedirs(cache_path)
 
@@ -366,7 +377,7 @@ class KuiperDLDriver(ExporterAgentMixin, Driver):
             return
         if release_version is None:
             release_version = self.kuiper_resource.release_version
-        download_release_image(release_version, self.kuiper_resource.cache_path, logger=self.logger)
+        download_release_image(release_version, self._cache_path(), logger=self.logger)
 
     def get_full_image_path(self, release_version=None):
         """Return a client-valid full SD image path for the configured release."""
@@ -377,7 +388,7 @@ class KuiperDLDriver(ExporterAgentMixin, Driver):
             release_version = self.kuiper_resource.release_version
         if not self.check_cached(release_version):
             self.download_release(release_version)
-        cache_file_path = os.path.join(self.kuiper_resource.cache_path, self.cache_datafile)
+        cache_file_path = os.path.join(self._cache_path(), self.cache_datafile)
         with open(cache_file_path) as f:
             cache_data = json.load(f)
         return cache_data[release_version]["image_path"]
@@ -395,7 +406,7 @@ class KuiperDLDriver(ExporterAgentMixin, Driver):
         if not self.check_cached():
             self.download_release()
 
-        with open(os.path.join(self.kuiper_resource.cache_path, self.cache_datafile)) as f:
+        with open(os.path.join(self._cache_path(), self.cache_datafile)) as f:
             cache_data = json.load(f)
         release_info = cache_data[self.kuiper_resource.release_version]
 
@@ -423,7 +434,7 @@ class KuiperDLDriver(ExporterAgentMixin, Driver):
             return files
 
         # Extract boot files
-        output_dir = os.path.join(self.kuiper_resource.cache_path, "boot_files")
+        output_dir = os.path.join(self._cache_path(), "boot_files")
         if not os.path.exists(output_dir):
             os.makedirs(output_dir)
 
