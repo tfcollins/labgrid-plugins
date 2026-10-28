@@ -660,8 +660,8 @@ def test_a_new_port_is_named_after_its_serial_device(monkeypatch):
     result, _ = _type_into_real_prompts(monkeypatch, _with_new_power(conversation))
 
     assert result.exit_code == 0, result.output
-    port = calls["UART"]["port"]
-    assert by_id.endswith(port) and len(port) == 64  # NetBox's limit for a port name
+    # NetBox's limit for a port name is 64: the end is kept, from a word boundary.
+    assert calls["UART"]["port"] == "Labs_CP2108_Quad_USB_to_UART_Bridge_Controller_0001-if02"
     assert calls["UART"]["path"] == by_id
 
 
@@ -714,6 +714,155 @@ def test_a_run_saved_before_serial_ports_asks_for_the_serial_device_and_redoes_n
     _assert_asked_in_order(conversation, prompts)
     assert calls["steps"] == ["netbox", "exporter", "place"]  # the cable is added
     assert calls["UART"]["path"] == "/dev/ttyUSB0"
+
+
+# A ZynqMP board booted over JTAG: its template exports XilinxDeviceJTAG.
+_JTAG_BOARD = [
+    ("Board template", "zynqmp-jtag"),
+    *_BOARD[1:],
+    *_NEW_POWER,
+    ("Power device name in NetBox", ""),
+    *_SSH,
+]
+_JTAG_FIELDS = [
+    ("  Board IP address", "10.0.0.5"),
+    ("  xsdb JTAG target ID", ""),
+    ("  Board Linux SSH password", ""),
+    ("  Board Linux SSH username", ""),
+    ("  Vivado install directory", ""),
+    ("  xsdb executable", ""),
+    ("\nProceed?", "y"),
+    ("Coordinator API username", "admin"),
+    ("Coordinator API password", "secret"),
+]
+
+
+def test_a_jtag_board_records_its_jtag_cable_on_the_serial_device(monkeypatch):
+    calls = _stub_services(monkeypatch)
+    conversation = [
+        *_JTAG_BOARD,
+        *_SERIAL,  # adds h, the exporter host
+        ("JTAG device", ""),  # Enter: h, as for the serial console
+        ("JTAG port name on h in NetBox", ""),  # Enter: JTAG
+        *_JTAG_FIELDS,
+    ]
+
+    result, prompts = _type_into_real_prompts(monkeypatch, conversation)
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(conversation, prompts)
+    assert calls["JTAG"] == {"site_slug": "lab3", "device": "h", "port": "JTAG", "path": ""}
+    assert _rows(result.output)("JTAG in NetBox", "b1 JTAG -> h JTAG")
+    assert "NetBox has no JTAG port type" in " ".join(result.output.split())
+
+
+def test_a_jtag_port_is_picked_from_the_ones_that_are_not_serial_ports(monkeypatch):
+    lab_host = _host(
+        "h",
+        ("A", _BY_ID),  # a serial port: not offered for JTAG
+        ("B", "", "zc706-old UART"),  # feeds a serial console: not offered
+        ("JTAG 1", "", "zc706-old JTAG", True),  # feeds another board's JTAG
+        "JTAG 2",
+    )
+    calls = _stub_services(monkeypatch, consoles=[lab_host])
+    conversation = [
+        *_JTAG_BOARD,
+        ("Serial device", ""),
+        ("Serial port on h", "A"),
+        ("JTAG device", ""),  # Enter: h
+        ("JTAG port on h", "JTAG 1"),  # feeds another board: asked again
+        ("JTAG port on h", "JTAG 2"),
+        *_JTAG_FIELDS,
+    ]
+
+    result, prompts = _type_into_real_prompts(monkeypatch, conversation)
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(conversation, prompts)
+    jtag_ports = result.output[result.output.index("JTAG device") :]
+    jtag_ports = jtag_ports[: jtag_ports.index("JTAG port on h")]
+    assert "zc706-old JTAG" in jtag_ports
+    assert "zc706-old UART" not in jtag_ports and "\n1   A " not in jtag_ports
+    assert "h JTAG 1 already feeds zc706-old JTAG" in result.output
+    assert calls["JTAG"]["port"] == "JTAG 2"
+    assert calls["UART"]["port"] == "A"
+
+
+def test_a_new_jtag_port_on_a_listed_device_gets_the_next_free_name(monkeypatch):
+    lab_host = _host("h", ("A", _BY_ID), ("JTAG", "", "zc706-old JTAG", True))
+    calls = _stub_services(monkeypatch, consoles=[lab_host])
+    conversation = [
+        *_JTAG_BOARD,
+        ("Serial device", ""),
+        ("Serial port on h", "A"),
+        ("JTAG device", ""),
+        ("JTAG port on h", "new"),
+        ("JTAG port name on h in NetBox", ""),  # Enter: JTAG 2
+        *_JTAG_FIELDS,
+    ]
+
+    result, _ = _type_into_real_prompts(monkeypatch, conversation)
+
+    assert result.exit_code == 0, result.output
+    assert calls["JTAG"]["port"] == "JTAG 2"
+
+
+def test_the_jtag_connection_can_be_left_out_of_netbox(monkeypatch):
+    calls = _stub_services(monkeypatch)
+    conversation = [*_JTAG_BOARD, *_SERIAL, ("JTAG device", "skip"), *_JTAG_FIELDS]
+
+    result, prompts = _type_into_real_prompts(monkeypatch, conversation)
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(conversation, prompts)
+    assert "JTAG" not in calls
+    assert _rows(result.output)("JTAG in NetBox", "not recorded")
+
+
+def test_a_skipped_jtag_connection_is_not_asked_again_on_resume(monkeypatch, saved_runs):
+    _stub_services(monkeypatch)
+    _fail_deploy(monkeypatch)
+    _type_into_real_prompts(
+        monkeypatch, [*_JTAG_BOARD, *_SERIAL, ("JTAG device", "skip"), *_JTAG_FIELDS]
+    )
+    calls = _stub_services(monkeypatch)
+
+    result, prompts = _type_into_real_prompts(monkeypatch, _RESUME_TO_COORDINATOR)
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(_RESUME_TO_COORDINATOR, prompts)  # NetBox isn't read again
+    assert "JTAG" not in calls
+
+
+def test_a_saved_jtag_board_without_its_jtag_connection_asks_only_for_it(monkeypatch, saved_runs):
+    _stub_services(monkeypatch)
+    _fail_deploy(monkeypatch)
+    _type_into_real_prompts(
+        monkeypatch,
+        [*_JTAG_BOARD, *_SERIAL, ("JTAG device", "skip"), *_JTAG_FIELDS],
+    )
+    path = saved_runs / "b1.json"
+    saved = json.loads(path.read_text())
+    del saved["answers"]["jtag_device"]
+    path.write_text(json.dumps(saved))
+    calls = _stub_services(monkeypatch)
+    conversation = [
+        ("Resume a saved run", ""),
+        ("Use the saved answers", ""),
+        ("NetBox URL", ""),
+        ("NetBox API token", "tok123"),
+        ("JTAG device", ""),
+        ("JTAG port name on h in NetBox", ""),
+        ("\nProceed?", "y"),
+        ("Coordinator API username", ""),
+        ("Coordinator API password", "secret"),
+    ]
+
+    result, prompts = _type_into_real_prompts(monkeypatch, conversation)
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(conversation, prompts)
+    assert calls["JTAG"]["device"] == "h"
 
 
 def test_manual_power_is_not_recorded_in_netbox(monkeypatch):

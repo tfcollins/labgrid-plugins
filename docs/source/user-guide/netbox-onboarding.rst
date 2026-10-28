@@ -3,9 +3,10 @@ NetBox Onboarding
 
 ``adi-lg netbox add-hardware`` automates the whole of :doc:`onboarding-a-lab-host` Steps 2-4
 for a single new board: it registers the board as a device in NetBox and records which outlet
-powers it, renders and validates its exporter config, deploys that config to the exporter host
-as a systemd service and verifies it comes up, then creates the matching labgrid Place on the
-coordinator (``create`` / ``add-match`` / ``set-tags``). Run it instead of hand-editing a template and typing
+powers it and which ports its serial console and JTAG are plugged into, renders and validates
+its exporter config, deploys that config to the exporter host as a systemd service and verifies
+it comes up, then creates the matching labgrid Place on the coordinator (``create`` /
+``add-match`` / ``set-tags``). Run it instead of hand-editing a template and typing
 ``labgrid-client`` commands.
 
 **On this page:**
@@ -13,6 +14,7 @@ coordinator (``create`` / ``add-match`` / ``set-tags``). Run it instead of hand-
 - `Prerequisites`_
 - `Usage`_ — `Options`_
 - `Power devices`_
+- `Serial console and JTAG`_
 - `What it creates`_ — `In NetBox`_, `On the exporter host`_, `On the coordinator`_
 - `Resuming after a failure`_
 - `Re-running for an existing board`_
@@ -22,9 +24,9 @@ coordinator (``create`` / ``add-match`` / ``set-tags``). Run it instead of hand-
 .. admonition:: What it does NOT do
    :class: note
 
-   It does not physically rack or cable the board (it records the power cable in NetBox, it
-   doesn't plug it in), and it does not install ``labgrid-exporter`` on the host - both are
-   prerequisites, checked below.
+   It does not physically rack or cable the board (it records the power, serial and JTAG cables
+   in NetBox, it doesn't plug them in), and it does not install ``labgrid-exporter`` on the
+   host - both are prerequisites, checked below.
 
 Prerequisites
 -------------
@@ -35,8 +37,10 @@ Prerequisites
   by default).
 - NetBox **4.3 or newer** - custom fields are created with the ``object_types`` key that NetBox
   4.3 introduced (it replaced ``content_types``).
-- A NetBox URL and API token with permission to create devices, power ports, power outlets and
-  cables (``NETBOX_URL`` / ``NETBOX_TOKEN`` env vars, or ``--netbox-url`` / ``--netbox-token``).
+- A NetBox URL and API token with permission to create devices, power ports, power outlets,
+  console ports, console server ports and cables (plus, the first time, device roles,
+  manufacturers, device types and custom fields) (``NETBOX_URL`` / ``NETBOX_TOKEN`` env vars,
+  or ``--netbox-url`` / ``--netbox-token``).
 - The NetBox **Site** you'll place the device under must already exist - this command creates
   the ``labgrid-target`` device role, its custom fields, and board device types on first run,
   but deliberately never creates a Site (physical-location truth the org manages elsewhere).
@@ -142,6 +146,24 @@ Usage
     sudo.
     Exporter host SSH login (user@host): labadmin@lab-host-03
 
+    The device the board's serial console (USB-UART) is plugged into - usually the
+    exporter host. Pick it from NetBox or add it; the board's UART console port is
+    cabled to the port you choose.
+
+    Devices with console server ports in NetBox at lab3
+    #   Device        Address     Free ports
+    ──────────────────────────────────────────────────────────────────────────────
+    1   lab-host-03   10.0.0.40   2 of 4
+    2   new                       a device not listed: add it, or add ports to it
+    Serial device (lab-host-03):
+    #   Port      Serial path                                         Feeds
+    ──────────────────────────────────────────────────────────────────────────────
+    1   ttyUSB0   /dev/serial/by-id/usb-FTDI_Quad_RS232-HS-if00-...   zcu102-lab3-000 UART
+    2   ttyUSB1   /dev/serial/by-id/usb-FTDI_Quad_RS232-HS-if01-...   free
+    ...
+    5   new                                                           a port not in NetBox yet: add it
+    Serial port on lab-host-03: ttyUSB1
+
     Template fields for soc-sdmux
     Field               Question                             Default
     ──────────────────────────────────────────────────────────────────────────────
@@ -152,8 +174,6 @@ Usage
     kuiper_bootbin      BOOT.BIN, as release:<path> or a     unset
                         file on the test runner
     ...
-    serial_port         Serial console device on the         /dev/ttyUSB0
-                        exporter host
     target_password     Board Linux SSH password             analog
     target_username     Board Linux SSH username             root
       Board IP address, for SSH to its Linux (required): 10.0.0.42
@@ -162,7 +182,6 @@ Usage
       BOOT.BIN, as release:<path> or a file on the test runner (Enter to leave
     unset): release:zynqmp-zcu102-rev10-ad9081/m8_l4/BOOT.BIN
       ...
-      Serial console device on the exporter host (Enter for /dev/ttyUSB0):
       Board Linux SSH password (Enter for analog):
       Board Linux SSH username (Enter for root):
 
@@ -184,10 +203,13 @@ Usage
       Power               CyberPower PDU (SNMP) (cyberpower)
                           via CyberPowerDriver
       Power in NetBox     zcu102-lab3-001 power port -> pdu-rack3 Outlet 3
+      Serial in NetBox    zcu102-lab3-001 UART -> lab-host-03 ttyUSB1
+                          serial device /dev/serial/by-id/usb-FTDI_Quad_RS232-HS-if01-port0
 
     Proceed? [y/n] (y): y
     NetBox device ready: https://netbox.example.com/dcim/devices/95/
       connected zcu102-lab3-001 power to pdu-rack3 Outlet 3
+      connected zcu102-lab3-001 UART to lab-host-03 ttyUSB1
     ...
 
 Each set of options is listed as a numbered table; answer with the number or the name,
@@ -196,11 +218,12 @@ or press Enter for the default shown in parentheses.
 Use ``--dry-run`` to render and schema-validate the exporter config and print the full plan
 without touching NetBox, SSH, or the coordinator - useful for checking your answers before
 committing to a real board. A dry run never asks for NetBox or coordinator credentials and
-doesn't read NetBox: the site is typed, the power type and its fields are asked directly, and
-the plan says the power device is chosen when run without ``--dry-run``.
+doesn't read NetBox: the site is typed, the power type and its fields are asked directly, the
+serial console device is asked as a template field, and the plan says the power device,
+serial port and JTAG port are chosen when run without ``--dry-run``.
 
 Each question says what the answer is used for. Template fields are asked by what they are
-(*Board IP address*, *Serial console device on the exporter host*, ...), after a table of the
+(*Board IP address*, *Board Linux SSH password*, ...), after a table of the
 template's fields with each one's default. Fields with no default (``target_ip`` in every
 template, plus ``bitstream_path`` and ``kernel_path`` in ``fabric-jtag``) are asked first,
 marked *(required)*, and asked again if left blank; the same applies to a power type's
@@ -247,8 +270,8 @@ Every option is optional; anything not supplied is prompted for.
 * ``--dry-run``: render, validate, and print the plan; make no changes.
 
 NetBox credentials that are not set by option or environment are asked for before the site,
-because the site and the board's power device are picked from what NetBox holds; nothing is
-written to NetBox until you confirm ``Proceed?``. Coordinator credentials are asked for after
+because the site, the board's power device and its serial and JTAG ports are picked from what
+NetBox holds; nothing is written to NetBox until you confirm ``Proceed?``. Coordinator credentials are asked for after
 ``Proceed?``. The token and password prompts hide what you type or paste, so nothing appears
 on screen; after each one the command prints how many characters it received. Blank answers
 are asked again.
@@ -297,6 +320,46 @@ each socket. Settings that belong to the board's connection rather than the devi
 *Invert output*, an LAA's switch-on and switch-off states) are asked for every board. Manual
 power (the ``manual`` type) is not recorded in NetBox.
 
+Serial console and JTAG
+-----------------------
+
+The board's serial console is recorded the same way, with NetBox's console components: a
+``UART`` **console port** on the board, cabled to a **console server port** on the device its
+USB-UART is plugged into - usually the exporter host, or a USB-serial adapter box. After the
+*Exporter host SSH login*, the command lists the site's devices that have console server
+ports, with how many ports are free; the exporter host (matched by name, short name or primary
+IP) is the default.
+
+- **Pick a device**, then a port from a table of its ports, each with its serial path and what
+  it feeds. A port that feeds another board can't be picked, and one recorded as a JTAG cable
+  isn't offered. The port's serial path - its ``labgrid_serial_path`` custom field - answers the
+  template's *Serial console device on the exporter host*, so that question isn't asked. A port
+  made by hand has no path yet: it is asked (``/dev/ttyUSB2`` for a port named ``ttyUSB2``) and
+  saved on the port. *new* adds a port: its path is asked, and the port is named after the
+  device file (a name over NetBox's 64 characters keeps its end, where a multi-port adapter's
+  ``-if01-port0`` tells its ports apart).
+- **Pick new** for a device the list doesn't have - for example the exporter host, when NetBox
+  has it as a plain server without console server ports. Its name is asked (default: the
+  exporter host's short name). A device of that name at the site gets the new port; otherwise
+  the device is created. With no console server ports at the site, this is where the command
+  starts.
+
+The serial path is the device on the *exporter host*, the same as the template field: prefer a
+stable ``/dev/serial/by-id/...`` path over ``/dev/ttyUSB0``, which can change on reboot.
+
+**JTAG**: NetBox has no JTAG (or USB) port type, so a board whose template exports
+``XilinxDeviceJTAG`` (``fabric-jtag``, ``soc-tftp``, ``zynqmp-jtag``) has its JTAG cable recorded
+as a ``JTAG`` console port on the board, cabled to a console server port - by default on the
+same device as the serial console. It is a record of the wiring only: labgrid's JTAG settings
+(the xsdb ``root_target``) don't depend on it. The *JTAG device* list adds *skip* to leave it
+out. Ports with a serial path, or that feed a serial console, aren't offered for JTAG; a new
+JTAG port's name is asked (default ``JTAG``, or ``JTAG 2``, ... if taken).
+
+.. code-block:: console
+
+    JTAG device (lab-host-03):
+    JTAG port name on lab-host-03 in NetBox (JTAG):
+
 What it creates
 ---------------
 
@@ -339,6 +402,9 @@ up and later runs reuse them:
        - on power devices only (JSON): the labgrid power type and the settings that identify
          the device, e.g. ``{"type": "cyberpower", "address": "10.0.0.20"}``
 
+- **Custom field** ``labgrid_serial_path`` ("Labgrid serial device path", text) on
+  ``dcim.consoleserverport``: a serial port's device path on the exporter host.
+
 Then the **device** itself, named after the board name, with that device type and role,
 under the existing site. The command prints its URL
 (``<netbox>/dcim/devices/<id>/``) when done.
@@ -357,8 +423,22 @@ Then its power (see `Power devices`_):
   refused before anything is written. Cables already there are kept: if the board was on
   another outlet before, that cable is left in place and reported, for you to remove in NetBox.
 
+Then its serial console and JTAG (see `Serial console and JTAG`_):
+
+- The **device** picked, or the one named: an existing device at the site is used as it is;
+  a missing one is created with role ``labgrid-console-server`` ("Labgrid Console Server"),
+  manufacturer ``generic`` and device type ``labgrid-console-server``.
+- The **console server port** picked, or a new one. A new serial port gets your path in
+  ``labgrid_serial_path``; an existing port's empty path is filled in, and one already set is
+  never replaced (the command says so if it differs).
+- A **console port** on the board: a free one of the right kind it already has (``UART``,
+  ``Console`` or ``Serial...`` for the serial console, ``JTAG...`` for JTAG), or a new one named
+  ``UART`` (at 115200 baud, the templates' speed) or ``JTAG``.
+- A **cable** from each console port to its console server port, with the same rules as the
+  power cable.
+
 Each change is printed under the device URL. The NetBox step counts as done only when the
-board is registered *and* cabled, so a failure in either is redone on resume.
+board is registered *and* every cable is added, so a failure in any is redone on resume.
 
 On the exporter host
 ~~~~~~~~~~~~~~~~~~~~
@@ -451,10 +531,12 @@ are deleted.
 
 A resumed run asks for the NetBox URL and coordinator username again when it needs them, with
 the saved ones as defaults - a wrong URL or login is the usual reason a run stops, so press Enter
-to keep them or type the right one. The power device and outlet are saved answers too, so a
-resumed run reads NetBox before the plan only if one of them is missing - for example in a run
-saved by a version without power devices, which asks for the NetBox URL and token, then the
-power device. A saved site NetBox no longer has is asked again. It deploys to the same coordinator as the saved run, so
+to keep them or type the right one. The power device and outlet, and the serial and JTAG
+devices and ports, are saved answers too, so a resumed run reads NetBox before the plan only
+if one of them is missing - for example in a run saved by a version without them, which asks
+for the NetBox URL and token, then only the missing ones. Answering a question a saved run
+didn't have runs every step again, so the new cables are added. A saved site NetBox no longer
+has is asked again. It deploys to the same coordinator as the saved run, so
 ``--coord`` need not be given again; naming a different one (``--coord`` or ``LG_COORDINATOR``)
 runs every step again, because the exporter already deployed points at the first.
 
@@ -520,9 +602,9 @@ Troubleshooting
 ``NetBox site '<slug>' does not exist`` / ``NetBox has no sites``
     Create the site in NetBox first (or use an existing slug); the command never creates sites.
 
-``<device> Outlet 3 already feeds <device> <port>``
-    The outlet is cabled to another device in NetBox. Pick a free outlet - or, if that device
-    was unplugged, remove its cable in NetBox (*Cables*) and run again.
+``<device> Outlet 3 already feeds <device> <port>`` / ``<device> ttyUSB1 already feeds <device> UART``
+    The outlet or console server port is cabled to another device in NetBox. Pick a free one -
+    or, if that device was unplugged, remove its cable in NetBox (*Cables*) and run again.
 
 ``<device> keeps its labgrid_power settings in NetBox (...), which differ from this board's (...)``
     Not an error: the power device was set up by an earlier board (or by hand) with other
@@ -530,8 +612,13 @@ Troubleshooting
     edit its *Labgrid power control* field in NetBox.
 
 ``<board> power is also connected to <device> <outlet> - left as is``
-    Not an error: the board was cabled to another outlet before. If it was moved, remove the
-    old cable in NetBox.
+    Not an error: the board was cabled to another outlet (or, for ``UART`` / ``JTAG``, another
+    port) before. If it was moved, remove the old cable in NetBox.
+
+``<device> <port> keeps its serial path in NetBox (...), which differs from this board's (...)``
+    Not an error: the port's ``labgrid_serial_path`` was set by an earlier board (or by hand)
+    and is never replaced; the exporter config uses your answer. If the adapter really moved,
+    edit the port's *Labgrid serial device path* in NetBox.
 
 ``cannot SSH to <host>``
     The exporter host's name doesn't resolve, or its SSH key isn't accepted without a
@@ -563,7 +650,7 @@ How it maps to the manual procedure
 
     adi-lg netbox add-hardware                  manual equivalent (onboarding-a-lab-host.rst)
     ───────────────────────────────────────────  ──────────────────────────────────────────────
-    NetBox device create/update + power cable    (no manual equivalent - new)
+    NetBox device + power/serial/JTAG cables     (no manual equivalent - new)
     render + validate exporter_configs/*.yaml     Step 2: copy template, fill in, validate.py
     SSH deploy + systemd install/start/verify     Step 2: run labgrid-exporter (foreground/nohup)
     POST /places, /places/{name}/matches          Step 3: labgrid-client create / add-match
