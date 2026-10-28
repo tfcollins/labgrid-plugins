@@ -143,4 +143,4 @@ _release_src = (
     _Path(__file__).resolve().parents[2] / "adi_lg_plugins" / "hw_ci" / "_release.py"
 ).read_text(encoding="utf-8")
 _pin_match = _re.search(r'RECOMMENDED_PIN\s*=\s*"([^"]+)"', _release_src)
-rst_epilog = f"\n.. |hw_ci_pin| replace:: {_pin_match.group(1) if _pin_match else 'v3.5'}\n"
+rst_epilog = f"\n.. |hw_ci_pin| replace:: {_pin_match.group(1) if _pin_match else 'v4'}\n"

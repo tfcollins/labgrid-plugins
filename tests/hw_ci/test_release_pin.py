@@ -5,7 +5,7 @@ from pathlib import Path
 def test_recommended_pin_value():
     from adi_lg_plugins.hw_ci._release import RECOMMENDED_PIN
 
-    assert RECOMMENDED_PIN == "v3.5"
+    assert RECOMMENDED_PIN == "v4"
     assert re.fullmatch(r"v\d+(\.\d+)*", RECOMMENDED_PIN)
 
 

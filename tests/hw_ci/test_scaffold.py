@@ -15,7 +15,7 @@ def test_render_substitutes_and_pins():
 
 
 def test_render_pins_the_stub_placeholder_ref():
-    # The stub's `<...>.yml@v3.5` ref must also be pinned to RECOMMENDED_PIN.
+    # The stub's `<...>.yml@<tag>` ref must also be pinned to RECOMMENDED_PIN.
     out = scaffold.render_template("AGENTS-consumer-stub.md")
     assert f".yml@{RECOMMENDED_PIN}" in out
 

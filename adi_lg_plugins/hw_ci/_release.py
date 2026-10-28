@@ -8,4 +8,4 @@ pin-consistency lint both read this value, so a release bump touches one line.
 
 from __future__ import annotations
 
-RECOMMENDED_PIN = "v3.5"
+RECOMMENDED_PIN = "v4"

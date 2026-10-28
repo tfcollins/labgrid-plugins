@@ -56,7 +56,7 @@ upload each leg's JUnit after pytest exits. Set ``prism-upload: true``, provide
 
    jobs:
      hardware:
-       uses: tfcollins/labgrid-plugins/.github/workflows/hw-request.yml@v3.5
+       uses: tfcollins/labgrid-plugins/.github/workflows/hw-request.yml@v4
        with:
          coordinator: ${{ vars.LG_COORDINATOR }}
          test-root: test
