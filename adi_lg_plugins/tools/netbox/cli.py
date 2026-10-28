@@ -13,7 +13,10 @@ from pathlib import Path
 
 import click
 from rich.console import Console
+from rich.markup import escape
+from rich.padding import Padding
 from rich.prompt import Confirm, Prompt
+from rich.table import Table
 
 from adi_lg_plugins.hw_ci import coordinator as coord_mod
 from adi_lg_plugins.hw_ci import power as power_types
@@ -69,6 +72,16 @@ def _strategy_summary(name: str) -> str:
     return lines[0].removeprefix(f"{name} - ") if lines else ""
 
 
+def _plan_table(rows: list[tuple[str, list[str]]]) -> Padding:
+    """Label/value rows; each value line is printed on a line of its own."""
+    table = Table.grid(padding=(0, 3))
+    table.add_column(style="bold")
+    table.add_column(overflow="fold")
+    for label, values in rows:
+        table.add_row(label, "\n".join(values))
+    return Padding(table, (0, 0, 0, 2))
+
+
 def _ask_power() -> tuple[str, dict[str, str]]:
     """Ask for a power type by category, then that type's fields.
 
@@ -102,7 +115,7 @@ def _ask_power() -> tuple[str, dict[str, str]]:
         if f.default is None:
             context[f.var] = _ask_required(f"  {f.prompt}")
             continue
-        answer = Prompt.ask(f"  {f.prompt}", default=f.default)
+        answer = Prompt.ask(f"  {f.prompt}", default=f.default, show_default=f.default != "")
         if answer not in (None, ""):
             context[f.var] = answer
     return power, context
@@ -253,33 +266,6 @@ def add_hardware(
         if answer:
             context[var] = answer
 
-    console.print("\n[bold]Plan[/bold]")
-    console.print(
-        f"  NetBox device: {name}  (carrier={carrier}, chip={daughter_board}, site={site_slug})"
-    )
-    console.print(f"  Exporter: {ssh_target} -> systemd unit labgrid-exporter-{name}")
-    power_tags = provision.power_tags(power)
-    console.print(
-        f"  Coordinator place: {name}  "
-        f"(tags: daughter-board={daughter_board.lower()}, carrier={carrier.lower()}, "
-        f"boot-strategy={boot_strategy}, runner={runner_label}, "
-        + ", ".join(f"{k}={v}" for k, v in power_tags.items())
-        + ")"
-    )
-    console.print(f"  Power: {power_type.label} ({power}), via {' + '.join(power_type.drivers)}")
-    if power_type.credentials:
-        console.print(
-            "    credentials from "
-            f"{provision.EXPORTER_ENV_FILE} on the exporter host: "
-            + ", ".join(
-                c.env + ("" if c.required else " (optional)") for c in power_type.credentials
-            )
-        )
-    if power_type.reach == "client":
-        console.print("    [yellow]the client (test runner) must reach this device[/yellow]")
-    if power_type.note:
-        console.print(f"    {power_type.note}")
-
     try:
         rendered_path, groups = provision.render_and_validate(
             template_path, context, exporter_configs_dir
@@ -289,9 +275,45 @@ def add_hardware(
     # The systemd unit runs `labgrid-exporter -n <name>`, so the coordinator
     # sees these resources under exporter <name>, not the SSH host name.
     match_patterns = [f"{name}/{group}/*" for group in groups]
-    console.print(f"  Rendered + validated exporter config: {rendered_path}")
-    console.print(f"  Resource group(s): {', '.join(groups)}")
-    console.print(f"  Place match(es): {', '.join(match_patterns)}")
+    tags = {
+        "daughter-board": daughter_board.lower(),
+        "carrier": carrier.lower(),
+        "boot-strategy": boot_strategy,
+        "runner": runner_label,
+        **provision.power_tags(power),
+    }
+
+    power_lines = [
+        escape(f"{power_type.label} ({power})"),
+        "via " + " + ".join(power_type.drivers),
+    ]
+    if power_type.credentials:
+        power_lines.append(f"credentials in {provision.EXPORTER_ENV_FILE} on the exporter host:")
+        power_lines += [
+            f"  {c.env}" + ("" if c.required else " (optional)") for c in power_type.credentials
+        ]
+    if power_type.reach == "client":
+        power_lines.append("[yellow]the client (test runner) must reach this device[/yellow]")
+    if power_type.note:
+        power_lines.append(power_type.note)
+
+    console.print("\n[bold]Plan[/bold]")
+    console.print(
+        _plan_table(
+            [
+                ("NetBox device", [escape(f"{name} (site {site_slug})")]),
+                ("Carrier / chip", [escape(f"{carrier} / {daughter_board}")]),
+                ("Exporter host", [escape(ssh_target)]),
+                ("Systemd unit", [escape(f"labgrid-exporter-{name}")]),
+                ("Exporter config", [f"{rendered_path} (rendered + validated)"]),
+                ("Resource groups", [escape(g) for g in groups]),
+                ("Coordinator place", [escape(name)]),
+                ("Place matches", [escape(m) for m in match_patterns]),
+                ("Place tags", [escape(f"{k}={v}") for k, v in tags.items()]),
+                ("Power", power_lines),
+            ]
+        )
+    )
 
     if dry_run:
         console.print("\n[yellow]Dry run - no NetBox/SSH/coordinator changes made.[/yellow]")
@@ -367,18 +389,7 @@ def add_hardware(
         create_place(api, cookie, name)
         for pattern in match_patterns:
             add_match(api, cookie, name, pattern)
-        set_place_tags(
-            api,
-            cookie,
-            name,
-            {
-                "daughter-board": daughter_board.lower(),
-                "carrier": carrier.lower(),
-                "boot-strategy": boot_strategy,
-                "runner": runner_label,
-                **power_tags,
-            },
-        )
+        set_place_tags(api, cookie, name, tags)
     except RuntimeError as e:
         raise click.ClickException(str(e)) from e
     console.print(f"[green]Place {name!r} created, matched, and tagged on the coordinator.[/green]")

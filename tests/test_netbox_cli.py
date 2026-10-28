@@ -519,3 +519,56 @@ def test_options_are_listed_one_per_row_not_run_together(monkeypatch):
         assert kwargs_by_prompt[prompt]["show_choices"] is False, prompt
     # an empty default would otherwise print as "()" after the prompt
     assert kwargs_by_prompt["serial_port (blank = template default)"]["show_default"] is False
+
+
+def test_plan_is_a_table_with_one_tag_per_line(monkeypatch):
+    def _ask(prompt, *args, **kwargs):
+        return next(
+            (v for k, v in _SOC_SSH_REPLIES.items() if prompt.startswith(k)), kwargs.get("default")
+        )
+
+    monkeypatch.setattr(cli.Prompt, "ask", staticmethod(_ask))
+
+    result = CliRunner().invoke(
+        cli.netbox_group,
+        ["add-hardware", "--dry-run", "--exporter-configs-dir", str(EXPORTER_CONFIGS_DIR)],
+    )
+
+    assert result.exit_code == 0, result.output
+    lines = result.output[result.output.index("\nPlan") :].splitlines()
+
+    def row(*tokens):
+        return any(all(t in line for t in tokens) for line in lines)
+
+    assert row("Coordinator place", "b1")
+    assert row("Systemd unit", "labgrid-exporter-b1")
+    assert row("Place matches", "b1/ZCU102_AD9081/*")
+    assert row("Power", "CyberPower PDU")
+    for tag in (
+        "daughter-board=ad9081",
+        "carrier=zcu102",
+        "boot-strategy=BootFPGASoCSSH",
+        "runner=hw-zcu102",
+        "power-driver=CyberPowerDriver",
+    ):
+        assert sum(tag in line for line in lines) == 1, tag
+    assert not row("daughter-board=", "carrier=")  # not run together on one line
+
+
+def test_optional_power_fields_do_not_print_an_empty_default(monkeypatch):
+    shown = {}
+
+    def _ask(prompt, *args, **kwargs):
+        shown[prompt.strip()] = kwargs.get("show_default", True)
+        if prompt.startswith("  Kasa device"):
+            return "10.0.0.60"
+        return {"Power category": "2", "Power type": "kasa"}.get(prompt, kwargs.get("default"))
+
+    monkeypatch.setattr(cli.Prompt, "ask", staticmethod(_ask))
+
+    power, _ = cli._ask_power()
+
+    assert power == "kasa"
+    sockets = next(p for p in shown if p.startswith("Strip socket"))
+    assert shown[sockets] is False  # its default is "", which rich prints as "()"
+    assert all(v for p, v in shown.items() if p != sockets)
