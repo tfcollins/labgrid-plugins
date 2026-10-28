@@ -132,6 +132,14 @@ def template_title(template_path: Path) -> str:
     return match.group(1) if match else ""
 
 
+_RESOURCE_CLASS = re.compile(r"^\s*cls:\s*([A-Za-z_][A-Za-z0-9_]*)\s*$", re.M)
+
+
+def template_resources(template_path: Path) -> set[str]:
+    """Resource classes a template exports, from its ``cls:`` lines."""
+    return set(_RESOURCE_CLASS.findall(template_path.read_text()))
+
+
 def discover_template_vars(template_path: Path) -> set[str]:
     """Undeclared Jinja2 variables referenced by the template."""
     jinja2 = _require_jinja2()

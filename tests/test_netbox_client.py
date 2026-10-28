@@ -26,8 +26,13 @@ def test_ensure_schema_creates_missing_objects():
     assert nb.dcim.device_roles.create.call_args.kwargs["slug"] == client.DEVICE_ROLE_SLUG
     nb.dcim.manufacturers.create.assert_called_once()
     assert nb.extras.custom_fields.create.call_count == len(client.CUSTOM_FIELDS)
-    for call in nb.extras.custom_fields.create.call_args_list:
-        assert call.kwargs["object_types"] == ["dcim.device"]
+    object_types = {
+        call.kwargs["name"]: call.kwargs["object_types"]
+        for call in nb.extras.custom_fields.create.call_args_list
+    }
+    # A serial port's path is kept on the port; everything else on devices.
+    assert object_types.pop(client.SERIAL_PATH_FIELD) == ["dcim.consoleserverport"]
+    assert set(map(tuple, object_types.values())) == {("dcim.device",)}
 
 
 def test_ensure_schema_is_idempotent_when_everything_exists():

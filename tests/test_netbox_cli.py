@@ -55,11 +55,13 @@ def saved_runs(monkeypatch, tmp_path):
 
 @pytest.fixture(autouse=True)
 def _netbox_inventory(monkeypatch):
-    """What NetBox holds, read before the plan: two sites, no power devices yet."""
+    """What NetBox holds, read before the plan: two sites, no power or console devices yet."""
     monkeypatch.setattr(cli.client, "sites", lambda nb: [("lab3", "Lab 3"), ("lab4", "Lab 4")])
     monkeypatch.setattr(cli.client, "power_devices", lambda nb, site: [])
+    monkeypatch.setattr(cli.client, "console_devices", lambda nb, site: [])
     monkeypatch.setattr(cli.client, "device_exists", lambda nb, name, site: False)
     monkeypatch.setattr(cli.client, "connect_power", lambda nb, board, **kwargs: [])
+    monkeypatch.setattr(cli.client, "connect_console", lambda nb, board, **kwargs: [])
 
 
 # The real prompts, even after a test has replaced them with _stub_prompts.
@@ -138,13 +140,15 @@ def _invoke(*args):
     return CliRunner().invoke(cli.netbox_group, list(args), catch_exceptions=False)
 
 
-def _stub_services(monkeypatch, *, place=None, power_devices=(), taken=()):
+def _stub_services(monkeypatch, *, place=None, power_devices=(), consoles=(), taken=()):
     """Replace NetBox, the exporter host and the coordinator with recorders.
 
     ``place`` is what the coordinator already holds under the board's name;
-    ``power_devices`` are NetBox's power devices at the site, ``taken`` the
-    names of its other devices. Returns the calls made; ``calls["steps"]``
-    lists the changes in order and ``calls["power"]`` the power cabling.
+    ``power_devices`` and ``consoles`` are NetBox's power devices and devices
+    with console server ports at the site, ``taken`` the names of its other
+    devices. Returns the calls made; ``calls["steps"]`` lists the changes in
+    order, ``calls["power"]`` the power cabling and ``calls["UART"]`` /
+    ``calls["JTAG"]`` the console cabling.
     """
     calls = {"steps": []}
 
@@ -152,7 +156,13 @@ def _stub_services(monkeypatch, *, place=None, power_devices=(), taken=()):
         calls["power"] = kwargs
         return [f"connected b1 power to {kwargs['device']} outlet {kwargs['outlets'][0]}"]
 
+    def connect_console(nb, board, *, kind, **kwargs):
+        calls[kind] = kwargs
+        return [f"connected b1 {kind} to {kwargs['device']} {kwargs['port']}"]
+
     monkeypatch.setattr(cli.client, "power_devices", lambda nb, site: list(power_devices))
+    monkeypatch.setattr(cli.client, "console_devices", lambda nb, site: list(consoles))
+    monkeypatch.setattr(cli.client, "connect_console", connect_console)
     monkeypatch.setattr(cli.client, "device_exists", lambda nb, name, site: name in taken)
     monkeypatch.setattr(cli.client, "connect_power", connect_power)
 
@@ -331,20 +341,25 @@ _BOARD = [
     ("NetBox API token", "  tok123  "),  # pasted with stray whitespace
     ("NetBox site slug", "1"),  # lab3, from NetBox's list
 ]
-_FIELDS = [
-    ("Exporter host SSH login", "root@h"),
+_SSH = [("Exporter host SSH login", "root@h")]
+# No console servers in NetBox at lab3: the serial device is added, named after the exporter host.
+_SERIAL = [
+    ("Serial device name in NetBox", ""),  # the exporter host, h
+    ("  Serial console device", ""),  # the template's /dev/ttyUSB0
+]
+_TEMPLATE_FIELDS = [
     ("  Board IP address", "10.0.0.5"),
     ("  BOOT.BIN", ""),
     ("  Device tree", ""),
     ("  Kernel image", ""),
     ("  Kuiper release", ""),
-    ("  Serial console device", ""),
     ("  Board Linux SSH password", ""),
     ("  Board Linux SSH username", ""),
     ("\nProceed?", "y"),
     ("Coordinator API username", "admin"),
     ("Coordinator API password", "secret"),
 ]
+_FIELDS = [*_SSH, *_SERIAL, *_TEMPLATE_FIELDS]
 _FULL_RUN = [
     *_BOARD,
     # No power devices at lab3 yet, so a new one is described and named.
@@ -386,6 +401,20 @@ def test_full_run_through_the_real_prompts(monkeypatch):
     output = " ".join(result.output.split())
     assert "under your user profile in NetBox" in output
     assert "create places" in output
+
+
+def _with_new_power(conversation):
+    """``conversation`` with the questions describing a new CyberPower PDU."""
+    i = conversation.index(("Power device name in NetBox", ""))
+    return [*conversation[:i], *_NEW_POWER, *conversation[i:]]
+
+
+_NEW_POWER = [
+    ("Power category", "Network PDU"),
+    ("Power type", "cyberpower"),
+    ("  PDU hostname or IP", "10.0.0.20"),
+    ("  Outlet number", "4"),
+]
 
 
 def _pdu(name, settings, *outlets, address=""):
@@ -551,6 +580,291 @@ def test_a_netbox_without_sites_stops_before_the_power_questions(monkeypatch, sa
     assert "pick b1 to resume" in result.output
 
 
+def _host(name, *ports, address=""):
+    """A device with console server ports; each port is a name or ConsoleServerPort args."""
+    return cli.client.ConsoleDevice(
+        name,
+        address,
+        tuple(cli.client.ConsoleServerPort(*((p,) if isinstance(p, str) else p)) for p in ports),
+    )
+
+
+_BY_ID = "/dev/serial/by-id/usb-FTDI_Quad_RS232-HS-if01-port0"
+_LAB_HOST = _host(
+    "h",
+    ("A", _BY_ID),  # path recorded in NetBox
+    ("B", "", "zc706-old UART"),  # feeds another board
+    ("JTAG 1", "", "zc706-old JTAG", True),  # a JTAG cable: not a serial port
+    "ttyUSB2",  # made by hand: no path yet
+)
+
+
+def _serial_run(conversation):
+    return [*_BOARD, ("Power device name in NetBox", ""), *_SSH, *conversation, *_TEMPLATE_FIELDS]
+
+
+def test_the_exporter_host_in_netbox_is_offered_and_its_port_gives_the_serial_path(monkeypatch):
+    calls = _stub_services(monkeypatch, consoles=[_LAB_HOST])
+    rendered = _rendered(monkeypatch)
+    conversation = _serial_run(
+        [
+            ("Serial device", ""),  # Enter: h, the exporter host
+            ("Serial port on h", "B"),  # feeds another board: asked again
+            ("Serial port on h", "A"),
+        ]
+    )
+
+    result, prompts = _type_into_real_prompts(monkeypatch, _with_new_power(conversation))
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(_with_new_power(conversation), prompts)  # no path question
+    row = _rows(result.output)
+    assert row("h", "2 of 4")  # free ports
+    assert not row("JTAG 1", "zc706-old JTAG")  # not offered for the serial console
+    assert "h B already feeds zc706-old UART" in result.output
+    assert rendered["serial_port"] == _BY_ID
+    assert row("Serial in NetBox", "b1 UART -> h A")
+    assert calls["UART"] == {"site_slug": "lab3", "device": "h", "port": "A", "path": _BY_ID}
+
+
+def test_a_port_without_a_path_asks_it_with_its_name_as_the_default(monkeypatch):
+    calls = _stub_services(monkeypatch, consoles=[_LAB_HOST])
+    rendered = _rendered(monkeypatch)
+    conversation = _serial_run(
+        [
+            ("Serial device", "h"),
+            ("Serial port on h", "ttyUSB2"),
+            ("  Serial console device", ""),  # Enter: /dev/ttyUSB2
+        ]
+    )
+
+    result, prompts = _type_into_real_prompts(monkeypatch, _with_new_power(conversation))
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(_with_new_power(conversation), prompts)
+    assert rendered["serial_port"] == "/dev/ttyUSB2"
+    assert calls["UART"]["path"] == "/dev/ttyUSB2"  # recorded on the port
+
+
+def test_a_new_port_is_named_after_its_serial_device(monkeypatch):
+    by_id = "/dev/serial/by-id/usb-Silicon_Labs_CP2108_Quad_USB_to_UART_Bridge_Controller_0001-if02"
+    calls = _stub_services(monkeypatch, consoles=[_LAB_HOST])
+    conversation = _serial_run(
+        [
+            ("Serial device", "h"),
+            ("Serial port on h", "new"),
+            ("  Serial console device", by_id),
+        ]
+    )
+
+    result, _ = _type_into_real_prompts(monkeypatch, _with_new_power(conversation))
+
+    assert result.exit_code == 0, result.output
+    # NetBox's limit for a port name is 64: the end is kept, from a word boundary.
+    assert calls["UART"]["port"] == "Labs_CP2108_Quad_USB_to_UART_Bridge_Controller_0001-if02"
+    assert calls["UART"]["path"] == by_id
+
+
+def test_the_exporter_host_is_matched_by_its_address_too(monkeypatch):
+    lab_host = _host("lab-host-03", ("A", _BY_ID), address="10.0.0.40")
+    calls = _stub_services(monkeypatch, consoles=[lab_host])
+    conversation = [
+        *_BOARD,
+        ("Power device name in NetBox", ""),
+        ("Exporter host SSH login", "root@10.0.0.40"),
+        ("Serial device", ""),  # Enter: lab-host-03
+        ("Serial port on lab-host-03", "A"),
+        *_TEMPLATE_FIELDS,
+    ]
+
+    result, _ = _type_into_real_prompts(monkeypatch, _with_new_power(conversation))
+
+    assert result.exit_code == 0, result.output
+    assert calls["UART"]["device"] == "lab-host-03"
+
+
+def test_a_run_saved_before_serial_ports_asks_for_the_serial_device_and_redoes_netbox(
+    monkeypatch, saved_runs
+):
+    _stub_services(monkeypatch)
+    _fail_deploy(monkeypatch)
+    _type_into_real_prompts(monkeypatch, _FULL_RUN)
+    path = saved_runs / "b1.json"
+    saved = json.loads(path.read_text())
+    assert saved["done"] == ["plan", "netbox"]
+    for key in ("serial_device", "serial_device_name", "serial_netbox_port"):
+        del saved["answers"][key]
+    saved["answers"]["field.serial_port"] = ""  # how a template field saved Enter
+    path.write_text(json.dumps(saved))
+    calls = _stub_services(monkeypatch)
+    conversation = [
+        ("Resume a saved run", ""),
+        ("Use the saved answers", ""),
+        ("NetBox URL", ""),
+        ("NetBox API token", "tok123"),
+        ("Serial device name in NetBox", ""),
+        ("\nProceed?", "y"),
+        ("Coordinator API username", ""),
+        ("Coordinator API password", "secret"),
+    ]
+
+    result, prompts = _type_into_real_prompts(monkeypatch, conversation)
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(conversation, prompts)
+    assert calls["steps"] == ["netbox", "exporter", "place"]  # the cable is added
+    assert calls["UART"]["path"] == "/dev/ttyUSB0"
+
+
+# A ZynqMP board booted over JTAG: its template exports XilinxDeviceJTAG.
+_JTAG_BOARD = [
+    ("Board template", "zynqmp-jtag"),
+    *_BOARD[1:],
+    *_NEW_POWER,
+    ("Power device name in NetBox", ""),
+    *_SSH,
+]
+_JTAG_FIELDS = [
+    ("  Board IP address", "10.0.0.5"),
+    ("  xsdb JTAG target ID", ""),
+    ("  Board Linux SSH password", ""),
+    ("  Board Linux SSH username", ""),
+    ("  Vivado install directory", ""),
+    ("  xsdb executable", ""),
+    ("\nProceed?", "y"),
+    ("Coordinator API username", "admin"),
+    ("Coordinator API password", "secret"),
+]
+
+
+def test_a_jtag_board_records_its_jtag_cable_on_the_serial_device(monkeypatch):
+    calls = _stub_services(monkeypatch)
+    conversation = [
+        *_JTAG_BOARD,
+        *_SERIAL,  # adds h, the exporter host
+        ("JTAG device", ""),  # Enter: h, as for the serial console
+        ("JTAG port name on h in NetBox", ""),  # Enter: JTAG
+        *_JTAG_FIELDS,
+    ]
+
+    result, prompts = _type_into_real_prompts(monkeypatch, conversation)
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(conversation, prompts)
+    assert calls["JTAG"] == {"site_slug": "lab3", "device": "h", "port": "JTAG", "path": ""}
+    assert _rows(result.output)("JTAG in NetBox", "b1 JTAG -> h JTAG")
+    assert "NetBox has no JTAG port type" in " ".join(result.output.split())
+
+
+def test_a_jtag_port_is_picked_from_the_ones_that_are_not_serial_ports(monkeypatch):
+    lab_host = _host(
+        "h",
+        ("A", _BY_ID),  # a serial port: not offered for JTAG
+        ("B", "", "zc706-old UART"),  # feeds a serial console: not offered
+        ("JTAG 1", "", "zc706-old JTAG", True),  # feeds another board's JTAG
+        "JTAG 2",
+    )
+    calls = _stub_services(monkeypatch, consoles=[lab_host])
+    conversation = [
+        *_JTAG_BOARD,
+        ("Serial device", ""),
+        ("Serial port on h", "A"),
+        ("JTAG device", ""),  # Enter: h
+        ("JTAG port on h", "JTAG 1"),  # feeds another board: asked again
+        ("JTAG port on h", "JTAG 2"),
+        *_JTAG_FIELDS,
+    ]
+
+    result, prompts = _type_into_real_prompts(monkeypatch, conversation)
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(conversation, prompts)
+    jtag_ports = result.output[result.output.index("JTAG device") :]
+    jtag_ports = jtag_ports[: jtag_ports.index("JTAG port on h")]
+    assert "zc706-old JTAG" in jtag_ports
+    assert "zc706-old UART" not in jtag_ports and "\n1   A " not in jtag_ports
+    assert "h JTAG 1 already feeds zc706-old JTAG" in result.output
+    assert calls["JTAG"]["port"] == "JTAG 2"
+    assert calls["UART"]["port"] == "A"
+
+
+def test_a_new_jtag_port_on_a_listed_device_gets_the_next_free_name(monkeypatch):
+    lab_host = _host("h", ("A", _BY_ID), ("JTAG", "", "zc706-old JTAG", True))
+    calls = _stub_services(monkeypatch, consoles=[lab_host])
+    conversation = [
+        *_JTAG_BOARD,
+        ("Serial device", ""),
+        ("Serial port on h", "A"),
+        ("JTAG device", ""),
+        ("JTAG port on h", "new"),
+        ("JTAG port name on h in NetBox", ""),  # Enter: JTAG 2
+        *_JTAG_FIELDS,
+    ]
+
+    result, _ = _type_into_real_prompts(monkeypatch, conversation)
+
+    assert result.exit_code == 0, result.output
+    assert calls["JTAG"]["port"] == "JTAG 2"
+
+
+def test_the_jtag_connection_can_be_left_out_of_netbox(monkeypatch):
+    calls = _stub_services(monkeypatch)
+    conversation = [*_JTAG_BOARD, *_SERIAL, ("JTAG device", "skip"), *_JTAG_FIELDS]
+
+    result, prompts = _type_into_real_prompts(monkeypatch, conversation)
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(conversation, prompts)
+    assert "JTAG" not in calls
+    assert _rows(result.output)("JTAG in NetBox", "not recorded")
+
+
+def test_a_skipped_jtag_connection_is_not_asked_again_on_resume(monkeypatch, saved_runs):
+    _stub_services(monkeypatch)
+    _fail_deploy(monkeypatch)
+    _type_into_real_prompts(
+        monkeypatch, [*_JTAG_BOARD, *_SERIAL, ("JTAG device", "skip"), *_JTAG_FIELDS]
+    )
+    calls = _stub_services(monkeypatch)
+
+    result, prompts = _type_into_real_prompts(monkeypatch, _RESUME_TO_COORDINATOR)
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(_RESUME_TO_COORDINATOR, prompts)  # NetBox isn't read again
+    assert "JTAG" not in calls
+
+
+def test_a_saved_jtag_board_without_its_jtag_connection_asks_only_for_it(monkeypatch, saved_runs):
+    _stub_services(monkeypatch)
+    _fail_deploy(monkeypatch)
+    _type_into_real_prompts(
+        monkeypatch,
+        [*_JTAG_BOARD, *_SERIAL, ("JTAG device", "skip"), *_JTAG_FIELDS],
+    )
+    path = saved_runs / "b1.json"
+    saved = json.loads(path.read_text())
+    del saved["answers"]["jtag_device"]
+    path.write_text(json.dumps(saved))
+    calls = _stub_services(monkeypatch)
+    conversation = [
+        ("Resume a saved run", ""),
+        ("Use the saved answers", ""),
+        ("NetBox URL", ""),
+        ("NetBox API token", "tok123"),
+        ("JTAG device", ""),
+        ("JTAG port name on h in NetBox", ""),
+        ("\nProceed?", "y"),
+        ("Coordinator API username", ""),
+        ("Coordinator API password", "secret"),
+    ]
+
+    result, prompts = _type_into_real_prompts(monkeypatch, conversation)
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(conversation, prompts)
+    assert calls["JTAG"]["device"] == "h"
+
+
 def test_manual_power_is_not_recorded_in_netbox(monkeypatch):
     calls = _stub_services(monkeypatch)
     conversation = [
@@ -632,12 +946,14 @@ def test_resuming_a_run_saved_before_power_devices_asks_only_for_the_power_devic
     old = json.loads(path.read_text())
     assert not [k for k in old["answers"] if k.startswith("power_device")]
     calls = _stub_services(monkeypatch)
+    rendered = _rendered(monkeypatch)
     conversation = [
         ("Resume a saved run", ""),
         ("Use the saved answers", ""),
         ("NetBox URL", "https://netbox.test"),
         ("NetBox API token", "tok123"),
         ("Power device name in NetBox", ""),
+        ("Serial device name in NetBox", ""),  # its path was answered in the dry run
         ("\nProceed?", "y"),
         ("Coordinator API username", "admin"),
         ("Coordinator API password", "secret"),
@@ -649,6 +965,14 @@ def test_resuming_a_run_saved_before_power_devices_asks_only_for_the_power_devic
     _assert_asked_in_order(conversation, prompts)  # NetBox asked once, before the plan
     assert calls["power"]["device"] == "cyberpower-10.0.0.20"
     assert calls["steps"] == ["netbox", "exporter", "place"]
+    # Enter in the dry run meant the template's default, not an empty path.
+    assert rendered["serial_port"] == "/dev/ttyUSB0"
+    assert calls["UART"] == {
+        "site_slug": "lab3",
+        "device": "h",
+        "port": "ttyUSB0",
+        "path": "/dev/ttyUSB0",
+    }
 
 
 def test_answers_taken_from_netbox_are_saved_so_a_resume_does_not_ask_them(monkeypatch, saved_runs):
@@ -692,6 +1016,7 @@ def test_a_saved_new_power_device_without_its_name_asks_for_it(monkeypatch, save
         ("NetBox API token", "tok123"),
         ("Power device name in NetBox", ""),  # the suggestion is taken
         ("Power device name in NetBox", "pdu-bench"),
+        ("Serial device name in NetBox", ""),
         ("\nProceed?", "y"),
         ("Coordinator API username", "admin"),
         ("Coordinator API password", "secret"),
@@ -715,6 +1040,7 @@ def test_a_saved_site_netbox_does_not_have_is_asked_again(monkeypatch, saved_run
         ("NetBox API token", "tok123"),
         ("NetBox site slug", "lab4"),
         ("Power device name in NetBox", ""),
+        ("Serial device name in NetBox", ""),
         ("\nProceed?", "y"),
         ("Coordinator API username", "admin"),
         ("Coordinator API password", "secret"),

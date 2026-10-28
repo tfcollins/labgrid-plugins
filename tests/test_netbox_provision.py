@@ -311,3 +311,21 @@ def test_template_field_defaults_are_read_from_the_template():
     assert defaults["kuiper_release"] == "2023_R2_P1"
     assert defaults["kuiper_bootbin"] is None  # default(none): left unset
     assert "target_ip" not in defaults  # required, no default
+
+
+@pytest.mark.parametrize(
+    ("template", "jtag"),
+    [
+        ("zynqmp-jtag", True),
+        ("fabric-jtag", True),
+        ("soc-tftp", True),
+        ("soc-ssh", False),
+        ("soc-sdmux", False),
+        ("rpi-ssh", False),
+    ],
+)
+def test_template_resources_lists_the_classes_a_template_exports(template, jtag):
+    resources = provision.template_resources(TEMPLATES / f"{template}.yaml")
+
+    assert "RawSerialPort" in resources
+    assert ("XilinxDeviceJTAG" in resources) == jtag

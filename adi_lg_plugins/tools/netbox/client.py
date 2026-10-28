@@ -17,6 +17,15 @@ smart plug, relay, ...). Power devices already in NetBox are used as they
 are; one that is missing is created under the ``labgrid-power`` role. Its
 ``labgrid_power`` custom field holds the labgrid power type and the settings
 that identify it, so the next board on it is configured from NetBox.
+
+Its serial console and JTAG go the same way: a cable from a console port on
+the board (``UART``, ``JTAG``) to a console server port on the device the
+adapter is plugged into - usually the exporter host, created under the
+``labgrid-console-server`` role if NetBox doesn't have it. A serial port's
+``labgrid_serial_path`` custom field holds its device path on the exporter
+host (a port name is limited to 64 characters; ``/dev/serial/by-id`` paths
+are often longer). NetBox has no JTAG component, so JTAG uses console ports
+too - a record of the wiring only; labgrid's JTAG settings don't depend on it.
 """
 
 from __future__ import annotations
@@ -38,25 +47,33 @@ DEVICE_ROLE_NAME = "Labgrid Target"
 MANUFACTURER_SLUG = "adi-lab"
 MANUFACTURER_NAME = "Analog Devices, Inc. (lab hardware)"
 
-# Power devices this tool creates are third-party hardware, not ADI's.
+# Power devices and console servers this tool creates are third-party
+# hardware, not ADI's.
 POWER_ROLE_SLUG = "labgrid-power"
 POWER_ROLE_NAME = "Labgrid Power Control"
 POWER_MANUFACTURER_SLUG = "generic"
 POWER_MANUFACTURER_NAME = "Generic"
 POWER_FIELD = "labgrid_power"
+CONSOLE_ROLE_SLUG = "labgrid-console-server"
+CONSOLE_ROLE_NAME = "Labgrid Console Server"
+SERIAL_PATH_FIELD = "labgrid_serial_path"
+# The board's console port for each kind of console connection.
+UART = "UART"
+JTAG = "JTAG"
 # The outlet of a single switch (smart plug, relay, ...), and of a strip used whole.
 SINGLE_OUTLET = "1"
 # A board's power ports, when it has none to reuse: "power", "power 2", ...
 POWER_PORT = "power"
 
-# custom field name -> (label, NetBox field type)
-CUSTOM_FIELDS: dict[str, tuple[str, str]] = {
-    "carrier": ("Carrier", "text"),
-    "daughter_board": ("Daughter board / chip", "text"),
-    "boot_strategy": ("Boot strategy", "text"),
-    "exporter_host": ("Exporter SSH target", "text"),
-    "runner_label": ("GitHub runner label", "text"),
-    POWER_FIELD: ("Labgrid power control", "json"),
+# custom field name -> (label, NetBox field type, object type it is on)
+CUSTOM_FIELDS: dict[str, tuple[str, str, str]] = {
+    "carrier": ("Carrier", "text", "dcim.device"),
+    "daughter_board": ("Daughter board / chip", "text", "dcim.device"),
+    "boot_strategy": ("Boot strategy", "text", "dcim.device"),
+    "exporter_host": ("Exporter SSH target", "text", "dcim.device"),
+    "runner_label": ("GitHub runner label", "text", "dcim.device"),
+    POWER_FIELD: ("Labgrid power control", "json", "dcim.device"),
+    SERIAL_PATH_FIELD: ("Labgrid serial device path", "text", "dcim.consoleserverport"),
 }
 
 
@@ -168,11 +185,11 @@ def ensure_schema(nb) -> None:
         logger.info("creating NetBox manufacturer %r", MANUFACTURER_SLUG)
         nb.dcim.manufacturers.create(name=MANUFACTURER_NAME, slug=MANUFACTURER_SLUG)
 
-    for name, (label, cf_type) in CUSTOM_FIELDS.items():
+    for name, (label, cf_type, object_type) in CUSTOM_FIELDS.items():
         if nb.extras.custom_fields.get(name=name) is None:
             logger.info("creating NetBox custom field %r", name)
             nb.extras.custom_fields.create(
-                object_types=["dcim.device"],
+                object_types=[object_type],
                 type=cf_type,
                 name=name,
                 label=label,
@@ -247,29 +264,70 @@ def sites(nb) -> list[tuple[str, str]]:
     return sorted((s.slug, s.name) for s in nb.dcim.sites.all())
 
 
-def power_devices(nb, site_slug: str) -> list[PowerDevice]:
-    """The devices at a site that have power outlets, with what each outlet feeds."""
-    outlets: dict[int, list] = {}
-    for outlet in nb.dcim.power_outlets.filter(site=site_slug):
-        outlets.setdefault(outlet.device.id, []).append(outlet)
-    if not outlets:
+def _devices_with(nb, endpoint: str, site_slug: str):
+    """``(device, its ports, its address)`` for each device at a site with ``endpoint`` ports."""
+    ports: dict[int, list] = {}
+    for port in getattr(nb.dcim, endpoint).filter(site=site_slug):
+        ports.setdefault(port.device.id, []).append(port)
+    if not ports:
         return []
     found = []
-    for device in nb.dcim.devices.filter(id=list(outlets)):
-        settings = (device.custom_fields or {}).get(POWER_FIELD)
+    for device in nb.dcim.devices.filter(id=list(ports)):
         ip = getattr(device, "primary_ip", None)
+        address = ip.address.split("/")[0] if ip else ""
+        found.append((device, sorted(ports[device.id], key=lambda p: _natural(p.name)), address))
+    return sorted(found, key=lambda d: d[0].name)
+
+
+def power_devices(nb, site_slug: str) -> list[PowerDevice]:
+    """The devices at a site that have power outlets, with what each outlet feeds."""
+    found = []
+    for device, outlets, address in _devices_with(nb, "power_outlets", site_slug):
+        settings = (device.custom_fields or {}).get(POWER_FIELD)
         found.append(
             PowerDevice(
                 device.name,
                 settings if isinstance(settings, dict) else {},
-                ip.address.split("/")[0] if ip else "",
-                tuple(
-                    PowerOutlet(o.name, ", ".join(_peers(o)) or None)
-                    for o in sorted(outlets[device.id], key=lambda o: _natural(o.name))
-                ),
+                address,
+                tuple(PowerOutlet(o.name, ", ".join(_peers(o)) or None) for o in outlets),
             )
         )
-    return sorted(found, key=lambda d: d.name)
+    return found
+
+
+@dataclass(frozen=True)
+class ConsoleServerPort:
+    name: str
+    path: str = ""  # its labgrid_serial_path: the serial device on the exporter host
+    connected_to: str | None = None  # "<device> <port>" its cable feeds, None if free
+    jtag: bool = False  # it feeds a board's JTAG port
+
+
+@dataclass(frozen=True)
+class ConsoleDevice:
+    name: str
+    address: str = ""  # primary IP, without the prefix length
+    ports: tuple[ConsoleServerPort, ...] = ()
+
+
+def console_devices(nb, site_slug: str) -> list[ConsoleDevice]:
+    """The devices at a site with console server ports, with each port's path and what it feeds."""
+    return [
+        ConsoleDevice(
+            device.name,
+            address,
+            tuple(
+                ConsoleServerPort(
+                    p.name,
+                    (p.custom_fields or {}).get(SERIAL_PATH_FIELD) or "",
+                    ", ".join(_peers(p)) or None,
+                    any(_is_kind(JTAG, peer.name) for peer in p.link_peers or ()),
+                )
+                for p in ports
+            ),
+        )
+        for device, ports, address in _devices_with(nb, "console_server_ports", site_slug)
+    ]
 
 
 def device_exists(nb, name: str, site_slug: str) -> bool:
@@ -299,28 +357,144 @@ def _get_or_create(endpoint, slug: str, **fields):
     return found or endpoint.create(slug=slug, **fields)
 
 
-def _create_power_device(nb, name: str, site_id: int, settings: dict):
-    power = POWER_TYPES[settings["type"]]
-    role = _get_or_create(
-        nb.dcim.device_roles, POWER_ROLE_SLUG, name=POWER_ROLE_NAME, color="ff9800"
-    )
+def _create_device(nb, name: str, site_id: int, *, role, type_slug, model, custom_fields=None):
+    role = _get_or_create(nb.dcim.device_roles, role[0], name=role[1], color=role[2])
     mfr = _get_or_create(
         nb.dcim.manufacturers, POWER_MANUFACTURER_SLUG, name=POWER_MANUFACTURER_NAME
     )
-    device_type = _get_or_create(
-        nb.dcim.device_types,
-        f"labgrid-power-{power.key}",
-        manufacturer=mfr.id,
-        model=power.label,
-    )
-    logger.info("creating NetBox power device %r", name)
+    device_type = _get_or_create(nb.dcim.device_types, type_slug, manufacturer=mfr.id, model=model)
+    logger.info("creating NetBox device %r", name)
     return nb.dcim.devices.create(
         name=name,
         device_type=device_type.id,
         role=role.id,
         site=site_id,
-        custom_fields={POWER_FIELD: settings},
+        custom_fields=custom_fields or {},
     )
+
+
+@dataclass(frozen=True)
+class _Ends:
+    """One kind of cabled connection: board-side ports and the far-side ports they plug into."""
+
+    board: str  # board-side endpoint, e.g. "power_ports"
+    board_type: str  # its cable termination type
+    far: str  # far-side endpoint, e.g. "power_outlets"
+    far_type: str
+    port: str  # name of a board port added for it: "power", "power 2", ...
+    reuse: tuple[str, ...] = ()  # board ports of this kind start so (lowercase); () = any
+    port_fields: tuple[tuple[str, object], ...] = ()  # set on a board port added for it
+
+
+_POWER = _Ends("power_ports", "dcim.powerport", "power_outlets", "dcim.poweroutlet", POWER_PORT)
+_CONSOLE = {
+    # The templates' RawSerialPort runs at 115200 baud.
+    UART: _Ends(
+        "console_ports",
+        "dcim.consoleport",
+        "console_server_ports",
+        "dcim.consoleserverport",
+        UART,
+        ("uart", "console", "serial"),
+        (("speed", 115200),),
+    ),
+    JTAG: _Ends(
+        "console_ports",
+        "dcim.consoleport",
+        "console_server_ports",
+        "dcim.consoleserverport",
+        JTAG,
+        ("jtag",),
+    ),
+}
+
+
+def _is_kind(kind: str, port_name: str) -> bool:
+    return port_name.lower().startswith(_CONSOLE[kind].reuse)
+
+
+def _port_label(device: str, port: str) -> str:
+    return f"{device} {port}"
+
+
+def _connect(
+    nb, board, ends: _Ends, *, site_slug, device, names, label, create, settle, far_fields=None
+) -> list[str]:
+    """Cable ``board`` to the far-side ports ``names`` on ``device`` at the board's site.
+
+    ``create(site_id)`` makes ``device`` if the site has no device of that
+    name; ``settle(device, ports)`` brings an existing one up to date and
+    returns what it did. Missing far-side ports are created with
+    ``far_fields``. The board's free ports of this kind are used before new
+    ones are added. Cables already there stay: a port feeding another device
+    is refused before anything is written, and the board's other connections
+    of this kind are reported, not removed. Returns what was done, one line each.
+    """
+    site = nb.dcim.sites.get(slug=site_slug)
+    if site is None:
+        raise RuntimeError(f"NetBox site {site_slug!r} does not exist")
+    found = list(nb.dcim.devices.filter(name=device, site_id=site.id))
+    far_device = found[0] if found else None
+    existing = {}
+    if far_device is not None:
+        existing = {o.name: o for o in getattr(nb.dcim, ends.far).filter(device_id=far_device.id)}
+    all_ports = sorted(
+        getattr(nb.dcim, ends.board).filter(device_id=board.id), key=lambda p: _natural(p.name)
+    )
+    ports = [p for p in all_ports if not ends.reuse or p.name.lower().startswith(ends.reuse)]
+    mine = {f"{board.name} {p.name}" for p in ports}
+    for name in names:
+        others = [p for p in _peers(existing[name]) if p not in mine] if name in existing else []
+        if others:
+            raise RuntimeError(
+                f"{label(device, name)} already feeds {', '.join(others)} - pick a free "
+                "one, or remove that cable in NetBox first"
+            )
+
+    done = []
+    if far_device is None:
+        far_device = create(site.id)
+    else:
+        done += settle(far_device, existing)
+
+    used = {p.id for p in ports if p.cable is not None}
+    wanted = {f"{device} {name}" for name in names}
+    for name in names:
+        far = existing.get(name)
+        if far is None:
+            far = getattr(nb.dcim, ends.far).create(
+                device=far_device.id, name=name, **(far_fields or {})
+            )
+        elif _peers(far):
+            done.append(f"{board.name} is already connected to {label(device, name)}")
+            continue
+        port = next((p for p in ports if p.id not in used), None)
+        if port is None:
+            taken = {p.name for p in all_ports}
+            port_name = next(
+                n
+                for n in (ends.port, *(f"{ends.port} {i}" for i in range(2, len(all_ports) + 3)))
+                if n not in taken
+            )
+            port = getattr(nb.dcim, ends.board).create(
+                device=board.id, name=port_name, **dict(ends.port_fields)
+            )
+            ports.append(port)
+            all_ports.append(port)
+        used.add(port.id)
+        nb.dcim.cables.create(
+            a_terminations=[{"object_type": ends.board_type, "object_id": port.id}],
+            b_terminations=[{"object_type": ends.far_type, "object_id": far.id}],
+        )
+        done.append(f"connected {board.name} {port.name} to {label(device, name)}")
+    for port in ports:
+        for peer in _peers(port):
+            if peer not in wanted:
+                done.append(
+                    f"{board.name} {port.name} is also connected to {peer} - left as is; "
+                    "remove that cable in NetBox if the board was moved"
+                )
+    return done
 
 
 def connect_power(
@@ -330,81 +504,99 @@ def connect_power(
 
     The device and its outlets are created if missing; ``settings`` (the
     ``labgrid_power`` value) fill in a device's empty field but never replace
-    one. The board's free power ports are used before new ones are added.
-    Cables already there stay: an outlet feeding another device is refused
-    before anything is written, and the board's other connections are
-    reported, not removed. Returns what was done, one line each.
+    one. See :func:`_connect` for how cables are added.
     """
-    site = nb.dcim.sites.get(slug=site_slug)
-    if site is None:
-        raise RuntimeError(f"NetBox site {site_slug!r} does not exist")
-    found = list(nb.dcim.devices.filter(name=device, site_id=site.id))
-    power_device = found[0] if found else None
-    existing = {}
-    if power_device is not None:
-        existing = {o.name: o for o in nb.dcim.power_outlets.filter(device_id=power_device.id)}
-    for name in outlets:
-        others = (
-            [p for p in _peers(existing[name]) if not p.startswith(f"{board.name} ")]
-            if (name in existing)
-            else []
-        )
-        if others:
-            raise RuntimeError(
-                f"{outlet_label(device, name)} already feeds {', '.join(others)} - pick a free "
-                "outlet, or remove that cable in NetBox first"
-            )
-
     done = []
-    if power_device is None:
-        power_device = _create_power_device(nb, device, site.id, settings)
+
+    def create(site_id):
         done.append(f"created power device {device}")
-    else:
+        return _create_device(
+            nb,
+            device,
+            site_id,
+            role=(POWER_ROLE_SLUG, POWER_ROLE_NAME, "ff9800"),
+            type_slug=f"labgrid-power-{settings['type']}",
+            model=POWER_TYPES[settings["type"]].label,
+            custom_fields={POWER_FIELD: settings},
+        )
+
+    def settle(power_device, outlets):
         current = (power_device.custom_fields or {}).get(POWER_FIELD)
         if not current:
             power_device.custom_fields[POWER_FIELD] = settings
             power_device.save()
-            done.append(f"recorded the labgrid power settings on {device}")
-        elif current != settings:
-            done.append(
+            return [f"recorded the labgrid power settings on {device}"]
+        if current != settings:
+            return [
                 f"{device} keeps its {POWER_FIELD} settings in NetBox ({current}), "
                 f"which differ from this board's ({settings})"
-            )
+            ]
+        return []
 
-    ports = sorted(nb.dcim.power_ports.filter(device_id=board.id), key=lambda p: _natural(p.name))
-    used = {p.id for p in ports if p.cable is not None}
-    wanted = {f"{device} {name}" for name in outlets}
-    for name in outlets:
-        outlet = existing.get(name)
-        if outlet is None:
-            outlet = nb.dcim.power_outlets.create(device=power_device.id, name=name)
-        elif _peers(outlet):
-            done.append(f"{board.name} is already connected to {outlet_label(device, name)}")
-            continue
-        port = next((p for p in ports if p.id not in used), None)
-        if port is None:
-            names = {p.name for p in ports}
-            port_name = next(
-                n
-                for n in (POWER_PORT, *(f"{POWER_PORT} {i}" for i in range(2, len(ports) + 3)))
-                if n not in names
-            )
-            port = nb.dcim.power_ports.create(device=board.id, name=port_name)
-            ports.append(port)
-        used.add(port.id)
-        nb.dcim.cables.create(
-            a_terminations=[{"object_type": "dcim.powerport", "object_id": port.id}],
-            b_terminations=[{"object_type": "dcim.poweroutlet", "object_id": outlet.id}],
+    return done + _connect(
+        nb,
+        board,
+        _POWER,
+        site_slug=site_slug,
+        device=device,
+        names=outlets,
+        label=outlet_label,
+        create=create,
+        settle=settle,
+    )
+
+
+def connect_console(
+    nb, board, *, kind: str, site_slug: str, device: str, port: str, path: str = ""
+) -> list[str]:
+    """Cable ``board``'s ``kind`` (UART or JTAG) console port to ``port`` on ``device``.
+
+    ``device`` (usually the exporter host) gets the console server port if it
+    hasn't one of that name, and is created under the console server role if
+    the site has no device of that name. ``path`` is the serial device on the
+    exporter host: it fills in the port's empty ``labgrid_serial_path`` but
+    never replaces one. See :func:`_connect` for how cables are added.
+    """
+    done = []
+
+    def create(site_id):
+        done.append(f"created console server {device}")
+        return _create_device(
+            nb,
+            device,
+            site_id,
+            role=(CONSOLE_ROLE_SLUG, CONSOLE_ROLE_NAME, "607d8b"),
+            type_slug=CONSOLE_ROLE_SLUG,
+            model="Console server (USB serial / JTAG adapters)",
         )
-        done.append(f"connected {board.name} {port.name} to {outlet_label(device, name)}")
-    for port in ports:
-        for peer in _peers(port):
-            if peer not in wanted:
-                done.append(
-                    f"{board.name} {port.name} is also connected to {peer} - left as is; "
-                    "remove that cable in NetBox if the board was moved"
-                )
-    return done
+
+    def settle(host, ports):
+        if not path or port not in ports:
+            return []
+        current = (ports[port].custom_fields or {}).get(SERIAL_PATH_FIELD)
+        if not current:
+            ports[port].custom_fields[SERIAL_PATH_FIELD] = path
+            ports[port].save()
+            return [f"recorded the serial path {path} on {device} {port}"]
+        if current != path:
+            return [
+                f"{device} {port} keeps its serial path in NetBox ({current}), "
+                f"which differs from this board's ({path})"
+            ]
+        return []
+
+    return done + _connect(
+        nb,
+        board,
+        _CONSOLE[kind],
+        site_slug=site_slug,
+        device=device,
+        names=[port],
+        label=_port_label,
+        create=create,
+        settle=settle,
+        far_fields={"custom_fields": {SERIAL_PATH_FIELD: path}} if path else None,
+    )
 
 
 def power_settings(power: PowerType, context: dict) -> dict:

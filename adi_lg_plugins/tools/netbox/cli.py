@@ -1,7 +1,8 @@
 """`adi-lg netbox add-hardware` - interactive onboarding.
 
 Registers a new board in NetBox, cabled to an outlet on the power device
-that switches it (picked from NetBox, or added), renders+validates its
+that switches it and to the ports its serial console and JTAG are on (each
+picked from NetBox, or added), renders+validates its
 exporter config, SSH-deploys it as a systemd service on the exporter host
 and verifies it comes up, then creates the matching labgrid Place
 (create/add-match/set-tags) on the coordinator. Answers are saved as they are given, so a
@@ -274,6 +275,174 @@ def _power_settled(answers: dict) -> bool:
     return answers.get("power_netbox_outlet") is not None
 
 
+@dataclass(frozen=True)
+class _ConsoleLink:
+    """The console server port a board's UART (or JTAG) console port is cabled to."""
+
+    kind: str  # client.UART or client.JTAG
+    device: str
+    port: str
+    path: str = ""  # the serial device on the exporter host (UART only)
+
+
+# Saved-answer key prefix per console kind.
+_CONSOLE_KEY = {client.UART: "serial", client.JTAG: "jtag"}
+# The JTAG connection is a record only, so it can be left out.
+_SKIP = "skip"
+
+
+def _console_settled(answers: dict, kind: str) -> bool:
+    """Whether saved answers already name the device and port ``kind`` is cabled to."""
+    key = _CONSOLE_KEY[kind]
+    picked, port = answers.get(f"{key}_device"), answers.get(f"{key}_netbox_port")
+    if picked == _SKIP:
+        return True
+    if picked is None or port is None:
+        return False
+    if port == NEW and kind == client.JTAG and not answers.get("jtag_port_name"):
+        return False
+    return picked != NEW or bool(answers.get(f"{key}_device_name"))
+
+
+def _console_link(answers: dict, kind: str) -> _ConsoleLink | None:
+    """The connection saved answers describe; None if it is left out."""
+    key = _CONSOLE_KEY[kind]
+    picked = answers[f"{key}_device"]
+    if picked == _SKIP:
+        return None
+    device = answers[f"{key}_device_name"] if picked == NEW else picked
+    path = answers.get("field.serial_port", "") if kind == client.UART else ""
+    port = answers[f"{key}_netbox_port"]
+    if port == NEW:
+        port = answers["jtag_port_name"] if kind == client.JTAG else _serial_port_name(path)
+    return _ConsoleLink(kind, device, port, path)
+
+
+def _serial_port_name(path: str) -> str:
+    """A new console server port's name: the device file's name.
+
+    NetBox allows 64 characters; a longer name keeps its end, where a
+    multi-port adapter's ``-if02-port0`` tells its ports apart, from a word
+    boundary.
+    """
+    name = os.path.basename(path.rstrip("/"))
+    if len(name) <= 64:
+        return name
+    tail = name[-64:]
+    return re.split(r"[_-]", tail, maxsplit=1)[-1]
+
+
+def _host_device(devices: list, host: str) -> str | None:
+    """The listed device that is ``host`` (the exporter host), by name or primary IP."""
+    names = {host, host.split(".")[0]}
+    return next((d.name for d in devices if d.name in names or d.address == host), None)
+
+
+def _ask_console_device(
+    devices: list, prompt: str, site: str, default: str | None, extra=()
+) -> str:
+    console.print(f"\n[bold]Devices with console server ports in NetBox at {escape(site)}[/bold]")
+    rows = [
+        (d.name, d.address, f"{sum(p.connected_to is None for p in d.ports)} of {len(d.ports)}")
+        for d in devices
+    ]
+    rows += [*extra, (NEW, "", "a device not listed: add it, or add ports to it")]
+    return ask_choice(
+        console, prompt, rows, headers=("Device", "Address", "Free ports"), default=default
+    )
+
+
+def _ask_console_port(device, ports: list, board: str, prompt: str, default: str | None) -> str:
+    """Pick a port that is free, or already feeds this board; or a new one."""
+    rows = [(p.name, p.path, p.connected_to or "free") for p in ports]
+    rows.append((NEW, "", "a port not in NetBox yet: add it"))
+    headers = ("Port", "Serial path", "Feeds")
+    if not any(p.path for p in ports):
+        rows, headers = [(r[0], r[2]) for r in rows], ("Port", "Feeds")
+    feeds = {p.name: p.connected_to for p in ports}
+    while True:
+        port = ask_choice(console, prompt, rows, headers=headers, default=default)
+        other = feeds.get(port)
+        if other is None or other.startswith(f"{board} "):
+            return port
+        console.print(
+            f"    [red]{escape(device.name)} {escape(port)} already feeds {escape(other)} - pick "
+            "a free one, or remove that cable in NetBox first[/red]"
+        )
+
+
+def _ask_serial(run: Run, devices: list, *, site: str, board: str, host: str, default_path) -> None:
+    """Ask which console server port the board's serial console is on, and its device path.
+
+    ``devices`` are the site's devices with console server ports; the one that
+    is the exporter host is the default. The answers are saved for
+    :func:`_console_link`.
+    """
+    by_name = {d.name: d for d in devices}
+    label = provision.TEMPLATE_FIELDS["serial_port"]
+
+    def ask_path(default):
+        path = run.answer(
+            "field.serial_port",
+            label,
+            lambda default: _ask_required(f"  {label}", default=default),
+            default=default,
+        )
+        # A dry run saves Enter on the template field as "": the template's default.
+        return path or run.given("field.serial_port", label, default_path)
+
+    if devices:
+        picked = run.answer(
+            "serial_device",
+            "Serial device",
+            lambda default: _ask_console_device(devices, "Serial device", site, default),
+            default=_host_device(devices, host) or NEW,
+            choices=[*by_name, NEW],
+            explain=(
+                "The device the board's serial console (USB-UART) is plugged into - usually the "
+                "exporter host. Pick it from NetBox or add it; the board's UART console port is "
+                "cabled to the port you choose."
+            ),
+        )
+    else:
+        picked = run.given("serial_device", "Serial device", NEW)
+    if picked == NEW:
+        run.answer(
+            "serial_device_name",
+            "Serial device name in NetBox",
+            lambda default: _ask_required(
+                "Serial device name in NetBox", check=_NAME, default=default
+            ),
+            default=host.split(".")[0],
+            explain=(
+                "The device the board's serial console (USB-UART) is plugged into - usually the "
+                "exporter host. It is added to NetBox at the board's site as a console server, "
+                "unless a device of this name is already there: then the port is added to it."
+            ),
+        )
+        run.given("serial_netbox_port", "Serial port in NetBox", NEW)
+        ask_path(default_path)
+        return
+
+    device = by_name[picked]
+    ports = [p for p in device.ports if not p.jtag]  # a JTAG cable isn't a serial port
+    port_name = run.answer(
+        "serial_netbox_port",
+        "Serial port in NetBox",
+        lambda default: _ask_console_port(
+            device, ports, board, f"Serial port on {escape(device.name)}", default
+        ),
+        choices=[*(p.name for p in ports), NEW],
+    )
+    port = next((p for p in ports if p.name == port_name), None)
+    known = port and (port.path or (port.name if port.name.startswith("/dev/") else ""))
+    if known:
+        run.given("field.serial_port", label, known)
+    else:
+        named = port and port.name.startswith("tty")
+        ask_path(f"/dev/{port.name}" if named else default_path)
+
+
 def _power_link(run: Run, power: str, context: dict[str, str]) -> _PowerLink | None:
     """The NetBox power connection the answers describe; None if there is none to record."""
     answers = run.saved.answers
@@ -455,6 +624,72 @@ def _ask_device_name(run: Run, power: str, context: dict[str, str], board: str, 
         ask,
         default=_suggested_device_name(power, context, board),
         explain="The new power device is added to NetBox under this name, at the board's site.",
+    )
+
+
+def _ask_jtag(run: Run, devices: list, *, site: str, board: str, serial_device: str) -> None:
+    """Ask which console server port the board's JTAG cable is recorded on, or to skip it.
+
+    ``serial_device`` (where the serial console is) is the default device,
+    listed even when NetBox doesn't have it yet. The answers are saved for
+    :func:`_console_link`.
+    """
+    by_name = {d.name: d for d in devices}
+    extra = []
+    if serial_device not in by_name:
+        extra.append((serial_device, "", "as for the serial console"))
+    extra.append((_SKIP, "", "don't record the JTAG connection"))
+    picked = run.answer(
+        "jtag_device",
+        "JTAG device",
+        lambda default: _ask_console_device(devices, "JTAG device", site, default, extra),
+        default=serial_device,
+        choices=[*by_name, *(row[0] for row in extra), NEW],
+        explain=(
+            "The device the board's JTAG cable (USB-JTAG) is plugged into - usually the exporter "
+            "host. NetBox has no JTAG port type, so it is recorded as a JTAG console port on the "
+            "board cabled to a console server port; labgrid doesn't read it. skip leaves it out."
+        ),
+    )
+    if picked == _SKIP:
+        return
+    if picked == NEW:
+        picked = run.answer(
+            "jtag_device_name",
+            "JTAG device name in NetBox",
+            lambda default: _ask_required(
+                "JTAG device name in NetBox", check=_NAME, default=default
+            ),
+            default=serial_device,
+        )
+    device = by_name.get(picked)
+    taken = {p.name for p in device.ports} if device else set()
+    if device is None:
+        run.given("jtag_netbox_port", "JTAG port in NetBox", NEW)
+    else:
+        # Not a serial port, nor one feeding a serial console.
+        ports = [p for p in device.ports if not p.path and (p.connected_to is None or p.jtag)]
+        port = run.answer(
+            "jtag_netbox_port",
+            "JTAG port in NetBox",
+            lambda default: _ask_console_port(
+                device, ports, board, f"JTAG port on {escape(picked)}", default
+            ),
+            choices=[*(p.name for p in ports), NEW],
+        )
+        if port != NEW:
+            return
+    run.answer(
+        "jtag_port_name",
+        "JTAG port name in NetBox",
+        lambda default: _ask_required(
+            f"JTAG port name on {escape(picked)} in NetBox", default=default
+        ),
+        default=next(
+            n
+            for n in (client.JTAG, *(f"{client.JTAG} {i}" for i in range(2, 99)))
+            if n not in taken
+        ),
     )
 
 
@@ -717,11 +952,25 @@ def _onboard(
         ),
     )
 
-    # The site and the board's power device are picked from what NetBox has, so
-    # it is read from here on, unless the saved answers already settle both.
-    # Nothing is written to NetBox before the plan is confirmed.
+    # The site, the board's power device and its serial port are picked from what
+    # NetBox has, so it is read from here on, unless the saved answers already
+    # settle them. Nothing is written to NetBox before the plan is confirmed.
+    try:
+        template_vars = provision.discover_template_vars(template_path)
+        defaults = provision.template_field_defaults(template_path)
+    except RuntimeError as e:
+        raise click.ClickException(str(e)) from e
+    # A dry run asks the serial port as a template field instead.
+    netbox_serial = not dry_run and "serial_port" in template_vars
+    has_jtag = "XilinxDeviceJTAG" in provision.template_resources(template_path)
+    netbox_jtag = not dry_run and has_jtag
+    settled = (
+        _power_settled(run.saved.answers)
+        and (not netbox_serial or _console_settled(run.saved.answers, client.UART))
+        and (not netbox_jtag or _console_settled(run.saved.answers, client.JTAG))
+    )
     netbox = _NetBox(run, netbox_url, netbox_token, netbox_verify)
-    look_up = not dry_run and (run.mode != "resume" or not _power_settled(run.saved.answers))
+    look_up = not dry_run and (run.mode != "resume" or not settled)
     sites = dict(netbox(client.sites)) if look_up else None
     if sites == {}:
         raise click.ClickException(
@@ -775,6 +1024,29 @@ def _onboard(
         ),
     )
     ssh_user, ssh_host = ssh_target.split("@", 1)
+    consoles = netbox(client.console_devices, site_slug) if look_up else None
+    serial_link = jtag_link = None
+    if netbox_serial:
+        if look_up:
+            _ask_serial(
+                run,
+                consoles,
+                site=site_slug,
+                board=name,
+                host=ssh_host,
+                default_path=defaults.get("serial_port"),
+            )
+        serial_link = _console_link(run.saved.answers, client.UART)
+    if netbox_jtag:
+        if look_up:
+            _ask_jtag(
+                run,
+                consoles,
+                site=site_slug,
+                board=name,
+                serial_device=serial_link.device if serial_link else ssh_host.split(".")[0],
+            )
+        jtag_link = _console_link(run.saved.answers, client.JTAG)
 
     # Templates name their resource group <CARRIER>_<CHIP> from these fields
     # and include the power fragment named by `power`, so fill them from the
@@ -784,16 +1056,16 @@ def _onboard(
         "chip": daughter_board,
         "power": power,
         **power_context,
+        **({"serial_port": serial_link.path} if serial_link else {}),
     }
     try:
         var_names = sorted(
-            provision.discover_template_vars(template_path)
+            template_vars
             - set(context)
             - provision.EXPORTER_RUNTIME_VARS
             - {f.var for t in power_types.POWER_TYPES.values() for f in t.fields}
         )
         required = provision.required_template_vars(template_path)
-        defaults = provision.template_field_defaults(template_path)
     except RuntimeError as e:
         raise click.ClickException(str(e)) from e
 
@@ -871,6 +1143,34 @@ def _onboard(
         netbox_power = ["not recorded (manual power)"]
     else:
         netbox_power = ["chosen from NetBox when run without --dry-run"]
+    netbox_consoles = []
+    if serial_link is not None:
+        netbox_consoles.append(
+            (
+                "Serial in NetBox",
+                [
+                    escape(f"{name} {client.UART} -> {serial_link.device} {serial_link.port}"),
+                    escape(f"serial device {serial_link.path}"),
+                ],
+            )
+        )
+    elif "serial_port" in template_vars:
+        netbox_consoles.append(
+            ("Serial in NetBox", ["chosen from NetBox when run without --dry-run"])
+        )
+    if jtag_link is not None:
+        netbox_consoles.append(
+            (
+                "JTAG in NetBox",
+                [escape(f"{name} {client.JTAG} -> {jtag_link.device} {jtag_link.port}")],
+            )
+        )
+    elif netbox_jtag:
+        netbox_consoles.append(("JTAG in NetBox", ["not recorded"]))
+    elif has_jtag:
+        netbox_consoles.append(
+            ("JTAG in NetBox", ["chosen from NetBox when run without --dry-run"])
+        )
 
     console.print("\n[bold]Plan[/bold]")
     console.print(
@@ -887,6 +1187,7 @@ def _onboard(
                 ("Place tags", [escape(f"{k}={v}") for k, v in tags.items()]),
                 ("Power", power_lines),
                 ("Power in NetBox", netbox_power),
+                *netbox_consoles,
             ]
         )
     )
@@ -921,7 +1222,8 @@ def _onboard(
         coord_password = _ask_secret("Coordinator API password")
 
     # 1. NetBox: register the device (source of truth for inventory) and cable
-    # its power. Marked done only once both are, so a failure is redone on resume.
+    # its power and console. Marked done only once all are, so a failure is
+    # redone on resume.
     if netbox_done:
         console.print("[dim]NetBox device: done in an earlier run, skipped[/dim]")
     else:
@@ -951,6 +1253,17 @@ def _onboard(
                     settings=power_link.settings,
                     outlets=list(power_link.outlets),
                 )
+            for link in (serial_link, jtag_link):
+                if link is not None:
+                    done += client.connect_console(
+                        nb,
+                        device,
+                        kind=link.kind,
+                        site_slug=site_slug,
+                        device=link.device,
+                        port=link.port,
+                        path=link.path,
+                    )
             return device, done
 
         device, power_done = netbox(register)
