@@ -120,6 +120,10 @@ def render_env(
     ethaddr = place.extra_tags.get("ethaddr", stable_ethaddr(place.name))
     if ethaddr == "stock":
         ethaddr = ""
+    # BootFPGASoCSSH polls this interface on the DUT for its IPv4 address.
+    # Boards with multiple NICs where "eth0" isn't the one actually wired to
+    # the network override via the `eth-interface` place tag.
+    eth_interface = place.extra_tags.get("eth-interface", "eth0")
     # Optional JTAG-bootstrap inputs for BootFPGASoCTFTP (paths on the
     # host that runs xsdb — typically the lab host bound to the place).
     # Each defaults to empty; the strategy treats empty/None as "no
@@ -170,6 +174,7 @@ def render_env(
         # then let the SD's own Kuiper autoboot (no TFTP-kernel step).
         "sd_autoboot": place.extra_tags.get("sd-autoboot", ""),
         "ethaddr": ethaddr,
+        "eth_interface": eth_interface,
         "uboot_prompt": place.extra_tags.get("uboot-prompt", d_uboot_prompt),
         "kernel_image_name": place.extra_tags.get("kernel-image-name", d_kernel_image),
         "dtb_image_name": place.extra_tags.get("dtb-image-name", d_dtb_image),
