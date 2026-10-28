@@ -43,7 +43,7 @@ def test_login_returns_session_cookie(monkeypatch):
     monkeypatch.setattr(coord_mod.urllib.request, "urlopen", fake_urlopen)
     cookie = coord_mod.login("coord:8000", "admin", "hunter2")
 
-    assert captured["url"] == "http://coord:8000/auth/login"
+    assert captured["url"] == "http://coord:8000/api/auth/login"
     assert captured["method"] == "POST"
     assert captured["body"] == {"username": "admin", "password": "hunter2"}
     assert cookie == "lg_session=abc123"
@@ -84,7 +84,7 @@ def test_create_place_posts_name_with_cookie(monkeypatch):
     monkeypatch.setattr(coord_mod.urllib.request, "urlopen", fake_urlopen)
     coord_mod.create_place("coord:8000", "lg_session=abc123", "rack1")
 
-    assert captured["url"] == "http://coord:8000/places"
+    assert captured["url"] == "http://coord:8000/api/places"
     assert captured["method"] == "POST"
     assert captured["body"] == {"name": "rack1"}
     assert captured["cookie"] == "lg_session=abc123"
@@ -122,7 +122,7 @@ def test_add_match_posts_pattern(monkeypatch):
     monkeypatch.setattr(coord_mod.urllib.request, "urlopen", fake_urlopen)
     coord_mod.add_match("coord:8000", "lg_session=abc123", "rack1", "host/GROUP/*")
 
-    assert captured["url"] == "http://coord:8000/places/rack1/matches"
+    assert captured["url"] == "http://coord:8000/api/places/rack1/matches"
     assert captured["body"] == {"pattern": "host/GROUP/*", "rename": None}
 
 
@@ -138,6 +138,6 @@ def test_set_place_tags_puts_tags(monkeypatch):
     monkeypatch.setattr(coord_mod.urllib.request, "urlopen", fake_urlopen)
     coord_mod.set_place_tags("coord:8000", "lg_session=abc123", "rack1", {"carrier": "zcu102"})
 
-    assert captured["url"] == "http://coord:8000/places/rack1/tags"
+    assert captured["url"] == "http://coord:8000/api/places/rack1/tags"
     assert captured["method"] == "PUT"
     assert captured["body"] == {"tags": {"carrier": "zcu102"}}

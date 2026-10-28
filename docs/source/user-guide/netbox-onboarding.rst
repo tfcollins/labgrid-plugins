@@ -373,8 +373,8 @@ How it maps to the manual procedure
     NetBox device create/update                  (no manual equivalent - new)
     render + validate exporter_configs/*.yaml     Step 2: copy template, fill in, validate.py
     SSH deploy + systemd install/start/verify     Step 2: run labgrid-exporter (foreground/nohup)
-    POST /places, /places/{name}/matches          Step 3: labgrid-client create / add-match
-    PUT /places/{name}/tags                        Step 3: labgrid-client set-tags
+    POST /api/places, /api/places/{name}/matches  Step 3: labgrid-client create / add-match
+    PUT /api/places/{name}/tags                    Step 3: labgrid-client set-tags
 
 Step 4 (board-catalog entry) is only partially covered: tagging a place with a
 ``daughter-board`` (+ ``carrier``) tag auto-seeds a minimal catalog stub on the coordinator, but

@@ -231,8 +231,8 @@ def _resolve_api(coord: str) -> str:
 
 
 def login(api: str, username: str, password: str, *, timeout: float = 15.0) -> str:
-    """POST /auth/login; returns the `Cookie:` header value to reuse on writes."""
-    url = f"{_api_url(api)}/auth/login"
+    """POST /api/auth/login; returns the `Cookie:` header value to reuse on writes."""
+    url = f"{_api_url(api)}/api/auth/login"
     body = json.dumps({"username": username, "password": password}).encode()
     req = urllib.request.Request(
         url, data=body, method="POST", headers={"Content-Type": "application/json"}
@@ -271,9 +271,9 @@ def _write_json(
 
 
 def create_place(api: str, cookie: str, name: str, *, timeout: float = 15.0) -> None:
-    """POST /places. Idempotent: a place that already exists is not an error."""
+    """POST /api/places. Idempotent: a place that already exists is not an error."""
     try:
-        _write_json(api, "/places", "POST", cookie, {"name": name}, timeout=timeout)
+        _write_json(api, "/api/places", "POST", cookie, {"name": name}, timeout=timeout)
     except RuntimeError as e:
         if "exist" in str(e).lower():
             logger.info("place %r already exists on the coordinator; continuing", name)
@@ -290,10 +290,10 @@ def add_match(
     *,
     timeout: float = 15.0,
 ) -> None:
-    """POST /places/{name}/matches."""
+    """POST /api/places/{name}/matches."""
     _write_json(
         api,
-        f"/places/{name}/matches",
+        f"/api/places/{name}/matches",
         "POST",
         cookie,
         {"pattern": pattern, "rename": rename},
@@ -304,5 +304,5 @@ def add_match(
 def set_place_tags(
     api: str, cookie: str, name: str, tags: dict[str, str], *, timeout: float = 15.0
 ) -> None:
-    """PUT /places/{name}/tags."""
-    _write_json(api, f"/places/{name}/tags", "PUT", cookie, {"tags": tags}, timeout=timeout)
+    """PUT /api/places/{name}/tags."""
+    _write_json(api, f"/api/places/{name}/tags", "PUT", cookie, {"tags": tags}, timeout=timeout)
