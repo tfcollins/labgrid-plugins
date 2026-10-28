@@ -13,6 +13,7 @@ comes up, then creates the matching labgrid Place on the coordinator (``create``
 - `Prerequisites`_
 - `Usage`_ — `Options`_
 - `What it creates`_ — `In NetBox`_, `On the exporter host`_, `On the coordinator`_
+- `Resuming after a failure`_
 - `Re-running for an existing board`_
 - `Troubleshooting`_
 - `How it maps to the manual procedure`_
@@ -280,8 +281,8 @@ Files are staged under ``/tmp/adi-lg-netbox-stage/<name>/`` and then moved into 
   ``EnvironmentFile=-/etc/labgrid/exporter.env`` (optional, for outlet credentials). The exporter registers on the
   coordinator under the hardware name, so one host can run a separate exporter per board.
 
-The unit is enabled and started (``systemctl enable --now``), then polled with
-``systemctl is-active`` (10 attempts, 2 s apart). If it never becomes active, the command
+The unit is enabled and (re)started (``systemctl enable`` then ``systemctl restart``), then
+polled with ``systemctl is-active`` (10 attempts, 2 s apart). If it never becomes active, the command
 fails and prints the last 50 lines of its journal.
 
 On the coordinator
@@ -289,9 +290,11 @@ On the coordinator
 
 Through the coordinator REST API (:doc:`coordinator`), authenticated as the coordinator user:
 
-- ``POST /api/places`` - create the place, named after the board name.
+- ``POST /api/places`` - create the place, named after the board name, unless
+  ``GET /api/places/<name>`` shows it already exists.
 - ``POST /api/places/<name>/matches`` - one ``<name>/<group>/*`` match per resource group in
-  the rendered config (``<name>`` is the exporter name the unit registers).
+  the rendered config (``<name>`` is the exporter name the unit registers), skipping any the
+  place already has.
 - ``PUT /api/places/<name>/tags`` - ``daughter-board`` and ``carrier`` (lowercased),
   ``boot-strategy``, ``runner``, ``power-driver``, and (relay types) ``power-output-driver``, the keys the hardware-CI preflight matches on (see the tag
   table in :doc:`onboarding-a-lab-host`, Step 3).
@@ -299,21 +302,87 @@ Through the coordinator REST API (:doc:`coordinator`), authenticated as the coor
 Finally it re-reads ``/api/places`` and prints the new place's tags, or a warning if the place
 is not listed.
 
+Resuming after a failure
+------------------------
+
+Answers are saved as you give them, one file per board name, under
+``~/.cache/adi-lg/netbox-add-hardware/`` (``$XDG_CACHE_HOME/adi-lg/...`` if that is set). If a
+run stops - a site slug NetBox doesn't know, an exporter host without passwordless sudo, a
+rejected token, Ctrl-C - the error says where its answers are:
+
+.. code-block:: console
+
+    Error: NetBox site 'lab4' does not exist - this tool only references existing sites, it does not create them
+    Answers saved to /home/you/.cache/adi-lg/netbox-add-hardware/zcu102-lab3-001.json - run `adi-lg netbox add-hardware` again and pick zcu102-lab3-001 to resume.
+
+The next run lists the saved runs before anything else:
+
+.. code-block:: console
+
+    $ adi-lg netbox add-hardware
+    Saved answers from earlier runs
+    #   Board             Template    Saved              Progress
+    ──────────────────────────────────────────────────────────────────────
+    1   zcu102-lab3-001   soc-sdmux   2026-10-28 08:29   plan checked
+    2   new                                              start a new board
+    Resume a saved run (zcu102-lab3-001):
+
+    Saved answers for zcu102-lab3-001
+    Question                                  Answer
+    ────────────────────────────────────────────────────────────────────────────────
+    Board template                            soc-sdmux
+    Board name                                zcu102-lab3-001
+    ...
+    NetBox site slug                          lab4
+    Exporter host SSH login                   labadmin@lab-host-03
+    Board IP address, for SSH to its Linux    10.0.0.42
+    BOOT.BIN, as release:<path> or a file     release:zynqmp-zcu102-rev10-ad9081/m8_
+    on the test runner                        l4/BOOT.BIN
+    ...
+    1   resume   as they are: ask only what is still unanswered, then show the plan
+    2   review   ask every question again, with the saved answer as its default
+    Use the saved answers (resume):
+
+- **resume** uses the saved answers as they are and goes straight to the plan. Only questions
+  the saved run never reached are asked.
+- **review** asks every question again with its saved answer as the default: press Enter to
+  keep it or type a new one. For an optional template field, ``-`` drops the saved answer and
+  goes back to the template's default.
+- **new** starts over. The saved run stays listed until a run for that board name finishes.
+
+The *Progress* column shows how far a run got: *plan checked* (the exporter config rendered
+and validated), *NetBox device done*, or *exporter running*. A resumed run skips the steps it
+finished, as long as no answer changed, and does not ask for their credentials again.
+Changing any answer in **review** runs every step again; each one is safe to repeat (see
+`Re-running for an existing board`_). Once the coordinator step succeeds the saved answers
+are deleted.
+
+After ``Proceed?`` a resumed run asks for the NetBox URL and coordinator username again, with
+the saved ones as defaults - a wrong URL or login is the usual reason a run stops, so press Enter
+to keep them or type the right one. It deploys to the same coordinator as the saved run, so
+``--coord`` need not be given again; naming a different one (``--coord`` or ``LG_COORDINATOR``)
+runs every step again, because the exporter already deployed points at the first.
+
+A dry run saves its answers too, with the plan marked as checked, so you can check the plan
+with ``--dry-run`` and then run for real, picking **resume** to go straight to
+``Proceed?``.
+
+The NetBox API token and the coordinator password are never saved. The NetBox URL, the
+coordinator username and every other answer are, including template fields such as the
+board's Linux SSH password, which the rendered exporter config holds in plain text anyway.
+The files can be read only by you (mode 0600). To discard saved runs, delete the files.
+
 Re-running for an existing board
 --------------------------------
 
-The command is not fully idempotent; each stage handles an existing board differently:
+Every stage is safe to run again for a board that is already (or partly) onboarded:
 
 - **NetBox** - an existing device (matched by name) has its custom fields updated in place.
   Its site and device type are left unchanged.
-- **Exporter host** - the config and unit files are overwritten, but
-  ``systemctl enable --now`` does not restart a unit that is already running, so the old config
-  stays loaded. Restart it yourself:
-  ``sudo systemctl restart labgrid-exporter-<name>``.
-- **Coordinator** - the coordinator rejects a match that already exists, so a re-run for an
-  already-onboarded board stops at the coordinator step with an error, after the NetBox and
-  exporter stages have run. Tags are written last, so for a tag-only change use the
-  dashboard or ``labgrid-client set-tags`` instead.
+- **Exporter host** - the config and unit files are overwritten and the unit is restarted, so
+  the new config is loaded.
+- **Coordinator** - an existing place is kept and only the matches it lacks are added. The
+  tags this command writes are set to this run's values; any other tags on the place are kept.
 
 Troubleshooting
 ---------------

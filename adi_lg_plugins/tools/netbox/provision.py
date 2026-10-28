@@ -326,7 +326,10 @@ def deploy_exporter(
             f"sudo mv {stage}/resources.yaml /etc/labgrid/exporters/{name}/resources.yaml && "
             f"sudo mv {stage}/{unit_name} /etc/systemd/system/{unit_name} && "
             f"sudo systemctl daemon-reload && "
-            f"sudo systemctl enable --now labgrid-exporter-{name}"
+            # restart, not `enable --now`, so a re-run loads the new config into a
+            # unit that is already running
+            f"sudo systemctl enable labgrid-exporter-{name} && "
+            f"sudo systemctl restart labgrid-exporter-{name}"
         )
     except ExecutionError as e:
         raise RuntimeError(

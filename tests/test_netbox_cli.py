@@ -10,7 +10,9 @@ the real prompts instead.
 from __future__ import annotations
 
 import getpass
+import json
 import re
+import stat
 import sys
 from pathlib import Path
 
@@ -39,7 +41,20 @@ def _no_credentials_from_the_environment(monkeypatch):
     """These would skip the credential prompts the tests answer."""
     for var in ("NETBOX_URL", "NETBOX_TOKEN", "NETBOX_CA_BUNDLE", "LG_API_USERNAME"):
         monkeypatch.delenv(var, raising=False)
+    for var in ("LG_COORDINATOR", "ADI_LG_COORDINATOR"):
+        monkeypatch.delenv(var, raising=False)
     monkeypatch.delenv("LG_API_PASSWORD", raising=False)
+
+
+@pytest.fixture(autouse=True)
+def saved_runs(monkeypatch, tmp_path):
+    """Keep saved answers out of the real ~/.cache; returns where they go."""
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    return tmp_path / "cache" / "adi-lg" / "netbox-add-hardware"
+
+
+# The real prompts, even after a test has replaced them with _stub_prompts.
+_REAL_ASK = {Prompt: Prompt.ask, Confirm: Confirm.ask}
 
 
 def _type_into_real_prompts(monkeypatch, conversation, *args):
@@ -53,9 +68,8 @@ def _type_into_real_prompts(monkeypatch, conversation, *args):
     )
     prompts = []
     for cls in (Prompt, Confirm):
-        real_ask = cls.ask
 
-        def spy(prompt, *a, _real_ask=real_ask, **k):
+        def spy(prompt, *a, _real_ask=_REAL_ASK[cls], **k):
             prompts.append(str(prompt))
             return _real_ask(prompt, *a, **k)
 
@@ -115,6 +129,62 @@ def _invoke(*args):
     return CliRunner().invoke(cli.netbox_group, list(args), catch_exceptions=False)
 
 
+def _stub_services(monkeypatch, *, place=None):
+    """Replace NetBox, the exporter host and the coordinator with recorders.
+
+    ``place`` is what the coordinator already holds under the board's name.
+    Returns the calls made; ``calls["steps"]`` lists the changes in order.
+    """
+    calls = {"steps": []}
+
+    def connect(url, token, **kwargs):
+        calls.update(url=url, token=token)
+        return object()
+
+    def device(nb, name, **kwargs):
+        calls["steps"].append("netbox")
+        return type("Device", (), {"id": 7})()
+
+    def deploy(ssh_host, ssh_user, name, rendered, coord, **kwargs):
+        calls["steps"].append("exporter")
+        calls["exporter_name"] = name
+
+    def login(api, user, password):
+        calls["login"] = (user, password)
+        calls["api"] = api
+        return "cookie"
+
+    monkeypatch.setattr(cli.client, "connect", connect)
+    monkeypatch.setattr(cli.client, "ensure_schema", lambda nb: None)
+    monkeypatch.setattr(cli.client, "create_or_update_device", device)
+    monkeypatch.setattr(cli.provision, "check_prerequisites", lambda host: "/usr/bin/lg-exp")
+    monkeypatch.setattr(cli.provision, "deploy_exporter", deploy)
+    monkeypatch.setattr(cli.provision, "verify_exporter_active", lambda host, name: None)
+    monkeypatch.setattr(cli.provision, "missing_power_env", lambda host, power: [])
+    monkeypatch.setattr(cli, "resolve_coordinator", lambda coord: coord or "coord:20408")
+    monkeypatch.setattr(cli, "_resolve_api", lambda coord: coord.replace(":20408", ":8000"))
+    monkeypatch.setattr(cli.coord_mod, "login", login)
+    monkeypatch.setattr(cli, "get_place", lambda api, name: place)
+    monkeypatch.setattr(
+        cli, "create_place", lambda api, cookie, name: calls["steps"].append("place")
+    )
+    monkeypatch.setattr(
+        cli,
+        "add_match",
+        lambda api, cookie, name, pattern: calls.setdefault("patterns", []).append(pattern),
+    )
+    monkeypatch.setattr(
+        cli, "set_place_tags", lambda api, cookie, name, tags: calls.update(tags=tags)
+    )
+    # A lab coordinator lists many places, not just the new one.
+    monkeypatch.setattr(
+        cli,
+        "fetch_raw_places",
+        lambda coord: [{"name": n, "tags": {}} for n in ("bq", "pluto", "zc706-lab3-001")],
+    )
+    return calls
+
+
 # A soc-ssh board with a CyberPower PDU, keyed by prompt prefix.
 _SOC_SSH = {
     "Board template": "soc-ssh",
@@ -166,36 +236,11 @@ def test_add_hardware_matches_resources_under_the_deployed_exporter_name(monkeyp
         monkeypatch,
         {"Power category": category, "Power type": power, **power_answers, **_SOC_SDMUX},
     )
-    calls = {}
     monkeypatch.setattr(cli.Confirm, "ask", staticmethod(lambda *a, **k: True))
-    monkeypatch.setattr(cli.client, "connect", lambda url, token, **k: object())
-    monkeypatch.setattr(cli.client, "ensure_schema", lambda nb: None)
-    monkeypatch.setattr(
-        cli.client, "create_or_update_device", lambda nb, name, **kw: type("D", (), {"id": 7})()
-    )
-    monkeypatch.setattr(cli.provision, "check_prerequisites", lambda host: "/usr/bin/lg-exp")
-
-    def deploy(ssh_host, ssh_user, name, rendered, coord, **kw):
-        calls["exporter_name"] = name
-
-    monkeypatch.setattr(cli.provision, "deploy_exporter", deploy)
+    calls = _stub_services(monkeypatch)
     monkeypatch.setattr(
         cli.provision, "missing_power_env", lambda host, power: [missing] if missing else []
     )
-    monkeypatch.setattr(cli.provision, "verify_exporter_active", lambda host, name: None)
-    monkeypatch.setattr(cli, "resolve_coordinator", lambda coord: "coord:20408")
-    monkeypatch.setattr(cli, "_resolve_api", lambda coord: "http://coord:8000/api")
-    monkeypatch.setattr(cli.coord_mod, "login", lambda api, user, password: "cookie")
-    monkeypatch.setattr(cli, "create_place", lambda api, cookie, name: None)
-    monkeypatch.setattr(
-        cli,
-        "add_match",
-        lambda api, cookie, name, pattern: calls.setdefault("patterns", []).append(pattern),
-    )
-    monkeypatch.setattr(
-        cli, "set_place_tags", lambda api, cookie, name, tags: calls.update(tags=tags)
-    )
-    monkeypatch.setattr(cli, "fetch_raw_places", lambda coord: ([], []))
 
     result = _invoke(
         "add-hardware", "--exporter-configs-dir", str(EXPORTER_CONFIGS_DIR), *CREDENTIALS
@@ -254,63 +299,44 @@ def test_dry_run_through_the_real_prompts(monkeypatch):
     assert "Dry run" in result.output
 
 
+# A soc-ssh board typed in full, credentials included.
+_FULL_RUN = [
+    ("Board template", "soc-ssh"),
+    ("Board name", "b1"),
+    ("Carrier board", "zcu102"),
+    ("ADI daughter board or chip", "ad9081"),
+    ("Boot strategy", ""),
+    ("Power category", "Network PDU"),
+    ("Power type", "cyberpower"),
+    ("  PDU hostname or IP", "10.0.0.20"),
+    ("  Outlet number", "4"),
+    ("GitHub Actions runner label", ""),
+    ("NetBox site slug", "lab3"),
+    ("Exporter host SSH login", "root@h"),
+    ("  Board IP address", "10.0.0.5"),
+    ("  BOOT.BIN", ""),
+    ("  Device tree", ""),
+    ("  Kernel image", ""),
+    ("  Kuiper release", ""),
+    ("  Serial console device", ""),
+    ("  Board Linux SSH password", ""),
+    ("  Board Linux SSH username", ""),
+    ("\nProceed?", "y"),
+    ("NetBox URL", "https://netbox.test"),
+    ("NetBox API token", "  tok123  "),  # pasted with stray whitespace
+    ("Coordinator API username", "admin"),
+    ("Coordinator API password", "secret"),
+]
+
+
 def test_full_run_through_the_real_prompts(monkeypatch):
     """Credentials too: typed after Proceed?, hidden ones through getpass."""
-    conversation = [
-        ("Board template", "soc-ssh"),
-        ("Board name", "b1"),
-        ("Carrier board", "zcu102"),
-        ("ADI daughter board or chip", "ad9081"),
-        ("Boot strategy", ""),
-        ("Power category", "Network PDU"),
-        ("Power type", "cyberpower"),
-        ("  PDU hostname or IP", "10.0.0.20"),
-        ("  Outlet number", "4"),
-        ("GitHub Actions runner label", ""),
-        ("NetBox site slug", "lab3"),
-        ("Exporter host SSH login", "root@h"),
-        ("  Board IP address", "10.0.0.5"),
-        ("  BOOT.BIN", ""),
-        ("  Device tree", ""),
-        ("  Kernel image", ""),
-        ("  Kuiper release", ""),
-        ("  Serial console device", ""),
-        ("  Board Linux SSH password", ""),
-        ("  Board Linux SSH username", ""),
-        ("\nProceed?", "y"),
-        ("NetBox URL", "https://netbox.test"),
-        ("NetBox API token", "  tok123  "),  # pasted with stray whitespace
-        ("Coordinator API username", "admin"),
-        ("Coordinator API password", "secret"),
-    ]
-    calls = {}
-    monkeypatch.setattr(
-        cli.client, "connect", lambda url, token, **k: calls.update(url=url, token=token)
-    )
-    monkeypatch.setattr(cli.client, "ensure_schema", lambda nb: None)
-    monkeypatch.setattr(
-        cli.client, "create_or_update_device", lambda nb, name, **kw: type("D", (), {"id": 7})()
-    )
-    monkeypatch.setattr(cli.provision, "check_prerequisites", lambda host: "/usr/bin/lg-exp")
-    monkeypatch.setattr(cli.provision, "deploy_exporter", lambda *a, **k: None)
-    monkeypatch.setattr(cli.provision, "verify_exporter_active", lambda host, name: None)
-    monkeypatch.setattr(cli.provision, "missing_power_env", lambda host, power: [])
-    monkeypatch.setattr(cli, "resolve_coordinator", lambda coord: "coord:20408")
-    monkeypatch.setattr(cli, "_resolve_api", lambda coord: "http://coord:8000/api")
-    monkeypatch.setattr(
-        cli.coord_mod, "login", lambda api, user, password: calls.update(login=(user, password))
-    )
-    monkeypatch.setattr(cli, "create_place", lambda api, cookie, name: None)
-    monkeypatch.setattr(cli, "add_match", lambda api, cookie, name, pattern: None)
-    monkeypatch.setattr(
-        cli, "set_place_tags", lambda api, cookie, name, tags: calls.update(tags=tags)
-    )
-    monkeypatch.setattr(cli, "fetch_raw_places", lambda coord: ([], []))
+    calls = _stub_services(monkeypatch)
 
-    result, prompts = _type_into_real_prompts(monkeypatch, conversation)
+    result, prompts = _type_into_real_prompts(monkeypatch, _FULL_RUN)
 
     assert result.exit_code == 0, result.output
-    _assert_asked_in_order(conversation, prompts)
+    _assert_asked_in_order(_FULL_RUN, prompts)
     assert calls["url"] == "https://netbox.test"
     assert calls["token"] == "tok123"
     assert "received 6 characters" in result.output
@@ -320,6 +346,307 @@ def test_full_run_through_the_real_prompts(monkeypatch):
     output = " ".join(result.output.split())
     assert "under your user profile in NetBox" in output
     assert "create places" in output
+
+
+def test_rerun_for_an_onboarded_board_keeps_its_place_and_matches(monkeypatch):
+    """The coordinator rejects a duplicate place or match, so a re-run must not send them."""
+    _stub_prompts(monkeypatch, _SOC_SSH)
+    monkeypatch.setattr(cli.Confirm, "ask", staticmethod(lambda *a, **k: True))
+    match = {"exporter": "b1", "group": "ZCU102_AD9081", "cls": "*", "name": None, "rename": ""}
+    calls = _stub_services(monkeypatch, place={"name": "b1", "matches": [match], "tags": {}})
+
+    result = _invoke(
+        "add-hardware", "--exporter-configs-dir", str(EXPORTER_CONFIGS_DIR), *CREDENTIALS
+    )
+
+    assert result.exit_code == 0, result.output
+    assert calls["steps"] == ["netbox", "exporter"]  # no new place
+    assert "patterns" not in calls  # nor a second copy of its match
+    assert calls["tags"]["carrier"] == "zcu102"  # tags are still brought up to date
+
+
+def test_coordinator_that_cannot_be_reached_is_reported_without_a_traceback(monkeypatch):
+    import urllib.error
+
+    _stub_prompts(monkeypatch, _SOC_SSH)
+    monkeypatch.setattr(cli.Confirm, "ask", staticmethod(lambda *a, **k: True))
+    _stub_services(monkeypatch)
+
+    def refused(api, user, password):
+        raise urllib.error.URLError(ConnectionRefusedError(111, "Connection refused"))
+
+    monkeypatch.setattr(cli.coord_mod, "login", refused)
+
+    result = _invoke(
+        "add-hardware", "--exporter-configs-dir", str(EXPORTER_CONFIGS_DIR), *CREDENTIALS
+    )
+
+    assert result.exit_code == 1
+    assert "Connection refused" in result.output
+
+
+def _fail_deploy(monkeypatch):
+    def deploy(*args, **kwargs):
+        raise RuntimeError("failed to install/start labgrid-exporter-b1 on h: permission denied")
+
+    monkeypatch.setattr(cli.provision, "deploy_exporter", deploy)
+
+
+def _saved(saved_runs, name="b1"):
+    return json.loads((saved_runs / f"{name}.json").read_text())
+
+
+def test_a_failed_run_keeps_its_answers_but_not_the_credentials(monkeypatch, saved_runs):
+    _stub_services(monkeypatch)
+    _fail_deploy(monkeypatch)
+
+    result, _ = _type_into_real_prompts(monkeypatch, _FULL_RUN)
+
+    assert result.exit_code == 1
+    path = saved_runs / "b1.json"
+    saved = _saved(saved_runs)
+    assert saved["answers"]["site_slug"] == "lab3"
+    assert saved["answers"]["ssh_target"] == "root@h"
+    assert saved["answers"]["netbox_url"] == "https://netbox.test"
+    assert saved["done"] == ["plan", "netbox"]  # the exporter step failed
+    assert "tok123" not in path.read_text()
+    assert "secret" not in path.read_text()
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    assert f"Answers saved to {path}" in result.output
+    assert "pick b1 to resume" in result.output
+
+
+def test_resume_goes_straight_to_the_plan_and_skips_finished_steps(monkeypatch, saved_runs):
+    _stub_services(monkeypatch)
+    _fail_deploy(monkeypatch)
+    _type_into_real_prompts(monkeypatch, _FULL_RUN)
+    calls = _stub_services(monkeypatch)  # the exporter host is fixed now
+    conversation = [
+        ("Resume a saved run", ""),  # the most recent: b1
+        ("Use the saved answers", ""),  # as they are
+        ("\nProceed?", "y"),
+        ("Coordinator API username", ""),  # Enter: the saved one
+        ("Coordinator API password", "secret"),  # never saved
+    ]
+
+    result, prompts = _type_into_real_prompts(monkeypatch, conversation)
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(conversation, prompts)
+    row = _rows(result.output)
+    assert row("b1", "soc-ssh", "NetBox device done")
+    assert row("NetBox site slug", "lab3")
+    assert row("Board Linux SSH password", "(default)")
+    assert "NetBox device: done in an earlier run" in result.output
+    assert calls["steps"] == ["exporter", "place"]  # no second NetBox update
+    assert calls["login"] == ("admin", "secret")
+    assert not saved_runs.exists() or not list(saved_runs.iterdir())  # finished: nothing to resume
+
+
+def _netbox_down(nb):
+    raise RuntimeError("could not reach NetBox at https://netbox.test")
+
+
+def test_resume_asks_again_for_the_netbox_url_and_coordinator_login(monkeypatch, saved_runs):
+    """A wrong URL or login is what most often stops a run, so resume lets you fix it."""
+    _stub_services(monkeypatch)
+    monkeypatch.setattr(cli.client, "ensure_schema", _netbox_down)
+    _type_into_real_prompts(monkeypatch, _FULL_RUN)
+    calls = _stub_services(monkeypatch)
+    conversation = [
+        ("Resume a saved run", ""),
+        ("Use the saved answers", ""),
+        ("\nProceed?", "y"),
+        ("NetBox URL", "https://netbox.fixed.test"),
+        ("NetBox API token", "tok123"),
+        ("Coordinator API username", ""),
+        ("Coordinator API password", "secret"),
+    ]
+
+    result, prompts = _type_into_real_prompts(monkeypatch, conversation)
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(conversation, prompts)
+    assert "(https://netbox.test):" in result.output  # the saved URL is the default
+    assert calls["url"] == "https://netbox.fixed.test"
+    assert calls["login"] == ("admin", "secret")
+    assert calls["steps"] == ["netbox", "exporter", "place"]
+
+
+def _fail_coordinator_login(monkeypatch):
+    def login(api, user, password):
+        raise RuntimeError(f"login to http://{api}/api/auth/login failed: 401")
+
+    monkeypatch.setattr(cli.coord_mod, "login", login)
+
+
+_RESUME_TO_COORDINATOR = [
+    ("Resume a saved run", ""),
+    ("Use the saved answers", ""),
+    ("\nProceed?", "y"),
+    ("Coordinator API username", ""),
+    ("Coordinator API password", "secret"),
+]
+
+
+def test_resume_uses_the_coordinator_the_saved_run_used(monkeypatch, saved_runs):
+    """The exporter it deployed points at that coordinator; --coord isn't given again."""
+    _stub_services(monkeypatch)
+    _fail_coordinator_login(monkeypatch)
+    _type_into_real_prompts(monkeypatch, _FULL_RUN, "--coord", "lab-coord:20408")
+    calls = _stub_services(monkeypatch)
+
+    result, prompts = _type_into_real_prompts(monkeypatch, _RESUME_TO_COORDINATOR)
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(_RESUME_TO_COORDINATOR, prompts)
+    assert calls["api"] == "lab-coord:8000"
+    assert calls["steps"] == ["place"]  # NetBox and the exporter were done in the first run
+
+
+def test_another_coordinator_runs_every_step_again(monkeypatch, saved_runs):
+    _stub_services(monkeypatch)
+    _fail_coordinator_login(monkeypatch)
+    _type_into_real_prompts(monkeypatch, _FULL_RUN, "--coord", "lab-coord:20408")
+    calls = _stub_services(monkeypatch)
+    conversation = [
+        *_RESUME_TO_COORDINATOR[:3],
+        ("NetBox URL", ""),  # the saved one
+        ("NetBox API token", "tok123"),
+        *_RESUME_TO_COORDINATOR[3:],
+    ]
+
+    result, prompts = _type_into_real_prompts(
+        monkeypatch, conversation, "--coord", "other-coord:20408"
+    )
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(conversation, prompts)
+    assert calls["api"] == "other-coord:8000"
+    assert calls["steps"] == ["netbox", "exporter", "place"]
+
+
+def test_review_asks_each_question_again_with_the_saved_answer_as_default(monkeypatch, saved_runs):
+    _stub_prompts(monkeypatch, _SOC_SSH)
+    _invoke(*DRY_RUN)
+    # Only the site changes; every other question is answered by its default,
+    # which the stub can only do if it is the saved answer.
+    asked = _stub_prompts(
+        monkeypatch,
+        {"Resume a saved run": "b1", "Use the saved answers": "review", "NetBox site slug": "lab4"},
+    )
+
+    result = _invoke(*DRY_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert asked.kwargs["Board name (e.g. zcu102-ad9081-lab3)"]["default"] == "b1"
+    assert asked.kwargs["PDU hostname or IP"]["default"] == "10.0.0.20"
+    assert "b1 (site lab4)" in result.output
+    assert _saved(saved_runs)["answers"]["site_slug"] == "lab4"
+
+
+def test_a_changed_answer_reruns_the_steps_it_had_finished(monkeypatch, saved_runs):
+    monkeypatch.setattr(cli.Confirm, "ask", staticmethod(lambda *a, **k: True))
+    args = ["add-hardware", "--exporter-configs-dir", str(EXPORTER_CONFIGS_DIR), *CREDENTIALS]
+    _stub_prompts(monkeypatch, _SOC_SSH)
+    _stub_services(monkeypatch)
+    _fail_deploy(monkeypatch)
+    _invoke(*args)
+    _stub_prompts(
+        monkeypatch,
+        {"Resume a saved run": "b1", "Use the saved answers": "review", "NetBox site slug": "lab4"},
+    )
+    calls = _stub_services(monkeypatch)
+
+    result = _invoke(*args)
+
+    assert result.exit_code == 0, result.output
+    assert calls["steps"] == ["netbox", "exporter", "place"]
+
+
+def test_a_saved_optional_answer_can_be_cleared_in_review(monkeypatch, saved_runs):
+    _stub_prompts(monkeypatch, {**_SOC_SSH, "  BOOT.BIN": "release:zynq/BOOT.BIN"})
+    _invoke(*DRY_RUN)
+    asked = _stub_prompts(
+        monkeypatch,
+        {"Resume a saved run": "b1", "Use the saved answers": "review", "  BOOT.BIN": "-"},
+    )
+    rendered = {}
+    real_render = cli.provision.render_and_validate
+
+    def render(template_path, context, exporter_configs_dir):
+        rendered.update(context)
+        return real_render(template_path, context, exporter_configs_dir)
+
+    monkeypatch.setattr(cli.provision, "render_and_validate", render)
+
+    result = _invoke(*DRY_RUN)
+
+    assert result.exit_code == 0, result.output
+    bootbin = next(p for p in asked if p.startswith("  BOOT.BIN"))
+    assert "Enter for release:zynq/BOOT.BIN, - to leave unset" in bootbin
+    assert "kuiper_bootbin" not in rendered  # unset again, so the template's null applies
+
+
+def test_a_dry_run_saves_its_answers_to_resume_from(monkeypatch, saved_runs):
+    _stub_prompts(monkeypatch, _SOC_SSH)
+
+    result = _invoke(*DRY_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert _saved(saved_runs)["done"] == ["plan"]
+    assert f"Answers saved to {saved_runs / 'b1.json'}" in result.output
+
+
+def test_unreadable_saved_answers_are_ignored(monkeypatch, saved_runs):
+    saved_runs.mkdir(parents=True)
+    (saved_runs / "b0.json").write_text("{truncated")
+    asked = _stub_prompts(monkeypatch, _SOC_SSH)
+
+    result = _invoke(*DRY_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert not [p for p in asked if p.startswith("Resume")]
+
+
+def test_new_starts_over_and_keeps_the_saved_run(monkeypatch, saved_runs):
+    _stub_prompts(monkeypatch, _SOC_SSH)
+    _invoke(*DRY_RUN)
+    asked = _stub_prompts(
+        monkeypatch, {**_SOC_SSH, "Resume a saved run": "new", "Board name": "b2"}
+    )
+
+    result = _invoke(*DRY_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert asked.kwargs["Board name (e.g. zcu102-ad9081-lab3)"].get("default") is None
+    assert sorted(p.name for p in saved_runs.iterdir()) == ["b1.json", "b2.json"]
+
+
+def test_options_win_over_saved_answers(monkeypatch, saved_runs):
+    def netbox_down(nb):
+        raise RuntimeError("NetBox is down")
+
+    _stub_services(monkeypatch)
+    monkeypatch.setattr(cli.client, "ensure_schema", netbox_down)
+    _type_into_real_prompts(monkeypatch, _FULL_RUN)  # saves netbox_url https://netbox.test
+    calls = _stub_services(monkeypatch)
+    conversation = [
+        ("Resume a saved run", ""),
+        ("Use the saved answers", ""),
+        ("\nProceed?", "y"),
+        ("NetBox API token", "tok123"),
+        ("Coordinator API username", ""),
+        ("Coordinator API password", "secret"),
+    ]
+
+    result, prompts = _type_into_real_prompts(
+        monkeypatch, conversation, "--netbox-url", "https://other.test"
+    )
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(conversation, prompts)
+    assert calls["url"] == "https://other.test"
 
 
 def test_required_answers_are_asked_again_until_given(monkeypatch):
