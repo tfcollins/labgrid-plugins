@@ -85,9 +85,13 @@ class Endpoint:
             self.nb.connect(row)
         else:
             row.setdefault("cable", None)
-            if self.name == "devices":
+            if self.name in ("devices", *FakeNetBox._TERMINATION.values()):
                 row.setdefault("custom_fields", {})
+            if self.name == "devices":
                 row.setdefault("primary_ip", None)
+            if self.name == "console_ports" and "speed" in row:
+                # NetBox returns a choice field as a value/label pair.
+                row["speed"] = SimpleNamespace(value=row["speed"], label=f"{row['speed']} bps")
         self.rows[row["id"]] = row
         return self._record(row)
 
@@ -107,12 +111,19 @@ class FakeNetBox:
             "device_types",
             "power_outlets",
             "power_ports",
+            "console_ports",
+            "console_server_ports",
             "cables",
         )
         self.dcim = SimpleNamespace(**{n: Endpoint(self, n) for n in endpoints})
         self.extras = SimpleNamespace(custom_fields=Endpoint(self, "custom_fields"))
 
-    _TERMINATION = {"dcim.powerport": "power_ports", "dcim.poweroutlet": "power_outlets"}
+    _TERMINATION = {
+        "dcim.powerport": "power_ports",
+        "dcim.poweroutlet": "power_outlets",
+        "dcim.consoleport": "console_ports",
+        "dcim.consoleserverport": "console_server_ports",
+    }
 
     def _end(self, termination):
         return getattr(self.dcim, self._TERMINATION[termination["object_type"]]).rows[
@@ -137,7 +148,7 @@ class FakeNetBox:
     def expand(self, endpoint, row):
         """The row as the API returns it: related objects nested, cable peers listed."""
         out = {k: v for k, v in row.items() if not k.startswith("_")}
-        if endpoint in ("power_outlets", "power_ports"):
+        if endpoint in self._TERMINATION.values():
             out["device"] = self.dcim.devices._record(self.dcim.devices.rows[row["device"]])
             out["cable"] = SimpleNamespace(id=row["cable"]) if row["cable"] else None
             peer = row.get("_peer")

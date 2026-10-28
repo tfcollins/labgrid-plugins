@@ -1,7 +1,8 @@
 """`adi-lg netbox add-hardware` - interactive onboarding.
 
 Registers a new board in NetBox, cabled to an outlet on the power device
-that switches it (picked from NetBox, or added), renders+validates its
+that switches it and to the serial port its console is on (each picked from
+NetBox, or added), renders+validates its
 exporter config, SSH-deploys it as a systemd service on the exporter host
 and verifies it comes up, then creates the matching labgrid Place
 (create/add-match/set-tags) on the coordinator. Answers are saved as they are given, so a
@@ -272,6 +273,157 @@ def _power_settled(answers: dict) -> bool:
     if picked == NEW:
         return answers.get("power") == "manual" or bool(answers.get("power_device_name"))
     return answers.get("power_netbox_outlet") is not None
+
+
+@dataclass(frozen=True)
+class _ConsoleLink:
+    """The console server port a board's UART (or JTAG) console port is cabled to."""
+
+    kind: str  # client.UART or client.JTAG
+    device: str
+    port: str
+    path: str = ""  # the serial device on the exporter host (UART only)
+
+
+# Saved-answer key prefix per console kind.
+_CONSOLE_KEY = {client.UART: "serial", client.JTAG: "jtag"}
+
+
+def _console_settled(answers: dict, kind: str) -> bool:
+    """Whether saved answers already name the device and port ``kind`` is cabled to."""
+    key = _CONSOLE_KEY[kind]
+    picked, port = answers.get(f"{key}_device"), answers.get(f"{key}_netbox_port")
+    if picked is None or port is None:
+        return False
+    return picked != NEW or bool(answers.get(f"{key}_device_name"))
+
+
+def _console_link(answers: dict, kind: str) -> _ConsoleLink:
+    key = _CONSOLE_KEY[kind]
+    picked = answers[f"{key}_device"]
+    device = answers[f"{key}_device_name"] if picked == NEW else picked
+    path = answers.get("field.serial_port", "") if kind == client.UART else ""
+    port = answers[f"{key}_netbox_port"]
+    if port == NEW:
+        port = _serial_port_name(path)
+    return _ConsoleLink(kind, device, port, path)
+
+
+def _serial_port_name(path: str) -> str:
+    """A new console server port's name: the device file's name.
+
+    NetBox allows 64 characters; a longer name keeps its end, where a
+    multi-port adapter's ``-if02-port0`` tells its ports apart.
+    """
+    return os.path.basename(path.rstrip("/"))[-64:]
+
+
+def _host_device(devices: list, host: str) -> str | None:
+    """The listed device that is ``host`` (the exporter host), by name or primary IP."""
+    names = {host, host.split(".")[0]}
+    return next((d.name for d in devices if d.name in names or d.address == host), None)
+
+
+def _ask_console_device(devices: list, prompt: str, site: str, default: str | None) -> str:
+    console.print(f"\n[bold]Devices with console server ports in NetBox at {escape(site)}[/bold]")
+    rows = [
+        (d.name, d.address, f"{sum(p.connected_to is None for p in d.ports)} of {len(d.ports)}")
+        for d in devices
+    ]
+    rows.append((NEW, "", "a device not listed: add it, or add ports to it"))
+    return ask_choice(
+        console, prompt, rows, headers=("Device", "Address", "Free ports"), default=default
+    )
+
+
+def _ask_console_port(device, ports: list, board: str, prompt: str, default: str | None) -> str:
+    """Pick a port that is free, or already feeds this board; or a new one."""
+    rows = [(p.name, p.path, p.connected_to or "free") for p in ports]
+    rows.append((NEW, "", "a port not in NetBox yet: add it"))
+    feeds = {p.name: p.connected_to for p in ports}
+    while True:
+        port = ask_choice(
+            console, prompt, rows, headers=("Port", "Serial path", "Feeds"), default=default
+        )
+        other = feeds.get(port)
+        if other is None or other.startswith(f"{board} "):
+            return port
+        console.print(
+            f"    [red]{escape(device.name)} {escape(port)} already feeds {escape(other)} - pick "
+            "a free one, or remove that cable in NetBox first[/red]"
+        )
+
+
+def _ask_serial(run: Run, devices: list, *, site: str, board: str, host: str, default_path) -> None:
+    """Ask which console server port the board's serial console is on, and its device path.
+
+    ``devices`` are the site's devices with console server ports; the one that
+    is the exporter host is the default. The answers are saved for
+    :func:`_console_link`.
+    """
+    by_name = {d.name: d for d in devices}
+    label = provision.TEMPLATE_FIELDS["serial_port"]
+
+    def ask_path(default):
+        path = run.answer(
+            "field.serial_port",
+            label,
+            lambda default: _ask_required(f"  {label}", default=default),
+            default=default,
+        )
+        # A dry run saves Enter on the template field as "": the template's default.
+        return path or run.given("field.serial_port", label, default_path)
+
+    if devices:
+        picked = run.answer(
+            "serial_device",
+            "Serial device",
+            lambda default: _ask_console_device(devices, "Serial device", site, default),
+            default=_host_device(devices, host) or NEW,
+            choices=[*by_name, NEW],
+            explain=(
+                "The device the board's serial console (USB-UART) is plugged into - usually the "
+                "exporter host. Pick it from NetBox or add it; the board's UART console port is "
+                "cabled to the port you choose."
+            ),
+        )
+    else:
+        picked = run.given("serial_device", "Serial device", NEW)
+    if picked == NEW:
+        run.answer(
+            "serial_device_name",
+            "Serial device name in NetBox",
+            lambda default: _ask_required(
+                "Serial device name in NetBox", check=_NAME, default=default
+            ),
+            default=host.split(".")[0],
+            explain=(
+                "The device the board's serial console (USB-UART) is plugged into - usually the "
+                "exporter host. It is added to NetBox at the board's site as a console server, "
+                "unless a device of this name is already there: then the port is added to it."
+            ),
+        )
+        run.given("serial_netbox_port", "Serial port in NetBox", NEW)
+        ask_path(default_path)
+        return
+
+    device = by_name[picked]
+    ports = [p for p in device.ports if not p.jtag]  # a JTAG cable isn't a serial port
+    port_name = run.answer(
+        "serial_netbox_port",
+        "Serial port in NetBox",
+        lambda default: _ask_console_port(
+            device, ports, board, f"Serial port on {escape(device.name)}", default
+        ),
+        choices=[*(p.name for p in ports), NEW],
+    )
+    port = next((p for p in ports if p.name == port_name), None)
+    known = port and (port.path or (port.name if port.name.startswith("/dev/") else ""))
+    if known:
+        run.given("field.serial_port", label, known)
+    else:
+        named = port and port.name.startswith("tty")
+        ask_path(f"/dev/{port.name}" if named else default_path)
 
 
 def _power_link(run: Run, power: str, context: dict[str, str]) -> _PowerLink | None:
@@ -717,11 +869,21 @@ def _onboard(
         ),
     )
 
-    # The site and the board's power device are picked from what NetBox has, so
-    # it is read from here on, unless the saved answers already settle both.
-    # Nothing is written to NetBox before the plan is confirmed.
+    # The site, the board's power device and its serial port are picked from what
+    # NetBox has, so it is read from here on, unless the saved answers already
+    # settle them. Nothing is written to NetBox before the plan is confirmed.
+    try:
+        template_vars = provision.discover_template_vars(template_path)
+        defaults = provision.template_field_defaults(template_path)
+    except RuntimeError as e:
+        raise click.ClickException(str(e)) from e
+    # A dry run asks the serial port as a template field instead.
+    netbox_serial = not dry_run and "serial_port" in template_vars
+    settled = _power_settled(run.saved.answers) and (
+        not netbox_serial or _console_settled(run.saved.answers, client.UART)
+    )
     netbox = _NetBox(run, netbox_url, netbox_token, netbox_verify)
-    look_up = not dry_run and (run.mode != "resume" or not _power_settled(run.saved.answers))
+    look_up = not dry_run and (run.mode != "resume" or not settled)
     sites = dict(netbox(client.sites)) if look_up else None
     if sites == {}:
         raise click.ClickException(
@@ -775,6 +937,18 @@ def _onboard(
         ),
     )
     ssh_user, ssh_host = ssh_target.split("@", 1)
+    serial_link = None
+    if netbox_serial:
+        if look_up:
+            _ask_serial(
+                run,
+                netbox(client.console_devices, site_slug),
+                site=site_slug,
+                board=name,
+                host=ssh_host,
+                default_path=defaults.get("serial_port"),
+            )
+        serial_link = _console_link(run.saved.answers, client.UART)
 
     # Templates name their resource group <CARRIER>_<CHIP> from these fields
     # and include the power fragment named by `power`, so fill them from the
@@ -784,16 +958,16 @@ def _onboard(
         "chip": daughter_board,
         "power": power,
         **power_context,
+        **({"serial_port": serial_link.path} if serial_link else {}),
     }
     try:
         var_names = sorted(
-            provision.discover_template_vars(template_path)
+            template_vars
             - set(context)
             - provision.EXPORTER_RUNTIME_VARS
             - {f.var for t in power_types.POWER_TYPES.values() for f in t.fields}
         )
         required = provision.required_template_vars(template_path)
-        defaults = provision.template_field_defaults(template_path)
     except RuntimeError as e:
         raise click.ClickException(str(e)) from e
 
@@ -871,6 +1045,21 @@ def _onboard(
         netbox_power = ["not recorded (manual power)"]
     else:
         netbox_power = ["chosen from NetBox when run without --dry-run"]
+    netbox_consoles = []
+    if serial_link is not None:
+        netbox_consoles.append(
+            (
+                "Serial in NetBox",
+                [
+                    escape(f"{name} {client.UART} -> {serial_link.device} {serial_link.port}"),
+                    escape(f"serial device {serial_link.path}"),
+                ],
+            )
+        )
+    elif "serial_port" in template_vars:
+        netbox_consoles.append(
+            ("Serial in NetBox", ["chosen from NetBox when run without --dry-run"])
+        )
 
     console.print("\n[bold]Plan[/bold]")
     console.print(
@@ -887,6 +1076,7 @@ def _onboard(
                 ("Place tags", [escape(f"{k}={v}") for k, v in tags.items()]),
                 ("Power", power_lines),
                 ("Power in NetBox", netbox_power),
+                *netbox_consoles,
             ]
         )
     )
@@ -921,7 +1111,8 @@ def _onboard(
         coord_password = _ask_secret("Coordinator API password")
 
     # 1. NetBox: register the device (source of truth for inventory) and cable
-    # its power. Marked done only once both are, so a failure is redone on resume.
+    # its power and console. Marked done only once all are, so a failure is
+    # redone on resume.
     if netbox_done:
         console.print("[dim]NetBox device: done in an earlier run, skipped[/dim]")
     else:
@@ -951,6 +1142,17 @@ def _onboard(
                     settings=power_link.settings,
                     outlets=list(power_link.outlets),
                 )
+            for link in (serial_link,):
+                if link is not None:
+                    done += client.connect_console(
+                        nb,
+                        device,
+                        kind=link.kind,
+                        site_slug=site_slug,
+                        device=link.device,
+                        port=link.port,
+                        path=link.path,
+                    )
             return device, done
 
         device, power_done = netbox(register)

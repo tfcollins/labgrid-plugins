@@ -1,4 +1,8 @@
-"""NetBox records a board's power: board power port -> cable -> outlet on a power device.
+"""NetBox records a board's power, serial console and JTAG connections as cables.
+
+Power: board power port -> outlet on a power device. Serial console and JTAG:
+board console port -> console server port on the device the adapter is
+plugged into (usually the exporter host).
 
 Each test runs against an in-memory stand-in for NetBox, and again against a
 real one when ``NETBOX_TEST_URL`` and ``NETBOX_TEST_TOKEN`` name a disposable
@@ -40,8 +44,13 @@ class Lab:
     def name(self, base):
         return f"{base}-{self.tag}"
 
-    def add_device(self, base, *, settings=None, outlets=(), ports=(), site=None):
-        """A device made by hand in NetBox, optionally with power settings."""
+    def add_device(
+        self, base, *, settings=None, outlets=(), ports=(), consoles=(), servers=(), site=None
+    ):
+        """A device made by hand in NetBox, optionally with power settings.
+
+        ``consoles`` and ``servers`` name its console ports and console server ports.
+        """
         site = site or self.site
         custom_fields = {client.POWER_FIELD: settings} if settings else {}
         if self.real:
@@ -71,22 +80,41 @@ class Lab:
             self.nb.dcim.power_outlets.create(device=device.id, name=outlet)
         for port in ports:
             self.nb.dcim.power_ports.create(device=device.id, name=port)
+        for port in consoles:
+            self.nb.dcim.console_ports.create(device=device.id, name=port)
+        for port in servers:
+            self.nb.dcim.console_server_ports.create(device=device.id, name=port)
         return device
 
-    def cable(self, port_device, port, outlet_device, outlet):
-        (p,) = self.nb.dcim.power_ports.filter(device_id=port_device.id, name=port)
-        (o,) = self.nb.dcim.power_outlets.filter(device_id=outlet_device.id, name=outlet)
+    _ENDS = {
+        "power": ("power_ports", "dcim.powerport", "power_outlets", "dcim.poweroutlet"),
+        "console": (
+            "console_ports",
+            "dcim.consoleport",
+            "console_server_ports",
+            "dcim.consoleserverport",
+        ),
+    }
+
+    def cable(self, port_device, port, outlet_device, outlet, kind="power"):
+        ports, port_type, outlets, outlet_type = self._ENDS[kind]
+        (p,) = getattr(self.nb.dcim, ports).filter(device_id=port_device.id, name=port)
+        (o,) = getattr(self.nb.dcim, outlets).filter(device_id=outlet_device.id, name=outlet)
         self.nb.dcim.cables.create(
-            a_terminations=[{"object_type": "dcim.powerport", "object_id": p.id}],
-            b_terminations=[{"object_type": "dcim.poweroutlet", "object_id": o.id}],
+            a_terminations=[{"object_type": port_type, "object_id": p.id}],
+            b_terminations=[{"object_type": outlet_type, "object_id": o.id}],
         )
 
-    def connections(self, device):
-        """``{port: "<device> <outlet>"}`` for ``device``'s power ports, read afresh."""
+    def connections(self, device, kind="power"):
+        """``{port: "<device> <outlet>"}`` for ``device``'s power (or console) ports, read afresh."""
         return {
             p.name: " ".join(f"{peer.device.name} {peer.name}" for peer in p.link_peers)
-            for p in self.nb.dcim.power_ports.filter(device_id=device.id)
+            for p in getattr(self.nb.dcim, self._ENDS[kind][0]).filter(device_id=device.id)
         }
+
+    def server_port(self, device, name):
+        (port,) = self.nb.dcim.console_server_ports.filter(device_id=device.id, name=name)
+        return port
 
     def device(self, name):
         found = list(self.nb.dcim.devices.filter(name=name, site_id=self.site.id))
@@ -362,3 +390,114 @@ def test_device_exists_looks_only_at_the_site(lab):
 )
 def test_outlets_are_named_without_saying_outlet_twice(outlet, label):
     assert client.outlet_label("pdu", outlet) == label
+
+
+# --- serial console and JTAG ------------------------------------------------
+
+UART_PATH = "/dev/serial/by-id/usb-Silicon_Labs_CP2108_Quad_USB_to_UART_Bridge_0001-if00-port0"
+
+
+def _uart(lab, board, host, port, path=UART_PATH):
+    return client.connect_console(
+        lab.nb, board, kind=client.UART, site_slug=lab.site.slug, device=host, port=port, path=path
+    )
+
+
+def test_console_devices_lists_ports_with_their_path_and_what_they_feed(lab):
+    host = lab.add_device("host", servers=("ttyUSB0", "JTAG 1", "spare"))
+    other = lab.add_device("other", consoles=("UART", "JTAG"))
+    lab.cable(other, "UART", host, "ttyUSB0", kind="console")
+    lab.cable(other, "JTAG", host, "JTAG 1", kind="console")
+    port = lab.server_port(host, "spare")
+    port.custom_fields[client.SERIAL_PATH_FIELD] = "/dev/ttyUSB3"
+    port.save()
+    lab.add_device("pdu", outlets=("1",))  # no console server ports: not listed
+
+    (found,) = client.console_devices(lab.nb, lab.site.slug)
+
+    assert found.name == lab.name("host")
+    assert [(p.name, p.path, p.connected_to, p.jtag) for p in found.ports] == [
+        ("JTAG 1", "", f"{other.name} JTAG", True),
+        ("spare", "/dev/ttyUSB3", None, False),
+        ("ttyUSB0", "", f"{other.name} UART", False),
+    ]
+
+
+def test_a_new_console_server_is_created_with_the_port_and_its_path(lab):
+    name = lab.name("lab-host-03")
+
+    done = _uart(lab, lab.board, name, "ttyUSB0")
+
+    host = lab.device(name)
+    assert host.role.slug == client.CONSOLE_ROLE_SLUG
+    assert lab.server_port(host, "ttyUSB0").custom_fields[client.SERIAL_PATH_FIELD] == UART_PATH
+    assert lab.connections(lab.board, "console") == {"UART": f"{name} ttyUSB0"}
+    (uart,) = lab.nb.dcim.console_ports.filter(device_id=lab.board.id)
+    assert getattr(uart.speed, "value", uart.speed) == 115200  # the templates' baud rate
+    assert any("created console server" in line for line in done)
+
+
+def test_the_exporter_host_already_in_netbox_gets_the_port(lab):
+    host = lab.add_device("lab-host-03")  # a plain server, no console server ports yet
+
+    _uart(lab, lab.board, host.name, "ttyUSB0")
+
+    assert lab.count("devices", name=host.name) == 1
+    assert lab.connections(lab.board, "console") == {"UART": f"{host.name} ttyUSB0"}
+
+
+def test_an_empty_serial_path_is_filled_in_and_a_different_one_kept(lab):
+    host = lab.add_device("host", servers=("A", "B"))
+    port = lab.server_port(host, "B")
+    port.custom_fields[client.SERIAL_PATH_FIELD] = "/dev/ttyUSB1"
+    port.save()
+    board2 = lab.add_device("board2")
+
+    _uart(lab, lab.board, host.name, "A")
+    done = _uart(lab, board2, host.name, "B", path="/dev/ttyUSB9")
+
+    assert lab.server_port(host, "A").custom_fields[client.SERIAL_PATH_FIELD] == UART_PATH
+    assert lab.server_port(host, "B").custom_fields[client.SERIAL_PATH_FIELD] == "/dev/ttyUSB1"
+    assert any("differs" in line for line in done)
+
+
+def test_a_console_port_feeding_another_board_is_refused_and_nothing_is_written(lab):
+    host = lab.add_device("host", servers=("ttyUSB0",))
+    other = lab.add_device("other", consoles=("UART",))
+    lab.cable(other, "UART", host, "ttyUSB0", kind="console")
+
+    with pytest.raises(RuntimeError, match=f"already feeds {other.name} UART"):
+        _uart(lab, lab.board, host.name, "ttyUSB0")
+
+    assert lab.connections(lab.board, "console") == {}
+    assert not lab.server_port(host, "ttyUSB0").custom_fields.get(client.SERIAL_PATH_FIELD)
+
+
+def test_the_board_keeps_uart_and_jtag_on_their_own_console_ports(lab):
+    board = lab.add_device("board2", consoles=("JTAG", "Console"))
+    host = lab.name("host")
+
+    _uart(lab, board, host, "ttyUSB0")
+    done = client.connect_console(
+        lab.nb, board, kind=client.JTAG, site_slug=lab.site.slug, device=host, port="JTAG 1"
+    )
+
+    assert lab.connections(board, "console") == {
+        "Console": f"{host} ttyUSB0",
+        "JTAG": f"{host} JTAG 1",
+    }
+    assert not lab.server_port(lab.device(host), "JTAG 1").custom_fields.get(
+        client.SERIAL_PATH_FIELD
+    )
+    assert not [line for line in done if "also connected" in line]
+
+
+def test_console_connections_run_again_change_nothing(lab):
+    host = lab.name("host")
+    _uart(lab, lab.board, host, "ttyUSB0")
+
+    done = _uart(lab, lab.board, host, "ttyUSB0")
+
+    assert lab.connections(lab.board, "console") == {"UART": f"{host} ttyUSB0"}
+    assert lab.count("console_ports", device_id=lab.board.id) == 1
+    assert any("already connected" in line for line in done)
