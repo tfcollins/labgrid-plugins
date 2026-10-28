@@ -2,16 +2,17 @@ NetBox Onboarding
 =================
 
 ``adi-lg netbox add-hardware`` automates the whole of :doc:`onboarding-a-lab-host` Steps 2-4
-for a single new board: it registers the board as a device in NetBox, renders and validates its
-exporter config, deploys that config to the exporter host as a systemd service and verifies it
-comes up, then creates the matching labgrid Place on the coordinator (``create`` /
-``add-match`` / ``set-tags``). Run it instead of hand-editing a template and typing
+for a single new board: it registers the board as a device in NetBox and records which outlet
+powers it, renders and validates its exporter config, deploys that config to the exporter host
+as a systemd service and verifies it comes up, then creates the matching labgrid Place on the
+coordinator (``create`` / ``add-match`` / ``set-tags``). Run it instead of hand-editing a template and typing
 ``labgrid-client`` commands.
 
 **On this page:**
 
 - `Prerequisites`_
 - `Usage`_ — `Options`_
+- `Power devices`_
 - `What it creates`_ — `In NetBox`_, `On the exporter host`_, `On the coordinator`_
 - `Resuming after a failure`_
 - `Re-running for an existing board`_
@@ -21,8 +22,9 @@ comes up, then creates the matching labgrid Place on the coordinator (``create``
 .. admonition:: What it does NOT do
    :class: note
 
-   It does not physically rack or cable the board, and it does not install ``labgrid-exporter``
-   on the host - both are prerequisites, checked below.
+   It does not physically rack or cable the board (it records the power cable in NetBox, it
+   doesn't plug it in), and it does not install ``labgrid-exporter`` on the host - both are
+   prerequisites, checked below.
 
 Prerequisites
 -------------
@@ -33,8 +35,8 @@ Prerequisites
   by default).
 - NetBox **4.3 or newer** - custom fields are created with the ``object_types`` key that NetBox
   4.3 introduced (it replaced ``content_types``).
-- A NetBox URL and API token with permission to create devices (``NETBOX_URL`` /
-  ``NETBOX_TOKEN`` env vars, or ``--netbox-url`` / ``--netbox-token``).
+- A NetBox URL and API token with permission to create devices, power ports, power outlets and
+  cables (``NETBOX_URL`` / ``NETBOX_TOKEN`` env vars, or ``--netbox-url`` / ``--netbox-token``).
 - The NetBox **Site** you'll place the device under must already exist - this command creates
   the ``labgrid-target`` device role, its custom fields, and board device types on first run,
   but deliberately never creates a Site (physical-location truth the org manages elsewhere).
@@ -93,29 +95,47 @@ Usage
                                     overlay, module).
     Boot strategy (BootFPGASoC):
 
-    Power control
-    #   Category                       Types
-    ──────────────────────────────────────────────────────────────────────────────
-    1   Network PDU                    apc, cyberpower, network-pdu, pdudaemon
-    2   Smart plug / home automation   vesync, kasa, homeassistant, tasmota
-    ...
-    Power category (Smart plug / home automation): 1
-    #   Type          Description                                 Driver
-    ──────────────────────────────────────────────────────────────────────────────
-    1   apc           APC PDU (SNMP)                              APCDriver
-    2   cyberpower    CyberPower PDU (SNMP)                       CyberPowerDriver
-    ...
-    Power type (apc): cyberpower
-      PDU hostname or IP: 10.0.0.20
-      Outlet number: 4
-
     The self-hosted GitHub Actions runner that runs this board's hardware-CI jobs
     (the place's runner tag).
     GitHub Actions runner label (hw-zcu102):
 
+    The NetBox instance to register the board in (or set NETBOX_URL).
+    NetBox URL (e.g. https://netbox.example.com): https://netbox.example.com
+
+    A NetBox API token that can create devices; create one under your user profile
+    in NetBox (or set NETBOX_TOKEN).
+    NetBox API token (input hidden):     received 57 characters
+    NetBox TLS certificate not verified (--netbox-verify or --netbox-ca-bundle to
+    check it)
+
     The existing NetBox site the board is in (NetBox: Organization > Sites). This
     command never creates sites.
-    NetBox site slug (e.g. lab3): lab3
+    #   Site   Name
+    ────────────────────
+    1   lab3   Lab 3
+    2   lab4   Lab 4
+    NetBox site slug: lab3
+
+    The device that switches this board's power (PDU, smart plug, relay, ...). Pick
+    one from NetBox to use its settings, or add a new one; the board's power port is
+    cabled to the outlet you choose.
+
+    Power devices in NetBox at lab3
+    #   Device      Type         Address     Free outlets
+    ──────────────────────────────────────────────────────────────────────────────
+    1   pdu-rack3   cyberpower   10.0.0.20   6 of 8
+    2   new                                  a power device not in NetBox yet: add it
+    Power device: pdu-rack3
+      pdu-rack3: CyberPower PDU (SNMP) (cyberpower), settings from NetBox
+    #   Outlet     Feeds
+    ──────────────────────────────────────────────────
+    1   Outlet 1   zc706-lab3-002 PSU1
+    2   Outlet 2   zcu102-lab3-000 power
+    3   Outlet 3   free
+    ...
+    9   new        an outlet not in NetBox yet: add it
+    Outlet on pdu-rack3: Outlet 3
+      Outlet number (3):
 
     The Linux machine the board's serial, USB and power are connected to. The
     exporter service is installed there over SSH, so this user needs passwordless
@@ -163,8 +183,11 @@ Usage
                           power-driver=CyberPowerDriver
       Power               CyberPower PDU (SNMP) (cyberpower)
                           via CyberPowerDriver
+      Power in NetBox     zcu102-lab3-001 power port -> pdu-rack3 Outlet 3
 
     Proceed? [y/n] (y): y
+    NetBox device ready: https://netbox.example.com/dcim/devices/95/
+      connected zcu102-lab3-001 power to pdu-rack3 Outlet 3
     ...
 
 Each set of options is listed as a numbered table; answer with the number or the name,
@@ -172,7 +195,9 @@ or press Enter for the default shown in parentheses.
 
 Use ``--dry-run`` to render and schema-validate the exporter config and print the full plan
 without touching NetBox, SSH, or the coordinator - useful for checking your answers before
-committing to a real board. A dry run never asks for NetBox or coordinator credentials.
+committing to a real board. A dry run never asks for NetBox or coordinator credentials and
+doesn't read NetBox: the site is typed, the power type and its fields are asked directly, and
+the plan says the power device is chosen when run without ``--dry-run``.
 
 Each question says what the answer is used for. Template fields are asked by what they are
 (*Board IP address*, *Serial console device on the exporter host*, ...), after a table of the
@@ -189,12 +214,12 @@ The templates name their resource group ``<CARRIER>_<CHIP>`` (e.g. ``ZCU102_AD90
 the ``carrier`` and ``chip`` fields. The command fills those from the *Carrier board* and
 *ADI daughter board or chip* answers, so they are not asked again as template fields. Choose the
 template by boot strategy (see :doc:`exporter-setup`); the *Boot strategy* prompt defaults to
-the one the template declares. *Power category* and *Power type* choose the template's
-``power`` fragment - any of the types in :ref:`power-types`, covering this package's outlets
-and all of labgrid's power options - and that type's own fields follow. The command sets the
-place's ``power-driver`` tag, plus ``power-output-driver`` for relay types. Credentials,
-reachability notes (e.g. ``tasmota`` and ``laa`` connect from the client) and required host
-tools are printed in the plan.
+the one the template declares. The power type - picked from NetBox's power device, or asked
+as *Power category* and *Power type* (see `Power devices`_) - chooses the template's
+``power`` fragment: any of the types in :ref:`power-types`, covering this package's outlets
+and all of labgrid's power options. The command sets the place's ``power-driver`` tag, plus
+``power-output-driver`` for relay types. Credentials, reachability notes (e.g. ``tasmota``
+and ``laa`` connect from the client) and required host tools are printed in the plan.
 
 The boot-strategy prompt only accepts the ADI strategy classes this package registers
 (``BootFPGASoC``, ``BootFPGASoCSSH``, ``BootFPGASoCTFTP``, ``BootSelMap``, ``BootFabric``,
@@ -221,10 +246,56 @@ Every option is optional; anything not supplied is prompted for.
   upward from the current directory for ``exporter_configs/validate.py``).
 * ``--dry-run``: render, validate, and print the plan; make no changes.
 
-NetBox and coordinator credentials that are not set by option or environment are prompted for
-only *after* you confirm ``Proceed?``. The token and password prompts hide what you type or
-paste, so nothing appears on screen; after each one the command prints how many characters it
-received. Blank answers are asked again.
+NetBox credentials that are not set by option or environment are asked for before the site,
+because the site and the board's power device are picked from what NetBox holds; nothing is
+written to NetBox until you confirm ``Proceed?``. Coordinator credentials are asked for after
+``Proceed?``. The token and password prompts hide what you type or paste, so nothing appears
+on screen; after each one the command prints how many characters it received. Blank answers
+are asked again.
+
+Power devices
+-------------
+
+NetBox records a board's power the standard way: a cable from a **power port** on the board to
+an **outlet** on the **power device** that switches it - a PDU, smart plug, relay card, USB hub
+or bench supply. The command lists the devices with power outlets that NetBox has at the
+board's site, with their labgrid power type, address and how many outlets are free:
+
+- **Pick one** and its labgrid settings come from NetBox: only the outlet is asked, from a
+  table of the device's outlets and what each one feeds. An outlet that already feeds another
+  device can't be picked (one that feeds this board can, when you run the command again).
+  When the outlet's name isn't the number labgrid needs (``Outlet 3``), the number is asked,
+  with the one in the name as its default. *new* adds an outlet the device doesn't have in
+  NetBox yet.
+
+  A device added to NetBox by hand has no labgrid settings, so the first board on it asks its
+  *Power category*, *Power type* and the fields that identify it (its primary IP is offered as
+  the address); they are saved on the device, and the next board on it asks only the outlet.
+- **Pick new** for a power device NetBox doesn't have: *Power category*, *Power type* and the
+  type's fields are asked, then the device's name in NetBox, suggested from the type and its
+  address (``cyberpower-10.0.0.20``). With no power devices at the site, this is where the
+  command starts.
+
+.. code-block:: console
+
+    Power device: new
+
+    Power control
+    #   Category                       Types
+    ...
+    Power type (apc): cyberpower
+      PDU hostname or IP: 10.0.0.20
+      Outlet number: 4
+
+    The new power device is added to NetBox under this name, at the board's site.
+    Power device name in NetBox (cyberpower-10.0.0.20):
+
+A few types have no outlet field: a VeSync, Home Assistant or Tasmota plug, an HTTP output and
+an LAA each switch one thing, so their power device has a single outlet, ``1`` - as does a Kasa
+strip used whole (blank socket answer). A comma-separated Kasa socket list cables the board to
+each socket. Settings that belong to the board's connection rather than the device (a relay's
+*Invert output*, an LAA's switch-on and switch-off states) are asked for every board. Manual
+power (the ``manual`` type) is not recorded in NetBox.
 
 What it creates
 ---------------
@@ -239,7 +310,7 @@ up and later runs reuse them:
 - **Manufacturer** ``adi-lab`` ("Analog Devices, Inc. (lab hardware)").
 - **Device type** per carrier: slug is the carrier lowercased with ``_`` → ``-``, model is the
   carrier uppercased (``zcu102`` → slug ``zcu102``, model ``ZCU102``).
-- **Custom fields** on ``dcim.device`` (all text):
+- **Custom fields** on ``dcim.device`` (all text, except ``labgrid_power``):
 
   .. list-table::
      :header-rows: 1
@@ -263,10 +334,31 @@ up and later runs reuse them:
      * - ``runner_label``
        - GitHub runner label
        - the runner label
+     * - ``labgrid_power``
+       - Labgrid power control
+       - on power devices only (JSON): the labgrid power type and the settings that identify
+         the device, e.g. ``{"type": "cyberpower", "address": "10.0.0.20"}``
 
 Then the **device** itself, named after the board name, with that device type and role,
 under the existing site. The command prints its URL
 (``<netbox>/dcim/devices/<id>/``) when done.
+
+Then its power (see `Power devices`_):
+
+- The **power device** picked, or a new one at the board's site with role ``labgrid-power``
+  ("Labgrid Power Control"), manufacturer ``generic`` ("Generic") and a device type per power
+  type (slug ``labgrid-power-<type>``, model the type's description), each created if missing.
+  An empty ``labgrid_power`` field is filled in from your answers; one that is already set is
+  never replaced, and the command says so if it differs from this board's answers.
+- The **outlet** picked, or a new one named after the outlet answer (``4``).
+- A **power port** on the board: a free one it already has (e.g. from its device type), or a
+  new one named ``power`` (``power 2``, ... if it has more).
+- A **cable** from the port to the outlet. An outlet that already feeds another device is
+  refused before anything is written. Cables already there are kept: if the board was on
+  another outlet before, that cable is left in place and reported, for you to remove in NetBox.
+
+Each change is printed under the device URL. The NetBox step counts as done only when the
+board is registered *and* cabled, so a failure in either is redone on resume.
 
 On the exporter host
 ~~~~~~~~~~~~~~~~~~~~
@@ -357,9 +449,12 @@ Changing any answer in **review** runs every step again; each one is safe to rep
 `Re-running for an existing board`_). Once the coordinator step succeeds the saved answers
 are deleted.
 
-After ``Proceed?`` a resumed run asks for the NetBox URL and coordinator username again, with
+A resumed run asks for the NetBox URL and coordinator username again when it needs them, with
 the saved ones as defaults - a wrong URL or login is the usual reason a run stops, so press Enter
-to keep them or type the right one. It deploys to the same coordinator as the saved run, so
+to keep them or type the right one. The power device and outlet are saved answers too, so a
+resumed run reads NetBox before the plan only if one of them is missing - for example in a run
+saved by a version without power devices, which asks for the NetBox URL and token, then the
+power device. A saved site NetBox no longer has is asked again. It deploys to the same coordinator as the saved run, so
 ``--coord`` need not be given again; naming a different one (``--coord`` or ``LG_COORDINATOR``)
 runs every step again, because the exporter already deployed points at the first.
 
@@ -378,7 +473,8 @@ Re-running for an existing board
 Every stage is safe to run again for a board that is already (or partly) onboarded:
 
 - **NetBox** - an existing device (matched by name) has its custom fields updated in place.
-  Its site and device type are left unchanged.
+  Its site and device type are left unchanged. A board already cabled to the outlet is left
+  as it is.
 - **Exporter host** - the config and unit files are overwritten and the unit is restarted, so
   the new config is loaded.
 - **Coordinator** - an existing place is kept and only the matches it lacks are added. The
@@ -421,8 +517,26 @@ Troubleshooting
     A bad ``--netbox-token`` / ``NETBOX_TOKEN`` stops the command before any question; a bad
     answer at the prompt is asked again.
 
-``NetBox site '<slug>' does not exist``
+``NetBox site '<slug>' does not exist`` / ``NetBox has no sites``
     Create the site in NetBox first (or use an existing slug); the command never creates sites.
+
+``<device> Outlet 3 already feeds <device> <port>``
+    The outlet is cabled to another device in NetBox. Pick a free outlet - or, if that device
+    was unplugged, remove its cable in NetBox (*Cables*) and run again.
+
+``<device> keeps its labgrid_power settings in NetBox (...), which differ from this board's (...)``
+    Not an error: the power device was set up by an earlier board (or by hand) with other
+    settings, and the command never replaces them. If the device's address really changed,
+    edit its *Labgrid power control* field in NetBox.
+
+``<board> power is also connected to <device> <outlet> - left as is``
+    Not an error: the board was cabled to another outlet before. If it was moved, remove the
+    old cable in NetBox.
+
+``cannot SSH to <host>``
+    The exporter host's name doesn't resolve, or its SSH key isn't accepted without a
+    password. Check the *Exporter host SSH login* answer (pick **review** to change it) and
+    that ``ssh user@host`` works without a prompt.
 
 ``labgrid-exporter not found on <host>``
     Install labgrid on the exporter host (``pip install labgrid``) so ``labgrid-exporter`` is
@@ -449,7 +563,7 @@ How it maps to the manual procedure
 
     adi-lg netbox add-hardware                  manual equivalent (onboarding-a-lab-host.rst)
     ───────────────────────────────────────────  ──────────────────────────────────────────────
-    NetBox device create/update                  (no manual equivalent - new)
+    NetBox device create/update + power cable    (no manual equivalent - new)
     render + validate exporter_configs/*.yaml     Step 2: copy template, fill in, validate.py
     SSH deploy + systemd install/start/verify     Step 2: run labgrid-exporter (foreground/nohup)
     POST /places, /places/{name}/matches          Step 3: labgrid-client create / add-match

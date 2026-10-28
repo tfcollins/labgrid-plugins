@@ -282,3 +282,55 @@ def test_missing_power_env_ignores_optional_credentials(monkeypatch):
 def test_module_docstring_lists_the_exclusions():
     doc = textwrap.dedent(power.__doc__ or "")
     assert all(name in doc for name in NOT_OFFERED)
+
+
+# NetBox records a board's power as a cable from the board to an outlet on a
+# power device: one field per type picks the outlet, the rest identify the
+# device, except settings that belong to the board's connection.
+OUTLET_FIELD = {
+    "apc": "power_outlet",
+    "cyberpower": "power_outlet",
+    "network-pdu": "power_index",
+    "pdudaemon": "power_index",
+    "vesync": None,
+    "kasa": "power_outlet",
+    "homeassistant": None,
+    "tasmota": None,
+    "usb-hub": "power_index",
+    "ykush": "power_index",
+    "sispm": "power_index",
+    "modbus": "power_coil",
+    "waveshare-modbus": "power_coil",
+    "http-output": None,
+    "gpio": "power_gpio_index",
+    "gpio-matched": "power_pin",
+    "lxa-iobus": "power_pin",
+    "onewire": "power_path",
+    "deditec": "power_index",
+    "hid-relay": "power_index",
+    "eth008": "power_index",
+    "sigrok": "power_channel",
+    "laa": None,
+    "manual": None,
+}
+BOARD_FIELDS = {
+    "modbus": {"power_invert"},
+    "waveshare-modbus": {"power_invert"},
+    "laa": {"power_on", "power_off"},
+}
+
+
+def test_every_type_says_which_field_picks_the_outlet():
+    assert set(OUTLET_FIELD) == set(power.POWER_TYPES)
+    for t in TYPES:
+        outlet = t.outlet_field
+        assert (outlet.var if outlet else None) == OUTLET_FIELD[t.key], t.key
+
+
+@pytest.mark.parametrize("t", TYPES, ids=_ids)
+def test_fields_are_split_into_device_outlet_and_board_settings(t):
+    scopes = [f.scope for f in t.fields]
+    assert set(scopes) <= {"device", "outlet", "board"}
+    assert scopes.count("outlet") <= 1
+    assert {f.var for f in t.fields if f.scope == "board"} == BOARD_FIELDS.get(t.key, set())
+    assert [f.var for f in t.device_fields] == [f.var for f in t.fields if f.scope == "device"]

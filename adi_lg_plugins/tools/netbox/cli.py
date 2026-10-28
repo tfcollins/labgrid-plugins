@@ -1,9 +1,10 @@
 """`adi-lg netbox add-hardware` - interactive onboarding.
 
-Registers a new board in NetBox, renders+validates its exporter config,
-SSH-deploys it as a systemd service on the exporter host and verifies it
-comes up, then creates the matching labgrid Place (create/add-match/
-set-tags) on the coordinator. Answers are saved as they are given, so a
+Registers a new board in NetBox, cabled to an outlet on the power device
+that switches it (picked from NetBox, or added), renders+validates its
+exporter config, SSH-deploys it as a systemd service on the exporter host
+and verifies it comes up, then creates the matching labgrid Place
+(create/add-match/set-tags) on the coordinator. Answers are saved as they are given, so a
 failed run can be resumed. See docs/source/user-guide/netbox-onboarding.rst
 for prerequisites.
 """
@@ -12,6 +13,7 @@ from __future__ import annotations
 
 import os
 import re
+from dataclasses import dataclass
 from pathlib import Path
 
 import click
@@ -34,7 +36,7 @@ from adi_lg_plugins.hw_ci.coordinator import (
     resolve_coordinator,
     set_place_tags,
 )
-from adi_lg_plugins.tools._answers import Run, SavedAnswers, answers_dir, pick_run
+from adi_lg_plugins.tools._answers import NEW, Run, SavedAnswers, answers_dir, pick_run
 from adi_lg_plugins.tools._choices import ask_choice
 
 from . import client, provision
@@ -128,13 +130,8 @@ def _pick_run() -> Run:
     )
 
 
-def _ask_power(run: Run | None = None) -> tuple[str, dict[str, str]]:
-    """Ask for a power type by category, then that type's fields.
-
-    Returns the type key and the template context for its ``power_*`` fields;
-    optional fields left blank are omitted so the fragment's default applies.
-    """
-    run = run or Run(_COMMAND, console)
+def _ask_power_type(run: Run) -> str:
+    """Ask for a power type by category."""
 
     def ask_category(default):
         console.print("\n[bold]Power control[/bold]")
@@ -158,7 +155,7 @@ def _ask_power(run: Run | None = None) -> tuple[str, dict[str, str]]:
     )
     in_category = power_types.types_in(category)
     keys = [t.key for t in in_category]
-    power = run.answer(
+    return run.answer(
         "power",
         "Power type",
         lambda default: ask_choice(
@@ -171,8 +168,16 @@ def _ask_power(run: Run | None = None) -> tuple[str, dict[str, str]]:
         default="vesync" if "vesync" in keys else keys[0],
         choices=keys,
     )
+
+
+def _ask_power_fields(run: Run, fields, defaults: dict[str, str] | None = None) -> dict[str, str]:
+    """Ask for power fields; ``defaults`` replace a field's own default (e.g. from NetBox).
+
+    Returns the template context for them; optional fields left blank are
+    omitted so the fragment's default applies.
+    """
     context = {}
-    for f in power_types.POWER_TYPES[power].fields:
+    for f in fields:
         if f.choices:
             ask = lambda default, f=f: ask_choice(  # noqa: E731
                 console, f"  {f.prompt}", power_types.choices_for(f.choices), default=default
@@ -183,10 +188,274 @@ def _ask_power(run: Run | None = None) -> tuple[str, dict[str, str]]:
             ask = lambda default, f=f: Prompt.ask(  # noqa: E731
                 f"  {f.prompt}", default=default, show_default=default != ""
             )
-        answer = run.answer(f"power.{f.var}", f.prompt, ask, default=f.default)
+        default = (defaults or {}).get(f.var) or f.default
+        answer = run.answer(f"power.{f.var}", f.prompt, ask, default=default)
         if answer not in (None, ""):
             context[f.var] = answer
+    return context
+
+
+def _ask_power(run: Run | None = None) -> tuple[str, dict[str, str]]:
+    """Ask for a power type by category, then all of that type's fields."""
+    run = run or Run(_COMMAND, console)
+    power = _ask_power_type(run)
+    return power, _ask_power_fields(run, power_types.POWER_TYPES[power].fields)
+
+
+class _NetBox:
+    """The run's NetBox connection, opened when first needed.
+
+    Its URL and token are asked for then, unless given as options. Callers
+    only read from NetBox before the plan is confirmed.
+    """
+
+    def __init__(self, run: Run, url: str | None, token: str | None, verify: bool | str):
+        self.run = run
+        self.url = url
+        self.token = token
+        self.verify = verify
+        self._api = None
+
+    def api(self):
+        if self._api is None:
+            # Asked again on resume (the saved URL is the default): a wrong one is
+            # what most often stops a run.
+            self.url = self.url or self.run.answer(
+                "netbox_url",
+                "NetBox URL",
+                lambda default: _ask_required(
+                    "NetBox URL (e.g. https://netbox.example.com)", check=_URL, default=default
+                ),
+                explain="The NetBox instance to register the board in (or set NETBOX_URL).",
+                reask=True,
+            )
+            if not self.token:
+                _explain(
+                    "A NetBox API token that can create devices; create one under your user "
+                    "profile in NetBox (or set NETBOX_TOKEN)."
+                )
+                self.token = _ask_token()
+            # Lab NetBoxes commonly sit behind an internal CA, so checking is opt-in.
+            if self.verify is False:
+                console.print(
+                    "[dim]NetBox TLS certificate not verified "
+                    "(--netbox-verify or --netbox-ca-bundle to check it)[/dim]"
+                )
+            self._api = client.connect(self.url, self.token, verify=self.verify)
+        return self._api
+
+    def __call__(self, fn, *args, **kwargs):
+        """``fn(api, *args, **kwargs)``; NetBox failures end the run without a traceback."""
+        api = self.api()
+        try:
+            with client.reported_errors(self.url):
+                return fn(api, *args, **kwargs)
+        except RuntimeError as e:
+            raise click.ClickException(str(e)) from e
+
+
+@dataclass(frozen=True)
+class _PowerLink:
+    """The NetBox power device and outlet(s) a board's power port is cabled to."""
+
+    device: str
+    new: bool
+    outlets: tuple[str, ...]
+    settings: dict
+
+
+def _power_settled(answers: dict) -> bool:
+    """Whether saved answers already name the NetBox power device and outlet."""
+    picked = answers.get("power_device")
+    if picked is None:
+        return False
+    if picked == NEW:
+        return answers.get("power") == "manual" or bool(answers.get("power_device_name"))
+    return answers.get("power_netbox_outlet") is not None
+
+
+def _power_link(run: Run, power: str, context: dict[str, str]) -> _PowerLink | None:
+    """The NetBox power connection the answers describe; None if there is none to record."""
+    answers = run.saved.answers
+    picked = answers.get("power_device")
+    if picked is None or power == "manual":
+        return None
+    power_type = power_types.POWER_TYPES[power]
+    new = picked == NEW
+    outlet = None if new else answers.get("power_netbox_outlet")
+    if outlet in (None, NEW):
+        field = power_type.outlet_field
+        outlets = client.outlet_names(power_type, context.get(field.var) if field else None)
+    else:
+        outlets = [outlet]
+    return _PowerLink(
+        answers.get("power_device_name") if new else picked,
+        new,
+        tuple(outlets),
+        client.power_settings(power_type, context),
+    )
+
+
+def _suggested_device_name(power: str, context: dict[str, str], board: str) -> str:
+    """e.g. cyberpower-10.0.0.20, from the type and the field that identifies the device."""
+    fields = power_types.POWER_TYPES[power].device_fields
+    value = next((context[f.var] for f in fields if context.get(f.var)), None)
+    name = f"{power}-{value}" if value else f"{board}-{power}"
+    return re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-")
+
+
+def _ask_power_source(
+    run: Run, devices: list | None, *, site: str, board: str, taken
+) -> tuple[str, dict[str, str]]:
+    """Ask how the board's power is switched; returns the power type and its context.
+
+    ``devices`` are the power devices at the board's site in NetBox; picking one
+    takes its type and settings from NetBox and asks only which outlet. With
+    None (a dry run, or the choice is saved) only the power type and fields are
+    asked. ``taken(name)`` says another device at the site already has ``name``.
+    """
+    if devices is None:
+        power, context = _ask_power(run)
+        if run.saved.answers.get("power_device") == NEW and power != "manual":
+            _ask_device_name(run, power, context, board, taken)
+        return power, context
+
+    by_name = {d.name: d for d in devices}
+    if devices:
+        picked = run.answer(
+            "power_device",
+            "Power device",
+            lambda default: _ask_power_device(devices, site, default),
+            choices=[*by_name, NEW],
+            explain=(
+                "The device that switches this board's power (PDU, smart plug, relay, ...). "
+                "Pick one from NetBox to use its settings, or add a new one; the board's power "
+                "port is cabled to the outlet you choose."
+            ),
+        )
+    else:
+        picked = run.given("power_device", "Power device", NEW)
+    if picked == NEW:
+        power, context = _ask_power(run)
+        if power != "manual":
+            _ask_device_name(run, power, context, board, taken)
+        return power, context
+
+    device = by_name[picked]
+    known = client.power_answers(device.settings)
+    if known:
+        power, context = known
+        power_type = power_types.POWER_TYPES[power]
+        run.given("power_category", "Power category", power_type.category)
+        run.given("power", "Power type", power)
+        for f in power_type.device_fields:
+            run.given(f"power.{f.var}", f.prompt, context.get(f.var, ""))
+        console.print(
+            f"  [dim]{escape(device.name)}: {escape(power_type.label)} ({power}), "
+            "settings from NetBox[/dim]"
+        )
+    else:
+        console.print(
+            f"  [dim]{escape(device.name)} has no labgrid power settings in NetBox yet; "
+            "your answers are saved on it.[/dim]"
+        )
+        power = _ask_power_type(run)
+        power_type = power_types.POWER_TYPES[power]
+        context = _ask_power_fields(
+            run,
+            power_type.device_fields,
+            {"power_host": device.address} if device.address else None,
+        )
+
+    field = power_type.outlet_field
+    if field is None and len(device.outlets) == 1:
+        run.given("power_netbox_outlet", "Outlet on the power device", device.outlets[0].name)
+    else:
+        outlet = run.answer(
+            "power_netbox_outlet",
+            "Outlet on the power device",
+            lambda default: _ask_outlet(device, board, default),
+            choices=[*(o.name for o in device.outlets), NEW],
+        )
+        if field is not None:
+            value = (
+                None
+                if outlet == NEW
+                else client.outlet_answer(power_type, outlet, len(device.outlets))
+            )
+            if value is None:
+                digits = re.findall(r"\d+", outlet)
+                default = digits[-1] if digits and outlet != NEW else field.default
+                context.update(_ask_power_fields(run, [field], {field.var: default}))
+            else:
+                run.given(f"power.{field.var}", field.prompt, value)
+                if value:
+                    context[field.var] = value
+    board_fields = [f for f in power_type.fields if f.scope == "board"]
+    context.update(_ask_power_fields(run, board_fields))
     return power, context
+
+
+def _ask_power_device(devices: list, site: str, default: str | None) -> str:
+    console.print(f"\n[bold]Power devices in NetBox at {escape(site)}[/bold]")
+    rows = []
+    for d in devices:
+        settings = d.settings or {}
+        free = sum(o.connected_to is None for o in d.outlets)
+        address = next((str(v) for k, v in settings.items() if k in ("address", "host")), d.address)
+        rows.append(
+            (d.name, settings.get("type", "not set"), address, f"{free} of {len(d.outlets)}")
+        )
+    rows.append((NEW, "", "", "a power device not in NetBox yet: add it"))
+    return ask_choice(
+        console,
+        "Power device",
+        rows,
+        headers=("Device", "Type", "Address", "Free outlets"),
+        default=default,
+    )
+
+
+def _ask_outlet(device, board: str, default: str | None) -> str:
+    """Pick an outlet that is free, or already feeds this board; or a new one."""
+    rows = [(o.name, o.connected_to or "free") for o in device.outlets]
+    rows.append((NEW, "an outlet not in NetBox yet: add it"))
+    feeds = {o.name: o.connected_to for o in device.outlets}
+    while True:
+        outlet = ask_choice(
+            console,
+            f"Outlet on {escape(device.name)}",
+            rows,
+            headers=("Outlet", "Feeds"),
+            default=default,
+        )
+        other = feeds.get(outlet)
+        if other is None or other.startswith(f"{board} "):
+            return outlet
+        console.print(
+            f"    [red]{escape(client.outlet_label(device.name, outlet))} already feeds "
+            f"{escape(other)} - pick a free one, or remove that cable in NetBox first[/red]"
+        )
+
+
+def _ask_device_name(run: Run, power: str, context: dict[str, str], board: str, taken) -> str:
+    def ask(default):
+        while True:
+            name = _ask_required("Power device name in NetBox", check=_NAME, default=default)
+            if not taken(name):
+                return name
+            console.print(
+                f"    [red]{escape(name)} is already a device in NetBox without power outlets - "
+                "pick another name[/red]"
+            )
+
+    return run.answer(
+        "power_device_name",
+        "Power device name in NetBox",
+        ask,
+        default=_suggested_device_name(power, context, board),
+        explain="The new power device is added to NetBox under this name, at the board's site.",
+    )
 
 
 # Board, carrier and chip names end up in a systemd unit name, a place name, a
@@ -437,8 +706,6 @@ def _onboard(
         default=provision.template_strategy(template_path),
         choices=KNOWN_BOOT_STRATEGIES,
     )
-    power, power_context = _ask_power(run)
-    power_type = power_types.POWER_TYPES[power]
     runner_label = run.answer(
         "runner_label",
         "GitHub Actions runner label",
@@ -449,15 +716,53 @@ def _onboard(
             "(the place's runner tag)."
         ),
     )
+
+    # The site and the board's power device are picked from what NetBox has, so
+    # it is read from here on, unless the saved answers already settle both.
+    # Nothing is written to NetBox before the plan is confirmed.
+    netbox = _NetBox(run, netbox_url, netbox_token, netbox_verify)
+    look_up = not dry_run and (run.mode != "resume" or not _power_settled(run.saved.answers))
+    sites = dict(netbox(client.sites)) if look_up else None
+    if sites == {}:
+        raise click.ClickException(
+            "NetBox has no sites - add the lab's site first (Organization > Sites); "
+            "this command never creates sites"
+        )
+
+    def ask_site(default):
+        if sites is None:
+            return _ask_required("NetBox site slug (e.g. lab3)", check=_SLUG, default=default)
+        return ask_choice(
+            console,
+            "NetBox site slug",
+            list(sites.items()),
+            headers=("Site", "Name"),
+            default=default,
+        )
+
     site_slug = run.answer(
         "site_slug",
         "NetBox site slug",
-        lambda default: _ask_required("NetBox site slug (e.g. lab3)", check=_SLUG, default=default),
+        ask_site,
+        choices=sites,
         explain=(
             "The existing NetBox site the board is in (NetBox: Organization > Sites). "
             "This command never creates sites."
         ),
     )
+    devices = netbox(client.power_devices, site_slug) if look_up else None
+    power_names = {d.name for d in devices or ()}
+    power, power_context = _ask_power_source(
+        run,
+        devices,
+        site=site_slug,
+        board=name,
+        taken=lambda n: (
+            look_up and n not in power_names and netbox(client.device_exists, n, site_slug)
+        ),
+    )
+    power_type = power_types.POWER_TYPES[power]
+    power_link = _power_link(run, power, power_context)
     ssh_target = run.answer(
         "ssh_target",
         "Exporter host SSH login",
@@ -556,6 +861,16 @@ def _onboard(
         power_lines.append("[yellow]the client (test runner) must reach this device[/yellow]")
     if power_type.note:
         power_lines.append(power_type.note)
+    if power_link is not None:
+        netbox_power = [
+            escape(f"{name} power port -> {client.outlet_label(power_link.device, o)}")
+            + (" (new device)" if power_link.new else "")
+            for o in power_link.outlets
+        ]
+    elif power == "manual":
+        netbox_power = ["not recorded (manual power)"]
+    else:
+        netbox_power = ["chosen from NetBox when run without --dry-run"]
 
     console.print("\n[bold]Plan[/bold]")
     console.print(
@@ -571,6 +886,7 @@ def _onboard(
                 ("Place matches", [escape(m) for m in match_patterns]),
                 ("Place tags", [escape(f"{k}={v}") for k, v in tags.items()]),
                 ("Power", power_lines),
+                ("Power in NetBox", netbox_power),
             ]
         )
     )
@@ -588,23 +904,7 @@ def _onboard(
     # aren't needed. Tokens and passwords are never saved.
     netbox_done = run.saved.is_done("netbox")
     if not netbox_done:
-        # Asked again on resume (the saved URL is the default): a wrong one is
-        # what most often stops a run.
-        netbox_url = netbox_url or run.answer(
-            "netbox_url",
-            "NetBox URL",
-            lambda default: _ask_required(
-                "NetBox URL (e.g. https://netbox.example.com)", check=_URL, default=default
-            ),
-            explain="The NetBox instance to register the board in (or set NETBOX_URL).",
-            reask=True,
-        )
-        if not netbox_token:
-            _explain(
-                "A NetBox API token that can create devices; create one under your user profile "
-                "in NetBox (or set NETBOX_TOKEN)."
-            )
-            netbox_token = _ask_token()
+        netbox.api()
 
     if not coord_user or not coord_password:
         _explain(
@@ -620,39 +920,46 @@ def _onboard(
     if not coord_password:
         coord_password = _ask_secret("Coordinator API password")
 
-    # 1. NetBox: register the device (source of truth for inventory).
+    # 1. NetBox: register the device (source of truth for inventory) and cable
+    # its power. Marked done only once both are, so a failure is redone on resume.
     if netbox_done:
         console.print("[dim]NetBox device: done in an earlier run, skipped[/dim]")
     else:
-        # Lab NetBoxes commonly sit behind an internal CA, so checking is opt-in.
-        if netbox_verify is False:
-            console.print(
-                "[dim]NetBox TLS certificate not verified "
-                "(--netbox-verify or --netbox-ca-bundle to check it)[/dim]"
+
+        def register(nb):
+            client.ensure_schema(nb)
+            device = client.create_or_update_device(
+                nb,
+                name,
+                carrier=carrier,
+                site_slug=site_slug,
+                custom_fields={
+                    "carrier": carrier,
+                    "daughter_board": daughter_board,
+                    "boot_strategy": boot_strategy,
+                    "exporter_host": ssh_target,
+                    "runner_label": runner_label,
+                },
             )
-        try:
-            with client.reported_errors(netbox_url):
-                nb = client.connect(netbox_url, netbox_token, verify=netbox_verify)
-                client.ensure_schema(nb)
-                device = client.create_or_update_device(
+            done = []
+            if power_link is not None:
+                done = client.connect_power(
                     nb,
-                    name,
-                    carrier=carrier,
+                    device,
                     site_slug=site_slug,
-                    custom_fields={
-                        "carrier": carrier,
-                        "daughter_board": daughter_board,
-                        "boot_strategy": boot_strategy,
-                        "exporter_host": ssh_target,
-                        "runner_label": runner_label,
-                    },
+                    device=power_link.device,
+                    settings=power_link.settings,
+                    outlets=list(power_link.outlets),
                 )
-        except RuntimeError as e:
-            raise click.ClickException(str(e)) from e
+            return device, done
+
+        device, power_done = netbox(register)
         run.saved.mark_done("netbox")
         console.print(
-            f"[green]NetBox device ready:[/green] {netbox_url.rstrip('/')}/dcim/devices/{device.id}/"
+            f"[green]NetBox device ready:[/green] {netbox.url.rstrip('/')}/dcim/devices/{device.id}/"
         )
+        for line in power_done:
+            console.print(f"  [dim]{escape(line)}[/dim]")
 
     # 2. Exporter host: deploy + verify the systemd service.
     if run.saved.is_done("exporter"):

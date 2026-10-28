@@ -253,7 +253,13 @@ def check_prerequisites(ssh_host: str) -> str:
     from labgrid.driver.exception import ExecutionError
     from labgrid.util.ssh import sshmanager
 
-    conn = sshmanager.get(ssh_host)
+    try:
+        conn = sshmanager.get(ssh_host)
+    except ExecutionError as e:
+        raise RuntimeError(
+            f"cannot SSH to {ssh_host} - check the exporter host login and that its key is "
+            f"accepted without a password: {e}"
+        ) from e
     try:
         out = conn.run_check("command -v labgrid-exporter")
     except ExecutionError as e:
