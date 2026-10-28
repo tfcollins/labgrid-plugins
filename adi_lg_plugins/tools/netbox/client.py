@@ -15,6 +15,10 @@ tool only looks one up by slug and fails clearly if it doesn't exist.
 from __future__ import annotations
 
 import logging
+from contextlib import contextmanager
+
+import requests
+import urllib3
 
 logger = logging.getLogger(__name__)
 
@@ -44,10 +48,55 @@ def _require_pynetbox():
     return pynetbox
 
 
-def connect(url: str, token: str):
-    """Return a connected ``pynetbox.api`` instance."""
+class _Session(requests.Session):
+    """A session whose ``verify=False`` or CA-bundle path isn't overridden by the environment.
+
+    requests otherwise swaps in ``REQUESTS_CA_BUNDLE`` / ``CURL_CA_BUNDLE`` for every request
+    pynetbox makes, since pynetbox never passes ``verify`` itself.
+    """
+
+    def merge_environment_settings(self, url, proxies, stream, verify, cert):
+        settings = super().merge_environment_settings(url, proxies, stream, verify, cert)
+        if self.verify is not True:
+            settings["verify"] = self.verify
+        return settings
+
+
+def connect(url: str, token: str, *, verify: bool | str = True):
+    """Return a connected ``pynetbox.api`` instance.
+
+    ``verify`` is requests' TLS setting: ``False`` skips certificate checks, a
+    path names a CA bundle (for a NetBox behind an internal CA).
+    """
     pynetbox = _require_pynetbox()
-    return pynetbox.api(url, token=token)
+    nb = pynetbox.api(url, token=token)
+    nb.http_session = _Session()
+    nb.http_session.verify = verify
+    if verify is False:
+        urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    return nb
+
+
+@contextmanager
+def reported_errors(url: str):
+    """Re-raise TLS, connection, and API failures as RuntimeError with a hint."""
+    pynetbox = _require_pynetbox()
+    try:
+        yield
+    except requests.exceptions.SSLError as e:
+        raise RuntimeError(
+            f"TLS verification failed for {url}: {e}\n"
+            "If NetBox uses an internal CA, pass --netbox-ca-bundle <ca.pem> (on Debian/Ubuntu "
+            "the system trust store is /etc/ssl/certs/ca-certificates.crt), or drop "
+            "--netbox-verify / --netbox-ca-bundle to skip verification"
+        ) from e
+    except OSError as e:  # RequestException, or a CA bundle path that doesn't exist
+        raise RuntimeError(f"could not reach NetBox at {url}: {e}") from e
+    except pynetbox.RequestError as e:
+        hint = ""
+        if e.req.status_code in (401, 403):
+            hint = " - check the API token (--netbox-token / NETBOX_TOKEN)"
+        raise RuntimeError(f"NetBox rejected the request: {e}{hint}") from e
 
 
 def ensure_schema(nb) -> None:

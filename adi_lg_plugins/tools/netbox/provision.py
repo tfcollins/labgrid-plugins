@@ -99,6 +99,15 @@ def template_strategy(template_path: Path) -> str | None:
     return match.group(1) if match else None
 
 
+_TITLE_HEADER = re.compile(r"^##\s*Exporter template:\s*(.+?)\s*$", re.M)
+
+
+def template_title(template_path: Path) -> str:
+    """One-line description of a template, from its ``## Exporter template:`` line."""
+    match = _TITLE_HEADER.search(template_path.read_text())
+    return match.group(1) if match else ""
+
+
 def discover_template_vars(template_path: Path) -> set[str]:
     """Undeclared Jinja2 variables referenced by the template."""
     jinja2 = _require_jinja2()
