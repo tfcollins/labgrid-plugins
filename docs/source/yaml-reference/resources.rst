@@ -227,7 +227,9 @@ The KuiperRelease describes a Kuiper release resource.
        For example, ``2023_R2_P1``.
    * - ``cache_path``
      - ``'~/.labgrid/kuiper_releases/'``
-     - Directory for downloaded images, cache metadata, and extracted boot files.
+     - Directory for downloaded images, cache metadata, and extracted boot files. The
+       download is staged here too. ``~`` is the home directory of the user that
+       downloads: the exporter user, for a remote place.
        For example, ``/var/cache/labgrid/kuiper``.
    * - ``kernel_path``
      - ``None``

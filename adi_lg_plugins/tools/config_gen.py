@@ -1,5 +1,4 @@
 import glob
-import os
 import socket
 
 import click
@@ -229,11 +228,9 @@ class ConfigGenerator:
             "kuiper.cache_dir", "Cache Directory", default="~/.labgrid/kuiper_releases"
         )
 
-        # KuiperDLDriver doesn't expand "~" (it would create a directory named "~").
-        self.add_resource(
-            "KuiperRelease",
-            {"release_version": release, "cache_path": os.path.expanduser(cache_dir)},
-        )
+        # Written as given: KuiperDLDriver expands "~" on the host that downloads
+        # (the exporter host, for a remote place).
+        self.add_resource("KuiperRelease", {"release_version": release, "cache_path": cache_dir})
         self.add_driver("KuiperDLDriver")
 
     def configure_tftp(self):
