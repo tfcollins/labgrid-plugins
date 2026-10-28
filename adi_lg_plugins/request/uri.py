@@ -66,7 +66,14 @@ def resolve_uri(target: Any, *, wait: float = 90.0, interval: float = 3.0) -> st
     # rather than a hardcoded ``eth0``: newer kernels (and some SD-autoboot Kuiper
     # images) name the DUT NIC ``end0`` / ``enp*s0``, so ``show eth0`` returns
     # nothing and we would wrongly fall back to the (often stale) static address.
-    live_ip_cmd = "ip -4 -o addr show scope global | awk '{print $4}' | cut -d/ -f1 | head -1"
+    # Boards with multiple NICs can have an unconnected one fall back to an
+    # IPv4LL address (169.254.0.0/16) that the kernel still reports as
+    # ``scope global`` (not ``scope link``), so it must be excluded explicitly
+    # or an unconnected interface that happens to list first wins the race.
+    live_ip_cmd = (
+        "ip -4 -o addr show scope global | awk '{print $4}' | cut -d/ -f1 "
+        "| grep -v '^169\\.254\\.' | head -1"
+    )
     deadline = time.monotonic() + wait
     last_err: Exception | None = None
     while True:
