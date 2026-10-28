@@ -452,6 +452,7 @@ Interactively generate a Labgrid YAML configuration file. This wizard scans for 
 * **Strategy Support:** Configures ``BootFPGASoC``, ``BootFPGASoCTFTP``, and ``BootFPGASoCSSH``.
 * **Resource Configuration:** Sets up Power Drivers (VeSync, CyberPower), Serial/Console, SD Mux, TFTP, and more.
 * **Ready to load:** The file starts with ``imports: [adi_lg_plugins]``, which labgrid needs to resolve the ADI drivers and strategies it names.
+* **labgrid-ready resources:** Resources use labgrid's class names and parameters (``RawSerialPort``, ``USBSDMuxDevice``, ``MassStorageDevice`` with ``path``, ``KuiperRelease`` with ``release_version``, ...), and the test suite builds every strategy's generated config with labgrid. SSH (``NetworkService``) logs in with the board login from the shell questions. The image writer adds ``USBStorageDriver``, which writes to the SD card through the SD mux. *Skip* (no power control) is offered only for ``BootFPGASoCSSH``; the other strategies need a power driver.
 
 **Example Session:**
 

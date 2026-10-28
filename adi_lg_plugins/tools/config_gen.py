@@ -1,10 +1,11 @@
 import glob
+import os
 import socket
 
 import click
 import yaml
 from rich.console import Console
-from rich.prompt import Confirm, IntPrompt, Prompt
+from rich.prompt import Confirm, FloatPrompt, IntPrompt, Prompt
 
 from adi_lg_plugins.tools._answers import Run, answers_dir, pick_run
 from adi_lg_plugins.tools._choices import ask_choice
@@ -31,6 +32,9 @@ _POWER_DRIVERS = [
     ("CyberPowerDriver", "CyberPower PDU (SNMP)"),
     ("Skip", "no power control"),
 ]
+# Strategies whose power binding is optional; the others need a PowerProtocol
+# driver, so "Skip" isn't offered for them.
+_POWER_OPTIONAL = {"BootFPGASoCSSH"}
 
 
 def scan_serial_ports():
@@ -73,6 +77,9 @@ class ConfigGenerator:
             "targets": {"main": {"resources": {}, "drivers": {}}},
         }
         self.target_name = "main"
+        self.strategy = None
+        # The board's Linux login, from the shell questions; SSH uses it too.
+        self.login = ("root", "analog")
         self.session = session or Run(_COMMAND, console)
 
     def ask(self, key, prompt, cls=Prompt, *, default=None, reask=False, **kwargs):
@@ -101,10 +108,18 @@ class ConfigGenerator:
     def add_driver(self, name, params=None):
         self.config["targets"][self.target_name]["drivers"][name] = params or {}
 
+    def add_network_service(self, address):
+        """The board's SSH address; SSH logs in as the board's Linux user."""
+        username, password = self.login
+        self.add_resource(
+            "NetworkService", {"address": address, "username": username, "password": password}
+        )
+
     def configure_power(self):
         console.print("[bold cyan]Configuring Power Protocol[/bold cyan]")
+        drivers = [d for d in _POWER_DRIVERS if d[0] != "Skip" or self.strategy in _POWER_OPTIONAL]
         driver_type = self.choose(
-            "power_driver", "Select Power Driver", _POWER_DRIVERS, default="VesyncPowerDriver"
+            "power_driver", "Select Power Driver", drivers, default="VesyncPowerDriver"
         )
 
         if driver_type == "VesyncPowerDriver":
@@ -112,7 +127,7 @@ class ConfigGenerator:
             username = self.ask("vesync.username", "VeSync Username")
             # An account password: asked every run, never saved.
             password = Prompt.ask("VeSync Password", password=True)
-            delay = self.ask("power.delay", "Power Cycle Delay (seconds)", IntPrompt, default=5)
+            delay = self.ask("power.delay", "Power Cycle Delay (seconds)", FloatPrompt, default=5.0)
 
             self.add_resource(
                 "VesyncOutlet",
@@ -120,7 +135,7 @@ class ConfigGenerator:
                     "outlet_names": outlet_names,
                     "username": username,
                     "password": password,
-                    "delay": delay,
+                    "delay": float(delay),  # the resource accepts a float only
                 },
             )
             self.add_driver("VesyncPowerDriver")
@@ -128,10 +143,10 @@ class ConfigGenerator:
         elif driver_type == "CyberPowerDriver":
             address = self.ask("cyberpower.address", "PDU IP Address")
             outlet = self.ask("cyberpower.outlet", "Outlet Number", IntPrompt)
-            delay = self.ask("power.delay", "Power Cycle Delay (seconds)", IntPrompt, default=5)
+            delay = self.ask("power.delay", "Power Cycle Delay (seconds)", FloatPrompt, default=5.0)
 
             self.add_resource(
-                "CyberPowerOutlet", {"address": address, "outlet": outlet, "delay": delay}
+                "CyberPowerOutlet", {"address": address, "outlet": outlet, "delay": float(delay)}
             )
             self.add_driver("CyberPowerDriver")
 
@@ -169,8 +184,8 @@ class ConfigGenerator:
 
         speed = self.ask("serial.speed", "Baud Rate", IntPrompt, default=115200)
 
-        # Add SerialPort resource and SerialDriver
-        self.add_resource("SerialPort", {"port": selected_port, "speed": speed})
+        # Add RawSerialPort resource and SerialDriver
+        self.add_resource("RawSerialPort", {"port": selected_port, "speed": speed})
         self.add_driver("SerialDriver")
 
         # Configure ADIShellDriver
@@ -178,6 +193,7 @@ class ConfigGenerator:
         login_prompt = self.ask("shell.login_prompt", "Login Prompt Regex", default="login:")
         username = self.ask("shell.username", "Username", default="root")
         password = self.ask("shell.password", "Password", default="analog")
+        self.login = (username, password)
 
         self.add_driver(
             "ADIShellDriver",
@@ -192,32 +208,32 @@ class ConfigGenerator:
     def configure_sdmux(self):
         console.print("[bold cyan]Configuring SD Mux[/bold cyan]")
         # Assuming USBSDMuxDriver
-        mux_path = self.ask(
-            "sdmux.path",
-            "SD Mux Device Path",
-            default="/dev/disk/by-id/usb-Linux_Autobuild_SD_Mux_...",
-        )
-        self.add_resource("USBSDMux", {"control_path": mux_path})
+        mux_path = self.ask("sdmux.path", "SD Mux Control Device (/dev/sg*)", default="/dev/sg0")
+        self.add_resource("USBSDMuxDevice", {"control_path": mux_path})
         self.add_driver("USBSDMuxDriver")
 
     def configure_mass_storage(self):
         console.print("[bold cyan]Configuring Mass Storage (Host side SD access)[/bold cyan]")
-        device = self.ask(
-            "mass_storage.device",
-            "Block Device Path (host)",
-            default="/dev/disk/by-id/usb-Linux_Autobuild_SD_Mux_...",
+        path = self.ask(
+            "mass_storage.path", "Boot Partition (host)", default="/dev/disk/by-label/BOOT"
         )
-        partition = self.ask("mass_storage.partition", "Partition Number", IntPrompt, default=1)
 
-        self.add_resource("MassStorageDevice", {"device": device, "partition": partition})
+        # The partition is reached through the SD mux, switched to the host first.
+        self.add_resource("MassStorageDevice", {"path": path, "use_with_sdmux": True})
         self.add_driver("MassStorageDriver")
 
     def configure_kuiper(self):
         console.print("[bold cyan]Configuring Kuiper Release[/bold cyan]")
         release = self.ask("kuiper.release", "Default Release Version", default="2023_R2_P1")
-        cache_dir = self.ask("kuiper.cache_dir", "Cache Directory", default="/var/cache/kuiper")
+        cache_dir = self.ask(
+            "kuiper.cache_dir", "Cache Directory", default="~/.labgrid/kuiper_releases"
+        )
 
-        self.add_resource("KuiperRelease", {"release": release, "cache_dir": cache_dir})
+        # KuiperDLDriver doesn't expand "~" (it would create a directory named "~").
+        self.add_resource(
+            "KuiperRelease",
+            {"release_version": release, "cache_path": os.path.expanduser(cache_dir)},
+        )
         self.add_driver("KuiperDLDriver")
 
     def configure_tftp(self):
@@ -252,17 +268,15 @@ class ConfigGenerator:
         if self.ask(
             "image_writer", "Enable Image Writer (USBStorageDriver)?", Confirm, default=False
         ):
-            # USBStorageDriver usually binds to a generic USB resource or similar.
-            # Labgrid's USBStorageDriver needs a path.
-            path = self.ask("image_writer.path", "USB Device Path", default="/dev/disk/by-id/...")
-            self.add_resource("USBStorage", {"path": path})  # Standard labgrid resource?
-            # Actually Labgrid USBStorageDriver uses 'USBStorage' resource.
+            # No resource of its own: USBStorageDriver binds the USBSDMuxDevice and
+            # writes the image to its SD card.
             self.add_driver("USBStorageDriver")
 
     def run(self):
         selected_strategy = self.choose(
             "strategy", "Select Strategy", _STRATEGIES, default="BootFPGASoC"
         )
+        self.strategy = selected_strategy
 
         self.target_name = self.ask("target", "Target Name", default="main")
         # From here on the answers are saved, in a file named after the target.
@@ -290,7 +304,7 @@ class ConfigGenerator:
                 address = self.ask(
                     "ssh.address", "Target IP Address (or auto-discovered)", default="192.168.1.10"
                 )
-                self.add_resource("NetworkService", {"address": address})
+                self.add_network_service(address)
                 self.add_driver("SSHDriver")
 
             self.add_driver("BootFPGASoCTFTP")
@@ -298,7 +312,7 @@ class ConfigGenerator:
         elif selected_strategy == "BootFPGASoCSSH":
             # Needs Network, SSH, Kuiper (for files)
             address = self.ask("ssh.address", "Target IP Address", default="192.168.1.10")
-            self.add_resource("NetworkService", {"address": address})
+            self.add_network_service(address)
             self.add_driver("SSHDriver")
             self.configure_kuiper()
             self.add_driver("BootFPGASoCSSH")
