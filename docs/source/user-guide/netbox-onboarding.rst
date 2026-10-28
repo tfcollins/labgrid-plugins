@@ -69,17 +69,24 @@ Usage
     5   soc-tftp      BootFPGASoCTFTP   SoC booted over TFTP from U-Boot
     6   zynqmp-jtag   BootZynqMPJTAG    ZynqMP board strapped for JTAG boot
     Board template (fabric-jtag): 3
-    Hardware / place / exporter name (e.g. zcu102-lab3-001): zcu102-lab3-001
-    Carrier (board/FPGA, e.g. zcu102, vcu118): zcu102
-    Daughter board / chip (e.g. ad9081): ad9081
+
+    A unique name for this board. It names the NetBox device, the coordinator place
+    and the exporter service (labgrid-exporter-<name>).
+    Board name (e.g. zcu102-ad9081-lab3): zcu102-lab3-001
+
+    The FPGA or SoC board the ADI part is mounted on. Saved in NetBox and as the
+    place's carrier tag; most templates also use it in the resource group name.
+    Carrier board (e.g. zcu102, zc706, vcu118): zcu102
+
+    The ADI part under test. Saved in NetBox and as the place's daughter-board tag;
+    most templates also use it in the resource group name.
+    ADI daughter board or chip (e.g. ad9081, adrv9009): ad9081
 
     Boot strategies
      #   Strategy                   Description
     ──────────────────────────────────────────────────────────────────────────────
      1   BootFPGASoC                BootFPGASoC strategy for FPGA SoC devices using
                                     Kuiper releases.
-     2   BootFPGASoCSSH             Strategy to boot an FPGA SoC device using
-                                    ShellDriver and SSHDriver.
      ...
     12   BootTickFPGASSH            BootFPGASoCSSH + runtime Tick deploy (bitstream,
                                     overlay, module).
@@ -90,52 +97,74 @@ Usage
     ──────────────────────────────────────────────────────────────────────────────
     1   Network PDU                    apc, cyberpower, network-pdu, pdudaemon
     2   Smart plug / home automation   vesync, kasa, homeassistant, tasmota
-    3   USB-switched port              usb-hub, ykush, sispm
-    4   Relay / digital output         modbus, waveshare-modbus, http-output, gpio,
-                                       gpio-matched, lxa-iobus, onewire, deditec,
-                                       hid-relay, eth008
-    5   Bench power supply             sigrok
-    6   Other                          laa, manual
-    Power category (Smart plug / home automation): 4
-     #   Type               Description                  Driver
+    ...
+    Power category (Smart plug / home automation): 1
+    #   Type          Description                                 Driver
     ──────────────────────────────────────────────────────────────────────────────
-     1   modbus             Modbus/TCP coil              ModbusCoilDriver +
-                                                         DigitalOutputPowerDriver
-     2   waveshare-modbus   Waveshare Modbus/TCP relay   WaveShareModbusCoilDriver +
-                                                         DigitalOutputPowerDriver
-     ...
-    Power type (modbus):
-      Device hostname or IP: 10.0.0.50
-      Coil number: 2
-      Invert output (true/false) (false):
-    GitHub runner label (hw-zcu102):
-    NetBox site slug (must already exist): lab3
-    Exporter host SSH target (user@host): labadmin@lab-host-03
+    1   apc           APC PDU (SNMP)                              APCDriver
+    2   cyberpower    CyberPower PDU (SNMP)                       CyberPowerDriver
+    ...
+    Power type (apc): cyberpower
+      PDU hostname or IP: 10.0.0.20
+      Outlet number: 4
+
+    The self-hosted GitHub Actions runner that runs this board's hardware-CI jobs
+    (the place's runner tag).
+    GitHub Actions runner label (hw-zcu102):
+
+    The existing NetBox site the board is in (NetBox: Organization > Sites). This
+    command never creates sites.
+    NetBox site slug (e.g. lab3): lab3
+
+    The Linux machine the board's serial, USB and power are connected to. The
+    exporter service is installed there over SSH, so this user needs passwordless
+    sudo.
+    Exporter host SSH login (user@host): labadmin@lab-host-03
 
     Template fields for soc-sdmux
-      - target_ip (required)
-      - boot_partition
-      - kuiper_bootbin
+    Field               Question                             Default
+    ──────────────────────────────────────────────────────────────────────────────
+    target_ip           Board IP address, for SSH to its     required
+                        Linux
+    boot_partition      SD card boot partition on the        /dev/disk/by-label/BOOT
+                        exporter host, through the SD mux
+    kuiper_bootbin      BOOT.BIN, as release:<path> or a     unset
+                        file on the test runner
+    ...
+    serial_port         Serial console device on the         /dev/ttyUSB0
+                        exporter host
+    target_password     Board Linux SSH password             analog
+    target_username     Board Linux SSH username             root
+      Board IP address, for SSH to its Linux (required): 10.0.0.42
+      SD card boot partition on the exporter host, through the SD mux (Enter for
+    /dev/disk/by-label/BOOT):
+      BOOT.BIN, as release:<path> or a file on the test runner (Enter to leave
+    unset): release:zynqmp-zcu102-rev10-ad9081/m8_l4/BOOT.BIN
       ...
-      target_ip (required): 10.0.0.42
-      boot_partition (blank = template default):
-      kuiper_bootbin (blank = template default): release:zynqmp-zcu102-rev10-ad9081/m8_l4/BOOT.BIN
-      ...
+      Serial console device on the exporter host (Enter for /dev/ttyUSB0):
+      Board Linux SSH password (Enter for analog):
+      Board Linux SSH username (Enter for root):
 
     Plan
-      NetBox device: zcu102-lab3-001  (carrier=zcu102, chip=ad9081, site=lab3)
-      Exporter: labadmin@lab-host-03 -> systemd unit labgrid-exporter-zcu102-lab3-001
-      Coordinator place: zcu102-lab3-001  (tags: daughter-board=ad9081, carrier=zcu102,
-      boot-strategy=BootFPGASoC, runner=hw-zcu102, power-driver=DigitalOutputPowerDriver,
-      power-output-driver=ModbusCoilDriver)
-      Power: Modbus/TCP coil (modbus), via ModbusCoilDriver + DigitalOutputPowerDriver
-      Rendered + validated exporter config: /tmp/adi-lg-netbox-xxxxx/soc-sdmux.yaml
-      Resource group(s): ZCU102_AD9081
-      Place match(es): zcu102-lab3-001/ZCU102_AD9081/*
+      NetBox device       zcu102-lab3-001 (site lab3)
+      Carrier / chip      zcu102 / ad9081
+      Exporter host       labadmin@lab-host-03
+      Systemd unit        labgrid-exporter-zcu102-lab3-001
+      Exporter config     /tmp/adi-lg-netbox-xxxxxxxx/soc-sdmux.yaml (rendered +
+                          validated)
+      Resource groups     ZCU102_AD9081
+      Coordinator place   zcu102-lab3-001
+      Place matches       zcu102-lab3-001/ZCU102_AD9081/*
+      Place tags          daughter-board=ad9081
+                          carrier=zcu102
+                          boot-strategy=BootFPGASoC
+                          runner=hw-zcu102
+                          power-driver=CyberPowerDriver
+      Power               CyberPower PDU (SNMP) (cyberpower)
+                          via CyberPowerDriver
 
     Proceed? [y/n] (y): y
     ...
-    Done. zcu102-lab3-001 tags: {'daughter-board': 'ad9081', 'carrier': 'zcu102', ...}
 
 Each set of options is listed as a numbered table; answer with the number or the name,
 or press Enter for the default shown in parentheses.
@@ -144,14 +173,20 @@ Use ``--dry-run`` to render and schema-validate the exporter config and print th
 without touching NetBox, SSH, or the coordinator - useful for checking your answers before
 committing to a real board. A dry run never asks for NetBox or coordinator credentials.
 
-Fields with no default (``target_ip`` in every template, plus ``bitstream_path`` and
-``kernel_path`` in ``fabric-jtag``) are asked first, marked *(required)*, and asked again
-if left blank; the same applies to a power type's required fields. Leaving any other field
-blank uses the template's own default (see ``exporter_configs/templates/*.yaml``).
+Each question says what the answer is used for. Template fields are asked by what they are
+(*Board IP address*, *Serial console device on the exporter host*, ...), after a table of the
+template's fields with each one's default. Fields with no default (``target_ip`` in every
+template, plus ``bitstream_path`` and ``kernel_path`` in ``fabric-jtag``) are asked first,
+marked *(required)*, and asked again if left blank; the same applies to a power type's
+required fields. Pressing Enter on any other field keeps the template's default (see
+``exporter_configs/templates/*.yaml``). Malformed answers are asked again on the spot: the
+board name, carrier and daughter board take letters, digits, ``.``, ``_`` and ``-`` only,
+the site must be a slug, the SSH login must be ``user@host``, and the NetBox URL must start
+with ``http://`` or ``https://``.
 
 The templates name their resource group ``<CARRIER>_<CHIP>`` (e.g. ``ZCU102_AD9081``) from
-the ``carrier`` and ``chip`` fields. The command fills those from the *Carrier* and
-*Daughter board / chip* answers, so they are not asked again as template fields. Choose the
+the ``carrier`` and ``chip`` fields. The command fills those from the *Carrier board* and
+*ADI daughter board or chip* answers, so they are not asked again as template fields. Choose the
 template by boot strategy (see :doc:`exporter-setup`); the *Boot strategy* prompt defaults to
 the one the template declares. *Power category* and *Power type* choose the template's
 ``power`` fragment - any of the types in :ref:`power-types`, covering this package's outlets
@@ -228,7 +263,7 @@ up and later runs reuse them:
        - GitHub runner label
        - the runner label
 
-Then the **device** itself, named after the hardware name, with that device type and role,
+Then the **device** itself, named after the board name, with that device type and role,
 under the existing site. The command prints its URL
 (``<netbox>/dcim/devices/<id>/``) when done.
 
@@ -254,7 +289,7 @@ On the coordinator
 
 Through the coordinator REST API (:doc:`coordinator`), authenticated as the coordinator user:
 
-- ``POST /api/places`` - create the place, named after the hardware name.
+- ``POST /api/places`` - create the place, named after the board name.
 - ``POST /api/places/<name>/matches`` - one ``<name>/<group>/*`` match per resource group in
   the rendered config (``<name>`` is the exporter name the unit registers).
 - ``PUT /api/places/<name>/tags`` - ``daughter-board`` and ``carrier`` (lowercased),

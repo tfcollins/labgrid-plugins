@@ -9,9 +9,11 @@ docs/source/user-guide/netbox-onboarding.rst for prerequisites.
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import click
+from rich import box
 from rich.console import Console
 from rich.markup import escape
 from rich.padding import Padding
@@ -121,13 +123,29 @@ def _ask_power() -> tuple[str, dict[str, str]]:
     return power, context
 
 
-def _ask_required(prompt: str, **kwargs) -> str:
-    """Ask until the answer is non-blank (the field has no default to fall back on)."""
+# Board, carrier and chip names end up in a systemd unit name, a place name, a
+# resource group and a `<name>/<group>/*` match, so no spaces or slashes.
+_NAME = (r"[A-Za-z0-9][A-Za-z0-9._-]*", "use letters, digits, '.', '_' and '-' only")
+_SLUG = (r"[A-Za-z0-9_-]+", "a slug has letters, digits, '-' and '_' only")
+_SSH_LOGIN = (r"[^@\s]+@[^@\s]+", "use the form user@host")
+_URL = (r"https?://\S+", "include the scheme, e.g. https://netbox.example.com")
+
+
+def _explain(text: str) -> None:
+    """Say what the next question's answer is used for."""
+    console.print(f"\n[dim]{escape(text)}[/dim]")
+
+
+def _ask_required(prompt: str, *, check: tuple[str, str] | None = None, **kwargs) -> str:
+    """Ask until the answer is non-blank and, given ``check`` (regex, hint), matches it."""
     while True:
         answer = (Prompt.ask(prompt, **kwargs) or "").strip()
-        if answer:
+        if not answer:
+            console.print("    [red]required - this field has no default[/red]")
+        elif check and not re.fullmatch(check[0], answer):
+            console.print(f"    [red]{escape(check[1])}[/red]")
+        else:
             return answer
-        console.print("    [red]required - this field has no default[/red]")
 
 
 def _ask_secret(prompt: str) -> str:
@@ -208,9 +226,23 @@ def add_hardware(
     )
     template_path = templates[template_key]
 
-    name = Prompt.ask("Hardware / place / exporter name (e.g. zcu102-lab3-001)")
-    carrier = Prompt.ask("Carrier (board/FPGA, e.g. zcu102, vcu118)")
-    daughter_board = Prompt.ask("Daughter board / chip (e.g. ad9081)")
+    _explain(
+        "A unique name for this board. It names the NetBox device, the coordinator place "
+        "and the exporter service (labgrid-exporter-<name>)."
+    )
+    name = _ask_required("Board name (e.g. zcu102-ad9081-lab3)", check=_NAME)
+    _explain(
+        "The FPGA or SoC board the ADI part is mounted on. Saved in NetBox and as the "
+        "place's carrier tag; most templates also use it in the resource group name."
+    )
+    carrier = _ask_required("Carrier board (e.g. zcu102, zc706, vcu118)", check=_NAME)
+    _explain(
+        "The ADI part under test. Saved in NetBox and as the place's daughter-board tag; "
+        "most templates also use it in the resource group name."
+    )
+    daughter_board = _ask_required(
+        "ADI daughter board or chip (e.g. ad9081, adrv9009)", check=_NAME
+    )
     console.print("\n[bold]Boot strategies[/bold]")
     boot_strategy = ask_choice(
         console,
@@ -221,11 +253,21 @@ def add_hardware(
     )
     power, power_context = _ask_power()
     power_type = power_types.POWER_TYPES[power]
-    runner_label = Prompt.ask("GitHub runner label", default=f"hw-{carrier.lower()}")
-    site_slug = Prompt.ask("NetBox site slug (must already exist)")
-    ssh_target = Prompt.ask("Exporter host SSH target (user@host)")
-    if "@" not in ssh_target:
-        raise click.ClickException("SSH target must be in `user@host` form")
+    _explain(
+        "The self-hosted GitHub Actions runner that runs this board's hardware-CI jobs "
+        "(the place's runner tag)."
+    )
+    runner_label = Prompt.ask("GitHub Actions runner label", default=f"hw-{carrier.lower()}")
+    _explain(
+        "The existing NetBox site the board is in (NetBox: Organization > Sites). "
+        "This command never creates sites."
+    )
+    site_slug = _ask_required("NetBox site slug (e.g. lab3)", check=_SLUG)
+    _explain(
+        "The Linux machine the board's serial, USB and power are connected to. The exporter "
+        "service is installed there over SSH, so this user needs passwordless sudo."
+    )
+    ssh_target = _ask_required("Exporter host SSH login (user@host)", check=_SSH_LOGIN)
     ssh_user, ssh_host = ssh_target.split("@", 1)
 
     # Templates name their resource group <CARRIER>_<CHIP> from these fields
@@ -245,23 +287,41 @@ def add_hardware(
             - {f.var for t in power_types.POWER_TYPES.values() for f in t.fields}
         )
         required = provision.required_template_vars(template_path)
+        defaults = provision.template_field_defaults(template_path)
     except RuntimeError as e:
         raise click.ClickException(str(e)) from e
 
     # Required fields first, so they're not lost among the defaulted ones.
     var_names.sort(key=lambda v: v not in required)
+    questions = {v: escape(provision.TEMPLATE_FIELDS.get(v, v)) for v in var_names}
+    shown_defaults = {
+        v: "required" if v in required else "unset" if defaults.get(v) is None else defaults[v]
+        for v in var_names
+    }
     console.print(f"\n[bold]Template fields for {template_key}[/bold]")
-    for var in var_names:
-        console.print(f"  - {var}" + (" [bold](required)[/bold]" if var in required else ""))
-    if not var_names:
+    if var_names:
+        table = Table(box=box.SIMPLE_HEAD, show_edge=False, pad_edge=False)
+        for header in ("Field", "Question", "Default"):
+            table.add_column(header)
+        for var in var_names:
+            table.add_row(var, questions[var], escape(str(shown_defaults[var])))
+        console.print(table)
+    else:
         console.print("  (none)")
     for var in var_names:
         secret = "password" in var
         if var in required:
-            context[var] = _ask_required(f"  {var} (required)", password=secret)
+            context[var] = _ask_required(f"  {questions[var]} (required)", password=secret)
             continue
+        default = defaults.get(var)
+        enter = "Enter to leave unset" if default is None else f"Enter for {default}"
+        # Blank keeps the template's own default rather than passing it back in,
+        # so default(none) stays null instead of becoming a string.
         answer = Prompt.ask(
-            f"  {var} (blank = template default)", default="", show_default=False, password=secret
+            f"  {questions[var]} ({escape(enter)})",
+            default="",
+            show_default=False,
+            password=secret,
         )
         if answer:
             context[var] = answer
@@ -323,13 +383,13 @@ def add_hardware(
         raise click.Abort()
 
     if not netbox_url:
-        netbox_url = _ask_required("NetBox URL")
+        netbox_url = _ask_required("NetBox URL (e.g. https://netbox.example.com)", check=_URL)
     if not netbox_token:
         netbox_token = _ask_secret("NetBox API token")
 
     coord_resolved = resolve_coordinator(coord)
     if not coord_user:
-        coord_user = _ask_required("Coordinator API username")
+        coord_user = _ask_required("Coordinator API username (a user that can create places)")
     if not coord_password:
         coord_password = _ask_secret("Coordinator API password")
 

@@ -102,6 +102,25 @@ def test_template_declares_a_known_boot_strategy(template):
     assert provision.template_strategy(template) in KNOWN_STRATEGIES
 
 
+def _operator_fields(template):
+    """Variables add-hardware asks the operator for (not filled in for them)."""
+    from adi_lg_plugins.hw_ci.power import POWER_TYPES
+
+    filled = {"carrier", "chip", "power"} | {f.var for t in POWER_TYPES.values() for f in t.fields}
+    return provision.discover_template_vars(template) - provision.EXPORTER_RUNTIME_VARS - filled
+
+
+@pytest.mark.parametrize("template", TEMPLATES, ids=lambda p: p.stem)
+def test_every_template_field_has_a_question(template):
+    """add-hardware asks with this text; a bare variable name is ambiguous."""
+    assert _operator_fields(template) <= set(provision.TEMPLATE_FIELDS)
+
+
+def test_no_question_for_a_field_no_template_uses():
+    used = set().union(*(_operator_fields(t) for t in TEMPLATES))
+    assert set(provision.TEMPLATE_FIELDS) <= used
+
+
 @pytest.mark.parametrize("template", TEMPLATES, ids=lambda p: p.stem)
 def test_template_has_a_one_line_title(template):
     """Shown next to the template's name when add-hardware lists templates."""

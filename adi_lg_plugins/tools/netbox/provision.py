@@ -47,6 +47,30 @@ def power_tags(power: str) -> dict[str, str]:
 # Provided by labgrid-exporter when it renders the file - never prompted for.
 EXPORTER_RUNTIME_VARS = frozenset({"env", "hostname", "name", "isolated"})
 
+# The question asked for each template field. Every variable a template uses
+# needs an entry (tests/test_exporter_templates.py checks), so add-hardware never
+# asks for a bare variable name. Kuiper boot files take `release:<path>` (inside
+# the release image's boot partition) or a file on the test runner.
+TEMPLATE_FIELDS = {
+    "target_ip": "Board IP address, for SSH to its Linux",
+    "target_username": "Board Linux SSH username",
+    "target_password": "Board Linux SSH password",
+    "serial_port": "Serial console device on the exporter host",
+    "sdmux_path": "SD mux control device (/dev/sg*) on the exporter host",
+    "boot_partition": "SD card boot partition on the exporter host, through the SD mux",
+    "kuiper_release": "Kuiper release to take the boot files from",
+    "kuiper_bootbin": "BOOT.BIN, as release:<path> or a file on the test runner",
+    "kuiper_devicetree": "Device tree, as release:<path> or a file on the test runner",
+    "kuiper_kernel": "Kernel image, as release:<path> or a file on the test runner",
+    "root_target": "xsdb JTAG target ID of the device (see xsdb `targets`)",
+    "microblaze_target": "xsdb JTAG target ID of the MicroBlaze CPU (see xsdb `targets`)",
+    "bitstream_path": "Bitstream (.bit) on the test runner, or exporter:<path> on the exporter host",
+    "kernel_path": "MicroBlaze kernel (.strip) on the test runner, or exporter:<path>",
+    "vivado_path": "Vivado install directory on the exporter host",
+    "xsdb_path": "xsdb executable on the exporter host (unset: Vitis/bin/xsdb beside Vivado)",
+    "variant": "Raspberry Pi model, naming the resource group RPI_<model> (e.g. CM4, PI4)",
+}
+
 
 class _ExporterEnv(dict):
     """Re-emit ``env["NAME"]`` lookups so labgrid resolves them on the exporter."""
@@ -131,6 +155,20 @@ def required_template_vars(template_path: Path) -> set[str]:
     return {
         n.name for n in ast.find_all(nodes.Name) if n.ctx == "load" and id(n) not in defaulted
     } & discover_template_vars(template_path)
+
+
+def template_field_defaults(template_path: Path) -> dict[str, object]:
+    """Each template variable's ``| default(...)`` value (``None`` for ``default(none)``)."""
+    jinja2 = _require_jinja2()
+    from jinja2 import nodes
+
+    ast = jinja2.Environment().parse(template_path.read_text())
+    defaults = {}
+    for f in ast.find_all(nodes.Filter):
+        if f.name == "default" and isinstance(f.node, nodes.Name) and f.args:
+            arg = f.args[0]
+            defaults.setdefault(f.node.name, arg.value if isinstance(arg, nodes.Const) else None)
+    return defaults
 
 
 def render_and_validate(
