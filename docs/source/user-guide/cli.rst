@@ -456,18 +456,50 @@ Interactively generate a Labgrid YAML configuration file. This wizard scans for 
 
 .. code-block:: text
 
-    Select Strategy [BootFPGASoC]: BootFPGASoC
-    Target Name [main]: zcu102
+    1   BootFPGASoC       SD card through a USB SD mux
+    2   BootFPGASoCTFTP   kernel over TFTP from U-Boot
+    3   BootFPGASoCSSH    boot files copied over SSH
+    Select Strategy (BootFPGASoC): 1
+    Target Name (main): zcu102
     Configuring Power Protocol
-    Select Power Driver [VesyncPowerDriver]: VesyncPowerDriver
+    1   VesyncPowerDriver   VeSync smart plug
+    2   CyberPowerDriver    CyberPower PDU (SNMP)
+    3   Skip                no power control
+    Select Power Driver (VesyncPowerDriver): 1
     Outlet Names (comma separated): ZCU102
     VeSync Username: user@example.com
-    VeSync Password: [hidden]
+    VeSync Password:
+    Power Cycle Delay (seconds) (5):
     Configuring Shell / Console
-    Detected Serial Ports: /dev/ttyUSB0, /dev/ttyUSB1
-    Select Serial Port [/dev/ttyUSB0]: /dev/ttyUSB0
+    Detected Serial Ports:
+     #   Port           Description
+    ─────────────────────────────────────────────────────────────────────────────
+     1   /dev/ttyUSB0   FT232R USB UART
+     2   Manual Entry   type a device path
+    Select Serial Port (/dev/ttyUSB0):
     ...
+    Output Filename (config_zcu102.yaml):
     Configuration generated: config_zcu102.yaml
+
+**Resuming:** answers are saved as they are given, one file per target name under
+``~/.cache/adi-lg/generate-config/`` (``$XDG_CACHE_HOME/adi-lg/...`` if set; readable only
+by you). If a run stops - Ctrl-C, or an output file that can't be written - it says where its
+answers are, and the next run offers to pick up from them:
+
+.. code-block:: text
+
+    Saved answers from earlier runs
+    #   Target   Strategy      Saved              Answers
+    ────────────────────────────────────────────────────────────────
+    1   zcu102   BootFPGASoC   2026-10-28 09:32   6 saved
+    2   new                                       start a new config
+    Resume a saved run (zcu102):
+
+**resume** uses the saved answers and asks only the questions the run never reached;
+**review** asks every question again with its saved answer as the default; **new** starts
+over. The output filename is always asked again (the saved one is the default), and the
+VeSync password is never saved, so it is asked every time. Once the config is written the
+saved answers are deleted.
 
 Examples
 --------

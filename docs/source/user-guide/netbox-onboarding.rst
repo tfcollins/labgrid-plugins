@@ -339,7 +339,7 @@ The next run lists the saved runs before anything else:
     BOOT.BIN, as release:<path> or a file     release:zynqmp-zcu102-rev10-ad9081/m8_
     on the test runner                        l4/BOOT.BIN
     ...
-    1   resume   as they are: ask only what is still unanswered, then show the plan
+    1   resume   as they are: ask only what is still unanswered
     2   review   ask every question again, with the saved answer as its default
     Use the saved answers (resume):
 
