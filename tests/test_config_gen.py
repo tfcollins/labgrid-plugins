@@ -106,6 +106,7 @@ def test_generate_config_soc(mock_confirm, mock_int, mock_prompt, mock_scan):
         with open("config_zcu102.yaml") as f:
             config = yaml.safe_load(f)
 
+        assert config["imports"] == ["adi_lg_plugins"]
         target = config["targets"]["zcu102"]
         drivers = target["drivers"]
         resources = target["resources"]
@@ -357,3 +358,16 @@ def test_new_starts_over(monkeypatch, saved_runs):
         assert result.exit_code == 0, result.output
         _assert_asked_in_order(conversation, prompts)
         assert dict(prompts)["Target Name"] == "main"  # not the saved zcu102
+
+
+def test_the_config_imports_the_adi_plugins(monkeypatch):
+    """labgrid has no plugin auto-discovery: without the import it can't resolve ADI drivers."""
+    from labgrid.config import Config
+
+    with CliRunner().isolated_filesystem():
+        result, _ = _type(monkeypatch, _SOC)
+
+        assert result.exit_code == 0, result.output
+        text = open("config_zcu102.yaml").read()
+        assert Config("config_zcu102.yaml").get_imports() == ["adi_lg_plugins"]
+    assert text.startswith("imports:")  # read first, before the targets that need it

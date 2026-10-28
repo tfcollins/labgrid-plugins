@@ -451,6 +451,7 @@ Interactively generate a Labgrid YAML configuration file. This wizard scans for 
 * **Hardware Scanning:** Automatically detects serial ports and local IP addresses.
 * **Strategy Support:** Configures ``BootFPGASoC``, ``BootFPGASoCTFTP``, and ``BootFPGASoCSSH``.
 * **Resource Configuration:** Sets up Power Drivers (VeSync, CyberPower), Serial/Console, SD Mux, TFTP, and more.
+* **Ready to load:** The file starts with ``imports: [adi_lg_plugins]``, which labgrid needs to resolve the ADI drivers and strategies it names.
 
 **Example Session:**
 
