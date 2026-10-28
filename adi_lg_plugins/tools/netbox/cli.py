@@ -3,13 +3,15 @@
 Registers a new board in NetBox, renders+validates its exporter config,
 SSH-deploys it as a systemd service on the exporter host and verifies it
 comes up, then creates the matching labgrid Place (create/add-match/
-set-tags) on the coordinator. See
-docs/source/user-guide/netbox-onboarding.rst for prerequisites.
+set-tags) on the coordinator. Answers are saved as they are given, so a
+failed run can be resumed. See docs/source/user-guide/netbox-onboarding.rst
+for prerequisites.
 """
 
 from __future__ import annotations
 
 import re
+from collections.abc import Callable, Collection
 from pathlib import Path
 
 import click
@@ -32,6 +34,7 @@ from adi_lg_plugins.hw_ci.coordinator import (
     resolve_coordinator,
     set_place_tags,
 )
+from adi_lg_plugins.tools._answers import SavedAnswers, answers_dir
 from adi_lg_plugins.tools._choices import ask_choice
 
 from . import client, provision
@@ -55,6 +58,12 @@ KNOWN_BOOT_STRATEGIES = [
     "BootOpenFPGALoader",
     "BootTickFPGASSH",
 ]
+
+# Saved runs live in answers_dir(_ANSWERS), one file per board name.
+_ANSWERS = "netbox-add-hardware"
+_NEW = "new"
+# The furthest step a saved run finished, as listed when offering to resume it.
+_PROGRESS = {"exporter": "exporter running", "netbox": "NetBox device done", "plan": "plan checked"}
 
 
 @click.group(name="netbox")
@@ -86,40 +95,164 @@ def _plan_table(rows: list[tuple[str, list[str]]]) -> Padding:
     return Padding(table, (0, 0, 0, 2))
 
 
-def _ask_power() -> tuple[str, dict[str, str]]:
+class _Run:
+    """This run's answers: asked, or taken from a saved run, and saved as they come.
+
+    ``mode`` is "new", "resume" (saved answers are used as they are, and only
+    what is missing is asked) or "review" (every question is asked again, with
+    its saved answer as the default).
+    """
+
+    def __init__(self, saved: SavedAnswers | None = None, mode: str = "new"):
+        self.saved = saved or SavedAnswers()
+        self.mode = mode
+
+    def _saved(self, key: str, choices: Collection[str] | None) -> str | None:
+        answer = self.saved.answers.get(key)
+        return answer if answer is not None and (choices is None or answer in choices) else None
+
+    def will_ask(self, key: str) -> bool:
+        return self.mode != "resume" or self._saved(key, None) is None
+
+    def answer(
+        self,
+        key: str,
+        label: str,
+        ask: Callable[[str | None], str],
+        *,
+        default: str | None = None,
+        explain: str | None = None,
+        choices: Collection[str] | None = None,
+    ) -> str:
+        """``ask(default)`` unless resuming with ``key`` saved; the answer is saved.
+
+        ``choices`` lists the answers still valid (e.g. templates that still
+        exist); a saved answer outside them is asked again.
+        """
+        saved = self._saved(key, choices)
+        if saved is not None and self.mode == "resume":
+            return saved
+        if saved is not None and self.mode == "review":
+            default = saved
+        if explain:
+            _explain(explain)
+        value = ask(default)
+        # The steps a resumed run finished were done with its saved answers.
+        if self.mode != "new" and value != self.saved.answers.get(key):
+            self.saved.done.clear()
+        self.saved.set(key, label, value)
+        return value
+
+    def hint(self, how: str = "again") -> str:
+        path = self.saved.path
+        return (
+            f"Answers saved to {path} - run `adi-lg netbox add-hardware` {how} "
+            f"and pick {path.stem} to resume."
+        )
+
+
+def _progress(run: SavedAnswers) -> str:
+    return next((text for step, text in _PROGRESS.items() if run.is_done(step)), "answers saved")
+
+
+def _pick_run() -> _Run:
+    """Offer to resume a saved run, if there are any; otherwise start a new one."""
+    runs = {run.path.stem: run for run in SavedAnswers.all_in(answers_dir(_ANSWERS))}
+    if not runs:
+        return _Run()
+    console.print("[bold]Saved answers from earlier runs[/bold]")
+    pick = ask_choice(
+        console,
+        "Resume a saved run",
+        [
+            *(
+                (name, run.answers.get("template", ""), run.saved_at, _progress(run))
+                for name, run in runs.items()
+            ),
+            (_NEW, "", "", "start a new board"),
+        ],
+        headers=("Board", "Template", "Saved", "Progress"),
+        default=next(iter(runs)),
+    )
+    if pick == _NEW:
+        return _Run()
+    saved = runs[pick]
+    table = Table(box=box.SIMPLE_HEAD, show_edge=False, pad_edge=False)
+    table.add_column("Question")
+    table.add_column("Answer", overflow="fold")  # paths in full, not cut short
+    for key, value in saved.answers.items():
+        shown = "(default)" if value == "" else "(hidden)" if "password" in key else value
+        table.add_row(escape(saved.labels.get(key, key)), escape(shown))
+    console.print(f"\n[bold]Saved answers for {escape(pick)}[/bold]")
+    console.print(table)
+    mode = ask_choice(
+        console,
+        "Use the saved answers",
+        [
+            ("resume", "as they are: ask only what is still unanswered, then show the plan"),
+            ("review", "ask every question again, with the saved answer as its default"),
+        ],
+        default="resume",
+    )
+    return _Run(saved, mode)
+
+
+def _ask_power(run: _Run | None = None) -> tuple[str, dict[str, str]]:
     """Ask for a power type by category, then that type's fields.
 
     Returns the type key and the template context for its ``power_*`` fields;
     optional fields left blank are omitted so the fragment's default applies.
     """
-    console.print("\n[bold]Power control[/bold]")
-    category = ask_choice(
-        console,
+    run = run or _Run()
+
+    def ask_category(default):
+        console.print("\n[bold]Power control[/bold]")
+        return ask_choice(
+            console,
+            "Power category",
+            [
+                (c, ", ".join(t.key for t in power_types.types_in(c)))
+                for c in power_types.CATEGORIES
+            ],
+            headers=("Category", "Types"),
+            default=default,
+        )
+
+    category = run.answer(
+        "power_category",
         "Power category",
-        [(c, ", ".join(t.key for t in power_types.types_in(c))) for c in power_types.CATEGORIES],
-        headers=("Category", "Types"),
+        ask_category,
         default=power_types.PLUG,
+        choices=power_types.CATEGORIES,
     )
     in_category = power_types.types_in(category)
     keys = [t.key for t in in_category]
-    power = ask_choice(
-        console,
+    power = run.answer(
+        "power",
         "Power type",
-        [(t.key, t.label, " + ".join(t.drivers)) for t in in_category],
-        headers=("Type", "Description", "Driver"),
+        lambda default: ask_choice(
+            console,
+            "Power type",
+            [(t.key, t.label, " + ".join(t.drivers)) for t in in_category],
+            headers=("Type", "Description", "Driver"),
+            default=default,
+        ),
         default="vesync" if "vesync" in keys else keys[0],
+        choices=keys,
     )
     context = {}
     for f in power_types.POWER_TYPES[power].fields:
         if f.choices:
-            context[f.var] = ask_choice(
-                console, f"  {f.prompt}", power_types.choices_for(f.choices), default=f.default
+            ask = lambda default, f=f: ask_choice(  # noqa: E731
+                console, f"  {f.prompt}", power_types.choices_for(f.choices), default=default
             )
-            continue
-        if f.default is None:
-            context[f.var] = _ask_required(f"  {f.prompt}")
-            continue
-        answer = Prompt.ask(f"  {f.prompt}", default=f.default, show_default=f.default != "")
+        elif f.default is None:
+            ask = lambda default, f=f: _ask_required(f"  {f.prompt}", default=default)  # noqa: E731
+        else:
+            ask = lambda default, f=f: Prompt.ask(  # noqa: E731
+                f"  {f.prompt}", default=default, show_default=default != ""
+            )
+        answer = run.answer(f"power.{f.var}", f.prompt, ask, default=f.default)
         if answer not in (None, ""):
             context[f.var] = answer
     return power, context
@@ -158,6 +291,41 @@ def _ask_secret(prompt: str) -> str:
     secret = _ask_required(f"{prompt} (input hidden)", password=True)
     console.print(f"    [dim]received {len(secret)} characters[/dim]")
     return secret
+
+
+def _ask_field(
+    question: str, *, required: bool, default: object, saved: str | None, secret: bool
+) -> str:
+    """Ask for one template field; "" leaves an optional one to the template.
+
+    ``default`` is the template's own default (None: unset). With a ``saved``
+    answer, Enter keeps it and "-" goes back to the template's default.
+    """
+    keep = "the saved one" if secret else saved
+    if required:
+        if saved:
+            return _ask_required(
+                f"  {question} (Enter for {escape(keep)})",
+                password=secret,
+                default=saved,
+                show_default=False,
+            )
+        return _ask_required(f"  {question} (required)", password=secret)
+    if saved:
+        enter = f"Enter for {keep}, - " + (
+            "to leave unset" if default is None else f"for {default}"
+        )
+    else:
+        enter = "Enter to leave unset" if default is None else f"Enter for {default}"
+    # Blank keeps the template's own default rather than passing it back in,
+    # so default(none) stays null instead of becoming a string.
+    answer = Prompt.ask(
+        f"  {question} ({escape(enter)})",
+        default=saved or "",
+        show_default=False,
+        password=secret,
+    )
+    return "" if answer == "-" else answer
 
 
 @netbox_group.command(name="add-hardware")
@@ -215,61 +383,146 @@ def add_hardware(
     if not templates:
         raise click.ClickException(f"no templates found under {exporter_configs_dir / 'templates'}")
 
-    console.print("[bold]Board templates[/bold]")
-    template_key = ask_choice(
-        console,
-        "Board template",
-        [
-            (key, provision.template_strategy(path) or "", provision.template_title(path))
-            for key, path in sorted(templates.items())
-        ],
-        headers=("Template", "Boot strategy", "Description"),
-        default=sorted(templates)[0],
+    run = _pick_run()
+    try:
+        _onboard(
+            run,
+            templates,
+            exporter_configs_dir,
+            dry_run=dry_run,
+            netbox_url=netbox_url,
+            netbox_token=netbox_token,
+            netbox_verify=netbox_ca_bundle or netbox_verify,
+            coord=coord,
+            coord_user=coord_user,
+            coord_password=coord_password,
+        )
+    except click.ClickException as e:
+        if run.saved.path is not None and run.saved.path.exists():
+            e.message += f"\n{run.hint()}"
+        raise
+    except (click.Abort, KeyboardInterrupt, EOFError):
+        if run.saved.path is not None and run.saved.path.exists():
+            click.echo(f"\n{run.hint()}")
+        raise
+
+
+def _onboard(
+    run: _Run,
+    templates: dict[str, Path],
+    exporter_configs_dir: Path,
+    *,
+    dry_run: bool,
+    netbox_url: str | None,
+    netbox_token: str | None,
+    netbox_verify: bool | str,
+    coord: str | None,
+    coord_user: str | None,
+    coord_password: str | None,
+) -> None:
+    def ask_template(default):
+        console.print("[bold]Board templates[/bold]")
+        return ask_choice(
+            console,
+            "Board template",
+            [
+                (key, provision.template_strategy(path) or "", provision.template_title(path))
+                for key, path in sorted(templates.items())
+            ],
+            headers=("Template", "Boot strategy", "Description"),
+            default=default,
+        )
+
+    template_key = run.answer(
+        "template", "Board template", ask_template, default=sorted(templates)[0], choices=templates
     )
     template_path = templates[template_key]
 
-    _explain(
-        "A unique name for this board. It names the NetBox device, the coordinator place "
-        "and the exporter service (labgrid-exporter-<name>)."
+    name = run.answer(
+        "name",
+        "Board name",
+        lambda default: _ask_required(
+            "Board name (e.g. zcu102-ad9081-lab3)", check=_NAME, default=default
+        ),
+        explain=(
+            "A unique name for this board. It names the NetBox device, the coordinator place "
+            "and the exporter service (labgrid-exporter-<name>)."
+        ),
     )
-    name = _ask_required("Board name (e.g. zcu102-ad9081-lab3)", check=_NAME)
-    _explain(
-        "The FPGA or SoC board the ADI part is mounted on. Saved in NetBox and as the "
-        "place's carrier tag; most templates also use it in the resource group name."
+    # From here on the answers are saved, in a file named after the board.
+    run.saved.move_to(answers_dir(_ANSWERS) / f"{name}.json")
+    carrier = run.answer(
+        "carrier",
+        "Carrier board",
+        lambda default: _ask_required(
+            "Carrier board (e.g. zcu102, zc706, vcu118)", check=_NAME, default=default
+        ),
+        explain=(
+            "The FPGA or SoC board the ADI part is mounted on. Saved in NetBox and as the "
+            "place's carrier tag; most templates also use it in the resource group name."
+        ),
     )
-    carrier = _ask_required("Carrier board (e.g. zcu102, zc706, vcu118)", check=_NAME)
-    _explain(
-        "The ADI part under test. Saved in NetBox and as the place's daughter-board tag; "
-        "most templates also use it in the resource group name."
+    daughter_board = run.answer(
+        "daughter_board",
+        "ADI daughter board or chip",
+        lambda default: _ask_required(
+            "ADI daughter board or chip (e.g. ad9081, adrv9009)", check=_NAME, default=default
+        ),
+        explain=(
+            "The ADI part under test. Saved in NetBox and as the place's daughter-board tag; "
+            "most templates also use it in the resource group name."
+        ),
     )
-    daughter_board = _ask_required(
-        "ADI daughter board or chip (e.g. ad9081, adrv9009)", check=_NAME
-    )
-    console.print("\n[bold]Boot strategies[/bold]")
-    boot_strategy = ask_choice(
-        console,
+
+    def ask_strategy(default):
+        console.print("\n[bold]Boot strategies[/bold]")
+        return ask_choice(
+            console,
+            "Boot strategy",
+            [(s, _strategy_summary(s)) for s in KNOWN_BOOT_STRATEGIES],
+            headers=("Strategy", "Description"),
+            default=default,
+        )
+
+    boot_strategy = run.answer(
+        "boot_strategy",
         "Boot strategy",
-        [(s, _strategy_summary(s)) for s in KNOWN_BOOT_STRATEGIES],
-        headers=("Strategy", "Description"),
+        ask_strategy,
         default=provision.template_strategy(template_path),
+        choices=KNOWN_BOOT_STRATEGIES,
     )
-    power, power_context = _ask_power()
+    power, power_context = _ask_power(run)
     power_type = power_types.POWER_TYPES[power]
-    _explain(
-        "The self-hosted GitHub Actions runner that runs this board's hardware-CI jobs "
-        "(the place's runner tag)."
+    runner_label = run.answer(
+        "runner_label",
+        "GitHub Actions runner label",
+        lambda default: Prompt.ask("GitHub Actions runner label", default=default),
+        default=f"hw-{carrier.lower()}",
+        explain=(
+            "The self-hosted GitHub Actions runner that runs this board's hardware-CI jobs "
+            "(the place's runner tag)."
+        ),
     )
-    runner_label = Prompt.ask("GitHub Actions runner label", default=f"hw-{carrier.lower()}")
-    _explain(
-        "The existing NetBox site the board is in (NetBox: Organization > Sites). "
-        "This command never creates sites."
+    site_slug = run.answer(
+        "site_slug",
+        "NetBox site slug",
+        lambda default: _ask_required("NetBox site slug (e.g. lab3)", check=_SLUG, default=default),
+        explain=(
+            "The existing NetBox site the board is in (NetBox: Organization > Sites). "
+            "This command never creates sites."
+        ),
     )
-    site_slug = _ask_required("NetBox site slug (e.g. lab3)", check=_SLUG)
-    _explain(
-        "The Linux machine the board's serial, USB and power are connected to. The exporter "
-        "service is installed there over SSH, so this user needs passwordless sudo."
+    ssh_target = run.answer(
+        "ssh_target",
+        "Exporter host SSH login",
+        lambda default: _ask_required(
+            "Exporter host SSH login (user@host)", check=_SSH_LOGIN, default=default
+        ),
+        explain=(
+            "The Linux machine the board's serial, USB and power are connected to. The exporter "
+            "service is installed there over SSH, so this user needs passwordless sudo."
+        ),
     )
-    ssh_target = _ask_required("Exporter host SSH login (user@host)", check=_SSH_LOGIN)
     ssh_user, ssh_host = ssh_target.split("@", 1)
 
     # Templates name their resource group <CARRIER>_<CHIP> from these fields
@@ -300,30 +553,28 @@ def add_hardware(
         v: "required" if v in required else "unset" if defaults.get(v) is None else defaults[v]
         for v in var_names
     }
-    console.print(f"\n[bold]Template fields for {template_key}[/bold]")
-    if var_names:
-        table = Table(box=box.SIMPLE_HEAD, show_edge=False, pad_edge=False)
-        for header in ("Field", "Question", "Default"):
-            table.add_column(header)
-        for var in var_names:
-            table.add_row(var, questions[var], escape(str(shown_defaults[var])))
-        console.print(table)
-    else:
-        console.print("  (none)")
+    if any(run.will_ask(f"field.{v}") for v in var_names) or not var_names:
+        console.print(f"\n[bold]Template fields for {template_key}[/bold]")
+        if var_names:
+            table = Table(box=box.SIMPLE_HEAD, show_edge=False, pad_edge=False)
+            for header in ("Field", "Question", "Default"):
+                table.add_column(header)
+            for var in var_names:
+                table.add_row(var, questions[var], escape(str(shown_defaults[var])))
+            console.print(table)
+        else:
+            console.print("  (none)")
     for var in var_names:
-        secret = "password" in var
-        if var in required:
-            context[var] = _ask_required(f"  {questions[var]} (required)", password=secret)
-            continue
-        default = defaults.get(var)
-        enter = "Enter to leave unset" if default is None else f"Enter for {default}"
-        # Blank keeps the template's own default rather than passing it back in,
-        # so default(none) stays null instead of becoming a string.
-        answer = Prompt.ask(
-            f"  {questions[var]} ({escape(enter)})",
-            default="",
-            show_default=False,
-            password=secret,
+        answer = run.answer(
+            f"field.{var}",
+            provision.TEMPLATE_FIELDS.get(var, var),
+            lambda saved, var=var: _ask_field(
+                questions[var],
+                required=var in required,
+                default=defaults.get(var),
+                saved=saved,
+                secret="password" in var,
+            ),
         )
         if answer:
             context[var] = answer
@@ -334,6 +585,7 @@ def add_hardware(
         )
     except RuntimeError as e:
         raise click.ClickException(str(e)) from e
+    run.saved.mark_done("plan")
     # The systemd unit runs `labgrid-exporter -n <name>`, so the coordinator
     # sees these resources under exporter <name>, not the SSH host name.
     match_patterns = [f"{name}/{group}/*" for group in groups]
@@ -379,80 +631,102 @@ def add_hardware(
 
     if dry_run:
         console.print("\n[yellow]Dry run - no NetBox/SSH/coordinator changes made.[/yellow]")
+        click.echo(run.hint("without --dry-run"))
         return
 
     if not Confirm.ask("\nProceed?", default=True):
         raise click.Abort()
 
-    if not netbox_url:
-        _explain("The NetBox instance to register the board in (or set NETBOX_URL).")
-        netbox_url = _ask_required("NetBox URL (e.g. https://netbox.example.com)", check=_URL)
-    if not netbox_token:
-        _explain(
-            "A NetBox API token that can create devices; create one under your user profile "
-            "in NetBox (or set NETBOX_TOKEN)."
-        )
-        netbox_token = _ask_secret("NetBox API token")
+    # Steps a resumed run already finished are skipped, so their credentials
+    # aren't needed. Tokens and passwords are never saved.
+    netbox_done = run.saved.is_done("netbox")
+    if not netbox_done:
+        if not netbox_url:
+            netbox_url = run.answer(
+                "netbox_url",
+                "NetBox URL",
+                lambda default: _ask_required(
+                    "NetBox URL (e.g. https://netbox.example.com)", check=_URL, default=default
+                ),
+                explain="The NetBox instance to register the board in (or set NETBOX_URL).",
+            )
+        if not netbox_token:
+            _explain(
+                "A NetBox API token that can create devices; create one under your user profile "
+                "in NetBox (or set NETBOX_TOKEN)."
+            )
+            netbox_token = _ask_secret("NetBox API token")
 
     coord_resolved = resolve_coordinator(coord)
-    if not coord_user or not coord_password:
+    if (not coord_user and run.will_ask("coord_user")) or not coord_password:
         _explain(
             f"A coordinator API login ({coord_resolved}) that can create places, add matches "
             "and set tags (or set LG_API_USERNAME / LG_API_PASSWORD)."
         )
     if not coord_user:
-        coord_user = _ask_required("Coordinator API username")
+        coord_user = run.answer(
+            "coord_user",
+            "Coordinator API username",
+            lambda default: _ask_required("Coordinator API username", default=default),
+        )
     if not coord_password:
         coord_password = _ask_secret("Coordinator API password")
 
     # 1. NetBox: register the device (source of truth for inventory).
-    # Lab NetBoxes commonly sit behind an internal CA, so checking is opt-in.
-    verify = netbox_ca_bundle or netbox_verify
-    if verify is False:
-        console.print(
-            "[dim]NetBox TLS certificate not verified "
-            "(--netbox-verify or --netbox-ca-bundle to check it)[/dim]"
-        )
-    try:
-        with client.reported_errors(netbox_url):
-            nb = client.connect(netbox_url, netbox_token, verify=verify)
-            client.ensure_schema(nb)
-            device = client.create_or_update_device(
-                nb,
-                name,
-                carrier=carrier,
-                site_slug=site_slug,
-                custom_fields={
-                    "carrier": carrier,
-                    "daughter_board": daughter_board,
-                    "boot_strategy": boot_strategy,
-                    "exporter_host": ssh_target,
-                    "runner_label": runner_label,
-                },
+    if netbox_done:
+        console.print("[dim]NetBox device: done in an earlier run, skipped[/dim]")
+    else:
+        # Lab NetBoxes commonly sit behind an internal CA, so checking is opt-in.
+        if netbox_verify is False:
+            console.print(
+                "[dim]NetBox TLS certificate not verified "
+                "(--netbox-verify or --netbox-ca-bundle to check it)[/dim]"
             )
-    except RuntimeError as e:
-        raise click.ClickException(str(e)) from e
-    console.print(
-        f"[green]NetBox device ready:[/green] {netbox_url.rstrip('/')}/dcim/devices/{device.id}/"
-    )
+        try:
+            with client.reported_errors(netbox_url):
+                nb = client.connect(netbox_url, netbox_token, verify=netbox_verify)
+                client.ensure_schema(nb)
+                device = client.create_or_update_device(
+                    nb,
+                    name,
+                    carrier=carrier,
+                    site_slug=site_slug,
+                    custom_fields={
+                        "carrier": carrier,
+                        "daughter_board": daughter_board,
+                        "boot_strategy": boot_strategy,
+                        "exporter_host": ssh_target,
+                        "runner_label": runner_label,
+                    },
+                )
+        except RuntimeError as e:
+            raise click.ClickException(str(e)) from e
+        run.saved.mark_done("netbox")
+        console.print(
+            f"[green]NetBox device ready:[/green] {netbox_url.rstrip('/')}/dcim/devices/{device.id}/"
+        )
 
     # 2. Exporter host: deploy + verify the systemd service.
-    try:
-        exporter_bin = provision.check_prerequisites(ssh_host)
-        provision.deploy_exporter(
-            ssh_host, ssh_user, name, rendered_path, coord_resolved, exporter_bin=exporter_bin
-        )
-        provision.verify_exporter_active(ssh_host, name)
-        missing_env = provision.missing_power_env(ssh_host, power)
-    except RuntimeError as e:
-        raise click.ClickException(str(e)) from e
-    console.print(f"[green]labgrid-exporter-{name} is active on {ssh_host}[/green]")
-    if missing_env:
-        console.print(
-            f"[yellow]Warning: {', '.join(missing_env)} not set in "
-            f"{provision.EXPORTER_ENV_FILE} on {ssh_host} - power control will fail "
-            f"until they are set and labgrid-exporter-{name} is restarted.[/yellow]"
-        )
+    if run.saved.is_done("exporter"):
+        console.print(f"[dim]labgrid-exporter-{name}: done in an earlier run, skipped[/dim]")
+    else:
+        try:
+            exporter_bin = provision.check_prerequisites(ssh_host)
+            provision.deploy_exporter(
+                ssh_host, ssh_user, name, rendered_path, coord_resolved, exporter_bin=exporter_bin
+            )
+            provision.verify_exporter_active(ssh_host, name)
+            missing_env = provision.missing_power_env(ssh_host, power)
+        except RuntimeError as e:
+            raise click.ClickException(str(e)) from e
+        run.saved.mark_done("exporter")
+        console.print(f"[green]labgrid-exporter-{name} is active on {ssh_host}[/green]")
+        if missing_env:
+            console.print(
+                f"[yellow]Warning: {', '.join(missing_env)} not set in "
+                f"{provision.EXPORTER_ENV_FILE} on {ssh_host} - power control will fail "
+                f"until they are set and labgrid-exporter-{name} is restarted.[/yellow]"
+            )
 
     # 3. Coordinator: create the place, match the live resources, tag it. The
     # coordinator rejects a place or match that already exists, so a re-run
@@ -471,6 +745,8 @@ def add_hardware(
     except (RuntimeError, OSError) as e:  # OSError: coordinator API unreachable
         raise click.ClickException(str(e)) from e
     console.print(f"[green]Place {name!r} created, matched, and tagged on the coordinator.[/green]")
+    # Every step is done, so there is nothing left to resume.
+    run.saved.delete()
 
     places = fetch_raw_places(coord_resolved)
     created = next((p for p in places if p.get("name") == name), None)

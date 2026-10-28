@@ -10,7 +10,9 @@ the real prompts instead.
 from __future__ import annotations
 
 import getpass
+import json
 import re
+import stat
 import sys
 from pathlib import Path
 
@@ -42,6 +44,17 @@ def _no_credentials_from_the_environment(monkeypatch):
     monkeypatch.delenv("LG_API_PASSWORD", raising=False)
 
 
+@pytest.fixture(autouse=True)
+def saved_runs(monkeypatch, tmp_path):
+    """Keep saved answers out of the real ~/.cache; returns where they go."""
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    return tmp_path / "cache" / "adi-lg" / "netbox-add-hardware"
+
+
+# The real prompts, even after a test has replaced them with _stub_prompts.
+_REAL_ASK = {Prompt: Prompt.ask, Confirm: Confirm.ask}
+
+
 def _type_into_real_prompts(monkeypatch, conversation, *args):
     """Run add-hardware, typing each answer of ``conversation`` into the real prompts.
 
@@ -53,9 +66,8 @@ def _type_into_real_prompts(monkeypatch, conversation, *args):
     )
     prompts = []
     for cls in (Prompt, Confirm):
-        real_ask = cls.ask
 
-        def spy(prompt, *a, _real_ask=real_ask, **k):
+        def spy(prompt, *a, _real_ask=_REAL_ASK[cls], **k):
             prompts.append(str(prompt))
             return _real_ask(prompt, *a, **k)
 
@@ -284,41 +296,44 @@ def test_dry_run_through_the_real_prompts(monkeypatch):
     assert "Dry run" in result.output
 
 
+# A soc-ssh board typed in full, credentials included.
+_FULL_RUN = [
+    ("Board template", "soc-ssh"),
+    ("Board name", "b1"),
+    ("Carrier board", "zcu102"),
+    ("ADI daughter board or chip", "ad9081"),
+    ("Boot strategy", ""),
+    ("Power category", "Network PDU"),
+    ("Power type", "cyberpower"),
+    ("  PDU hostname or IP", "10.0.0.20"),
+    ("  Outlet number", "4"),
+    ("GitHub Actions runner label", ""),
+    ("NetBox site slug", "lab3"),
+    ("Exporter host SSH login", "root@h"),
+    ("  Board IP address", "10.0.0.5"),
+    ("  BOOT.BIN", ""),
+    ("  Device tree", ""),
+    ("  Kernel image", ""),
+    ("  Kuiper release", ""),
+    ("  Serial console device", ""),
+    ("  Board Linux SSH password", ""),
+    ("  Board Linux SSH username", ""),
+    ("\nProceed?", "y"),
+    ("NetBox URL", "https://netbox.test"),
+    ("NetBox API token", "  tok123  "),  # pasted with stray whitespace
+    ("Coordinator API username", "admin"),
+    ("Coordinator API password", "secret"),
+]
+
+
 def test_full_run_through_the_real_prompts(monkeypatch):
     """Credentials too: typed after Proceed?, hidden ones through getpass."""
-    conversation = [
-        ("Board template", "soc-ssh"),
-        ("Board name", "b1"),
-        ("Carrier board", "zcu102"),
-        ("ADI daughter board or chip", "ad9081"),
-        ("Boot strategy", ""),
-        ("Power category", "Network PDU"),
-        ("Power type", "cyberpower"),
-        ("  PDU hostname or IP", "10.0.0.20"),
-        ("  Outlet number", "4"),
-        ("GitHub Actions runner label", ""),
-        ("NetBox site slug", "lab3"),
-        ("Exporter host SSH login", "root@h"),
-        ("  Board IP address", "10.0.0.5"),
-        ("  BOOT.BIN", ""),
-        ("  Device tree", ""),
-        ("  Kernel image", ""),
-        ("  Kuiper release", ""),
-        ("  Serial console device", ""),
-        ("  Board Linux SSH password", ""),
-        ("  Board Linux SSH username", ""),
-        ("\nProceed?", "y"),
-        ("NetBox URL", "https://netbox.test"),
-        ("NetBox API token", "  tok123  "),  # pasted with stray whitespace
-        ("Coordinator API username", "admin"),
-        ("Coordinator API password", "secret"),
-    ]
     calls = _stub_services(monkeypatch)
 
-    result, prompts = _type_into_real_prompts(monkeypatch, conversation)
+    result, prompts = _type_into_real_prompts(monkeypatch, _FULL_RUN)
 
     assert result.exit_code == 0, result.output
-    _assert_asked_in_order(conversation, prompts)
+    _assert_asked_in_order(_FULL_RUN, prompts)
     assert calls["url"] == "https://netbox.test"
     assert calls["token"] == "tok123"
     assert "received 6 characters" in result.output
@@ -365,6 +380,185 @@ def test_coordinator_that_cannot_be_reached_is_reported_without_a_traceback(monk
 
     assert result.exit_code == 1
     assert "Connection refused" in result.output
+
+
+def _fail_deploy(monkeypatch):
+    def deploy(*args, **kwargs):
+        raise RuntimeError("failed to install/start labgrid-exporter-b1 on h: permission denied")
+
+    monkeypatch.setattr(cli.provision, "deploy_exporter", deploy)
+
+
+def _saved(saved_runs, name="b1"):
+    return json.loads((saved_runs / f"{name}.json").read_text())
+
+
+def test_a_failed_run_keeps_its_answers_but_not_the_credentials(monkeypatch, saved_runs):
+    _stub_services(monkeypatch)
+    _fail_deploy(monkeypatch)
+
+    result, _ = _type_into_real_prompts(monkeypatch, _FULL_RUN)
+
+    assert result.exit_code == 1
+    path = saved_runs / "b1.json"
+    saved = _saved(saved_runs)
+    assert saved["answers"]["site_slug"] == "lab3"
+    assert saved["answers"]["ssh_target"] == "root@h"
+    assert saved["answers"]["netbox_url"] == "https://netbox.test"
+    assert saved["done"] == ["plan", "netbox"]  # the exporter step failed
+    assert "tok123" not in path.read_text()
+    assert "secret" not in path.read_text()
+    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    assert f"Answers saved to {path}" in result.output
+    assert "pick b1 to resume" in result.output
+
+
+def test_resume_goes_straight_to_the_plan_and_skips_finished_steps(monkeypatch, saved_runs):
+    _stub_services(monkeypatch)
+    _fail_deploy(monkeypatch)
+    _type_into_real_prompts(monkeypatch, _FULL_RUN)
+    calls = _stub_services(monkeypatch)  # the exporter host is fixed now
+    conversation = [
+        ("Resume a saved run", ""),  # the most recent: b1
+        ("Use the saved answers", ""),  # as they are
+        ("\nProceed?", "y"),
+        ("Coordinator API password", "secret"),  # the username was saved; the password never is
+    ]
+
+    result, prompts = _type_into_real_prompts(monkeypatch, conversation)
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(conversation, prompts)
+    row = _rows(result.output)
+    assert row("b1", "soc-ssh", "NetBox device done")
+    assert row("NetBox site slug", "lab3")
+    assert row("Board Linux SSH password", "(default)")
+    assert "NetBox device: done in an earlier run" in result.output
+    assert calls["steps"] == ["exporter", "place"]  # no second NetBox update
+    assert calls["login"] == ("admin", "secret")
+    assert not saved_runs.exists() or not list(saved_runs.iterdir())  # finished: nothing to resume
+
+
+def test_review_asks_each_question_again_with_the_saved_answer_as_default(monkeypatch, saved_runs):
+    _stub_prompts(monkeypatch, _SOC_SSH)
+    _invoke(*DRY_RUN)
+    # Only the site changes; every other question is answered by its default,
+    # which the stub can only do if it is the saved answer.
+    asked = _stub_prompts(
+        monkeypatch,
+        {"Resume a saved run": "b1", "Use the saved answers": "review", "NetBox site slug": "lab4"},
+    )
+
+    result = _invoke(*DRY_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert asked.kwargs["Board name (e.g. zcu102-ad9081-lab3)"]["default"] == "b1"
+    assert asked.kwargs["PDU hostname or IP"]["default"] == "10.0.0.20"
+    assert "b1 (site lab4)" in result.output
+    assert _saved(saved_runs)["answers"]["site_slug"] == "lab4"
+
+
+def test_a_changed_answer_reruns_the_steps_it_had_finished(monkeypatch, saved_runs):
+    monkeypatch.setattr(cli.Confirm, "ask", staticmethod(lambda *a, **k: True))
+    args = ["add-hardware", "--exporter-configs-dir", str(EXPORTER_CONFIGS_DIR), *CREDENTIALS]
+    _stub_prompts(monkeypatch, _SOC_SSH)
+    _stub_services(monkeypatch)
+    _fail_deploy(monkeypatch)
+    _invoke(*args)
+    _stub_prompts(
+        monkeypatch,
+        {"Resume a saved run": "b1", "Use the saved answers": "review", "NetBox site slug": "lab4"},
+    )
+    calls = _stub_services(monkeypatch)
+
+    result = _invoke(*args)
+
+    assert result.exit_code == 0, result.output
+    assert calls["steps"] == ["netbox", "exporter", "place"]
+
+
+def test_a_saved_optional_answer_can_be_cleared_in_review(monkeypatch, saved_runs):
+    _stub_prompts(monkeypatch, {**_SOC_SSH, "  BOOT.BIN": "release:zynq/BOOT.BIN"})
+    _invoke(*DRY_RUN)
+    asked = _stub_prompts(
+        monkeypatch,
+        {"Resume a saved run": "b1", "Use the saved answers": "review", "  BOOT.BIN": "-"},
+    )
+    rendered = {}
+    real_render = cli.provision.render_and_validate
+
+    def render(template_path, context, exporter_configs_dir):
+        rendered.update(context)
+        return real_render(template_path, context, exporter_configs_dir)
+
+    monkeypatch.setattr(cli.provision, "render_and_validate", render)
+
+    result = _invoke(*DRY_RUN)
+
+    assert result.exit_code == 0, result.output
+    bootbin = next(p for p in asked if p.startswith("  BOOT.BIN"))
+    assert "Enter for release:zynq/BOOT.BIN, - to leave unset" in bootbin
+    assert "kuiper_bootbin" not in rendered  # unset again, so the template's null applies
+
+
+def test_a_dry_run_saves_its_answers_to_resume_from(monkeypatch, saved_runs):
+    _stub_prompts(monkeypatch, _SOC_SSH)
+
+    result = _invoke(*DRY_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert _saved(saved_runs)["done"] == ["plan"]
+    assert f"Answers saved to {saved_runs / 'b1.json'}" in result.output
+
+
+def test_unreadable_saved_answers_are_ignored(monkeypatch, saved_runs):
+    saved_runs.mkdir(parents=True)
+    (saved_runs / "b0.json").write_text("{truncated")
+    asked = _stub_prompts(monkeypatch, _SOC_SSH)
+
+    result = _invoke(*DRY_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert not [p for p in asked if p.startswith("Resume")]
+
+
+def test_new_starts_over_and_keeps_the_saved_run(monkeypatch, saved_runs):
+    _stub_prompts(monkeypatch, _SOC_SSH)
+    _invoke(*DRY_RUN)
+    asked = _stub_prompts(
+        monkeypatch, {**_SOC_SSH, "Resume a saved run": "new", "Board name": "b2"}
+    )
+
+    result = _invoke(*DRY_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert asked.kwargs["Board name (e.g. zcu102-ad9081-lab3)"].get("default") is None
+    assert sorted(p.name for p in saved_runs.iterdir()) == ["b1.json", "b2.json"]
+
+
+def test_options_win_over_saved_answers(monkeypatch, saved_runs):
+    def netbox_down(nb):
+        raise RuntimeError("NetBox is down")
+
+    _stub_services(monkeypatch)
+    monkeypatch.setattr(cli.client, "ensure_schema", netbox_down)
+    _type_into_real_prompts(monkeypatch, _FULL_RUN)  # saves netbox_url https://netbox.test
+    calls = _stub_services(monkeypatch)
+    conversation = [
+        ("Resume a saved run", ""),
+        ("Use the saved answers", ""),
+        ("\nProceed?", "y"),
+        ("NetBox API token", "tok123"),
+        ("Coordinator API password", "secret"),
+    ]
+
+    result, prompts = _type_into_real_prompts(
+        monkeypatch, conversation, "--netbox-url", "https://other.test"
+    )
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(conversation, prompts)
+    assert calls["url"] == "https://other.test"
 
 
 def test_required_answers_are_asked_again_until_given(monkeypatch):

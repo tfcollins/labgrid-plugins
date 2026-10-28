@@ -167,8 +167,10 @@ a ``labgrid-plugins`` checkout.
 * ``--exporter-configs-dir <path>``: ``exporter_configs/`` directory (default: searched upward from the current directory).
 * ``--dry-run``: Render, validate, and print the plan; make no changes.
 
-See :doc:`netbox-onboarding` for prerequisites, exactly what is created in NetBox, on the
-exporter host, and on the coordinator, and re-run behavior.
+Answers are saved as they are given (never the token or passwords), so a run that fails
+can be resumed: the next run offers to pick up where it stopped, skipping steps it already
+finished. See :doc:`netbox-onboarding` for prerequisites, exactly what is created in NetBox, on
+the exporter host, and on the coordinator, resuming, and re-run behavior.
 
 boot-fabric
 ~~~~~~~~~~~
