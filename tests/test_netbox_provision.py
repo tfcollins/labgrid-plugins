@@ -242,7 +242,12 @@ def test_deploy_exporter_stages_and_installs(tmp_path, monkeypatch):
     assert put_calls[1][1].endswith("labgrid-exporter-rack1.service")
 
     install_cmd = conn.run_check.call_args_list[-1].args[0]
-    assert "systemctl enable --now labgrid-exporter-rack1" in install_cmd
+    # restart, not `enable --now`: a re-run must load the new config into a
+    # unit that is already running
+    assert (
+        "systemctl enable labgrid-exporter-rack1 && sudo systemctl restart labgrid-exporter-rack1"
+        in install_cmd
+    )
     assert "sudo mv" in install_cmd
 
 

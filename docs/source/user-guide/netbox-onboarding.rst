@@ -280,8 +280,8 @@ Files are staged under ``/tmp/adi-lg-netbox-stage/<name>/`` and then moved into 
   ``EnvironmentFile=-/etc/labgrid/exporter.env`` (optional, for outlet credentials). The exporter registers on the
   coordinator under the hardware name, so one host can run a separate exporter per board.
 
-The unit is enabled and started (``systemctl enable --now``), then polled with
-``systemctl is-active`` (10 attempts, 2 s apart). If it never becomes active, the command
+The unit is enabled and (re)started (``systemctl enable`` then ``systemctl restart``), then
+polled with ``systemctl is-active`` (10 attempts, 2 s apart). If it never becomes active, the command
 fails and prints the last 50 lines of its journal.
 
 On the coordinator
@@ -289,9 +289,11 @@ On the coordinator
 
 Through the coordinator REST API (:doc:`coordinator`), authenticated as the coordinator user:
 
-- ``POST /api/places`` - create the place, named after the board name.
+- ``POST /api/places`` - create the place, named after the board name, unless
+  ``GET /api/places/<name>`` shows it already exists.
 - ``POST /api/places/<name>/matches`` - one ``<name>/<group>/*`` match per resource group in
-  the rendered config (``<name>`` is the exporter name the unit registers).
+  the rendered config (``<name>`` is the exporter name the unit registers), skipping any the
+  place already has.
 - ``PUT /api/places/<name>/tags`` - ``daughter-board`` and ``carrier`` (lowercased),
   ``boot-strategy``, ``runner``, ``power-driver``, and (relay types) ``power-output-driver``, the keys the hardware-CI preflight matches on (see the tag
   table in :doc:`onboarding-a-lab-host`, Step 3).
@@ -302,18 +304,14 @@ is not listed.
 Re-running for an existing board
 --------------------------------
 
-The command is not fully idempotent; each stage handles an existing board differently:
+Every stage is safe to run again for a board that is already (or partly) onboarded:
 
 - **NetBox** - an existing device (matched by name) has its custom fields updated in place.
   Its site and device type are left unchanged.
-- **Exporter host** - the config and unit files are overwritten, but
-  ``systemctl enable --now`` does not restart a unit that is already running, so the old config
-  stays loaded. Restart it yourself:
-  ``sudo systemctl restart labgrid-exporter-<name>``.
-- **Coordinator** - the coordinator rejects a match that already exists, so a re-run for an
-  already-onboarded board stops at the coordinator step with an error, after the NetBox and
-  exporter stages have run. Tags are written last, so for a tag-only change use the
-  dashboard or ``labgrid-client set-tags`` instead.
+- **Exporter host** - the config and unit files are overwritten and the unit is restarted, so
+  the new config is loaded.
+- **Coordinator** - an existing place is kept and only the matches it lacks are added. The
+  tags this command writes are set to this run's values; any other tags on the place are kept.
 
 Troubleshooting
 ---------------

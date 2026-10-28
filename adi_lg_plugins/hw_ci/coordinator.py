@@ -270,6 +270,26 @@ def _write_json(
         ) from e
 
 
+def get_place(api: str, name: str, *, timeout: float = 15.0) -> dict | None:
+    """GET /api/places/{name}; None if the coordinator has no such place."""
+    url = f"{_api_url(api)}/api/places/{name}"
+    try:
+        with urllib.request.urlopen(url, timeout=timeout) as r:  # noqa: S310
+            return json.load(r)
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None
+        raise RuntimeError(f"GET {url} failed: {e.code} {e.read().decode(errors='replace')}") from e
+
+
+def match_pattern(match: dict) -> str:
+    """A place match, as returned by the API, as the pattern it was added with."""
+    parts = [match["exporter"], match["group"], match["cls"]]
+    if match.get("name"):
+        parts.append(match["name"])
+    return "/".join(parts)
+
+
 def create_place(api: str, cookie: str, name: str, *, timeout: float = 15.0) -> None:
     """POST /api/places. Idempotent: a place that already exists is not an error."""
     try:

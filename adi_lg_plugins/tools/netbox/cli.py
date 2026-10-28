@@ -27,6 +27,8 @@ from adi_lg_plugins.hw_ci.coordinator import (
     add_match,
     create_place,
     fetch_raw_places,
+    get_place,
+    match_pattern,
     resolve_coordinator,
     set_place_tags,
 )
@@ -452,19 +454,25 @@ def add_hardware(
             f"until they are set and labgrid-exporter-{name} is restarted.[/yellow]"
         )
 
-    # 3. Coordinator: create the place, match the live resources, tag it.
+    # 3. Coordinator: create the place, match the live resources, tag it. The
+    # coordinator rejects a place or match that already exists, so a re-run
+    # only adds what is missing.
     api = _resolve_api(coord_resolved)
     try:
         cookie = coord_mod.login(api, coord_user, coord_password)
-        create_place(api, cookie, name)
+        place = get_place(api, name)
+        if place is None:
+            create_place(api, cookie, name)
+        existing = {match_pattern(m) for m in (place or {}).get("matches", [])}
         for pattern in match_patterns:
-            add_match(api, cookie, name, pattern)
+            if pattern not in existing:
+                add_match(api, cookie, name, pattern)
         set_place_tags(api, cookie, name, tags)
-    except RuntimeError as e:
+    except (RuntimeError, OSError) as e:  # OSError: coordinator API unreachable
         raise click.ClickException(str(e)) from e
     console.print(f"[green]Place {name!r} created, matched, and tagged on the coordinator.[/green]")
 
-    places, _skipped = fetch_raw_places(coord_resolved)
+    places = fetch_raw_places(coord_resolved)
     created = next((p for p in places if p.get("name") == name), None)
     if created:
         console.print(f"\n[bold green]Done.[/bold green] {name} tags: {created.get('tags')}")

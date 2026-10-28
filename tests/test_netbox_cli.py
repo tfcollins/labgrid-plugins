@@ -115,6 +115,61 @@ def _invoke(*args):
     return CliRunner().invoke(cli.netbox_group, list(args), catch_exceptions=False)
 
 
+def _stub_services(monkeypatch, *, place=None):
+    """Replace NetBox, the exporter host and the coordinator with recorders.
+
+    ``place`` is what the coordinator already holds under the board's name.
+    Returns the calls made; ``calls["steps"]`` lists the changes in order.
+    """
+    calls = {"steps": []}
+
+    def connect(url, token, **kwargs):
+        calls.update(url=url, token=token)
+        return object()
+
+    def device(nb, name, **kwargs):
+        calls["steps"].append("netbox")
+        return type("Device", (), {"id": 7})()
+
+    def deploy(ssh_host, ssh_user, name, rendered, coord, **kwargs):
+        calls["steps"].append("exporter")
+        calls["exporter_name"] = name
+
+    def login(api, user, password):
+        calls["login"] = (user, password)
+        return "cookie"
+
+    monkeypatch.setattr(cli.client, "connect", connect)
+    monkeypatch.setattr(cli.client, "ensure_schema", lambda nb: None)
+    monkeypatch.setattr(cli.client, "create_or_update_device", device)
+    monkeypatch.setattr(cli.provision, "check_prerequisites", lambda host: "/usr/bin/lg-exp")
+    monkeypatch.setattr(cli.provision, "deploy_exporter", deploy)
+    monkeypatch.setattr(cli.provision, "verify_exporter_active", lambda host, name: None)
+    monkeypatch.setattr(cli.provision, "missing_power_env", lambda host, power: [])
+    monkeypatch.setattr(cli, "resolve_coordinator", lambda coord: "coord:20408")
+    monkeypatch.setattr(cli, "_resolve_api", lambda coord: "coord:8000")
+    monkeypatch.setattr(cli.coord_mod, "login", login)
+    monkeypatch.setattr(cli, "get_place", lambda api, name: place)
+    monkeypatch.setattr(
+        cli, "create_place", lambda api, cookie, name: calls["steps"].append("place")
+    )
+    monkeypatch.setattr(
+        cli,
+        "add_match",
+        lambda api, cookie, name, pattern: calls.setdefault("patterns", []).append(pattern),
+    )
+    monkeypatch.setattr(
+        cli, "set_place_tags", lambda api, cookie, name, tags: calls.update(tags=tags)
+    )
+    # A lab coordinator lists many places, not just the new one.
+    monkeypatch.setattr(
+        cli,
+        "fetch_raw_places",
+        lambda coord: [{"name": n, "tags": {}} for n in ("bq", "pluto", "zc706-lab3-001")],
+    )
+    return calls
+
+
 # A soc-ssh board with a CyberPower PDU, keyed by prompt prefix.
 _SOC_SSH = {
     "Board template": "soc-ssh",
@@ -166,36 +221,11 @@ def test_add_hardware_matches_resources_under_the_deployed_exporter_name(monkeyp
         monkeypatch,
         {"Power category": category, "Power type": power, **power_answers, **_SOC_SDMUX},
     )
-    calls = {}
     monkeypatch.setattr(cli.Confirm, "ask", staticmethod(lambda *a, **k: True))
-    monkeypatch.setattr(cli.client, "connect", lambda url, token, **k: object())
-    monkeypatch.setattr(cli.client, "ensure_schema", lambda nb: None)
-    monkeypatch.setattr(
-        cli.client, "create_or_update_device", lambda nb, name, **kw: type("D", (), {"id": 7})()
-    )
-    monkeypatch.setattr(cli.provision, "check_prerequisites", lambda host: "/usr/bin/lg-exp")
-
-    def deploy(ssh_host, ssh_user, name, rendered, coord, **kw):
-        calls["exporter_name"] = name
-
-    monkeypatch.setattr(cli.provision, "deploy_exporter", deploy)
+    calls = _stub_services(monkeypatch)
     monkeypatch.setattr(
         cli.provision, "missing_power_env", lambda host, power: [missing] if missing else []
     )
-    monkeypatch.setattr(cli.provision, "verify_exporter_active", lambda host, name: None)
-    monkeypatch.setattr(cli, "resolve_coordinator", lambda coord: "coord:20408")
-    monkeypatch.setattr(cli, "_resolve_api", lambda coord: "http://coord:8000/api")
-    monkeypatch.setattr(cli.coord_mod, "login", lambda api, user, password: "cookie")
-    monkeypatch.setattr(cli, "create_place", lambda api, cookie, name: None)
-    monkeypatch.setattr(
-        cli,
-        "add_match",
-        lambda api, cookie, name, pattern: calls.setdefault("patterns", []).append(pattern),
-    )
-    monkeypatch.setattr(
-        cli, "set_place_tags", lambda api, cookie, name, tags: calls.update(tags=tags)
-    )
-    monkeypatch.setattr(cli, "fetch_raw_places", lambda coord: ([], []))
 
     result = _invoke(
         "add-hardware", "--exporter-configs-dir", str(EXPORTER_CONFIGS_DIR), *CREDENTIALS
@@ -283,29 +313,7 @@ def test_full_run_through_the_real_prompts(monkeypatch):
         ("Coordinator API username", "admin"),
         ("Coordinator API password", "secret"),
     ]
-    calls = {}
-    monkeypatch.setattr(
-        cli.client, "connect", lambda url, token, **k: calls.update(url=url, token=token)
-    )
-    monkeypatch.setattr(cli.client, "ensure_schema", lambda nb: None)
-    monkeypatch.setattr(
-        cli.client, "create_or_update_device", lambda nb, name, **kw: type("D", (), {"id": 7})()
-    )
-    monkeypatch.setattr(cli.provision, "check_prerequisites", lambda host: "/usr/bin/lg-exp")
-    monkeypatch.setattr(cli.provision, "deploy_exporter", lambda *a, **k: None)
-    monkeypatch.setattr(cli.provision, "verify_exporter_active", lambda host, name: None)
-    monkeypatch.setattr(cli.provision, "missing_power_env", lambda host, power: [])
-    monkeypatch.setattr(cli, "resolve_coordinator", lambda coord: "coord:20408")
-    monkeypatch.setattr(cli, "_resolve_api", lambda coord: "http://coord:8000/api")
-    monkeypatch.setattr(
-        cli.coord_mod, "login", lambda api, user, password: calls.update(login=(user, password))
-    )
-    monkeypatch.setattr(cli, "create_place", lambda api, cookie, name: None)
-    monkeypatch.setattr(cli, "add_match", lambda api, cookie, name, pattern: None)
-    monkeypatch.setattr(
-        cli, "set_place_tags", lambda api, cookie, name, tags: calls.update(tags=tags)
-    )
-    monkeypatch.setattr(cli, "fetch_raw_places", lambda coord: ([], []))
+    calls = _stub_services(monkeypatch)
 
     result, prompts = _type_into_real_prompts(monkeypatch, conversation)
 
@@ -320,6 +328,43 @@ def test_full_run_through_the_real_prompts(monkeypatch):
     output = " ".join(result.output.split())
     assert "under your user profile in NetBox" in output
     assert "create places" in output
+
+
+def test_rerun_for_an_onboarded_board_keeps_its_place_and_matches(monkeypatch):
+    """The coordinator rejects a duplicate place or match, so a re-run must not send them."""
+    _stub_prompts(monkeypatch, _SOC_SSH)
+    monkeypatch.setattr(cli.Confirm, "ask", staticmethod(lambda *a, **k: True))
+    match = {"exporter": "b1", "group": "ZCU102_AD9081", "cls": "*", "name": None, "rename": ""}
+    calls = _stub_services(monkeypatch, place={"name": "b1", "matches": [match], "tags": {}})
+
+    result = _invoke(
+        "add-hardware", "--exporter-configs-dir", str(EXPORTER_CONFIGS_DIR), *CREDENTIALS
+    )
+
+    assert result.exit_code == 0, result.output
+    assert calls["steps"] == ["netbox", "exporter"]  # no new place
+    assert "patterns" not in calls  # nor a second copy of its match
+    assert calls["tags"]["carrier"] == "zcu102"  # tags are still brought up to date
+
+
+def test_coordinator_that_cannot_be_reached_is_reported_without_a_traceback(monkeypatch):
+    import urllib.error
+
+    _stub_prompts(monkeypatch, _SOC_SSH)
+    monkeypatch.setattr(cli.Confirm, "ask", staticmethod(lambda *a, **k: True))
+    _stub_services(monkeypatch)
+
+    def refused(api, user, password):
+        raise urllib.error.URLError(ConnectionRefusedError(111, "Connection refused"))
+
+    monkeypatch.setattr(cli.coord_mod, "login", refused)
+
+    result = _invoke(
+        "add-hardware", "--exporter-configs-dir", str(EXPORTER_CONFIGS_DIR), *CREDENTIALS
+    )
+
+    assert result.exit_code == 1
+    assert "Connection refused" in result.output
 
 
 def test_required_answers_are_asked_again_until_given(monkeypatch):

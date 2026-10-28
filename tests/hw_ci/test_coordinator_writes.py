@@ -141,3 +141,52 @@ def test_set_place_tags_puts_tags(monkeypatch):
     assert captured["url"] == "http://coord:8000/api/places/rack1/tags"
     assert captured["method"] == "PUT"
     assert captured["body"] == {"tags": {"carrier": "zcu102"}}
+
+
+def test_get_place_returns_the_place(monkeypatch):
+    captured = {}
+
+    def fake_urlopen(url, timeout=None):
+        captured["url"] = url
+        return _Resp(b'{"name": "rack1", "matches": [], "tags": {}}')
+
+    monkeypatch.setattr(coord_mod.urllib.request, "urlopen", fake_urlopen)
+
+    assert coord_mod.get_place("coord:8000", "rack1")["name"] == "rack1"
+    assert captured["url"] == "http://coord:8000/api/places/rack1"
+
+
+def test_get_place_returns_none_for_an_unknown_place(monkeypatch):
+    def fake_urlopen(url, timeout=None):
+        raise urllib.error.HTTPError(url, 404, "Not Found", {}, io.BytesIO(b"not found"))
+
+    monkeypatch.setattr(coord_mod.urllib.request, "urlopen", fake_urlopen)
+
+    assert coord_mod.get_place("coord:8000", "rack1") is None
+
+
+def test_get_place_reports_other_errors(monkeypatch):
+    def fake_urlopen(url, timeout=None):
+        raise urllib.error.HTTPError(url, 502, "Bad Gateway", {}, io.BytesIO(b"no coordinator"))
+
+    monkeypatch.setattr(coord_mod.urllib.request, "urlopen", fake_urlopen)
+
+    with pytest.raises(RuntimeError, match="502 no coordinator"):
+        coord_mod.get_place("coord:8000", "rack1")
+
+
+@pytest.mark.parametrize(
+    ("match", "pattern"),
+    [
+        (
+            {"exporter": "rack1", "group": "ZCU102_AD9081", "cls": "*", "name": None},
+            "rack1/ZCU102_AD9081/*",
+        ),
+        (
+            {"exporter": "*", "group": "g", "cls": "SerialPort", "name": "uart"},
+            "*/g/SerialPort/uart",
+        ),
+    ],
+)
+def test_match_pattern_is_the_pattern_the_match_was_added_with(match, pattern):
+    assert coord_mod.match_pattern(match) == pattern
