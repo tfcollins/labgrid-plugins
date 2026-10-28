@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import os
 import re
-from collections.abc import Callable, Collection
 from pathlib import Path
 
 import click
@@ -35,7 +34,7 @@ from adi_lg_plugins.hw_ci.coordinator import (
     resolve_coordinator,
     set_place_tags,
 )
-from adi_lg_plugins.tools._answers import SavedAnswers, answers_dir
+from adi_lg_plugins.tools._answers import Run, SavedAnswers, answers_dir, pick_run
 from adi_lg_plugins.tools._choices import ask_choice
 
 from . import client, provision
@@ -62,7 +61,7 @@ KNOWN_BOOT_STRATEGIES = [
 
 # Saved runs live in answers_dir(_ANSWERS), one file per board name.
 _ANSWERS = "netbox-add-hardware"
-_NEW = "new"
+_COMMAND = "adi-lg netbox add-hardware"
 # The furthest step a saved run finished, as listed when offering to resume it.
 _PROGRESS = {"exporter": "exporter running", "netbox": "NetBox device done", "plan": "plan checked"}
 
@@ -96,145 +95,46 @@ def _plan_table(rows: list[tuple[str, list[str]]]) -> Padding:
     return Padding(table, (0, 0, 0, 2))
 
 
-class _Run:
-    """This run's answers: asked, or taken from a saved run, and saved as they come.
+def _coordinator(run: Run, explicit: str | None) -> str:
+    """--coord or LG_COORDINATOR / ADI_LG_COORDINATOR, else the one ``run`` saved.
 
-    ``mode`` is "new", "resume" (saved answers are used as they are, and only
-    what is missing is asked) or "review" (every question is asked again, with
-    its saved answer as the default).
+    The exporter a run deployed points at its coordinator, so a different one
+    voids the steps it finished.
     """
-
-    def __init__(self, saved: SavedAnswers | None = None, mode: str = "new"):
-        self.saved = saved or SavedAnswers()
-        self.mode = mode
-
-    def _saved(self, key: str, choices: Collection[str] | None) -> str | None:
-        answer = self.saved.answers.get(key)
-        return answer if answer is not None and (choices is None or answer in choices) else None
-
-    def will_ask(self, key: str) -> bool:
-        return self.mode != "resume" or self._saved(key, None) is None
-
-    def answer(
-        self,
-        key: str,
-        label: str,
-        ask: Callable[[str | None], str],
-        *,
-        default: str | None = None,
-        explain: str | None = None,
-        choices: Collection[str] | None = None,
-    ) -> str:
-        """``ask(default)`` unless resuming with ``key`` saved; the answer is saved.
-
-        ``choices`` lists the answers still valid (e.g. templates that still
-        exist); a saved answer outside them is asked again.
-        """
-        saved = self._saved(key, choices)
-        if saved is not None and self.mode == "resume":
-            return saved
-        if saved is not None and self.mode == "review":
-            default = saved
-        if explain:
-            _explain(explain)
-        value = ask(default)
-        # The steps a resumed run finished were done with its saved answers.
-        if self.mode != "new" and value != self.saved.answers.get(key):
-            self.saved.done.clear()
-        self.saved.set(key, label, value)
-        return value
-
-    def coordinator(self, explicit: str | None) -> str:
-        """--coord or LG_COORDINATOR / ADI_LG_COORDINATOR, else the one this run saved.
-
-        The exporter a run deployed points at its coordinator, so a different
-        one voids the steps it finished.
-        """
-        saved = self.saved.answers.get("coordinator")
-        from_env = os.environ.get("LG_COORDINATOR") or os.environ.get("ADI_LG_COORDINATOR")
-        try:
-            resolved = resolve_coordinator(explicit or (None if from_env else saved))
-        except RuntimeError as e:
-            raise click.ClickException(str(e)) from e
-        if saved is not None and resolved != saved:
-            self.saved.done.clear()
-        self.saved.set("coordinator", "Coordinator", resolved)
-        return resolved
-
-    def login(self, key: str, label: str, explicit: str | None, ask: Callable[..., str]) -> str:
-        """A login detail (not a secret): ``explicit``, else asked, the saved one as default.
-
-        Asked again even when resuming - a wrong URL or username is what most
-        often stops a run - and changing it voids nothing: the step it is for
-        is the one that failed.
-        """
-        if explicit:
-            return explicit
-        value = ask(default=self.saved.answers.get(key))
-        self.saved.set(key, label, value)
-        return value
-
-    def hint(self, how: str = "again") -> str:
-        path = self.saved.path
-        return (
-            f"Answers saved to {path} - run `adi-lg netbox add-hardware` {how} "
-            f"and pick {path.stem} to resume."
-        )
+    saved = run.saved.answers.get("coordinator")
+    from_env = os.environ.get("LG_COORDINATOR") or os.environ.get("ADI_LG_COORDINATOR")
+    try:
+        resolved = resolve_coordinator(explicit or (None if from_env else saved))
+    except RuntimeError as e:
+        raise click.ClickException(str(e)) from e
+    if saved is not None and resolved != saved:
+        run.saved.done.clear()
+    run.saved.set("coordinator", "Coordinator", resolved)
+    return resolved
 
 
 def _progress(run: SavedAnswers) -> str:
     return next((text for step, text in _PROGRESS.items() if run.is_done(step)), "answers saved")
 
 
-def _pick_run() -> _Run:
-    """Offer to resume a saved run, if there are any; otherwise start a new one."""
-    runs = {run.path.stem: run for run in SavedAnswers.all_in(answers_dir(_ANSWERS))}
-    if not runs:
-        return _Run()
-    console.print("[bold]Saved answers from earlier runs[/bold]")
-    pick = ask_choice(
+def _pick_run() -> Run:
+    return pick_run(
         console,
-        "Resume a saved run",
-        [
-            *(
-                (name, run.answers.get("template", ""), run.saved_at, _progress(run))
-                for name, run in runs.items()
-            ),
-            (_NEW, "", "", "start a new board"),
-        ],
+        command=_COMMAND,
+        directory=answers_dir(_ANSWERS),
         headers=("Board", "Template", "Saved", "Progress"),
-        default=next(iter(runs)),
+        describe=lambda r: (r.answers.get("template", ""), r.saved_at, _progress(r)),
+        new="start a new board",
     )
-    if pick == _NEW:
-        return _Run()
-    saved = runs[pick]
-    table = Table(box=box.SIMPLE_HEAD, show_edge=False, pad_edge=False)
-    table.add_column("Question")
-    table.add_column("Answer", overflow="fold")  # paths in full, not cut short
-    for key, value in saved.answers.items():
-        shown = "(default)" if value == "" else "(hidden)" if "password" in key else value
-        table.add_row(escape(saved.labels.get(key, key)), escape(shown))
-    console.print(f"\n[bold]Saved answers for {escape(pick)}[/bold]")
-    console.print(table)
-    mode = ask_choice(
-        console,
-        "Use the saved answers",
-        [
-            ("resume", "as they are: ask only what is still unanswered, then show the plan"),
-            ("review", "ask every question again, with the saved answer as its default"),
-        ],
-        default="resume",
-    )
-    return _Run(saved, mode)
 
 
-def _ask_power(run: _Run | None = None) -> tuple[str, dict[str, str]]:
+def _ask_power(run: Run | None = None) -> tuple[str, dict[str, str]]:
     """Ask for a power type by category, then that type's fields.
 
     Returns the type key and the template context for its ``power_*`` fields;
     optional fields left blank are omitted so the fragment's default applies.
     """
-    run = run or _Run()
+    run = run or Run(_COMMAND, console)
 
     def ask_category(default):
         console.print("\n[bold]Power control[/bold]")
@@ -415,7 +315,7 @@ def add_hardware(
         raise click.ClickException(f"no templates found under {exporter_configs_dir / 'templates'}")
 
     run = _pick_run()
-    try:
+    with run.reporting():
         _onboard(
             run,
             templates,
@@ -428,18 +328,10 @@ def add_hardware(
             coord_user=coord_user,
             coord_password=coord_password,
         )
-    except click.ClickException as e:
-        if run.saved.path is not None and run.saved.path.exists():
-            e.message += f"\n{run.hint()}"
-        raise
-    except (click.Abort, KeyboardInterrupt, EOFError):
-        if run.saved.path is not None and run.saved.path.exists():
-            click.echo(f"\n{run.hint()}")
-        raise
 
 
 def _onboard(
-    run: _Run,
+    run: Run,
     templates: dict[str, Path],
     exporter_configs_dir: Path,
     *,
@@ -481,7 +373,7 @@ def _onboard(
         ),
     )
     # From here on the answers are saved, in a file named after the board.
-    run.saved.move_to(answers_dir(_ANSWERS) / f"{name}.json")
+    run.save_as(name)
     carrier = run.answer(
         "carrier",
         "Carrier board",
@@ -668,20 +560,21 @@ def _onboard(
     if not Confirm.ask("\nProceed?", default=True):
         raise click.Abort()
 
-    coord_resolved = run.coordinator(coord)
+    coord_resolved = _coordinator(run, coord)
     # Steps a resumed run already finished are skipped, so their credentials
     # aren't needed. Tokens and passwords are never saved.
     netbox_done = run.saved.is_done("netbox")
     if not netbox_done:
-        if not netbox_url:
-            _explain("The NetBox instance to register the board in (or set NETBOX_URL).")
-        netbox_url = run.login(
+        # Asked again on resume (the saved URL is the default): a wrong one is
+        # what most often stops a run.
+        netbox_url = netbox_url or run.answer(
             "netbox_url",
             "NetBox URL",
-            netbox_url,
             lambda default: _ask_required(
                 "NetBox URL (e.g. https://netbox.example.com)", check=_URL, default=default
             ),
+            explain="The NetBox instance to register the board in (or set NETBOX_URL).",
+            reask=True,
         )
         if not netbox_token:
             _explain(
@@ -695,11 +588,11 @@ def _onboard(
             f"A coordinator API login ({coord_resolved}) that can create places, add matches "
             "and set tags (or set LG_API_USERNAME / LG_API_PASSWORD)."
         )
-    coord_user = run.login(
+    coord_user = coord_user or run.answer(
         "coord_user",
         "Coordinator API username",
-        coord_user,
         lambda default: _ask_required("Coordinator API username", default=default),
+        reask=True,
     )
     if not coord_password:
         coord_password = _ask_secret("Coordinator API password")
