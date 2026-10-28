@@ -60,7 +60,7 @@ on:
         type: string
         default: >-
           uv pip install --quiet --python "$VENV_DIR/bin/python" -e "."
-          "labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins@main"
+          "labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins@v4"
       request-mode:
         description: >-
           adi-lg request mode for each leg. "uri" (default) boots the board,
@@ -127,12 +127,12 @@ jobs:
           [ -n "${{ inputs.coordinator }}" ] || { echo "::error::coordinator is empty — set vars.LG_COORDINATOR (gRPC :20408)"; exit 1; }
           [ -n "${{ inputs.runner-label }}" ] || { echo "::error::runner-label is empty — set vars.HW_REQUEST_RUNNER"; exit 1; }
       - uses: actions/checkout@v4
-      - uses: tfcollins/labgrid-plugins/.github/actions/setup-uv-venv@main
+      - uses: tfcollins/labgrid-plugins/.github/actions/setup-uv-venv@v4
         with:
           venv_dir: ${{ inputs.venv-dir }}
           install_cmd: >-
             uv pip install --quiet --python "$VENV_DIR/bin/python"
-            "labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins@main"
+            "labgrid-plugins @ git+https://github.com/tfcollins/labgrid-plugins@v4"
       - id: plan
         env:
           LG_COORDINATOR: ${{ inputs.coordinator }}
@@ -160,7 +160,7 @@ jobs:
       HW_DAUGHTER: ${{ matrix.part }}
     steps:
       - uses: actions/checkout@v4
-      - uses: tfcollins/labgrid-plugins/.github/actions/setup-uv-venv@main
+      - uses: tfcollins/labgrid-plugins/.github/actions/setup-uv-venv@v4
         env:
           INSTALL_GIT_TOKEN: ${{ secrets.INSTALL_GIT_TOKEN }}
         with:
