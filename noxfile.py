@@ -1,3 +1,6 @@
+import importlib.util
+from pathlib import Path
+
 import nox
 
 # Define default sessions
@@ -51,15 +54,29 @@ def docs(session):
     session.run("sphinx-build", "-b", "html", "docs/source", "docs/build/html")
 
 
+def _hw_ci_module(name):
+    """Load ``adi_lg_plugins/hw_ci/<name>.py`` by path, not as a package import.
+
+    The sessions below run without a venv, in nox's own Python, where this
+    package - and labgrid, which its ``__init__`` imports - usually isn't
+    installed. These modules use the standard library only.
+    """
+    path = Path(__file__).parent / "adi_lg_plugins" / "hw_ci" / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(f"_noxfile_{name}", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 @nox.session(venv_backend="none")
 def lint_pins(session):
     """Fail if any consumer-facing example pins != RECOMMENDED_PIN (or uses @main)."""
-    from adi_lg_plugins.hw_ci._release import RECOMMENDED_PIN
-    from adi_lg_plugins.hw_ci.pin_lint import CONSUMER_PIN_PATHS, find_consumer_pin_violations
+    pin = _hw_ci_module("_release").RECOMMENDED_PIN
+    pin_lint = _hw_ci_module("pin_lint")
 
-    violations = find_consumer_pin_violations(CONSUMER_PIN_PATHS, RECOMMENDED_PIN)
+    violations = pin_lint.find_consumer_pin_violations(pin_lint.CONSUMER_PIN_PATHS, pin)
     for f, line, found in violations:
-        session.log(f"{f}:{line}: consumer pin @{found} != @{RECOMMENDED_PIN}")
+        session.log(f"{f}:{line}: consumer pin @{found} != @{pin}")
     if violations:
         session.error(f"{len(violations)} stale consumer pin(s)")
 
@@ -69,7 +86,7 @@ def release_guard(session):
     """RELEASE-ONLY. Fail if any hw-request-family workflow still has an @main
     self-ref (i.e. scripts/pin-release-refs.sh was not run). MUST NOT run on
     main — main keeps @main by design."""
-    from adi_lg_plugins.hw_ci.pin_lint import find_main_self_refs
+    find_main_self_refs = _hw_ci_module("pin_lint").find_main_self_refs
 
     family = [
         ".github/workflows/hw-request.yml",
