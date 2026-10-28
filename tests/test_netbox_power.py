@@ -283,6 +283,23 @@ def test_a_device_of_the_same_name_at_another_site_is_not_used(lab):
     assert lab.device(lab.name("pdu")) is not None  # created at the board's site
 
 
+def test_a_power_role_and_manufacturer_made_by_hand_under_other_slugs_are_reused():
+    nb = FakeNetBox()
+    nb.add_site("lab3")
+    client.ensure_schema(nb)
+    board = client.create_or_update_device(
+        nb, "b1", carrier="zcu102", site_slug="lab3", custom_fields={}
+    )
+    nb.dcim.manufacturers.create(name=client.POWER_MANUFACTURER_NAME, slug="generic-hw")
+    nb.dcim.device_roles.create(name=client.POWER_ROLE_NAME, slug="power", color="ff9800")
+
+    client.connect_power(nb, board, site_slug="lab3", device="pdu", settings=APC, outlets=["1"])
+
+    (pdu,) = nb.dcim.devices.filter(name="pdu")
+    assert pdu.role.slug == "power"
+    assert len(list(nb.dcim.manufacturers.filter(name=client.POWER_MANUFACTURER_NAME))) == 1
+
+
 # --- power answers <-> NetBox -------------------------------------------------
 
 

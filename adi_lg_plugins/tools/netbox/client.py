@@ -287,7 +287,16 @@ def _natural(name: str):
 
 
 def _get_or_create(endpoint, slug: str, **fields):
-    return endpoint.get(slug=slug) or endpoint.create(slug=slug, **fields)
+    """By slug, else by its unique name (one made by hand may have another slug), else created."""
+    found = endpoint.get(slug=slug)
+    if found is None:
+        unique = (
+            {"model": fields["model"], "manufacturer_id": fields["manufacturer"]}
+            if "model" in fields
+            else {"name": fields["name"]}
+        )
+        found = next(iter(endpoint.filter(**unique)), None)
+    return found or endpoint.create(slug=slug, **fields)
 
 
 def _create_power_device(nb, name: str, site_id: int, settings: dict):

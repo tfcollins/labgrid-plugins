@@ -523,6 +523,34 @@ def test_a_new_power_device_is_offered_alongside_the_ones_in_netbox(monkeypatch)
     }
 
 
+def test_a_single_switch_in_netbox_needs_no_outlet_question(monkeypatch):
+    plug = _pdu("vesync-zcu102-plug", {"type": "vesync", "outlet_names": "zcu102 plug"}, "1")
+    calls = _stub_services(monkeypatch, power_devices=[plug])
+    rendered = _rendered(monkeypatch)
+    conversation = [*_BOARD, ("Power device", "vesync-zcu102-plug"), *_FIELDS]
+
+    result, prompts = _type_into_real_prompts(monkeypatch, conversation)
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(conversation, prompts)  # its only outlet is used
+    assert rendered["power_outlet"] == "zcu102 plug"
+    assert calls["tags"]["power-driver"] == "VesyncPowerDriver"
+    assert calls["power"]["device"] == "vesync-zcu102-plug"
+    assert calls["power"]["outlets"] == ["1"]
+
+
+def test_a_netbox_without_sites_stops_before_the_power_questions(monkeypatch, saved_runs):
+    _stub_services(monkeypatch)
+    monkeypatch.setattr(cli.client, "sites", lambda nb: [])
+
+    result, prompts = _type_into_real_prompts(monkeypatch, _BOARD[:-1])
+
+    assert result.exit_code == 1
+    assert "NetBox has no sites" in result.output
+    assert not [p for p in prompts if p.startswith(("NetBox site", "Power"))]
+    assert "pick b1 to resume" in result.output
+
+
 def test_manual_power_is_not_recorded_in_netbox(monkeypatch):
     calls = _stub_services(monkeypatch)
     conversation = [

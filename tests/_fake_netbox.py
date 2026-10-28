@@ -54,8 +54,8 @@ class Endpoint:
                 have = (full.get("site") or full["device"].site).slug
             elif key == "site_id":
                 have = (full.get("site") or full["device"].site).id
-            elif key == "device_id":
-                have = row["device"]
+            elif key.endswith("_id") and key[:-3] in row:
+                have = row[key[:-3]]
             else:
                 have = row.get(key)
             if have not in (want if isinstance(want, list) else [want]):
@@ -78,6 +78,8 @@ class Endpoint:
     def create(self, **data):
         if self.name == "devices" and list(self.filter(name=data["name"], site_id=data["site"])):
             raise RuntimeError("Device name must be unique per site and tenant.")
+        if self.name in ("manufacturers", "device_roles") and list(self.filter(name=data["name"])):
+            raise RuntimeError(f"{self.name} with this name already exists.")
         row = {"id": next(_ids), **copy.deepcopy(data)}
         if self.name == "cables":
             self.nb.connect(row)
