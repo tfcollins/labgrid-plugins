@@ -411,6 +411,16 @@ Troubleshooting
     The API token is wrong, expired, or lacks write permission. Create a token in NetBox under
     your user profile and pass it with ``--netbox-token`` or ``NETBOX_TOKEN``.
 
+``Invalid authorization header: Must be in the form "Bearer <key>.<token>" or "Token <token>"``
+    The token had a space in it - usually a copied ``Authorization: Bearer nbt_...`` header
+    line rather than the token alone. Give just the token: ``nbt_<key>.<token>`` on NetBox
+    4.5+, or a 40-character v1 token; the command adds the ``Bearer``/``Token`` keyword. It now
+    removes a pasted ``Authorization:``/``Bearer``/``Token`` prefix and surrounding quotes
+    itself, and refuses a token that still has a space in it, or that is only the
+    ``nbt_<key>`` half of a v2 token (NetBox shows the full token once, when it is created).
+    A bad ``--netbox-token`` / ``NETBOX_TOKEN`` stops the command before any question; a bad
+    answer at the prompt is asked again.
+
 ``NetBox site '<slug>' does not exist``
     Create the site in NetBox first (or use an existing slug); the command never creates sites.
 

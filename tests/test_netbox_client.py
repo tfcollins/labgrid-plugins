@@ -126,3 +126,62 @@ def test_create_or_update_device_updates_when_present():
     existing.save.assert_called_once()
     assert existing.custom_fields["carrier"] == "zcu102"
     nb.dcim.devices.create.assert_not_called()
+
+
+# NetBox 4.5+ rejects an Authorization header that isn't exactly two words
+# ("Bearer nbt_<key>.<token>" / "Token <token>"); pynetbox adds the keyword
+# itself, so the token must be the bare value.
+
+
+@pytest.mark.parametrize(
+    "raw",
+    [
+        "nbt_abc123.s3cret",
+        "  nbt_abc123.s3cret\n",
+        "Bearer nbt_abc123.s3cret",  # the header value, as shown in NetBox's docs
+        "bearer  nbt_abc123.s3cret",
+        "Authorization: Bearer nbt_abc123.s3cret",
+        '"nbt_abc123.s3cret"',
+    ],
+)
+def test_clean_token_leaves_the_bare_v2_token(raw):
+    assert client.clean_token(raw) == "nbt_abc123.s3cret"
+
+
+@pytest.mark.parametrize("raw", ["0123456789abcdef0123456789abcdef01234567", "Token 0123abcd"])
+def test_clean_token_leaves_the_bare_v1_token(raw):
+    assert client.clean_token(raw) == raw.removeprefix("Token ")
+
+
+@pytest.mark.parametrize(
+    ("raw", "message"),
+    [
+        ("nbt_abc123 s3cret", "space"),
+        ("nbt_abc123", "only the key"),  # NetBox: "Could not parse key from v2 token"
+        ("Bearer", "empty"),
+        ("", "empty"),
+    ],
+)
+def test_clean_token_rejects_what_netbox_cannot_parse(raw, message):
+    with pytest.raises(ValueError, match=message):
+        client.clean_token(raw)
+
+
+def test_a_malformed_authorization_header_gets_a_token_format_hint():
+    import pynetbox
+
+    class _Forbidden:
+        status_code, reason, url, text = 403, "Forbidden", "https://nb/api/", ""
+        request = type("R", (), {"body": None})()
+
+        def json(self):
+            return {
+                "detail": 'Invalid authorization header: Must be in the form "Bearer <key>.<token>"'
+                ' or "Token <token>"'
+            }
+
+    with pytest.raises(RuntimeError) as e, client.reported_errors("https://nb"):
+        raise pynetbox.RequestError(_Forbidden())
+
+    assert "nbt_<key>.<token>" in str(e.value)
+    assert "without the Bearer/Token keyword" in str(e.value)
