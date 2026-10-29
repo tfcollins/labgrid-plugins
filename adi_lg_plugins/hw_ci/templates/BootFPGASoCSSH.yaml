@@ -37,3 +37,4 @@ targets:
       BootFPGASoCSSH:
         reached_linux_marker: 'analog'
         wait_for_linux_prompt_timeout: 180
+        eth_interface: '${eth_interface}'
