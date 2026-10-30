@@ -561,6 +561,12 @@ Answers are saved as you give them, one file per board name, under
 run stops - a site slug NetBox doesn't know, an exporter host without passwordless sudo, a
 rejected token, Ctrl-C - the error says where its answers are:
 
+Never hand-edit one of these JSON files to fix a wrong answer. The *done* steps it records
+(*NetBox device done*, *exporter running*, ...) are only cleared when an answer changes through
+**review** (see below); editing the file directly leaves them marked done with a value NetBox
+and the exporter were never updated with, so a later ``resume`` silently skips re-registering
+them. Pick **review** instead and retype the answer at its prompt.
+
 .. code-block:: console
 
     Error: NetBox site 'lab4' does not exist - this tool only references existing sites, it does not create them
