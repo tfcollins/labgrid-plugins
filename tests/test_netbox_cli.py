@@ -62,6 +62,8 @@ def _netbox_inventory(monkeypatch):
     monkeypatch.setattr(cli.client, "device_exists", lambda nb, name, site: False)
     monkeypatch.setattr(cli.client, "connect_power", lambda nb, board, **kwargs: [])
     monkeypatch.setattr(cli.client, "connect_console", lambda nb, board, **kwargs: [])
+    monkeypatch.setattr(cli.client, "sd_muxes", lambda nb, site: [])
+    monkeypatch.setattr(cli.client, "connect_sdmux", lambda nb, board, **kwargs: [])
 
 
 # The real prompts, even after a test has replaced them with _stub_prompts.
@@ -140,15 +142,16 @@ def _invoke(*args):
     return CliRunner().invoke(cli.netbox_group, list(args), catch_exceptions=False)
 
 
-def _stub_services(monkeypatch, *, place=None, power_devices=(), consoles=(), taken=()):
+def _stub_services(monkeypatch, *, place=None, power_devices=(), consoles=(), muxes=(), taken=()):
     """Replace NetBox, the exporter host and the coordinator with recorders.
 
     ``place`` is what the coordinator already holds under the board's name;
-    ``power_devices`` and ``consoles`` are NetBox's power devices and devices
-    with console server ports at the site, ``taken`` the names of its other
-    devices. Returns the calls made; ``calls["steps"]`` lists the changes in
-    order, ``calls["power"]`` the power cabling and ``calls["UART"]`` /
-    ``calls["JTAG"]`` the console cabling.
+    ``power_devices``, ``consoles`` and ``muxes`` are NetBox's power devices,
+    devices with console server ports and SD muxes at the site, ``taken`` the
+    names of its other devices. Returns the calls made; ``calls["steps"]``
+    lists the changes in order, ``calls["power"]`` the power cabling,
+    ``calls["UART"]`` / ``calls["JTAG"]`` the console cabling and
+    ``calls["sdmux"]`` the SD mux cabling.
     """
     calls = {"steps": []}
 
@@ -163,6 +166,10 @@ def _stub_services(monkeypatch, *, place=None, power_devices=(), consoles=(), ta
     monkeypatch.setattr(cli.client, "power_devices", lambda nb, site: list(power_devices))
     monkeypatch.setattr(cli.client, "console_devices", lambda nb, site: list(consoles))
     monkeypatch.setattr(cli.client, "connect_console", connect_console)
+    monkeypatch.setattr(cli.client, "sd_muxes", lambda nb, site: list(muxes))
+    monkeypatch.setattr(
+        cli.client, "connect_sdmux", lambda nb, board, **kwargs: calls.update(sdmux=kwargs) or []
+    )
     monkeypatch.setattr(cli.client, "device_exists", lambda nb, name, site: name in taken)
     monkeypatch.setattr(cli.client, "connect_power", connect_power)
 
@@ -886,14 +893,16 @@ def test_a_dry_run_does_not_read_netbox(monkeypatch):
     def unreachable(*a, **k):
         raise AssertionError("a dry run must not talk to NetBox")
 
-    for name in ("connect", "sites", "power_devices"):
+    for name in ("connect", "sites", "power_devices", "console_devices", "sd_muxes"):
         monkeypatch.setattr(cli.client, name, unreachable)
-    _stub_prompts(monkeypatch, _SOC_SSH)
+    _stub_prompts(monkeypatch, {**_SOC_SSH, "Board template": "soc-sdmux"})
 
     result = _invoke(*DRY_RUN)
 
     assert result.exit_code == 0, result.output
-    assert _rows(result.output)("Power in NetBox", "chosen from NetBox when run without --dry-run")
+    row = _rows(result.output)
+    assert row("Power in NetBox", "chosen from NetBox when run without --dry-run")
+    assert row("SD mux in NetBox", "chosen from NetBox when run without --dry-run")
 
 
 def test_netbox_read_failure_before_the_plan_is_reported_and_answers_kept(monkeypatch, saved_runs):
@@ -1794,3 +1803,222 @@ def test_optional_power_fields_do_not_print_an_empty_default(monkeypatch):
     sockets = next(p for p in asked.kwargs if p.startswith("Strip socket"))
     assert asked.kwargs[sockets]["show_default"] is False  # its default "" prints as "()"
     assert all(k.get("show_default", True) for p, k in asked.kwargs.items() if p != sockets)
+
+
+# --- SD mux -------------------------------------------------------------------
+
+# A soc-sdmux board: its template exports the USB SD mux.
+_SDMUX_BOARD = [
+    ("Board template", "soc-sdmux"),
+    *_BOARD[1:],
+    *_NEW_POWER,
+    ("Power device name in NetBox", ""),
+    *_SSH,
+    *_SERIAL,
+]
+_PART1 = "/dev/disk/by-id/usb-LinuxAut_sdmux_HS-SD_MMC_000000001234-0:0-part1"
+_MUX_SETTINGS = {"sdmux_path": "/dev/sg3", "boot_partition": _PART1}
+
+
+def _mux(name, settings=None, serial="", feeds=None):
+    return cli.client.SDMux(name, serial, settings or {}, feeds)
+
+
+def test_a_new_sd_mux_is_named_and_its_devices_on_the_exporter_host_asked(monkeypatch):
+    calls = _stub_services(monkeypatch)
+    rendered = _rendered(monkeypatch)
+    conversation = [
+        *_SDMUX_BOARD,
+        ("SD mux name in NetBox", ""),  # Enter: b1-sdmux
+        ("SD mux serial number", "000000001234"),
+        ("  SD mux control device", ""),  # Enter: the template's /dev/sg0
+        ("  SD card boot partition", _PART1),
+        *_TEMPLATE_FIELDS,
+    ]
+
+    result, prompts = _type_into_real_prompts(monkeypatch, conversation)
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(conversation, prompts)
+    settings = {"sdmux_path": "/dev/sg0", "boot_partition": _PART1}
+    assert calls["sdmux"] == {
+        "site_slug": "lab3",
+        "device": "b1-sdmux",
+        "serial": "000000001234",
+        "settings": settings,
+    }
+    assert {k: rendered[k] for k in settings} == settings
+    row = _rows(result.output)
+    assert row("SD mux in NetBox", "b1 SD -> b1-sdmux DUT", "new")
+    assert row("control device /dev/sg0")
+
+
+def test_an_sd_mux_in_netbox_gives_its_control_device_and_boot_partition(monkeypatch):
+    muxes = [
+        _mux("mux-a", _MUX_SETTINGS, "000000000001", feeds="zc706-old SD"),
+        _mux("mux-b", _MUX_SETTINGS, "000000001234"),
+    ]
+    calls = _stub_services(monkeypatch, muxes=muxes)
+    rendered = _rendered(monkeypatch)
+    conversation = [
+        *_SDMUX_BOARD,
+        ("SD mux", "mux-a"),  # feeds another board: asked again
+        ("SD mux", "mux-b"),
+        *_TEMPLATE_FIELDS,  # no control device or boot partition questions
+    ]
+
+    result, prompts = _type_into_real_prompts(monkeypatch, conversation)
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(conversation, prompts)
+    assert "mux-a already feeds zc706-old SD" in result.output
+    row = _rows(result.output)
+    assert row("mux-b", "000000001234", "/dev/sg3", "free")
+    assert calls["sdmux"]["device"] == "mux-b"
+    assert calls["sdmux"]["settings"] == _MUX_SETTINGS
+    assert rendered["sdmux_path"] == "/dev/sg3"
+    assert rendered["boot_partition"] == _PART1
+
+
+def test_an_sd_mux_made_by_hand_asks_its_devices_and_saves_them_on_it(monkeypatch):
+    calls = _stub_services(monkeypatch, muxes=[_mux("mux-c", serial="000000004321")])
+    conversation = [
+        *_SDMUX_BOARD,
+        ("SD mux", ""),  # Enter: the only free one
+        ("  SD mux control device", "/dev/sg4"),
+        ("  SD card boot partition", ""),  # Enter: the template's
+        *_TEMPLATE_FIELDS,
+    ]
+
+    result, prompts = _type_into_real_prompts(monkeypatch, conversation)
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(conversation, prompts)
+    assert calls["sdmux"] == {
+        "site_slug": "lab3",
+        "device": "mux-c",
+        "serial": "",  # NetBox's is kept
+        "settings": {"sdmux_path": "/dev/sg4", "boot_partition": "/dev/disk/by-label/BOOT"},
+    }
+
+
+def test_a_run_saved_before_sd_muxes_asks_only_for_the_sd_mux_and_redoes_netbox(
+    monkeypatch, saved_runs
+):
+    _stub_services(monkeypatch)
+    _fail_deploy(monkeypatch)
+    _type_into_real_prompts(
+        monkeypatch,
+        [
+            *_SDMUX_BOARD,
+            ("SD mux name in NetBox", ""),
+            ("SD mux serial number", ""),
+            ("  SD mux control device", "/dev/sg2"),
+            ("  SD card boot partition", ""),
+            *_TEMPLATE_FIELDS,
+        ],
+    )
+    path = saved_runs / "b1.json"
+    saved = json.loads(path.read_text())
+    assert saved["done"] == ["plan", "netbox"]
+    for key in ("sdmux_device", "sdmux_device_name", "sdmux_serial"):
+        del saved["answers"][key]
+    path.write_text(json.dumps(saved))
+    calls = _stub_services(monkeypatch)
+    conversation = [
+        ("Resume a saved run", ""),
+        ("Use the saved answers", ""),
+        ("NetBox URL", ""),
+        ("NetBox API token", "tok123"),
+        ("SD mux name in NetBox", ""),
+        ("SD mux serial number", ""),
+        ("\nProceed?", "y"),
+        ("Coordinator API username", ""),
+        ("Coordinator API password", "secret"),
+    ]
+
+    result, prompts = _type_into_real_prompts(monkeypatch, conversation)
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(conversation, prompts)
+    assert calls["steps"] == ["netbox", "exporter", "place"]  # the cable is added
+    assert calls["sdmux"]["settings"]["sdmux_path"] == "/dev/sg2"  # the saved answer
+
+
+def test_the_sd_mux_serial_question_shows_no_empty_default(monkeypatch):
+    asked = _stub_prompts(monkeypatch, {**_SOC_SDMUX, **_SOC_SSH, **_SOC_SDMUX})
+    monkeypatch.setattr(cli.Confirm, "ask", staticmethod(lambda *a, **k: True))
+    _stub_services(monkeypatch)
+
+    result = _invoke(
+        "add-hardware", "--exporter-configs-dir", str(EXPORTER_CONFIGS_DIR), *CREDENTIALS
+    )
+
+    assert result.exit_code == 0, result.output
+    serial = "SD mux serial number (Enter to leave unset)"
+    assert asked.kwargs[serial]["show_default"] is False
+
+
+_REAL_RUN = ["add-hardware", "--exporter-configs-dir", str(EXPORTER_CONFIGS_DIR), *CREDENTIALS]
+
+
+def test_a_dry_run_s_blank_sd_mux_devices_resume_as_the_template_s(monkeypatch, saved_runs):
+    _stub_prompts(monkeypatch, {**_SOC_SSH, "Board template": "soc-sdmux"})  # Enter on each
+    _invoke(*DRY_RUN)
+    assert _saved(saved_runs)["answers"]["field.sdmux_path"] == ""
+    _stub_prompts(monkeypatch, {})  # Enter at each: resume b1 with its saved answers
+    monkeypatch.setattr(cli.Confirm, "ask", staticmethod(lambda *a, **k: True))
+    calls = _stub_services(monkeypatch)
+
+    result = _invoke(*_REAL_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert calls["sdmux"]["settings"] == {
+        "sdmux_path": "/dev/sg0",
+        "boot_partition": "/dev/disk/by-label/BOOT",
+    }
+
+
+def _sdmux_run_saved(monkeypatch, muxes=(), **replies):
+    """A soc-sdmux run that stopped at the exporter step; returns its saved answers file."""
+    _stub_prompts(monkeypatch, {**_SOC_SSH, "Board template": "soc-sdmux", **replies})
+    monkeypatch.setattr(cli.Confirm, "ask", staticmethod(lambda *a, **k: True))
+    _stub_services(monkeypatch, muxes=muxes)
+    _fail_deploy(monkeypatch)
+    assert _invoke(*_REAL_RUN).exit_code == 1
+
+
+def test_a_saved_sd_mux_without_its_devices_asks_for_them(monkeypatch, saved_runs):
+    mux = _mux("mux-c", serial="000000004321")
+    _sdmux_run_saved(monkeypatch, [mux], **{"SD mux": "mux-c"})
+    path = saved_runs / "b1.json"
+    saved = json.loads(path.read_text())
+    for var in ("sdmux_path", "boot_partition"):
+        del saved["answers"][f"field.{var}"]  # stopped before they were answered
+    path.write_text(json.dumps(saved))
+    asked = _stub_prompts(monkeypatch, {"  SD mux control device": "/dev/sg5"})
+    calls = _stub_services(monkeypatch, muxes=[mux])
+
+    result = _invoke(*_REAL_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert not [p for p in asked if p.startswith("SD mux")]  # the saved mux is kept
+    assert calls["sdmux"]["device"] == "mux-c"
+    assert calls["sdmux"]["settings"]["sdmux_path"] == "/dev/sg5"
+
+
+def test_a_serial_number_given_for_a_new_mux_is_not_put_on_one_picked_later(
+    monkeypatch, saved_runs
+):
+    _sdmux_run_saved(monkeypatch, **{"SD mux serial number": "000000001234"})
+    _stub_prompts(
+        monkeypatch,
+        {"Resume a saved run": "b1", "Use the saved answers": "review", "SD mux": "mux-c"},
+    )
+    calls = _stub_services(monkeypatch, muxes=[_mux("mux-c", _MUX_SETTINGS)])
+
+    result = _invoke(*_REAL_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert calls["sdmux"]["device"] == "mux-c"
+    assert calls["sdmux"]["serial"] == ""

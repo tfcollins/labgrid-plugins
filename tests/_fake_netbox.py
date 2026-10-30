@@ -23,7 +23,7 @@ class Record(SimpleNamespace):
         return self  # already a snapshot
 
     # Fields a save writes back; the others are read-only views of related objects.
-    _SAVED = ("name", "custom_fields")
+    _SAVED = ("name", "serial", "custom_fields")
 
     def save(self):
         row = self._endpoint.rows[self.id]
@@ -89,9 +89,12 @@ class Endpoint:
                 row.setdefault("custom_fields", {})
             if self.name == "devices":
                 row.setdefault("primary_ip", None)
+                row.setdefault("serial", "")
+            # NetBox returns a choice field as a value/label pair.
             if self.name == "console_ports" and "speed" in row:
-                # NetBox returns a choice field as a value/label pair.
                 row["speed"] = SimpleNamespace(value=row["speed"], label=f"{row['speed']} bps")
+            if self.name == "interfaces":
+                row["type"] = SimpleNamespace(value=row["type"], label=row["type"].title())
         self.rows[row["id"]] = row
         return self._record(row)
 
@@ -113,6 +116,7 @@ class FakeNetBox:
             "power_ports",
             "console_ports",
             "console_server_ports",
+            "interfaces",
             "cables",
         )
         self.dcim = SimpleNamespace(**{n: Endpoint(self, n) for n in endpoints})
@@ -123,6 +127,7 @@ class FakeNetBox:
         "dcim.poweroutlet": "power_outlets",
         "dcim.consoleport": "console_ports",
         "dcim.consoleserverport": "console_server_ports",
+        "dcim.interface": "interfaces",
     }
 
     def _end(self, termination):
@@ -176,8 +181,14 @@ class FakeNetBox:
     def add_site(self, slug):
         return self.dcim.sites.create(slug=slug, name=slug.upper())
 
-    def add_device(self, name, site, *, custom_fields=None, primary_ip=None):
-        d = self.dcim.devices.create(name=name, site=site.id, custom_fields=custom_fields or {})
+    def add_device(self, name, site, *, custom_fields=None, primary_ip=None, role=None, serial=""):
+        d = self.dcim.devices.create(
+            name=name,
+            site=site.id,
+            custom_fields=custom_fields or {},
+            role=role.id if role else None,
+            serial=serial,
+        )
         if primary_ip:
             self.dcim.devices.rows[d.id]["primary_ip"] = SimpleNamespace(address=primary_ip)
         return self.dcim.devices._record(self.dcim.devices.rows[d.id])
