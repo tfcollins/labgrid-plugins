@@ -40,7 +40,7 @@ from adi_lg_plugins.hw_ci.coordinator import (
 from adi_lg_plugins.tools._answers import NEW, Run, SavedAnswers, answers_dir, pick_run
 from adi_lg_plugins.tools._choices import ask_choice
 
-from . import client, provision
+from . import client, provision, recommend
 
 console = Console()
 
@@ -924,22 +924,44 @@ def _onboard(
         ),
     )
 
+    # Only the strategies whose render-env config binds to what the template
+    # exports; the one the template is written for first.
+    own = provision.template_strategy(template_path)
+    exported = provision.template_resources(template_path)
+    lacks = {s: recommend.missing(s, exported) for s in KNOWN_BOOT_STRATEGIES}
+    runnable = sorted((s for s in KNOWN_BOOT_STRATEGIES if not lacks[s]), key=lambda s: s != own)
+    if not runnable:
+        raise click.ClickException(
+            f"no boot strategy can run on what template {template_key} exports "
+            f"({', '.join(sorted(exported)) or 'nothing'})"
+        )
+
     def ask_strategy(default):
         console.print("\n[bold]Boot strategies[/bold]")
+        hidden = [s for s in KNOWN_BOOT_STRATEGIES if lacks[s]]
         return ask_choice(
             console,
             "Boot strategy",
-            [(s, _strategy_summary(s)) for s in KNOWN_BOOT_STRATEGIES],
-            headers=("Strategy", "Description"),
+            [
+                (s, "recommended" if s == own else "also runs", _strategy_summary(s))
+                for s in runnable
+            ],
+            headers=("Strategy", "Fit", "Description"),
             default=default,
+            note="\n".join(
+                [f"[dim]Not offered: {escape(template_key)} doesn't export what they bind.[/dim]"]
+                + [f"[dim]  {s} needs {', '.join(lacks[s])}[/dim]" for s in hidden]
+            )
+            if hidden
+            else None,
         )
 
     boot_strategy = run.answer(
         "boot_strategy",
         "Boot strategy",
         ask_strategy,
-        default=provision.template_strategy(template_path),
-        choices=KNOWN_BOOT_STRATEGIES,
+        default=runnable[0],
+        choices=runnable,
     )
     runner_label = run.answer(
         "runner_label",

@@ -82,3 +82,19 @@ def test_invalid_answers_are_asked_again(monkeypatch):
 
     assert ask_choice(_console(), "Pick", ["alpha", "beta", "gamma"]) == "gamma"
     assert len(calls) == 4
+
+
+def test_a_note_follows_the_options_before_the_prompt(monkeypatch):
+    console = _console()
+
+    def _ask(prompt, *args, **kwargs):
+        console.print("PROMPT")
+        return "alpha"
+
+    monkeypatch.setattr(Prompt, "ask", staticmethod(_ask))
+
+    ask_choice(console, "Pick", ["alpha", "beta"], note="beta is slow")
+
+    lines = console.file.getvalue().splitlines()
+    assert lines.index("beta is slow") == lines.index("PROMPT") - 1
+    assert any("beta" in line for line in lines[: lines.index("beta is slow")])
