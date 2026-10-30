@@ -62,6 +62,19 @@ Prerequisites
     checked up front with ``command -v labgrid-exporter``, and the generated systemd unit
     runs the absolute path that resolves to, so a venv or ``~/.local/bin`` install works.
 
+If the board's coordinator is the OpenShift-hosted ``labgrid-coordinator`` (as opposed to a
+plain on-prem one), its web UI's "run health check" action runs ``adi-lg health-check`` inside
+the ``labgrid-coordinator-api`` pod itself, which needs its own SSH access to this exporter
+host. ``deploy_exporter`` handles the credential side automatically - it authorizes a fixed,
+shared public key (``COORDINATOR_HEALTHCHECK_PUBKEY`` in
+``adi_lg_plugins/tools/netbox/provision.py``) on every exporter host it deploys to, the same
+one on every host, so this never needs a per-board or per-host manual SSH step. The one thing
+that *is* still manual, and only the first time a genuinely **new exporter host** (not a new
+board on an existing one) is brought online: that cluster's own DNS has no record for an
+arbitrary lab hostname, so it needs a ``hostAliases`` entry added to
+``cse-openshift-apps/labgrid-coordinator/helm/envs/dev.yaml`` (lowercase hostname - Kubernetes
+rejects uppercase) and a deploy, same PR workflow as any other change to that repo.
+
 Usage
 -----
 
