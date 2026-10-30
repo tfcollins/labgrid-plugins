@@ -89,7 +89,18 @@ def _reservation_from_pb2(pb2) -> ReservationModel:
 
 class CoordinatorClient:
     """Maintains a live connection to the labgrid coordinator via gRPC,
-    caching all place and resource state for fast REST API reads."""
+    caching all place and resource state for fast REST API reads.
+
+    Transparently reconnects (with capped exponential backoff) whenever the
+    stream drops - e.g. the coordinator pod restarting during a redeploy.
+    Without this, a dropped stream left the cache permanently frozen/empty
+    (``/api/places`` -> ``[]``) until something manually restarted this
+    process, even though the coordinator's own place/resource data (on its
+    persistent volume) was never actually lost.
+    """
+
+    RECONNECT_MIN_DELAY = 1.0
+    RECONNECT_MAX_DELAY = 30.0
 
     def __init__(self, address: str, name: str = "web-dashboard"):
         self.address = address
@@ -112,12 +123,16 @@ class CoordinatorClient:
         self._places: dict[str, Place] = {}
         self._resources: dict[str, dict[str, dict[str, ResourceEntry]]] = {}
 
-        # Stream machinery
+        # Stream machinery. _out_queue is replaced on every (re)connect - see
+        # _connect_and_pump - so a dead stream's close sentinel never reaches
+        # the next one.
         self._out_queue: asyncio.Queue = asyncio.Queue()
         self._pump_task: asyncio.Task | None = None
         self._sync_id = itertools.count(start=1)
         self._sync_events: dict[int, asyncio.Event] = {}
         self._stopping = asyncio.Event()
+        self._connected_event = asyncio.Event()
+        self._reconnect_delay = self.RECONNECT_MIN_DELAY
 
         # Callback for WebSocket broadcasting
         self.on_update: Callable[[dict], None] | None = None
@@ -125,34 +140,32 @@ class CoordinatorClient:
 
     @property
     def connected(self) -> bool:
-        return self._pump_task is not None and not self._stopping.is_set()
+        return self._connected_event.is_set()
 
     async def start(self):
-        """Open the ClientStream and subscribe to all places and resources."""
-        self._pump_task = asyncio.create_task(self._message_pump())
+        """Start the connect/reconnect loop and wait briefly for the first sync.
 
-        # Send startup + subscribe messages
-        msg = labgrid_coordinator_pb2.ClientInMessage()
-        msg.startup.version = labgrid_version()
-        msg.startup.name = f"{gethostname()}/{self.name}"
-        self._out_queue.put_nowait(msg)
-
-        msg = labgrid_coordinator_pb2.ClientInMessage()
-        msg.subscribe.all_places = True
-        self._out_queue.put_nowait(msg)
-
-        msg = labgrid_coordinator_pb2.ClientInMessage()
-        msg.subscribe.all_resources = True
-        self._out_queue.put_nowait(msg)
-
-        await self._sync_with_coordinator()
-        if self._stopping.is_set():
-            logger.error("Could not connect to coordinator at %s", self.address)
-        else:
+        Never blocks indefinitely: if the coordinator isn't reachable yet
+        (e.g. it's mid-restart during a simultaneous redeploy), this still
+        returns so FastAPI startup isn't stuck - the loop keeps retrying
+        with backoff in the background.
+        """
+        self._pump_task = asyncio.create_task(self._run_forever())
+        try:
+            await asyncio.wait_for(self._connected_event.wait(), timeout=10.0)
+        except TimeoutError:
+            pass
+        if self.connected:
             logger.info("Connected to coordinator at %s", self.address)
+        else:
+            logger.error(
+                "Could not connect to coordinator at %s yet; retrying in the background",
+                self.address,
+            )
 
     async def stop(self):
         """Gracefully close the stream and channel."""
+        self._stopping.set()
         self._out_queue.put_nowait(None)
         if self._pump_task:
             self._pump_task.cancel()
@@ -170,7 +183,59 @@ class CoordinatorClient:
         self._out_queue.put_nowait(msg)
         await event.wait()
 
-    async def _message_pump(self):
+    async def _run_forever(self):
+        """Supervisor loop: connect, pump messages until the stream ends for
+        any reason, then reconnect with backoff - unless explicitly stopped."""
+        while not self._stopping.is_set():
+            try:
+                await self._connect_and_pump()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("Error in coordinator connection")
+            self._connected_event.clear()
+            if self._stopping.is_set():
+                break
+            logger.warning(
+                "Lost connection to coordinator at %s; retrying in %.0fs",
+                self.address,
+                self._reconnect_delay,
+            )
+            await asyncio.sleep(self._reconnect_delay)
+            self._reconnect_delay = min(self._reconnect_delay * 2, self.RECONNECT_MAX_DELAY)
+
+    async def _connect_and_pump(self):
+        """One connection attempt: subscribe, then consume updates until the
+        stream ends. Resets the cache first so a reconnect can't retain
+        now-stale ghost entries - all_places/all_resources has the
+        coordinator resend its full current state from scratch."""
+        self._out_queue = asyncio.Queue()
+        self._places.clear()
+        self._resources.clear()
+
+        msg = labgrid_coordinator_pb2.ClientInMessage()
+        msg.startup.version = labgrid_version()
+        msg.startup.name = f"{gethostname()}/{self.name}"
+        self._out_queue.put_nowait(msg)
+
+        msg = labgrid_coordinator_pb2.ClientInMessage()
+        msg.subscribe.all_places = True
+        self._out_queue.put_nowait(msg)
+
+        msg = labgrid_coordinator_pb2.ClientInMessage()
+        msg.subscribe.all_resources = True
+        self._out_queue.put_nowait(msg)
+
+        # This connection's own initial sync, tracked by id so we know
+        # precisely when it (not some unrelated concurrent sync from an API
+        # request) has completed, i.e. the coordinator has sent its full
+        # current place/resource listing.
+        initial_sync_id = next(self._sync_id)
+        self._sync_events[initial_sync_id] = asyncio.Event()
+        sync_msg = labgrid_coordinator_pb2.ClientInMessage()
+        sync_msg.sync.id = initial_sync_id
+        self._out_queue.put_nowait(sync_msg)
+
         got_message = False
         try:
             call = self.stub.ClientStream(queue_as_aiter(self._out_queue))
@@ -201,6 +266,9 @@ class CoordinatorClient:
                     event = self._sync_events.pop(out_msg.sync.id, None)
                     if event:
                         event.set()
+                    if out_msg.sync.id == initial_sync_id:
+                        self._reconnect_delay = self.RECONNECT_MIN_DELAY
+                        self._connected_event.set()
         except grpc.aio.AioRpcError as e:
             if e.code() == grpc.StatusCode.UNAVAILABLE:
                 if got_message:
@@ -212,9 +280,9 @@ class CoordinatorClient:
         except Exception:
             logger.exception("Error in message pump")
         finally:
-            self._stopping.set()
             self._out_queue.put_nowait(None)
-            # Cancel all pending syncs
+            # Cancel all pending syncs - including, harmlessly, our own
+            # initial_sync_id if the stream died before it completed.
             for event in self._sync_events.values():
                 event.set()
             self._sync_events.clear()
