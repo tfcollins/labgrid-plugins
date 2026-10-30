@@ -31,6 +31,19 @@ DEFAULT_EXPORTER_BIN = "/usr/local/bin/labgrid-exporter"
 # variables as `{{ env["NAME"] }}`, which labgrid resolves when it starts.
 EXPORTER_ENV_FILE = "/etc/labgrid/exporter.env"
 
+# Public half of the shared keypair the labgrid-coordinator-api pod (see
+# cse-openshift-apps/charts/labgrid-coordinator, api.sshSecretName) uses to
+# SSH into exporter hosts for the web UI's "run health check" action. The
+# matching private key lives only in that cluster's Secret, created
+# out-of-band - never in this repo. Authorizing this one fixed public key
+# (instead of a per-host keypair) means bringing a new exporter host online
+# is still just one `adi-lg netbox add-hardware` run, with no separate
+# manual SSH step - see `authorize_coordinator_healthcheck_key`.
+COORDINATOR_HEALTHCHECK_PUBKEY = (
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPEqT1f8i1QdXmIs26bKOvTjRo/LdVvmHPIQmMTdcj78 "
+    "adi-lg-coordinator-healthcheck"
+)
+
 # Power types (template `power` value -> resource, client driver(s), fields,
 # credentials) live in adi_lg_plugins.hw_ci.power.
 
@@ -350,6 +363,40 @@ def deploy_exporter(
             f"failed to install/start labgrid-exporter-{name} on {ssh_host}: {e}\n"
             "(requires passwordless sudo for the connecting SSH user)"
         ) from e
+
+    authorize_coordinator_healthcheck_key(ssh_host)
+
+
+def authorize_coordinator_healthcheck_key(ssh_host: str) -> None:
+    """Idempotently add the coordinator api pod's shared public key to this host.
+
+    Lets the labgrid-coordinator-api pod (see cse-openshift-apps) SSH in to
+    run health checks / drive proxied resources on this exporter host,
+    without a per-host keypair - see `COORDINATOR_HEALTHCHECK_PUBKEY`. Safe
+    to re-run: a no-op if the key is already present. Logs a warning rather
+    than raising on failure - this is a bonus capability for the web UI's
+    health check, not required for anything else deploy_exporter does.
+    """
+    from labgrid.driver.exception import ExecutionError
+    from labgrid.util.ssh import sshmanager
+
+    conn = sshmanager.get(ssh_host)
+    pubkey = COORDINATOR_HEALTHCHECK_PUBKEY
+    try:
+        conn.run_check(
+            "mkdir -p ~/.ssh && chmod 700 ~/.ssh && "
+            f"grep -qxF '{pubkey}' ~/.ssh/authorized_keys 2>/dev/null || "
+            f"echo '{pubkey}' >> ~/.ssh/authorized_keys; "
+            "chmod 600 ~/.ssh/authorized_keys"
+        )
+    except ExecutionError as e:
+        logger.warning(
+            "could not authorize the coordinator health-check key on %s: %s "
+            "(the web UI's 'run health check' action won't work for this board "
+            "until this is fixed; CLI-triggered health checks are unaffected)",
+            ssh_host,
+            e,
+        )
 
 
 def verify_exporter_active(
