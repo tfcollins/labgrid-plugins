@@ -1,8 +1,9 @@
-"""NetBox records a board's power, serial console and JTAG connections as cables.
+"""NetBox records a board's power, serial console, JTAG and SD mux connections as cables.
 
 Power: board power port -> outlet on a power device. Serial console and JTAG:
 board console port -> console server port on the device the adapter is
-plugged into (usually the exporter host).
+plugged into (usually the exporter host). SD mux: board ``SD`` interface ->
+the mux's ``DUT`` interface.
 
 Each test runs against an in-memory stand-in for NetBox, and again against a
 real one when ``NETBOX_TEST_URL`` and ``NETBOX_TEST_TOKEN`` name a disposable
@@ -45,14 +46,30 @@ class Lab:
         return f"{base}-{self.tag}"
 
     def add_device(
-        self, base, *, settings=None, outlets=(), ports=(), consoles=(), servers=(), site=None
+        self,
+        base,
+        *,
+        settings=None,
+        outlets=(),
+        ports=(),
+        consoles=(),
+        servers=(),
+        interfaces=(),
+        site=None,
+        role=None,
+        serial="",
+        custom_fields=None,
     ):
         """A device made by hand in NetBox, optionally with power settings.
 
-        ``consoles`` and ``servers`` name its console ports and console server ports.
+        ``consoles`` and ``servers`` name its console ports and console server
+        ports, ``interfaces`` its interfaces; ``role`` is a role slug.
         """
         site = site or self.site
-        custom_fields = {client.POWER_FIELD: settings} if settings else {}
+        custom_fields = custom_fields or ({client.POWER_FIELD: settings} if settings else {})
+        if role is not None:
+            found = self.nb.dcim.device_roles.get(slug=role)
+            role = found or self.nb.dcim.device_roles.create(name=role, slug=role, color="9e9e9e")
         if self.real:
             mfr = self.nb.dcim.manufacturers.get(
                 slug="hand-made"
@@ -62,20 +79,25 @@ class Lab:
             ) or self.nb.dcim.device_types.create(
                 manufacturer=mfr.id, model="Hand made", slug="hand-made"
             )
-            role = self.nb.dcim.device_roles.get(
-                slug="hand-made"
-            ) or self.nb.dcim.device_roles.create(
-                name="Hand made", slug="hand-made", color="9e9e9e"
+            role = (
+                role
+                or self.nb.dcim.device_roles.get(slug="hand-made")
+                or self.nb.dcim.device_roles.create(
+                    name="Hand made", slug="hand-made", color="9e9e9e"
+                )
             )
             device = self.nb.dcim.devices.create(
                 name=self.name(base),
                 device_type=dt.id,
                 role=role.id,
                 site=site.id,
+                serial=serial,
                 custom_fields=custom_fields,
             )
         else:
-            device = self.nb.add_device(self.name(base), site, custom_fields=custom_fields)
+            device = self.nb.add_device(
+                self.name(base), site, custom_fields=custom_fields, role=role, serial=serial
+            )
         for outlet in outlets:
             self.nb.dcim.power_outlets.create(device=device.id, name=outlet)
         for port in ports:
@@ -84,6 +106,8 @@ class Lab:
             self.nb.dcim.console_ports.create(device=device.id, name=port)
         for port in servers:
             self.nb.dcim.console_server_ports.create(device=device.id, name=port)
+        for interface in interfaces:
+            self.nb.dcim.interfaces.create(device=device.id, name=interface, type="other")
         return device
 
     _ENDS = {
@@ -94,6 +118,7 @@ class Lab:
             "console_server_ports",
             "dcim.consoleserverport",
         ),
+        "sd": ("interfaces", "dcim.interface", "interfaces", "dcim.interface"),
     }
 
     def cable(self, port_device, port, outlet_device, outlet, kind="power"):
@@ -106,7 +131,7 @@ class Lab:
         )
 
     def connections(self, device, kind="power"):
-        """``{port: "<device> <outlet>"}`` for ``device``'s power (or console) ports, read afresh."""
+        """``{port: "<device> <outlet>"}`` for ``device``'s ports of ``kind``, read afresh."""
         return {
             p.name: " ".join(f"{peer.device.name} {peer.name}" for peer in p.link_peers)
             for p in getattr(self.nb.dcim, self._ENDS[kind][0]).filter(device_id=device.id)
@@ -500,4 +525,124 @@ def test_console_connections_run_again_change_nothing(lab):
 
     assert lab.connections(lab.board, "console") == {"UART": f"{host} ttyUSB0"}
     assert lab.count("console_ports", device_id=lab.board.id) == 1
+    assert any("already connected" in line for line in done)
+
+
+# --- SD mux: board SD interface -> the mux's DUT interface --------------------
+
+SDMUX = {"sdmux_path": "/dev/sg3", "boot_partition": "/dev/disk/by-id/usb-mux-0:0-part1"}
+
+
+def _mux(lab, base="mux", *, settings=None, serial="", interfaces=(client.SDMUX_PORT,)):
+    custom_fields = {client.SDMUX_FIELD: settings} if settings else None
+    return lab.add_device(
+        base,
+        role=client.SDMUX_ROLE_SLUG,
+        serial=serial,
+        interfaces=interfaces,
+        custom_fields=custom_fields,
+    )
+
+
+def _sdmux(lab, board, device, settings=SDMUX, serial=""):
+    return client.connect_sdmux(
+        lab.nb, board, site_slug=lab.site.slug, device=device, serial=serial, settings=settings
+    )
+
+
+def test_sd_muxes_lists_the_site_s_muxes_with_their_settings_serial_and_what_they_feed(lab):
+    used = _mux(lab, "mux-a", settings=SDMUX, serial="000000001234")
+    _mux(lab, "mux-b", interfaces=())  # made by hand: no settings, no DUT interface yet
+    usb = _mux(lab, "mux-c", interfaces=(client.SDMUX_PORT, "USB"))
+    other = lab.add_device("other", interfaces=(client.SD,))
+    lab.cable(other, client.SD, used, client.SDMUX_PORT, kind="sd")
+    host = lab.add_device("host", interfaces=("usb1",))
+    lab.cable(usb, "USB", host, "usb1", kind="sd")  # its host side: not what it feeds
+    lab.add_device("switch", interfaces=(client.SDMUX_PORT,))  # not an SD mux
+    elsewhere = lab._site(lab.name("elsewhere"))
+    lab.add_device("mux-elsewhere", role=client.SDMUX_ROLE_SLUG, site=elsewhere)
+
+    muxes = client.sd_muxes(lab.nb, lab.site.slug)
+
+    assert [(m.name, m.serial, m.settings, m.connected_to) for m in muxes] == [
+        (used.name, "000000001234", SDMUX, f"{other.name} {client.SD}"),
+        (lab.name("mux-b"), "", {}, None),
+        (usb.name, "", {}, None),
+    ]
+
+
+def test_a_site_without_the_sd_mux_role_has_no_muxes():
+    nb = FakeNetBox()
+    nb.add_site("lab3")
+
+    assert client.sd_muxes(nb, "lab3") == []
+
+
+def test_a_new_sd_mux_is_created_with_its_serial_and_settings_and_cabled_to_the_board(lab):
+    name = lab.name("b1-sdmux")
+
+    done = _sdmux(lab, lab.board, name, serial="000000001234")
+
+    mux = lab.device(name)
+    assert mux.role.slug == client.SDMUX_ROLE_SLUG
+    assert mux.device_type.slug == client.SDMUX_ROLE_SLUG
+    assert mux.serial == "000000001234"
+    assert mux.custom_fields[client.SDMUX_FIELD] == SDMUX
+    assert lab.connections(lab.board, "sd") == {client.SD: f"{name} {client.SDMUX_PORT}"}
+    assert any("created SD mux" in line for line in done)
+
+
+def test_a_hand_made_mux_gets_its_dut_interface_its_empty_settings_and_serial(lab):
+    mux = _mux(lab, interfaces=())
+
+    done = _sdmux(lab, lab.board, mux.name, serial="000000001234")
+
+    assert lab.count("devices", name=mux.name) == 1
+    assert lab.connections(lab.board, "sd") == {client.SD: f"{mux.name} {client.SDMUX_PORT}"}
+    found = lab.device(mux.name)
+    assert found.custom_fields[client.SDMUX_FIELD] == SDMUX
+    assert found.serial == "000000001234"
+    assert any("recorded the SD mux settings" in line for line in done)
+
+
+def test_sd_mux_settings_and_serial_already_in_netbox_are_kept(lab):
+    theirs = {"sdmux_path": "/dev/sg1", "boot_partition": "/dev/sdb1"}
+    mux = _mux(lab, settings=theirs, serial="000000000001")
+
+    done = _sdmux(lab, lab.board, mux.name, serial="000000009999")
+
+    found = lab.device(mux.name)
+    assert found.custom_fields[client.SDMUX_FIELD] == theirs
+    assert found.serial == "000000000001"
+    assert any("differ" in line for line in done)
+
+
+def test_an_sd_mux_feeding_another_board_is_refused_and_nothing_is_written(lab):
+    mux = _mux(lab)
+    other = lab.add_device("other", interfaces=(client.SD,))
+    lab.cable(other, client.SD, mux, client.SDMUX_PORT, kind="sd")
+
+    with pytest.raises(RuntimeError, match=f"already feeds {other.name} {client.SD}"):
+        _sdmux(lab, lab.board, mux.name)
+
+    assert lab.connections(lab.board, "sd") == {}
+    assert not lab.device(mux.name).custom_fields.get(client.SDMUX_FIELD)
+
+
+def test_the_board_s_network_interface_is_not_used_for_its_sd_card(lab):
+    board = lab.add_device("board2", interfaces=("eth0",))
+
+    _sdmux(lab, board, lab.name("mux"))
+
+    assert lab.connections(board, "sd") == {"eth0": "", client.SD: f"{lab.name('mux')} DUT"}
+
+
+def test_sd_mux_connection_run_again_changes_nothing(lab):
+    name = lab.name("mux")
+    _sdmux(lab, lab.board, name)
+
+    done = _sdmux(lab, lab.board, name)
+
+    assert lab.connections(lab.board, "sd") == {client.SD: f"{name} {client.SDMUX_PORT}"}
+    assert lab.count("interfaces", device_id=lab.board.id) == 1
     assert any("already connected" in line for line in done)

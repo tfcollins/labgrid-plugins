@@ -1,8 +1,8 @@
 """`adi-lg netbox add-hardware` - interactive onboarding.
 
 Registers a new board in NetBox, cabled to an outlet on the power device
-that switches it and to the ports its serial console and JTAG are on (each
-picked from NetBox, or added), renders+validates its
+that switches it, to the ports its serial console and JTAG are on and to
+the SD mux its card is in (each picked from NetBox, or added), renders+validates its
 exporter config, SSH-deploys it as a systemd service on the exporter host
 and verifies it comes up, then creates the matching labgrid Place
 (create/add-match/set-tags) on the coordinator. Answers are saved as they are given, so a
@@ -693,6 +693,131 @@ def _ask_jtag(run: Run, devices: list, *, site: str, board: str, serial_device: 
     )
 
 
+@dataclass(frozen=True)
+class _SDMuxLink:
+    """The SD mux a board's SD card slot is cabled to."""
+
+    device: str
+    new: bool
+    serial: str  # a new mux's serial number; NetBox's is kept for one it has
+    settings: dict  # its labgrid_sdmux value: the template's _SDMUX_FIELDS
+
+
+# The template fields an SD mux's labgrid_sdmux settings hold.
+_SDMUX_FIELDS = ("sdmux_path", "boot_partition")
+
+
+def _sdmux_settled(answers: dict) -> bool:
+    """Whether saved answers already name the SD mux and its devices."""
+    picked = answers.get("sdmux_device")
+    if picked is None or not all(answers.get(f"field.{v}") for v in _SDMUX_FIELDS):
+        return False
+    return picked != NEW or bool(answers.get("sdmux_device_name"))
+
+
+def _sdmux_link(answers: dict) -> _SDMuxLink:
+    new = answers["sdmux_device"] == NEW
+    return _SDMuxLink(
+        answers["sdmux_device_name"] if new else answers["sdmux_device"],
+        new,
+        answers.get("sdmux_serial", "") if new else "",
+        {v: answers[f"field.{v}"] for v in _SDMUX_FIELDS},
+    )
+
+
+def _ask_sdmux_device(muxes: list, site: str, board: str, default: str | None) -> str:
+    """Pick an SD mux that is free, or already feeds this board; or a new one."""
+    console.print(f"\n[bold]SD muxes in NetBox at {escape(site)}[/bold]")
+    rows = [
+        (m.name, m.serial, m.settings.get("sdmux_path", ""), m.connected_to or "free")
+        for m in muxes
+    ]
+    rows.append((NEW, "", "", "an SD mux not in NetBox yet: add it"))
+    feeds = {m.name: m.connected_to for m in muxes}
+    while True:
+        picked = ask_choice(
+            console,
+            "SD mux",
+            rows,
+            headers=("SD mux", "Serial", "Control device", "Feeds"),
+            default=default,
+        )
+        other = feeds.get(picked)
+        if other is None or other.startswith(f"{board} "):
+            return picked
+        console.print(
+            f"    [red]{escape(picked)} already feeds {escape(other)} - pick a free one, "
+            "or remove that cable in NetBox first[/red]"
+        )
+
+
+def _ask_sdmux(run: Run, muxes: list, *, site: str, board: str, defaults: dict) -> None:
+    """Ask which SD mux the board's SD card is in, and its devices on the exporter host.
+
+    ``muxes`` are the site's SD muxes in NetBox. One with labgrid settings
+    gives the control device and boot partition; otherwise they are asked,
+    defaulting to the template's (``defaults``), and saved on it. The answers
+    are saved for :func:`_sdmux_link`.
+    """
+    free = [
+        m.name for m in muxes if m.connected_to is None or m.connected_to.startswith(f"{board} ")
+    ]
+    if muxes:
+        picked = run.answer(
+            "sdmux_device",
+            "SD mux",
+            lambda default: _ask_sdmux_device(muxes, site, board, default),
+            default=free[0] if len(free) == 1 else None,
+            choices=[*(m.name for m in muxes), NEW],
+            explain=(
+                "The USB SD mux the board's SD card is in. Pick it from NetBox to use its control "
+                "device and boot partition, or add a new one; the board's SD card slot is cabled "
+                "to it."
+            ),
+        )
+    else:
+        picked = run.given("sdmux_device", "SD mux", NEW)
+    if picked == NEW:
+        run.answer(
+            "sdmux_device_name",
+            "SD mux name in NetBox",
+            lambda default: _ask_required("SD mux name in NetBox", check=_NAME, default=default),
+            default=f"{board}-sdmux",
+            explain=(
+                "The board's USB SD mux is added to NetBox at its site under this name, with the "
+                f"{client.SDMUX_ROLE_NAME} role."
+            ),
+        )
+        run.answer(
+            "sdmux_serial",
+            "SD mux serial number",
+            lambda default: Prompt.ask(
+                "SD mux serial number (Enter to leave unset)",
+                default=default or "",
+                show_default=bool(default),
+            ),
+            explain=(
+                "Its USB serial number (usbsdmux <control device> info, or the label on it), "
+                "saved in NetBox to tell the muxes apart."
+            ),
+        )
+    settings = next((m.settings for m in muxes if m.name == picked), {})
+    for var in _SDMUX_FIELDS:
+        label = provision.TEMPLATE_FIELDS[var]
+        if settings.get(var):
+            run.given(f"field.{var}", label, settings[var])
+            continue
+        value = run.answer(
+            f"field.{var}",
+            label,
+            lambda default, label=label: _ask_required(f"  {label}", default=default),
+            default=defaults.get(var),
+        )
+        # A dry run saves Enter on the template field as "": the template's default.
+        if not value:
+            run.given(f"field.{var}", label, defaults.get(var))
+
+
 # Board, carrier and chip names end up in a systemd unit name, a place name, a
 # resource group and a `<name>/<group>/*` match, so no spaces or slashes.
 _NAME = (r"[A-Za-z0-9][A-Za-z0-9._-]*", "use letters, digits, '.', '_' and '-' only")
@@ -984,12 +1109,16 @@ def _onboard(
         raise click.ClickException(str(e)) from e
     # A dry run asks the serial port as a template field instead.
     netbox_serial = not dry_run and "serial_port" in template_vars
-    has_jtag = "XilinxDeviceJTAG" in provision.template_resources(template_path)
+    has_jtag = "XilinxDeviceJTAG" in exported
     netbox_jtag = not dry_run and has_jtag
+    # And the SD mux's control device and boot partition as template fields.
+    has_sdmux = "USBSDMuxDevice" in exported
+    netbox_sdmux = not dry_run and has_sdmux
     settled = (
         _power_settled(run.saved.answers)
         and (not netbox_serial or _console_settled(run.saved.answers, client.UART))
         and (not netbox_jtag or _console_settled(run.saved.answers, client.JTAG))
+        and (not netbox_sdmux or _sdmux_settled(run.saved.answers))
     )
     netbox = _NetBox(run, netbox_url, netbox_token, netbox_verify)
     look_up = not dry_run and (run.mode != "resume" or not settled)
@@ -1069,6 +1198,12 @@ def _onboard(
                 serial_device=serial_link.device if serial_link else ssh_host.split(".")[0],
             )
         jtag_link = _console_link(run.saved.answers, client.JTAG)
+    sdmux_link = None
+    if netbox_sdmux:
+        if look_up:
+            muxes = netbox(client.sd_muxes, site_slug)
+            _ask_sdmux(run, muxes, site=site_slug, board=name, defaults=defaults)
+        sdmux_link = _sdmux_link(run.saved.answers)
 
     # Templates name their resource group <CARRIER>_<CHIP> from these fields
     # and include the power fragment named by `power`, so fill them from the
@@ -1079,6 +1214,7 @@ def _onboard(
         "power": power,
         **power_context,
         **({"serial_port": serial_link.path} if serial_link else {}),
+        **(sdmux_link.settings if sdmux_link else {}),
     }
     try:
         var_names = sorted(
@@ -1193,6 +1329,22 @@ def _onboard(
         netbox_consoles.append(
             ("JTAG in NetBox", ["chosen from NetBox when run without --dry-run"])
         )
+    if sdmux_link is not None:
+        netbox_consoles.append(
+            (
+                "SD mux in NetBox",
+                [
+                    escape(f"{name} {client.SD} -> {sdmux_link.device} {client.SDMUX_PORT}")
+                    + (" (new device)" if sdmux_link.new else ""),
+                    escape(f"control device {sdmux_link.settings['sdmux_path']}"),
+                    escape(f"boot partition {sdmux_link.settings['boot_partition']}"),
+                ],
+            )
+        )
+    elif has_sdmux:
+        netbox_consoles.append(
+            ("SD mux in NetBox", ["chosen from NetBox when run without --dry-run"])
+        )
 
     console.print("\n[bold]Plan[/bold]")
     console.print(
@@ -1286,6 +1438,15 @@ def _onboard(
                         port=link.port,
                         path=link.path,
                     )
+            if sdmux_link is not None:
+                done += client.connect_sdmux(
+                    nb,
+                    device,
+                    site_slug=site_slug,
+                    device=sdmux_link.device,
+                    serial=sdmux_link.serial,
+                    settings=sdmux_link.settings,
+                )
             return device, done
 
         device, power_done = netbox(register)

@@ -26,6 +26,14 @@ adapter is plugged into - usually the exporter host, created under the
 host (a port name is limited to 64 characters; ``/dev/serial/by-id`` paths
 are often longer). NetBox has no JTAG component, so JTAG uses console ports
 too - a record of the wiring only; labgrid's JTAG settings don't depend on it.
+
+The SD card a board boots from can sit in a USB SD mux. NetBox has no SD card
+component either, so that is a cable from an ``SD`` interface on the board to
+the ``DUT`` interface of the mux, a device with the ``labgrid-sd-mux`` role
+(created if missing) and its USB serial number in NetBox's ``serial`` field.
+Its ``labgrid_sdmux`` custom field holds its control device and the card's
+boot partition on the exporter host, so the next board in it is configured
+from NetBox.
 """
 
 from __future__ import annotations
@@ -60,6 +68,12 @@ SERIAL_PATH_FIELD = "labgrid_serial_path"
 # The board's console port for each kind of console connection.
 UART = "UART"
 JTAG = "JTAG"
+SDMUX_ROLE_SLUG = "labgrid-sd-mux"
+SDMUX_ROLE_NAME = "Labgrid SD Mux"
+SDMUX_FIELD = "labgrid_sdmux"
+# The interfaces an SD mux cable joins: the board's card slot, the mux's card side.
+SD = "SD"
+SDMUX_PORT = "DUT"
 # The outlet of a single switch (smart plug, relay, ...), and of a strip used whole.
 SINGLE_OUTLET = "1"
 # A board's power ports, when it has none to reuse: "power", "power 2", ...
@@ -74,6 +88,7 @@ CUSTOM_FIELDS: dict[str, tuple[str, str, str]] = {
     "runner_label": ("GitHub runner label", "text", "dcim.device"),
     POWER_FIELD: ("Labgrid power control", "json", "dcim.device"),
     SERIAL_PATH_FIELD: ("Labgrid serial device path", "text", "dcim.consoleserverport"),
+    SDMUX_FIELD: ("Labgrid SD mux", "json", "dcim.device"),
 }
 
 
@@ -330,6 +345,34 @@ def console_devices(nb, site_slug: str) -> list[ConsoleDevice]:
     ]
 
 
+@dataclass(frozen=True)
+class SDMux:
+    name: str
+    serial: str  # its USB serial number; "" if NetBox hasn't one
+    settings: dict  # its labgrid_sdmux custom field; {} on a mux made by hand
+    connected_to: str | None = None  # "<device> <port>" its DUT side feeds, None if free
+
+
+def sd_muxes(nb, site_slug: str) -> list[SDMux]:
+    """The devices at a site with the SD mux role, with each one's settings and what it feeds."""
+    role = nb.dcim.device_roles.get(slug=SDMUX_ROLE_SLUG)
+    if role is None:
+        return []
+    found = []
+    for device in nb.dcim.devices.filter(site=site_slug, role_id=role.id):
+        dut = nb.dcim.interfaces.filter(device_id=device.id, name=SDMUX_PORT)
+        settings = (device.custom_fields or {}).get(SDMUX_FIELD)
+        found.append(
+            SDMux(
+                device.name,
+                device.serial or "",
+                settings if isinstance(settings, dict) else {},
+                ", ".join(peer for i in dut for peer in _peers(i)) or None,
+            )
+        )
+    return sorted(found, key=lambda m: m.name)
+
+
 def device_exists(nb, name: str, site_slug: str) -> bool:
     return bool(list(nb.dcim.devices.filter(name=name, site=site_slug)))
 
@@ -357,7 +400,9 @@ def _get_or_create(endpoint, slug: str, **fields):
     return found or endpoint.create(slug=slug, **fields)
 
 
-def _create_device(nb, name: str, site_id: int, *, role, type_slug, model, custom_fields=None):
+def _create_device(
+    nb, name: str, site_id: int, *, role, type_slug, model, custom_fields=None, serial=""
+):
     role = _get_or_create(nb.dcim.device_roles, role[0], name=role[1], color=role[2])
     mfr = _get_or_create(
         nb.dcim.manufacturers, POWER_MANUFACTURER_SLUG, name=POWER_MANUFACTURER_NAME
@@ -369,6 +414,7 @@ def _create_device(nb, name: str, site_id: int, *, role, type_slug, model, custo
         device_type=device_type.id,
         role=role.id,
         site=site_id,
+        serial=serial,
         custom_fields=custom_fields or {},
     )
 
@@ -407,6 +453,15 @@ _CONSOLE = {
         ("jtag",),
     ),
 }
+_SDMUX = _Ends(
+    "interfaces",
+    "dcim.interface",
+    "interfaces",
+    "dcim.interface",
+    SD,
+    ("sd",),
+    (("type", "other"),),
+)
 
 
 def _is_kind(kind: str, port_name: str) -> bool:
@@ -520,19 +575,6 @@ def connect_power(
             custom_fields={POWER_FIELD: settings},
         )
 
-    def settle(power_device, outlets):
-        current = (power_device.custom_fields or {}).get(POWER_FIELD)
-        if not current:
-            power_device.custom_fields[POWER_FIELD] = settings
-            power_device.save()
-            return [f"recorded the labgrid power settings on {device}"]
-        if current != settings:
-            return [
-                f"{device} keeps its {POWER_FIELD} settings in NetBox ({current}), "
-                f"which differ from this board's ({settings})"
-            ]
-        return []
-
     return done + _connect(
         nb,
         board,
@@ -542,8 +584,25 @@ def connect_power(
         names=outlets,
         label=outlet_label,
         create=create,
-        settle=settle,
+        settle=lambda power_device, outlets: _settle(
+            power_device, POWER_FIELD, settings, "labgrid power settings"
+        ),
     )
+
+
+def _settle(device, field: str, settings: dict, what: str) -> list[str]:
+    """Fill in ``device``'s empty ``field`` with ``settings``; one already set is kept."""
+    current = (device.custom_fields or {}).get(field)
+    if not current:
+        device.custom_fields[field] = settings
+        device.save()
+        return [f"recorded the {what} on {device.name}"]
+    if current != settings:
+        return [
+            f"{device.name} keeps its {field} settings in NetBox ({current}), "
+            f"which differ from this board's ({settings})"
+        ]
+    return []
 
 
 def connect_console(
@@ -596,6 +655,52 @@ def connect_console(
         create=create,
         settle=settle,
         far_fields={"custom_fields": {SERIAL_PATH_FIELD: path}} if path else None,
+    )
+
+
+def connect_sdmux(
+    nb, board, *, site_slug: str, device: str, serial: str, settings: dict
+) -> list[str]:
+    """Cable ``board``'s SD card slot to SD mux ``device`` at the board's site.
+
+    The mux, and its ``DUT`` interface, are created if missing. ``settings``
+    (the ``labgrid_sdmux`` value) and ``serial`` fill in the mux's empty field
+    and serial number but never replace them. See :func:`_connect` for how
+    cables are added.
+    """
+    done = []
+
+    def create(site_id):
+        done.append(f"created SD mux {device}")
+        return _create_device(
+            nb,
+            device,
+            site_id,
+            role=(SDMUX_ROLE_SLUG, SDMUX_ROLE_NAME, "8bc34a"),
+            type_slug=SDMUX_ROLE_SLUG,
+            model="USB SD mux",
+            custom_fields={SDMUX_FIELD: settings},
+            serial=serial,
+        )
+
+    def settle(mux, interfaces):
+        if serial and not mux.serial:
+            mux.serial = serial
+            mux.save()
+            done.append(f"recorded the serial number {serial} on {device}")
+        return _settle(mux, SDMUX_FIELD, settings, "SD mux settings")
+
+    return done + _connect(
+        nb,
+        board,
+        _SDMUX,
+        site_slug=site_slug,
+        device=device,
+        names=[SDMUX_PORT],
+        label=_port_label,
+        create=create,
+        settle=settle,
+        far_fields={"type": "other"},
     )
 
 
