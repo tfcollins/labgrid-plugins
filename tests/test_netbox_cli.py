@@ -1694,7 +1694,7 @@ def test_options_are_listed_one_per_row_not_run_together(monkeypatch):
     assert row("fabric-jtag", "BootFabric")  # template + the strategy it's written for
     assert row("soc-ssh", "BootFPGASoCSSH")
     assert not row("fabric-jtag", "rpi-ssh")
-    assert row("BootZynqMPJTAG", "JTAG")  # strategy + its description
+    assert row("BootSelMap", "also runs", "SelMap")  # strategy + its fit + its description
     assert row("Network PDU", "cyberpower")  # category + its types
     assert row("cyberpower", "CyberPower PDU")  # type + its label
     assert row("target_ip", "Board IP address", "required")  # field + question + default
@@ -1704,6 +1704,59 @@ def test_options_are_listed_one_per_row_not_run_together(monkeypatch):
     # an empty default would otherwise print as "()" after the prompt
     optional = "Serial console device on the exporter host (Enter for /dev/ttyUSB0)"
     assert asked.kwargs[optional]["show_default"] is False
+
+
+def test_only_the_strategies_the_template_can_run_are_offered(monkeypatch):
+    asked = _stub_prompts(monkeypatch, _SOC_SSH)
+
+    result = _invoke(*DRY_RUN)
+
+    assert result.exit_code == 0, result.output
+    row = _rows(result.output)
+    # The template's own strategy first, as the default.
+    assert row("1", "BootFPGASoCSSH", "recommended")
+    assert asked.kwargs["Boot strategy"]["default"] == "BootFPGASoCSSH"
+    # soc-ssh exports no JTAG cable, so no JTAG strategy can be picked; each says why.
+    assert "BootZynqMPJTAG" not in asked.kwargs["Boot strategy"]["choices"]
+    assert row("BootZynqMPJTAG needs XilinxDeviceJTAG, XilinxVivadoTool")
+    assert row("BootFPGASoC needs MassStorageDevice, USBSDMuxDevice")
+
+
+def test_the_template_s_own_strategy_is_first_wherever_it_is_in_the_list(monkeypatch):
+    # BootSelMap, BootFabric, ... also run on zynqmp-jtag and come before it in the list.
+    asked = _stub_prompts(monkeypatch, {**_SOC_SSH, "Board template": "zynqmp-jtag"})
+
+    result = _invoke(*DRY_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert _rows(result.output)("1", "BootZynqMPJTAG", "recommended")
+    assert asked.kwargs["Boot strategy"]["default"] == "BootZynqMPJTAG"
+
+
+def test_a_template_no_strategy_can_run_on_is_reported(monkeypatch):
+    _stub_prompts(monkeypatch, _SOC_SSH)
+    monkeypatch.setattr(cli.recommend, "missing", lambda strategy, exported: ["SerialPort"])
+
+    result = _invoke(*DRY_RUN)
+
+    assert result.exit_code == 1
+    assert "no boot strategy can run on what template soc-ssh exports" in result.output
+    assert "(KuiperRelease, NetworkService, RawSerialPort)" in result.output
+
+
+def test_a_saved_strategy_the_template_cannot_run_is_asked_again(monkeypatch, saved_runs):
+    _stub_prompts(monkeypatch, _SOC_SSH)
+    _invoke(*DRY_RUN)
+    saved = _saved(saved_runs)
+    saved["answers"]["boot_strategy"] = "BootZynqMPJTAG"  # picked before strategies were checked
+    (saved_runs / "b1.json").write_text(json.dumps(saved))
+    asked = _stub_prompts(monkeypatch, {})  # Enter at each: resume b1 with its saved answers
+
+    result = _invoke(*DRY_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert [p for p in asked if p.startswith("Boot strategy")] == ["Boot strategy"]
+    assert "boot-strategy=BootFPGASoCSSH" in result.output
 
 
 def test_plan_is_a_table_with_one_tag_per_line(monkeypatch):

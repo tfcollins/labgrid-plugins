@@ -90,13 +90,19 @@ Usage
     ADI daughter board or chip (e.g. ad9081, adrv9009): ad9081
 
     Boot strategies
-     #   Strategy                   Description
-    ──────────────────────────────────────────────────────────────────────────────
-     1   BootFPGASoC                BootFPGASoC strategy for FPGA SoC devices using
-                                    Kuiper releases.
-     ...
-    12   BootTickFPGASSH            BootFPGASoCSSH + runtime Tick deploy (bitstream,
-                                    overlay, module).
+    #   Strategy          Fit           Description
+    ────────────────────────────────────────────────────────────────────────────────
+    1   BootFPGASoC       recommended   BootFPGASoC strategy for FPGA SoC devices
+                                        using Kuiper releases.
+    2   BootFPGASoCSSH    also runs     Strategy to boot an FPGA SoC device using
+                                        ShellDriver and SSHDriver.
+    ...
+    5   BootTickFPGASSH   also runs     BootFPGASoCSSH + runtime Tick deploy
+                                        (bitstream, overlay, module).
+    Not offered: soc-sdmux doesn't export what they bind.
+      BootFabric needs XilinxDeviceJTAG, XilinxVivadoTool
+      ...
+      BootOpenFPGALoader needs USBDebugger or XilinxDeviceJTAG
     Boot strategy (BootFPGASoC):
 
     The self-hosted GitHub Actions runner that runs this board's hardware-CI jobs
@@ -236,18 +242,39 @@ with ``http://`` or ``https://``.
 The templates name their resource group ``<CARRIER>_<CHIP>`` (e.g. ``ZCU102_AD9081``) from
 the ``carrier`` and ``chip`` fields. The command fills those from the *Carrier board* and
 *ADI daughter board or chip* answers, so they are not asked again as template fields. Choose the
-template by boot strategy (see :doc:`exporter-setup`); the *Boot strategy* prompt defaults to
-the one the template declares. The power type - picked from NetBox's power device, or asked
+template by boot strategy (see :doc:`exporter-setup`); the *Boot strategy* prompt offers only
+the strategies that can run on what the template exports (see `Boot strategy`_), the one the
+template declares first and as the default. The power type - picked from NetBox's power device, or asked
 as *Power category* and *Power type* (see `Power devices`_) - chooses the template's
 ``power`` fragment: any of the types in :ref:`power-types`, covering this package's outlets
 and all of labgrid's power options. The command sets the place's ``power-driver`` tag, plus
 ``power-output-driver`` for relay types. Credentials, reachability notes (e.g. ``tasmota``
 and ``laa`` connect from the client) and required host tools are printed in the plan.
 
-The boot-strategy prompt only accepts the ADI strategy classes this package registers
+Boot strategy
+~~~~~~~~~~~~~
+
+The place's ``boot-strategy`` tag makes render-env emit that strategy's labgrid config (see
+:doc:`hardware-ci`), and every driver in it must find the resources it binds among the ones
+the board's exporter publishes. So the *Boot strategy* prompt lists only the ADI strategies
 (``BootFPGASoC``, ``BootFPGASoCSSH``, ``BootFPGASoCTFTP``, ``BootSelMap``, ``BootFabric``,
 ``BootRPI``, ``BootVPK180``, ``BootZynqMPJTAG``, ``BootZynq7000JTAGRecovery``,
-``BootNoOSJTAG``, ``BootOpenFPGALoader``, ``BootTickFPGASSH``).
+``BootNoOSJTAG``, ``BootOpenFPGALoader``, ``BootTickFPGASSH``) whose config binds to what
+the template exports:
+
+- the strategy the template is written for (its ``## boot-strategy:`` line) comes first,
+  marked *recommended*, and is the default;
+- the others that also bind are marked *also runs* - ``soc-sdmux``, for example, also serves
+  ``BootFPGASoCSSH``;
+- the rest are listed under the table with what they need that the template doesn't export
+  (``BootFPGASoC`` needs the SD mux's ``USBSDMuxDevice`` and ``MassStorageDevice``, for
+  example), and can't be picked.
+
+What each strategy needs is read from its render-env config
+(``adi_lg_plugins/hw_ci/templates/<strategy>.yaml``) and the labgrid ``bindings`` of the drivers
+it lists, so a new template or strategy needs no change here. Resources a config defines itself,
+like ``BootFPGASoCTFTP``'s TFTP server on the test runner, aren't needed from the exporter.
+A strategy saved by an earlier run that the template can't run is asked again on resume.
 
 Options
 ~~~~~~~

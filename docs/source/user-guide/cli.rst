@@ -144,7 +144,8 @@ netbox add-hardware
 
 Onboard one new board in a single interactive pass: register it as a device in NetBox,
 cabled to an outlet on its power device and to the ports its serial console and JTAG are
-plugged into (each picked from NetBox, or added),
+plugged into (each picked from NetBox, or added), tag it with a boot strategy that can run on
+what its template exports (the one the template is written for is recommended),
 render and validate its exporter config from ``exporter_configs/templates/``, deploy that
 config to the exporter host as a ``labgrid-exporter-<name>`` systemd service, and create and
 tag the matching place on the coordinator. Requires the ``netbox`` extra and must be run from

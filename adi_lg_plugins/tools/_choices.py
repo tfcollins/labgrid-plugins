@@ -26,15 +26,19 @@ def ask_choice(
     *,
     headers: Sequence[str] = (),
     default: str | None = None,
+    note: str | None = None,
 ) -> str:
     """List ``options`` numbered, then ask for one by number or name.
 
     An option is a name, or a tuple of the name and its description column(s),
-    titled by ``headers`` (the first header names the option column).
+    titled by ``headers`` (the first header names the option column). ``note``
+    is printed under the options.
     """
     rows = [(o,) if isinstance(o, str) else tuple(o) for o in options]
     names = [r[0] for r in rows]
     console.print(_render(rows, headers, default))
+    if note:
+        console.print(note)
     by_number = {str(i): name for i, name in enumerate(names, 1)}
     while True:
         answer = (
