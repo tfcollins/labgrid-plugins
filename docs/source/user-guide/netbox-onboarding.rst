@@ -153,7 +153,7 @@ Usage
     Devices with console server ports in NetBox at lab3
     #   Device        Address     Free ports
     ──────────────────────────────────────────────────────────────────────────────
-    1   lab-host-03   10.0.0.40   1 of 4
+    1   lab-host-03   10.0.0.40   2 of 4
     2   skip                      it has one: don't record it in NetBox
     3   none                      the board has no JTAG cable
     4   new                       a device not listed: add it, or add ports to it
@@ -704,8 +704,10 @@ a ``soc-ssh`` run asks nothing new. **review** asks every question, in the new o
 A dry run saves its answers too, with the plan marked as checked, so you can check the plan
 with ``--dry-run`` and then run for real, picking **resume**: it asks only for the NetBox
 devices a dry run doesn't pick (power device, serial and JTAG ports, SD mux), then goes to
-``Proceed?`` - unless those picks show the board's hardware isn't what the dry run was told,
-and the saved template no longer suits it: then the template is asked again.
+``Proceed?``. What the dry run was told about the board's hardware is the default there:
+*none* for a JTAG cable or SD mux it hasn't, and *new* for an SD mux when the site has no free
+one. If the picks show the hardware isn't what the dry run was told, and the saved template no
+longer suits it, the template is asked again.
 
 The NetBox API token and the coordinator password are never saved. The NetBox URL, the
 coordinator username and every other answer are, including template fields such as the

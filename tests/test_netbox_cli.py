@@ -2027,19 +2027,35 @@ def test_a_dry_run_s_blank_sd_mux_devices_resume_as_the_template_s(monkeypatch, 
     )
     _invoke(*DRY_RUN)
     assert _saved(saved_runs)["answers"]["field.sdmux_path"] == ""
-    # Enter at each: resume b1 with its saved answers. The dry run picked no SD mux
-    # from NetBox, which has none, so one is added.
-    _stub_prompts(monkeypatch, {"SD mux": "new", "SD mux name in NetBox": "b1-sdmux"})
+    # Enter at each: resume b1 with its saved answers. The dry run was told the board has
+    # no JTAG cable and an SD mux, so those are the defaults: NetBox has no mux, so a new one.
+    _stub_prompts(monkeypatch, {})
     monkeypatch.setattr(cli.Confirm, "ask", staticmethod(lambda *a, **k: True))
     calls = _stub_services(monkeypatch)
 
     result = _invoke(*_REAL_RUN)
 
     assert result.exit_code == 0, result.output
+    assert "JTAG" not in calls
+    assert calls["sdmux"]["device"] == "b1-sdmux"
+    assert calls["tags"]["boot-strategy"] == "BootFPGASoC"  # soc-sdmux, as in the dry run
     assert calls["sdmux"]["settings"] == {
         "sdmux_path": "/dev/sg0",
         "boot_partition": "/dev/disk/by-label/BOOT",
     }
+
+
+def test_a_dry_run_s_no_sd_mux_stays_the_default_with_a_free_one_in_netbox(monkeypatch, saved_runs):
+    _stub_prompts(monkeypatch, _SOC_SSH)  # no JTAG cable, no SD mux
+    _invoke(*DRY_RUN)
+    _stub_prompts(monkeypatch, {})  # Enter at each: resume b1 with its saved answers
+    monkeypatch.setattr(cli.Confirm, "ask", staticmethod(lambda *a, **k: True))
+    calls = _stub_services(monkeypatch, muxes=[_mux("mux-b", _MUX_SETTINGS)])
+
+    result = _invoke(*_REAL_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert "sdmux" not in calls and "JTAG" not in calls
 
 
 def _sdmux_run_saved(monkeypatch, muxes=(), **replies):

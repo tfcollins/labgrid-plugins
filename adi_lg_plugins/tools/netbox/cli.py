@@ -646,11 +646,19 @@ def _ask_device_name(run: Run, power: str, context: dict[str, str], board: str, 
 
 
 def _ask_jtag(
-    run: Run, devices: list, *, site: str, board: str, serial_device: str, offer_none: bool = True
+    run: Run,
+    devices: list,
+    *,
+    site: str,
+    board: str,
+    serial_device: str,
+    offer_none: bool = True,
+    has_jtag: bool | None = None,
 ) -> None:
     """Ask which console server port the board's JTAG cable is recorded on, or to skip it.
 
-    ``offer_none`` offers ``none``: the board has no JTAG cable.
+    ``offer_none`` offers ``none``: the board has no JTAG cable, the default
+    if a dry run was told so (``has_jtag``).
 
     ``serial_device`` (where the serial console is) is the default device,
     listed even when NetBox doesn't have it yet. The answers are saved for
@@ -667,7 +675,7 @@ def _ask_jtag(
         "jtag_device",
         "JTAG device",
         lambda default: _ask_console_device(devices, "JTAG device", site, default, extra),
-        default=serial_device,
+        default=_NONE if offer_none and has_jtag is False else serial_device,
         choices=[*by_name, *(row[0] for row in extra), NEW],
         explain=(
             "The device the board's JTAG cable (USB-JTAG) is plugged into - usually the exporter "
@@ -785,26 +793,41 @@ def _ask_sdmux_device(muxes: list, site: str, board: str, default: str | None, e
 
 
 def _ask_sdmux(
-    run: Run, muxes: list, *, site: str, board: str, defaults: dict, offer_none: bool = True
+    run: Run,
+    muxes: list,
+    *,
+    site: str,
+    board: str,
+    defaults: dict,
+    offer_none: bool = True,
+    has_sdmux: bool | None = None,
 ) -> None:
     """Ask which SD mux the board's SD card is in, and its devices on the exporter host.
 
     ``muxes`` are the site's SD muxes in NetBox. One with labgrid settings
     gives the control device and boot partition; otherwise they are asked,
     defaulting to ``defaults``, and saved on it. ``offer_none`` offers
-    ``none``: the board's SD card isn't in one. The answers are saved for
-    :func:`_sdmux_link`.
+    ``none``: the board's SD card isn't in one. ``has_sdmux`` is what a dry
+    run was told, if it was. The answers are saved for :func:`_sdmux_link`.
     """
     free = [
         m.name for m in muxes if m.connected_to is None or m.connected_to.startswith(f"{board} ")
     ]
+    if offer_none and has_sdmux is False:
+        default = _NONE
+    elif len(free) == 1:
+        default = free[0]
+    elif not free and (has_sdmux or offer_none):
+        default = NEW if has_sdmux else _NONE
+    else:
+        default = None
     if muxes or offer_none:
         extra = [(_NONE, "", "", "the board's SD card isn't in an SD mux")] if offer_none else []
         picked = run.answer(
             "sdmux_device",
             "SD mux",
             lambda default: _ask_sdmux_device(muxes, site, board, default, extra),
-            default=free[0] if len(free) == 1 else _NONE if offer_none and not free else None,
+            default=default,
             choices=[*(m.name for m in muxes), *(row[0] for row in extra), NEW],
             explain=(
                 "The USB SD mux the board's SD card is in. Pick it from NetBox to use its control "
@@ -1193,6 +1216,7 @@ def _onboard(
                 board=name,
                 serial_device=serial_link.device if serial_link else ssh_host.split(".")[0],
                 offer_none=not earlier,
+                has_jtag=run.saved.answers.get("hw.jtag"),
             )
         jtag_link = _console_link(run.saved.answers, client.JTAG)
     sdmux_link = None
@@ -1200,7 +1224,13 @@ def _onboard(
         if look_up:
             muxes = netbox(client.sd_muxes, site_slug)
             _ask_sdmux(
-                run, muxes, site=site_slug, board=name, defaults=hw_defaults, offer_none=not earlier
+                run,
+                muxes,
+                site=site_slug,
+                board=name,
+                defaults=hw_defaults,
+                offer_none=not earlier,
+                has_sdmux=run.saved.answers.get("hw.sdmux"),
             )
         sdmux_link = _sdmux_link(run.saved.answers)
 
