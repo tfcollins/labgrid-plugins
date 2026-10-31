@@ -76,3 +76,57 @@ def test_an_optional_binding_is_not_a_need(monkeypatch):
 def test_every_strategy_add_hardware_offers_is_read_from_its_render_config():
     for strategy in cli.KNOWN_BOOT_STRATEGIES:
         assert recommend.strategy_needs(strategy), strategy
+
+
+def _templates() -> dict[str, set[str]]:
+    return {p.stem: provision.template_resources(p) for p in TEMPLATES.glob("*.yaml")}
+
+
+def test_a_template_s_hardware_is_read_from_what_it_exports():
+    assert recommend.hardware_used(_exported("soc-tftp")) == {"jtag"}
+    assert recommend.hardware_used(_exported("soc-sdmux")) == {"sdmux"}
+    assert recommend.hardware_used(_exported("rpi-ssh")) == set()
+
+
+def test_what_a_template_uses_that_the_board_lacks_is_named():
+    assert recommend.lacking(_exported("zynqmp-jtag"), set()) == ["JTAG"]
+    assert recommend.lacking(_exported("soc-sdmux"), {"jtag"}) == ["SD mux"]
+    assert recommend.lacking(_exported("soc-ssh"), set()) == []
+
+
+def test_a_board_with_jtag_is_recommended_every_jtag_template():
+    # No guess from the carrier: all three use the JTAG cable.
+    assert recommend.rank_templates(_templates(), {"jtag"}) == [
+        ("fabric-jtag", "recommended"),
+        ("soc-tftp", "recommended"),
+        ("zynqmp-jtag", "recommended"),
+        ("rpi-ssh", "fits"),
+        ("soc-ssh", "fits"),
+    ]
+
+
+def test_a_board_with_an_sd_mux_is_recommended_the_sd_mux_template():
+    assert recommend.rank_templates(_templates(), {"sdmux"}) == [
+        ("soc-sdmux", "recommended"),
+        ("rpi-ssh", "fits"),
+        ("soc-ssh", "fits"),
+    ]
+
+
+def test_a_board_with_neither_is_offered_the_templates_that_use_neither():
+    assert recommend.rank_templates(_templates(), set()) == [
+        ("rpi-ssh", "recommended"),
+        ("soc-ssh", "recommended"),
+    ]
+
+
+def test_a_board_with_both_is_recommended_every_template_using_either():
+    # No template uses both, so they tie.
+    assert recommend.rank_templates(_templates(), {"jtag", "sdmux"}) == [
+        ("fabric-jtag", "recommended"),
+        ("soc-sdmux", "recommended"),
+        ("soc-tftp", "recommended"),
+        ("zynqmp-jtag", "recommended"),
+        ("rpi-ssh", "fits"),
+        ("soc-ssh", "fits"),
+    ]

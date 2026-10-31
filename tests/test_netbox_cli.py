@@ -113,11 +113,12 @@ class _Asked(list):
 
 
 def _stub_prompts(monkeypatch, replies) -> _Asked:
-    """Answer each prompt from the first ``replies`` key it starts with.
+    """Answer each prompt (and yes/no question) from the longest ``replies`` key it starts with.
 
     A list answers successive asks (its last item repeats). A prompt matching no
     key gets its default; with no default the test fails at once, because a
-    required prompt would otherwise be asked again forever.
+    required prompt would otherwise be asked again forever. So does a prompt
+    asked over and over: an answer it keeps refusing (e.g. an option not listed).
     """
     asked = _Asked()
     replies = {k: list(v) if isinstance(v, list) else [v] for k, v in replies.items()}
@@ -125,14 +126,18 @@ def _stub_prompts(monkeypatch, replies) -> _Asked:
     def _ask(prompt, *args, **kwargs):
         asked.append(prompt)
         asked.kwargs[prompt.strip()] = kwargs
-        for prefix, answers in replies.items():
-            if prompt.startswith(prefix):
-                return answers.pop(0) if len(answers) > 1 else answers[0]
+        if asked.count(prompt) > 20:
+            raise AssertionError(f"prompt {prompt!r} asked again and again")
+        prefix = max((k for k in replies if prompt.startswith(k)), key=len, default=None)
+        if prefix is not None:
+            answers = replies[prefix]
+            return answers.pop(0) if len(answers) > 1 else answers[0]
         if kwargs.get("default") is None:
             raise AssertionError(f"no answer for prompt {prompt!r}")
         return kwargs["default"]
 
     monkeypatch.setattr(Prompt, "ask", staticmethod(_ask))
+    monkeypatch.setattr(Confirm, "ask", staticmethod(_ask))
     return asked
 
 
@@ -221,9 +226,11 @@ def _stub_services(monkeypatch, *, place=None, power_devices=(), consoles=(), mu
     return calls
 
 
-# A soc-ssh board with a CyberPower PDU, keyed by prompt prefix.
+# A soc-ssh board with a CyberPower PDU, keyed by prompt prefix: no JTAG cable, no SD mux.
 _SOC_SSH = {
     "Board template": "soc-ssh",
+    "JTAG device": "none",
+    "Does the board have a JTAG cable": False,
     "Board name": "b1",
     "Carrier board": "zcu102",
     "ADI daughter board or chip": "ad9081",
@@ -236,8 +243,13 @@ _SOC_SSH = {
     "  Board IP address": "10.0.0.5",
 }
 
+# Its SD mux is added to NetBox (a dry run: the board has one).
 _SOC_SDMUX = {
     "Board template": "soc-sdmux",
+    "JTAG device": "none",
+    "SD mux": "new",
+    "SD mux name in NetBox": "zc706-lab3-001-sdmux",
+    "Is the board's SD card in a USB SD mux": True,
     "Board name": "zc706-lab3-001",
     "Carrier board": "zc706",
     "ADI daughter board or chip": "adrv9009",
@@ -302,11 +314,9 @@ def test_add_hardware_matches_resources_under_the_deployed_exporter_name(monkeyp
 def test_dry_run_through_the_real_prompts(monkeypatch):
     """Type every answer into the real prompts: checks their order, wording and parsing."""
     conversation = [
-        ("Board template", "3"),  # by row number: soc-sdmux
         ("Board name", "zcu102-lab3-001"),
         ("Carrier board", "zcu102"),
         ("ADI daughter board or chip", "ad9081"),
-        ("Boot strategy", ""),  # the template's own, BootFPGASoC
         ("GitHub Actions runner label", ""),
         ("NetBox site slug", "lab3"),  # typed: a dry run doesn't read NetBox
         ("Power category", "1"),
@@ -314,6 +324,11 @@ def test_dry_run_through_the_real_prompts(monkeypatch):
         ("  PDU hostname or IP", "10.0.0.20"),
         ("  Outlet number", "4"),
         ("Exporter host SSH login", "labadmin@lab-host-03"),
+        # Nor does it read the board's hardware from NetBox, so it asks.
+        ("Does the board have a JTAG cable", "n"),
+        ("Is the board's SD card in a USB SD mux", "y"),
+        ("Board template", "1"),  # by row number: soc-sdmux, the one recommended
+        ("Boot strategy", ""),  # the template's own, BootFPGASoC
         ("  Board IP address", "10.0.0.42"),
         ("  SD card boot partition", ""),
         ("  BOOT.BIN", "release:zynqmp-zcu102-rev10-ad9081/m8_l4/BOOT.BIN"),
@@ -335,13 +350,12 @@ def test_dry_run_through_the_real_prompts(monkeypatch):
     assert "Dry run" in result.output
 
 
-# A soc-ssh board typed in full, credentials included.
+# A board typed in full, credentials included: what it is, then where and what it is wired
+# to, then the template that suits that hardware.
 _BOARD = [
-    ("Board template", "soc-ssh"),
     ("Board name", "b1"),
     ("Carrier board", "zcu102"),
     ("ADI daughter board or chip", "ad9081"),
-    ("Boot strategy", ""),
     ("GitHub Actions runner label", ""),
     # NetBox is read from here on (sites, power devices); nothing is written before Proceed?.
     ("NetBox URL", "https://netbox.test"),
@@ -354,6 +368,9 @@ _SERIAL = [
     ("Serial device name in NetBox", ""),  # the exporter host, h
     ("  Serial console device", ""),  # the template's /dev/ttyUSB0
 ]
+# No JTAG cable, no SD mux (NetBox has none at lab3, so Enter): a soc-ssh board.
+_NO_JTAG_OR_SD_MUX = [("JTAG device", "none"), ("SD mux", "")]
+_SOC_SSH_TEMPLATE = [("Board template", "soc-ssh"), ("Boot strategy", "")]
 _TEMPLATE_FIELDS = [
     ("  Board IP address", "10.0.0.5"),
     ("  BOOT.BIN", ""),
@@ -366,7 +383,7 @@ _TEMPLATE_FIELDS = [
     ("Coordinator API username", "admin"),
     ("Coordinator API password", "secret"),
 ]
-_FIELDS = [*_SSH, *_SERIAL, *_TEMPLATE_FIELDS]
+_FIELDS = [*_SSH, *_SERIAL, *_NO_JTAG_OR_SD_MUX, *_SOC_SSH_TEMPLATE, *_TEMPLATE_FIELDS]
 _FULL_RUN = [
     *_BOARD,
     # No power devices at lab3 yet, so a new one is described and named.
@@ -607,7 +624,15 @@ _LAB_HOST = _host(
 
 
 def _serial_run(conversation):
-    return [*_BOARD, ("Power device name in NetBox", ""), *_SSH, *conversation, *_TEMPLATE_FIELDS]
+    return [
+        *_BOARD,
+        ("Power device name in NetBox", ""),
+        *_SSH,
+        *conversation,
+        *_NO_JTAG_OR_SD_MUX,
+        *_SOC_SSH_TEMPLATE,
+        *_TEMPLATE_FIELDS,
+    ]
 
 
 def test_the_exporter_host_in_netbox_is_offered_and_its_port_gives_the_serial_path(monkeypatch):
@@ -681,6 +706,8 @@ def test_the_exporter_host_is_matched_by_its_address_too(monkeypatch):
         ("Exporter host SSH login", "root@10.0.0.40"),
         ("Serial device", ""),  # Enter: lab-host-03
         ("Serial port on lab-host-03", "A"),
+        *_NO_JTAG_OR_SD_MUX,
+        *_SOC_SSH_TEMPLATE,
         *_TEMPLATE_FIELDS,
     ]
 
@@ -725,13 +752,15 @@ def test_a_run_saved_before_serial_ports_asks_for_the_serial_device_and_redoes_n
 
 # A ZynqMP board booted over JTAG: its template exports XilinxDeviceJTAG.
 _JTAG_BOARD = [
-    ("Board template", "zynqmp-jtag"),
-    *_BOARD[1:],
+    *_BOARD,
     *_NEW_POWER,
     ("Power device name in NetBox", ""),
     *_SSH,
 ]
 _JTAG_FIELDS = [
+    ("SD mux", ""),  # Enter: none
+    ("Board template", "zynqmp-jtag"),  # one of the three recommended
+    ("Boot strategy", ""),
     ("  Board IP address", "10.0.0.5"),
     ("  xsdb JTAG target ID", ""),
     ("  Board Linux SSH password", ""),
@@ -895,13 +924,23 @@ def test_a_dry_run_does_not_read_netbox(monkeypatch):
 
     for name in ("connect", "sites", "power_devices", "console_devices", "sd_muxes"):
         monkeypatch.setattr(cli.client, name, unreachable)
-    _stub_prompts(monkeypatch, {**_SOC_SSH, "Board template": "soc-sdmux"})
+    # It asks what the board is wired to instead: here a JTAG cable and an SD mux.
+    _stub_prompts(
+        monkeypatch,
+        {
+            **_SOC_SSH,
+            "Board template": "soc-sdmux",
+            "Does the board have a JTAG cable": True,
+            "Is the board's SD card in a USB SD mux": True,
+        },
+    )
 
     result = _invoke(*DRY_RUN)
 
     assert result.exit_code == 0, result.output
     row = _rows(result.output)
     assert row("Power in NetBox", "chosen from NetBox when run without --dry-run")
+    assert row("JTAG in NetBox", "chosen from NetBox when run without --dry-run")
     assert row("SD mux in NetBox", "chosen from NetBox when run without --dry-run")
 
 
@@ -954,6 +993,10 @@ def test_resuming_a_run_saved_before_power_devices_asks_only_for_the_power_devic
     path = saved_runs / "b1.json"
     old = json.loads(path.read_text())
     assert not [k for k in old["answers"] if k.startswith("power_device")]
+    # Nor what hardware the board has: their template says.
+    for key in ("hw.jtag", "hw.sdmux"):
+        del old["answers"][key]
+    path.write_text(json.dumps(old))
     calls = _stub_services(monkeypatch)
     rendered = _rendered(monkeypatch)
     conversation = [
@@ -1026,6 +1069,7 @@ def test_a_saved_new_power_device_without_its_name_asks_for_it(monkeypatch, save
         ("Power device name in NetBox", ""),  # the suggestion is taken
         ("Power device name in NetBox", "pdu-bench"),
         ("Serial device name in NetBox", ""),
+        *_NO_JTAG_OR_SD_MUX,  # a dry run doesn't pick them from NetBox
         ("\nProceed?", "y"),
         ("Coordinator API username", "admin"),
         ("Coordinator API password", "secret"),
@@ -1050,6 +1094,7 @@ def test_a_saved_site_netbox_does_not_have_is_asked_again(monkeypatch, saved_run
         ("NetBox site slug", "lab4"),
         ("Power device name in NetBox", ""),
         ("Serial device name in NetBox", ""),
+        *_NO_JTAG_OR_SD_MUX,
         ("\nProceed?", "y"),
         ("Coordinator API username", "admin"),
         ("Coordinator API password", "secret"),
@@ -1700,9 +1745,9 @@ def test_options_are_listed_one_per_row_not_run_together(monkeypatch):
 
     assert result.exit_code == 0, result.output
     row = _rows(result.output)
-    assert row("fabric-jtag", "BootFabric")  # template + the strategy it's written for
-    assert row("soc-ssh", "BootFPGASoCSSH")
-    assert not row("fabric-jtag", "rpi-ssh")
+    assert row("rpi-ssh", "recommended", "BootRPI")  # template + its fit + its own strategy
+    assert row("soc-ssh", "recommended", "BootFPGASoCSSH")
+    assert not row("rpi-ssh", "soc-ssh")
     assert row("BootSelMap", "also runs", "SelMap")  # strategy + its fit + its description
     assert row("Network PDU", "cyberpower")  # category + its types
     assert row("cyberpower", "CyberPower PDU")  # type + its label
@@ -1733,7 +1778,10 @@ def test_only_the_strategies_the_template_can_run_are_offered(monkeypatch):
 
 def test_the_template_s_own_strategy_is_first_wherever_it_is_in_the_list(monkeypatch):
     # BootSelMap, BootFabric, ... also run on zynqmp-jtag and come before it in the list.
-    asked = _stub_prompts(monkeypatch, {**_SOC_SSH, "Board template": "zynqmp-jtag"})
+    asked = _stub_prompts(
+        monkeypatch,
+        {**_SOC_SSH, "Board template": "zynqmp-jtag", "Does the board have a JTAG cable": True},
+    )
 
     result = _invoke(*DRY_RUN)
 
@@ -1809,13 +1857,15 @@ def test_optional_power_fields_do_not_print_an_empty_default(monkeypatch):
 
 # A soc-sdmux board: its template exports the USB SD mux.
 _SDMUX_BOARD = [
-    ("Board template", "soc-sdmux"),
-    *_BOARD[1:],
+    *_BOARD,
     *_NEW_POWER,
     ("Power device name in NetBox", ""),
     *_SSH,
     *_SERIAL,
+    ("JTAG device", "none"),
 ]
+# After its SD mux: soc-sdmux, the one template recommended for it.
+_SDMUX_FIELDS = [("Board template", ""), ("Boot strategy", ""), *_TEMPLATE_FIELDS]
 _PART1 = "/dev/disk/by-id/usb-LinuxAut_sdmux_HS-SD_MMC_000000001234-0:0-part1"
 _MUX_SETTINGS = {"sdmux_path": "/dev/sg3", "boot_partition": _PART1}
 
@@ -1829,11 +1879,12 @@ def test_a_new_sd_mux_is_named_and_its_devices_on_the_exporter_host_asked(monkey
     rendered = _rendered(monkeypatch)
     conversation = [
         *_SDMUX_BOARD,
+        ("SD mux", "new"),  # NetBox has none at lab3 yet
         ("SD mux name in NetBox", ""),  # Enter: b1-sdmux
         ("SD mux serial number", "000000001234"),
         ("  SD mux control device", ""),  # Enter: the template's /dev/sg0
         ("  SD card boot partition", _PART1),
-        *_TEMPLATE_FIELDS,
+        *_SDMUX_FIELDS,
     ]
 
     result, prompts = _type_into_real_prompts(monkeypatch, conversation)
@@ -1864,7 +1915,7 @@ def test_an_sd_mux_in_netbox_gives_its_control_device_and_boot_partition(monkeyp
         *_SDMUX_BOARD,
         ("SD mux", "mux-a"),  # feeds another board: asked again
         ("SD mux", "mux-b"),
-        *_TEMPLATE_FIELDS,  # no control device or boot partition questions
+        *_SDMUX_FIELDS,  # no control device or boot partition questions
     ]
 
     result, prompts = _type_into_real_prompts(monkeypatch, conversation)
@@ -1887,7 +1938,7 @@ def test_an_sd_mux_made_by_hand_asks_its_devices_and_saves_them_on_it(monkeypatc
         ("SD mux", ""),  # Enter: the only free one
         ("  SD mux control device", "/dev/sg4"),
         ("  SD card boot partition", ""),  # Enter: the template's
-        *_TEMPLATE_FIELDS,
+        *_SDMUX_FIELDS,
     ]
 
     result, prompts = _type_into_real_prompts(monkeypatch, conversation)
@@ -1911,17 +1962,19 @@ def test_a_run_saved_before_sd_muxes_asks_only_for_the_sd_mux_and_redoes_netbox(
         monkeypatch,
         [
             *_SDMUX_BOARD,
+            ("SD mux", "new"),
             ("SD mux name in NetBox", ""),
             ("SD mux serial number", ""),
             ("  SD mux control device", "/dev/sg2"),
             ("  SD card boot partition", ""),
-            *_TEMPLATE_FIELDS,
+            *_SDMUX_FIELDS,
         ],
     )
     path = saved_runs / "b1.json"
     saved = json.loads(path.read_text())
     assert saved["done"] == ["plan", "netbox"]
-    for key in ("sdmux_device", "sdmux_device_name", "sdmux_serial"):
+    # Nor whether the board has a JTAG cable or an SD mux: its template says.
+    for key in ("sdmux_device", "sdmux_device_name", "sdmux_serial", "hw.jtag", "hw.sdmux"):
         del saved["answers"][key]
     path.write_text(json.dumps(saved))
     calls = _stub_services(monkeypatch)
@@ -1963,10 +2016,20 @@ _REAL_RUN = ["add-hardware", "--exporter-configs-dir", str(EXPORTER_CONFIGS_DIR)
 
 
 def test_a_dry_run_s_blank_sd_mux_devices_resume_as_the_template_s(monkeypatch, saved_runs):
-    _stub_prompts(monkeypatch, {**_SOC_SSH, "Board template": "soc-sdmux"})  # Enter on each
+    # Enter on each
+    _stub_prompts(
+        monkeypatch,
+        {
+            **_SOC_SSH,
+            "Board template": "soc-sdmux",
+            "Is the board's SD card in a USB SD mux": True,
+        },
+    )
     _invoke(*DRY_RUN)
     assert _saved(saved_runs)["answers"]["field.sdmux_path"] == ""
-    _stub_prompts(monkeypatch, {})  # Enter at each: resume b1 with its saved answers
+    # Enter at each: resume b1 with its saved answers. The dry run picked no SD mux
+    # from NetBox, which has none, so one is added.
+    _stub_prompts(monkeypatch, {"SD mux": "new", "SD mux name in NetBox": "b1-sdmux"})
     monkeypatch.setattr(cli.Confirm, "ask", staticmethod(lambda *a, **k: True))
     calls = _stub_services(monkeypatch)
 
@@ -1981,7 +2044,14 @@ def test_a_dry_run_s_blank_sd_mux_devices_resume_as_the_template_s(monkeypatch, 
 
 def _sdmux_run_saved(monkeypatch, muxes=(), **replies):
     """A soc-sdmux run that stopped at the exporter step; returns its saved answers file."""
-    _stub_prompts(monkeypatch, {**_SOC_SSH, "Board template": "soc-sdmux", **replies})
+    replies = {
+        **_SOC_SSH,
+        "Board template": "soc-sdmux",
+        "SD mux": "new",
+        "SD mux name in NetBox": "b1-sdmux",
+        **replies,
+    }
+    _stub_prompts(monkeypatch, replies)
     monkeypatch.setattr(cli.Confirm, "ask", staticmethod(lambda *a, **k: True))
     _stub_services(monkeypatch, muxes=muxes)
     _fail_deploy(monkeypatch)
@@ -2022,3 +2092,225 @@ def test_a_serial_number_given_for_a_new_mux_is_not_put_on_one_picked_later(
     assert result.exit_code == 0, result.output
     assert calls["sdmux"]["device"] == "mux-c"
     assert calls["sdmux"]["serial"] == ""
+
+
+# The templates are recommended from what the board is wired to, asked before them.
+
+
+def _template_question(asked):
+    return asked.kwargs["Board template"]
+
+
+def test_the_templates_using_the_board_s_jtag_cable_are_recommended(monkeypatch):
+    asked = _stub_prompts(monkeypatch, {**_SOC_SSH, "JTAG device": "h"})  # h: the serial device
+    calls = _stub_services(monkeypatch)
+
+    result = _invoke(*_REAL_RUN)
+
+    assert result.exit_code == 0, result.output
+    row = _rows(result.output)
+    assert row("fabric-jtag", "recommended", "BootFabric")
+    assert row("soc-tftp", "recommended", "BootFPGASoCTFTP")
+    assert row("zynqmp-jtag", "recommended", "BootZynqMPJTAG")
+    assert row("soc-ssh", "fits", "BootFPGASoCSSH")
+    # The first recommended is the default; one using an SD mux the board lacks isn't offered.
+    assert _template_question(asked)["default"] == "fabric-jtag"
+    assert "soc-sdmux" not in _template_question(asked)["choices"]
+    assert row("soc-sdmux needs SD mux")
+    assert calls["JTAG"]["device"] == "h"  # recorded whatever template is picked (soc-ssh)
+
+
+def test_a_board_without_jtag_or_an_sd_mux_is_offered_the_templates_using_neither(monkeypatch):
+    asked = _stub_prompts(monkeypatch, _SOC_SSH)
+    calls = _stub_services(monkeypatch)
+
+    result = _invoke(*_REAL_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert _template_question(asked)["choices"] == ["rpi-ssh", "soc-ssh", "1", "2"]
+    row = _rows(result.output)
+    assert row("rpi-ssh", "recommended")
+    assert row("soc-ssh", "recommended")
+    assert row("zynqmp-jtag needs JTAG")
+    assert row("soc-sdmux needs SD mux")
+    assert "JTAG" not in calls and "sdmux" not in calls
+
+
+@pytest.mark.parametrize(("jtag", "has_jtag"), [("h", True), ("skip", True), ("none", False)])
+def test_the_board_s_hardware_is_saved_from_what_is_picked_in_netbox(
+    monkeypatch, saved_runs, jtag, has_jtag
+):
+    # skip leaves the board's JTAG cable out of NetBox; none says it has none.
+    _stub_prompts(monkeypatch, {**_SOC_SSH, "JTAG device": jtag})
+    _stub_services(monkeypatch)
+    _fail_deploy(monkeypatch)
+
+    assert _invoke(*_REAL_RUN).exit_code == 1
+
+    answers = _saved(saved_runs)["answers"]
+    assert answers["hw.jtag"] is has_jtag
+    assert answers["hw.sdmux"] is False
+
+
+def test_an_sd_mux_is_recorded_in_netbox_whatever_template_is_picked(monkeypatch):
+    _stub_prompts(monkeypatch, {**_SOC_SSH, "SD mux": "mux-b"})
+    calls = _stub_services(monkeypatch, muxes=[_mux("mux-b", _MUX_SETTINGS)])
+    rendered = _rendered(monkeypatch)
+
+    result = _invoke(*_REAL_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert calls["sdmux"]["device"] == "mux-b"
+    assert calls["tags"]["boot-strategy"] == "BootFPGASoCSSH"  # soc-ssh: no SD mux in it
+    assert "sdmux_path" not in cli.provision.discover_template_vars(
+        EXPORTER_CONFIGS_DIR / "templates" / "soc-ssh.yaml"
+    )
+    assert rendered["serial_port"] == "/dev/ttyUSB0"
+
+
+def test_with_no_sd_mux_in_netbox_the_sd_mux_question_defaults_to_none(monkeypatch):
+    asked = _stub_prompts(monkeypatch, _SOC_SSH)
+    _stub_services(monkeypatch, muxes=[_mux("mux-a", _MUX_SETTINGS, feeds="zc706-old SD")])
+
+    result = _invoke(*_REAL_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert asked.kwargs["SD mux"]["default"] == "none"  # the one there feeds another board
+
+
+def test_a_dry_run_asks_what_the_board_is_wired_to(monkeypatch, saved_runs):
+    replies = {
+        "Does the board have a JTAG cable": True,
+        "Is the board's SD card in a USB SD mux": False,
+    }
+    asked = _stub_prompts(monkeypatch, {**_SOC_SSH, **replies})
+
+    result = _invoke(*DRY_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert "zynqmp-jtag" in _template_question(asked)["choices"]
+    assert "soc-sdmux" not in _template_question(asked)["choices"]
+    answers = _saved(saved_runs)["answers"]
+    assert (answers["hw.jtag"], answers["hw.sdmux"]) == (True, False)
+    # Enter: a JTAG cable, as a real run defaults to the serial device; no SD mux.
+    assert asked.kwargs["Does the board have a JTAG cable?"]["default"] is True
+    assert asked.kwargs["Is the board's SD card in a USB SD mux?"]["default"] is False
+
+
+def test_a_saved_template_the_board_turns_out_not_to_suit_is_asked_again(monkeypatch, saved_runs):
+    # A dry run is told the board has a JTAG cable; NetBox, on the real run, that it hasn't.
+    jtag = {"Does the board have a JTAG cable": True, "Board template": "zynqmp-jtag"}
+    _stub_prompts(monkeypatch, {**_SOC_SSH, **jtag})
+    _invoke(*DRY_RUN)
+    asked = _stub_prompts(monkeypatch, {"JTAG device": "none", "Board template": "soc-ssh"})
+    monkeypatch.setattr(cli.Confirm, "ask", staticmethod(lambda *a, **k: True))
+    calls = _stub_services(monkeypatch)
+
+    result = _invoke(*_REAL_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert "zynqmp-jtag" not in _template_question(asked)["choices"]
+    assert calls["tags"]["boot-strategy"] == "BootFPGASoCSSH"
+
+
+def test_a_board_no_template_suits_is_reported(monkeypatch):
+    _stub_prompts(monkeypatch, _SOC_SSH)
+    monkeypatch.setattr(cli.recommend, "lacking", lambda exported, hardware: ["JTAG"])
+
+    result = _invoke(*DRY_RUN)
+
+    assert result.exit_code == 1
+    assert "no board template suits this board: fabric-jtag needs JTAG;" in result.output
+
+
+def _earlier_run(monkeypatch, saved_runs, replies, *keys):
+    """A run saved before templates were recommended, that stopped at the exporter step.
+
+    It has none of ``keys``, nor what hardware the board has: its template says. Nor,
+    for a template without JTAG or an SD mux, any answer about them.
+    """
+    _stub_prompts(monkeypatch, {**_SOC_SSH, **replies})
+    monkeypatch.setattr(cli.Confirm, "ask", staticmethod(lambda *a, **k: True))
+    _stub_services(monkeypatch)
+    _fail_deploy(monkeypatch)
+    assert _invoke(*_REAL_RUN).exit_code == 1
+    saved = _saved(saved_runs)
+    for key in ("hw.jtag", "hw.sdmux", *keys):
+        del saved["answers"][key]
+    for key in ("jtag_device", "sdmux_device"):
+        if saved["answers"].get(key) == "none":
+            del saved["answers"][key]
+    (saved_runs / "b1.json").write_text(json.dumps(saved))
+
+
+def test_a_run_saved_before_templates_were_recommended_resumes_without_new_questions(
+    monkeypatch, saved_runs
+):
+    _earlier_run(monkeypatch, saved_runs, {})
+    asked = _stub_prompts(monkeypatch, {})  # Enter at each: resume b1 with its saved answers
+    monkeypatch.setattr(cli.Confirm, "ask", staticmethod(lambda *a, **k: True))
+    calls = _stub_services(monkeypatch)
+    _fail_deploy(monkeypatch)
+
+    assert _invoke(*_REAL_RUN).exit_code == 1
+
+    assert not [p for p in asked if p.startswith(("JTAG", "SD mux", "Board template"))]
+    assert calls["steps"] == []  # NetBox was done, and still is
+    saved = _saved(saved_runs)
+    assert "netbox" in saved["done"]
+    assert not [k for k in saved["answers"] if k.startswith("hw.")]
+
+
+def test_a_run_saved_before_templates_were_recommended_is_not_offered_none(monkeypatch, saved_runs):
+    # A zynqmp-jtag board saved before its JTAG cable was recorded: its template uses one.
+    replies = {"JTAG device": "h", "Board template": "zynqmp-jtag"}
+    _earlier_run(
+        monkeypatch, saved_runs, replies, "jtag_device", "jtag_netbox_port", "jtag_port_name"
+    )
+    asked = _stub_prompts(monkeypatch, {"JTAG device": "h"})
+    monkeypatch.setattr(cli.Confirm, "ask", staticmethod(lambda *a, **k: True))
+    calls = _stub_services(monkeypatch)
+
+    result = _invoke(*_REAL_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert "none" not in asked.kwargs["JTAG device"]["choices"]
+    assert not [p for p in asked if p.startswith("SD mux")]
+    assert calls["JTAG"]["device"] == "h"
+
+
+def test_reviewing_a_run_saved_before_templates_were_recommended_asks_about_its_hardware(
+    monkeypatch, saved_runs
+):
+    _earlier_run(monkeypatch, saved_runs, {})
+    replies = {"Resume a saved run": "b1", "Use the saved answers": "review", "JTAG device": "h"}
+    asked = _stub_prompts(monkeypatch, replies)
+    monkeypatch.setattr(cli.Confirm, "ask", staticmethod(lambda *a, **k: True))
+    calls = _stub_services(monkeypatch)
+
+    result = _invoke(*_REAL_RUN)
+
+    assert result.exit_code == 0, result.output
+    # The template can change with it: a JTAG one is offered once the cable is.
+    assert "none" in asked.kwargs["JTAG device"]["choices"]
+    assert "zynqmp-jtag" in _template_question(asked)["choices"]
+    assert calls["JTAG"]["device"] == "h"
+
+
+def test_a_saved_template_that_is_gone_is_asked_about_its_hardware_first(monkeypatch, saved_runs):
+    _earlier_run(monkeypatch, saved_runs, {})
+    saved = _saved(saved_runs)
+    saved["answers"]["template"] = "soc-old"  # since removed from exporter_configs/templates
+    (saved_runs / "b1.json").write_text(json.dumps(saved))
+    asked = _stub_prompts(monkeypatch, {"JTAG device": "none", "Board template": "soc-ssh"})
+    monkeypatch.setattr(cli.Confirm, "ask", staticmethod(lambda *a, **k: True))
+    _stub_services(monkeypatch)
+
+    result = _invoke(*_REAL_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert [p for p in asked if p.startswith(("JTAG device", "SD mux", "Board template"))] == [
+        "JTAG device",
+        "SD mux",
+        "Board template",
+    ]

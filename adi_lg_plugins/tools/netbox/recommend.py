@@ -1,4 +1,8 @@
-"""Which boot strategies a board's exported resources can run.
+"""Which exporter templates suit a board's hardware, and which boot strategies they can run.
+
+A template exports resources for the hardware a board is wired to; beyond its
+serial console and network, which every board has, some use a JTAG cable or a
+USB SD mux, which only some boards have.
 
 A place's ``boot-strategy`` tag makes render-env emit that strategy's config
 (``adi_lg_plugins/hw_ci/templates/<strategy>.yaml``). Each driver the config
@@ -11,7 +15,7 @@ from __future__ import annotations
 
 import string
 from collections import defaultdict
-from collections.abc import Collection
+from collections.abc import Collection, Mapping
 from functools import cache
 
 import yaml
@@ -77,3 +81,40 @@ def missing(strategy: str, exported: Collection[str]) -> list[str]:
     gaps = [n for n in strategy_needs(strategy) if not n & have]
     # A need any of whose classes another one asks for is met along with it.
     return sorted({_label(g) for g in gaps if not any(o < g for o in gaps)})
+
+
+# The exported resources that use board hardware not every board has.
+_HARDWARE = {
+    "XilinxDeviceJTAG": "jtag",
+    "XilinxVivadoTool": "jtag",  # programs the board over the JTAG cable
+    "USBSDMuxDevice": "sdmux",
+    "MassStorageDevice": "sdmux",  # the SD mux's card reader
+}
+HARDWARE_LABELS = {"jtag": "JTAG", "sdmux": "SD mux"}
+
+
+def hardware_used(exported: Collection[str]) -> frozenset[str]:
+    """The board hardware (``jtag``, ``sdmux``) resources of the classes ``exported`` use."""
+    return frozenset(_HARDWARE[c] for c in exported if c in _HARDWARE)
+
+
+def lacking(exported: Collection[str], hardware: Collection[str]) -> list[str]:
+    """What a template exporting ``exported`` uses that a board with ``hardware`` lacks."""
+    return sorted(HARDWARE_LABELS[h] for h in hardware_used(exported) - set(hardware))
+
+
+def rank_templates(
+    templates: Mapping[str, Collection[str]], hardware: Collection[str]
+) -> list[tuple[str, str]]:
+    """The templates a board with ``hardware`` can use, best first, each with its fit.
+
+    ``templates`` maps each template to the classes it exports. Those using the
+    most of the board's hardware are "recommended", the others "fits"; a tie
+    stays a tie, in name order.
+    """
+    fit = {t: len(hardware_used(e)) for t, e in templates.items() if not lacking(e, hardware)}
+    best = max(fit.values(), default=0)
+    return [
+        (t, "recommended" if used == best else "fits")
+        for t, used in sorted(fit.items(), key=lambda item: (-item[1], item[0]))
+    ]
