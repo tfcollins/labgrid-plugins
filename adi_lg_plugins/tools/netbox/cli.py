@@ -3,7 +3,7 @@
 Registers a new board in NetBox, cabled to an outlet on the power device
 that switches it, to the ports its serial console and JTAG are on and to
 the SD mux its card is in (each picked from NetBox, or added), renders+validates its
-exporter config, SSH-deploys it as a systemd service on the exporter host
+exporter config from the template recommended for that hardware, SSH-deploys it as a systemd service on the exporter host
 and verifies it comes up, then creates the matching labgrid Place
 (create/add-match/set-tags) on the coordinator. Answers are saved as they are given, so a
 failed run can be resumed. See docs/source/user-guide/netbox-onboarding.rst
@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import os
 import re
+from collections import Counter, defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -77,6 +78,21 @@ def netbox_group():
 def _discover_templates(exporter_configs_dir: Path) -> dict[str, Path]:
     templates_dir = exporter_configs_dir / "templates"
     return {p.stem: p for p in sorted(templates_dir.glob("*.yaml"))}
+
+
+def _usual_defaults(templates: dict[str, Path]) -> dict[str, object]:
+    """Each template field's default in most of the templates that give it one.
+
+    The board's serial port and SD mux are asked before its template, so they
+    default to what the templates usually do; a tie goes to the template first
+    by name.
+    """
+    counts = defaultdict(Counter)
+    for key in sorted(templates):
+        for var, value in provision.template_field_defaults(templates[key]).items():
+            if value is not None:
+                counts[var][value] += 1
+    return {var: values.most_common(1)[0][0] for var, values in counts.items()}
 
 
 def _strategy_summary(name: str) -> str:
@@ -289,13 +305,15 @@ class _ConsoleLink:
 _CONSOLE_KEY = {client.UART: "serial", client.JTAG: "jtag"}
 # The JTAG connection is a record only, so it can be left out.
 _SKIP = "skip"
+# The board has no JTAG cable, or no SD mux: the templates using one aren't offered.
+_NONE = "none"
 
 
 def _console_settled(answers: dict, kind: str) -> bool:
     """Whether saved answers already name the device and port ``kind`` is cabled to."""
     key = _CONSOLE_KEY[kind]
     picked, port = answers.get(f"{key}_device"), answers.get(f"{key}_netbox_port")
-    if picked == _SKIP:
+    if picked in (_SKIP, _NONE):
         return True
     if picked is None or port is None:
         return False
@@ -308,7 +326,7 @@ def _console_link(answers: dict, kind: str) -> _ConsoleLink | None:
     """The connection saved answers describe; None if it is left out."""
     key = _CONSOLE_KEY[kind]
     picked = answers[f"{key}_device"]
-    if picked == _SKIP:
+    if picked in (_SKIP, _NONE):
         return None
     device = answers[f"{key}_device_name"] if picked == NEW else picked
     path = answers.get("field.serial_port", "") if kind == client.UART else ""
@@ -627,8 +645,20 @@ def _ask_device_name(run: Run, power: str, context: dict[str, str], board: str, 
     )
 
 
-def _ask_jtag(run: Run, devices: list, *, site: str, board: str, serial_device: str) -> None:
+def _ask_jtag(
+    run: Run,
+    devices: list,
+    *,
+    site: str,
+    board: str,
+    serial_device: str,
+    offer_none: bool = True,
+    has_jtag: bool | None = None,
+) -> None:
     """Ask which console server port the board's JTAG cable is recorded on, or to skip it.
+
+    ``offer_none`` offers ``none``: the board has no JTAG cable, the default
+    if a dry run was told so (``has_jtag``).
 
     ``serial_device`` (where the serial console is) is the default device,
     listed even when NetBox doesn't have it yet. The answers are saved for
@@ -638,20 +668,27 @@ def _ask_jtag(run: Run, devices: list, *, site: str, board: str, serial_device: 
     extra = []
     if serial_device not in by_name:
         extra.append((serial_device, "", "as for the serial console"))
-    extra.append((_SKIP, "", "don't record the JTAG connection"))
+    extra.append((_SKIP, "", "it has one: don't record it in NetBox"))
+    if offer_none:
+        extra.append((_NONE, "", "the board has no JTAG cable"))
     picked = run.answer(
         "jtag_device",
         "JTAG device",
         lambda default: _ask_console_device(devices, "JTAG device", site, default, extra),
-        default=serial_device,
+        default=_NONE if offer_none and has_jtag is False else serial_device,
         choices=[*by_name, *(row[0] for row in extra), NEW],
         explain=(
             "The device the board's JTAG cable (USB-JTAG) is plugged into - usually the exporter "
             "host. NetBox has no JTAG port type, so it is recorded as a JTAG console port on the "
             "board cabled to a console server port; labgrid doesn't read it. skip leaves it out."
+            + (
+                " none: the board has no JTAG cable, so no JTAG template suits it."
+                if offer_none
+                else ""
+            )
         ),
     )
-    if picked == _SKIP:
+    if picked in (_SKIP, _NONE):
         return
     if picked == NEW:
         picked = run.answer(
@@ -708,14 +745,18 @@ _SDMUX_FIELDS = ("sdmux_path", "boot_partition")
 
 
 def _sdmux_settled(answers: dict) -> bool:
-    """Whether saved answers already name the SD mux and its devices."""
+    """Whether saved answers already name the SD mux and its devices, or that there is none."""
     picked = answers.get("sdmux_device")
+    if picked == _NONE:
+        return True
     if picked is None or not all(answers.get(f"field.{v}") for v in _SDMUX_FIELDS):
         return False
     return picked != NEW or bool(answers.get("sdmux_device_name"))
 
 
-def _sdmux_link(answers: dict) -> _SDMuxLink:
+def _sdmux_link(answers: dict) -> _SDMuxLink | None:
+    if answers["sdmux_device"] == _NONE:
+        return None
     new = answers["sdmux_device"] == NEW
     return _SDMuxLink(
         answers["sdmux_device_name"] if new else answers["sdmux_device"],
@@ -725,14 +766,14 @@ def _sdmux_link(answers: dict) -> _SDMuxLink:
     )
 
 
-def _ask_sdmux_device(muxes: list, site: str, board: str, default: str | None) -> str:
+def _ask_sdmux_device(muxes: list, site: str, board: str, default: str | None, extra=()) -> str:
     """Pick an SD mux that is free, or already feeds this board; or a new one."""
     console.print(f"\n[bold]SD muxes in NetBox at {escape(site)}[/bold]")
     rows = [
         (m.name, m.serial, m.settings.get("sdmux_path", ""), m.connected_to or "free")
         for m in muxes
     ]
-    rows.append((NEW, "", "", "an SD mux not in NetBox yet: add it"))
+    rows += [*extra, (NEW, "", "", "an SD mux not in NetBox yet: add it")]
     feeds = {m.name: m.connected_to for m in muxes}
     while True:
         picked = ask_choice(
@@ -751,32 +792,58 @@ def _ask_sdmux_device(muxes: list, site: str, board: str, default: str | None) -
         )
 
 
-def _ask_sdmux(run: Run, muxes: list, *, site: str, board: str, defaults: dict) -> None:
+def _ask_sdmux(
+    run: Run,
+    muxes: list,
+    *,
+    site: str,
+    board: str,
+    defaults: dict,
+    offer_none: bool = True,
+    has_sdmux: bool | None = None,
+) -> None:
     """Ask which SD mux the board's SD card is in, and its devices on the exporter host.
 
     ``muxes`` are the site's SD muxes in NetBox. One with labgrid settings
     gives the control device and boot partition; otherwise they are asked,
-    defaulting to the template's (``defaults``), and saved on it. The answers
-    are saved for :func:`_sdmux_link`.
+    defaulting to ``defaults``, and saved on it. ``offer_none`` offers
+    ``none``: the board's SD card isn't in one. ``has_sdmux`` is what a dry
+    run was told, if it was. The answers are saved for :func:`_sdmux_link`.
     """
     free = [
         m.name for m in muxes if m.connected_to is None or m.connected_to.startswith(f"{board} ")
     ]
-    if muxes:
+    if offer_none and has_sdmux is False:
+        default = _NONE
+    elif len(free) == 1:
+        default = free[0]
+    elif not free and (has_sdmux or offer_none):
+        default = NEW if has_sdmux else _NONE
+    else:
+        default = None
+    if muxes or offer_none:
+        extra = [(_NONE, "", "", "the board's SD card isn't in an SD mux")] if offer_none else []
         picked = run.answer(
             "sdmux_device",
             "SD mux",
-            lambda default: _ask_sdmux_device(muxes, site, board, default),
-            default=free[0] if len(free) == 1 else None,
-            choices=[*(m.name for m in muxes), NEW],
+            lambda default: _ask_sdmux_device(muxes, site, board, default, extra),
+            default=default,
+            choices=[*(m.name for m in muxes), *(row[0] for row in extra), NEW],
             explain=(
                 "The USB SD mux the board's SD card is in. Pick it from NetBox to use its control "
                 "device and boot partition, or add a new one; the board's SD card slot is cabled "
                 "to it."
+                + (
+                    " none: its SD card isn't in one, so no SD mux template suits it."
+                    if offer_none
+                    else ""
+                )
             ),
         )
     else:
         picked = run.given("sdmux_device", "SD mux", NEW)
+    if picked == _NONE:
+        return
     if picked == NEW:
         run.answer(
             "sdmux_device_name",
@@ -995,23 +1062,13 @@ def _onboard(
     coord_user: str | None,
     coord_password: str | None,
 ) -> None:
-    def ask_template(default):
-        console.print("[bold]Board templates[/bold]")
-        return ask_choice(
-            console,
-            "Board template",
-            [
-                (key, provision.template_strategy(path) or "", provision.template_title(path))
-                for key, path in sorted(templates.items())
-            ],
-            headers=("Template", "Boot strategy", "Description"),
-            default=default,
-        )
-
-    template_key = run.answer(
-        "template", "Board template", ask_template, default=sorted(templates)[0], choices=templates
+    # A run saved before templates were recommended from the board's hardware
+    # has its template: the hardware is what that template uses, and only that
+    # is asked, as it was then.
+    saved_template = run.saved.answers.get("template")
+    earlier = (
+        run.mode == "resume" and saved_template in templates and "hw.jtag" not in run.saved.answers
     )
-    template_path = templates[template_key]
 
     name = run.answer(
         "name",
@@ -1048,46 +1105,6 @@ def _onboard(
             "most templates also use it in the resource group name."
         ),
     )
-
-    # Only the strategies whose render-env config binds to what the template
-    # exports; the one the template is written for first.
-    own = provision.template_strategy(template_path)
-    exported = provision.template_resources(template_path)
-    lacks = {s: recommend.missing(s, exported) for s in KNOWN_BOOT_STRATEGIES}
-    runnable = sorted((s for s in KNOWN_BOOT_STRATEGIES if not lacks[s]), key=lambda s: s != own)
-    if not runnable:
-        raise click.ClickException(
-            f"no boot strategy can run on what template {template_key} exports "
-            f"({', '.join(sorted(exported)) or 'nothing'})"
-        )
-
-    def ask_strategy(default):
-        console.print("\n[bold]Boot strategies[/bold]")
-        hidden = [s for s in KNOWN_BOOT_STRATEGIES if lacks[s]]
-        return ask_choice(
-            console,
-            "Boot strategy",
-            [
-                (s, "recommended" if s == own else "also runs", _strategy_summary(s))
-                for s in runnable
-            ],
-            headers=("Strategy", "Fit", "Description"),
-            default=default,
-            note="\n".join(
-                [f"[dim]Not offered: {escape(template_key)} doesn't export what they bind.[/dim]"]
-                + [f"[dim]  {s} needs {', '.join(lacks[s])}[/dim]" for s in hidden]
-            )
-            if hidden
-            else None,
-        )
-
-    boot_strategy = run.answer(
-        "boot_strategy",
-        "Boot strategy",
-        ask_strategy,
-        default=runnable[0],
-        choices=runnable,
-    )
     runner_label = run.answer(
         "runner_label",
         "GitHub Actions runner label",
@@ -1099,21 +1116,23 @@ def _onboard(
         ),
     )
 
-    # The site, the board's power device and its serial port are picked from what
-    # NetBox has, so it is read from here on, unless the saved answers already
-    # settle them. Nothing is written to NetBox before the plan is confirmed.
+    # The site, the board's power device, serial port, JTAG cable and SD mux
+    # are picked from what NetBox has, so it is read from here on, unless the
+    # saved answers already settle them. Nothing is written to NetBox before the
+    # plan is confirmed.
     try:
-        template_vars = provision.discover_template_vars(template_path)
-        defaults = provision.template_field_defaults(template_path)
+        if earlier:
+            uses = recommend.hardware_used(provision.template_resources(templates[saved_template]))
+            hw_defaults = provision.template_field_defaults(templates[saved_template])
+        else:
+            hw_defaults = _usual_defaults(templates)
     except RuntimeError as e:
         raise click.ClickException(str(e)) from e
-    # A dry run asks the serial port as a template field instead.
-    netbox_serial = not dry_run and "serial_port" in template_vars
-    has_jtag = "XilinxDeviceJTAG" in exported
-    netbox_jtag = not dry_run and has_jtag
-    # And the SD mux's control device and boot partition as template fields.
-    has_sdmux = "USBSDMuxDevice" in exported
-    netbox_sdmux = not dry_run and has_sdmux
+    # A dry run asks the serial port and the SD mux's devices as template
+    # fields instead, and whether the board has a JTAG cable and an SD mux.
+    netbox_serial = not dry_run
+    netbox_jtag = not dry_run and (not earlier or "jtag" in uses)
+    netbox_sdmux = not dry_run and (not earlier or "sdmux" in uses)
     settled = (
         _power_settled(run.saved.answers)
         and (not netbox_serial or _console_settled(run.saved.answers, client.UART))
@@ -1185,7 +1204,7 @@ def _onboard(
                 site=site_slug,
                 board=name,
                 host=ssh_host,
-                default_path=defaults.get("serial_port"),
+                default_path=hw_defaults.get("serial_port"),
             )
         serial_link = _console_link(run.saved.answers, client.UART)
     if netbox_jtag:
@@ -1196,14 +1215,147 @@ def _onboard(
                 site=site_slug,
                 board=name,
                 serial_device=serial_link.device if serial_link else ssh_host.split(".")[0],
+                offer_none=not earlier,
+                has_jtag=run.saved.answers.get("hw.jtag"),
             )
         jtag_link = _console_link(run.saved.answers, client.JTAG)
     sdmux_link = None
     if netbox_sdmux:
         if look_up:
             muxes = netbox(client.sd_muxes, site_slug)
-            _ask_sdmux(run, muxes, site=site_slug, board=name, defaults=defaults)
+            _ask_sdmux(
+                run,
+                muxes,
+                site=site_slug,
+                board=name,
+                defaults=hw_defaults,
+                offer_none=not earlier,
+                has_sdmux=run.saved.answers.get("hw.sdmux"),
+            )
         sdmux_link = _sdmux_link(run.saved.answers)
+
+    # The board's hardware, which the templates are recommended for: as NetBox
+    # records it, or as a dry run is told. An earlier run's isn't saved, as
+    # that would redo the steps it finished.
+    if earlier:
+        hardware = uses
+    else:
+        answers = run.saved.answers
+        if dry_run:
+            has_jtag = run.answer(
+                "hw.jtag",
+                "Board has a JTAG cable",
+                lambda default: Confirm.ask("Does the board have a JTAG cable?", default=default),
+                default=True,
+                explain=(
+                    "A dry run doesn't read NetBox, so it asks what the board is wired to, to "
+                    "recommend the templates that use it."
+                ),
+            )
+            has_sdmux = run.answer(
+                "hw.sdmux",
+                "Board's SD card in an SD mux",
+                lambda default: Confirm.ask(
+                    "Is the board's SD card in a USB SD mux?", default=default
+                ),
+                default=False,
+            )
+        else:
+            has_jtag = run.given(
+                "hw.jtag", "Board has a JTAG cable", answers["jtag_device"] != _NONE
+            )
+            has_sdmux = run.given(
+                "hw.sdmux", "Board's SD card in an SD mux", answers["sdmux_device"] != _NONE
+            )
+        hardware = {h for h, has in (("jtag", has_jtag), ("sdmux", has_sdmux)) if has}
+
+    exports = {key: provision.template_resources(path) for key, path in templates.items()}
+    ranked = recommend.rank_templates(exports, hardware)
+    unfit = {k: lacks for k, e in exports.items() if (lacks := recommend.lacking(e, hardware))}
+    if not ranked:
+        raise click.ClickException(
+            "no board template suits this board: "
+            + "; ".join(f"{key} needs {', '.join(lacks)}" for key, lacks in unfit.items())
+        )
+
+    def ask_template(default):
+        console.print("\n[bold]Board templates[/bold]")
+        return ask_choice(
+            console,
+            "Board template",
+            [
+                (
+                    key,
+                    fit,
+                    provision.template_strategy(templates[key]) or "",
+                    provision.template_title(templates[key]),
+                )
+                for key, fit in ranked
+            ],
+            headers=("Template", "Fit", "Boot strategy", "Description"),
+            default=default,
+            note="\n".join(
+                ["[dim]Not offered: they use hardware the board doesn't have.[/dim]"]
+                + [f"[dim]  {key} needs {', '.join(lacks)}[/dim]" for key, lacks in unfit.items()]
+            )
+            if unfit
+            else None,
+        )
+
+    template_key = run.answer(
+        "template",
+        "Board template",
+        ask_template,
+        default=ranked[0][0],
+        choices=[key for key, _ in ranked],
+    )
+    template_path = templates[template_key]
+
+    # Only the strategies whose render-env config binds to what the template
+    # exports; the one the template is written for first.
+    own = provision.template_strategy(template_path)
+    exported = exports[template_key]
+    lacks = {s: recommend.missing(s, exported) for s in KNOWN_BOOT_STRATEGIES}
+    runnable = sorted((s for s in KNOWN_BOOT_STRATEGIES if not lacks[s]), key=lambda s: s != own)
+    if not runnable:
+        raise click.ClickException(
+            f"no boot strategy can run on what template {template_key} exports "
+            f"({', '.join(sorted(exported)) or 'nothing'})"
+        )
+
+    def ask_strategy(default):
+        console.print("\n[bold]Boot strategies[/bold]")
+        hidden = [s for s in KNOWN_BOOT_STRATEGIES if lacks[s]]
+        return ask_choice(
+            console,
+            "Boot strategy",
+            [
+                (s, "recommended" if s == own else "also runs", _strategy_summary(s))
+                for s in runnable
+            ],
+            headers=("Strategy", "Fit", "Description"),
+            default=default,
+            note="\n".join(
+                [f"[dim]Not offered: {escape(template_key)} doesn't export what they bind.[/dim]"]
+                + [f"[dim]  {s} needs {', '.join(lacks[s])}[/dim]" for s in hidden]
+            )
+            if hidden
+            else None,
+        )
+
+    boot_strategy = run.answer(
+        "boot_strategy",
+        "Boot strategy",
+        ask_strategy,
+        default=runnable[0],
+        choices=runnable,
+    )
+
+    try:
+        template_vars = provision.discover_template_vars(template_path)
+        defaults = provision.template_field_defaults(template_path)
+    except RuntimeError as e:
+        raise click.ClickException(str(e)) from e
 
     # Templates name their resource group <CARRIER>_<CHIP> from these fields
     # and include the power fragment named by `power`, so fill them from the
@@ -1323,9 +1475,9 @@ def _onboard(
                 [escape(f"{name} {client.JTAG} -> {jtag_link.device} {jtag_link.port}")],
             )
         )
-    elif netbox_jtag:
+    elif "jtag" in hardware and not dry_run:
         netbox_consoles.append(("JTAG in NetBox", ["not recorded"]))
-    elif has_jtag:
+    elif "jtag" in hardware:
         netbox_consoles.append(
             ("JTAG in NetBox", ["chosen from NetBox when run without --dry-run"])
         )
@@ -1341,7 +1493,7 @@ def _onboard(
                 ],
             )
         )
-    elif has_sdmux:
+    elif "sdmux" in hardware:
         netbox_consoles.append(
             ("SD mux in NetBox", ["chosen from NetBox when run without --dry-run"])
         )

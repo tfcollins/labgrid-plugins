@@ -13,7 +13,7 @@ it comes up, then creates the matching labgrid Place on the coordinator (``creat
 **On this page:**
 
 - `Prerequisites`_
-- `Usage`_ — `Options`_
+- `Usage`_ — `Board template`_, `Boot strategy`_, `Options`_
 - `Power devices`_
 - `Serial console and JTAG`_
 - `SD mux`_
@@ -68,16 +68,6 @@ Usage
 .. code-block:: console
 
     $ adi-lg netbox add-hardware
-    Board templates
-    #   Template      Boot strategy     Description
-    ──────────────────────────────────────────────────────────────────────────────
-    1   fabric-jtag   BootFabric        FPGA fabric loaded over JTAG
-    2   rpi-ssh       BootRPI           Raspberry Pi driven over SSH
-    3   soc-sdmux     BootFPGASoC       SoC booted from an SD card through a USB SD mux
-    4   soc-ssh       BootFPGASoCSSH    SoC whose boot files are updated over SSH
-    5   soc-tftp      BootFPGASoCTFTP   SoC booted over TFTP from U-Boot
-    6   zynqmp-jtag   BootZynqMPJTAG    ZynqMP board strapped for JTAG boot
-    Board template (fabric-jtag): 3
 
     A unique name for this board. It names the NetBox device, the coordinator place
     and the exporter service (labgrid-exporter-<name>).
@@ -90,22 +80,6 @@ Usage
     The ADI part under test. Saved in NetBox and as the place's daughter-board tag;
     most templates also use it in the resource group name.
     ADI daughter board or chip (e.g. ad9081, adrv9009): ad9081
-
-    Boot strategies
-    #   Strategy          Fit           Description
-    ────────────────────────────────────────────────────────────────────────────────
-    1   BootFPGASoC       recommended   BootFPGASoC strategy for FPGA SoC devices
-                                        using Kuiper releases.
-    2   BootFPGASoCSSH    also runs     Strategy to boot an FPGA SoC device using
-                                        ShellDriver and SSHDriver.
-    ...
-    5   BootTickFPGASSH   also runs     BootFPGASoCSSH + runtime Tick deploy
-                                        (bitstream, overlay, module).
-    Not offered: soc-sdmux doesn't export what they bind.
-      BootFabric needs XilinxDeviceJTAG, XilinxVivadoTool
-      ...
-      BootOpenFPGALoader needs USBDebugger or XilinxDeviceJTAG
-    Boot strategy (BootFPGASoC):
 
     The self-hosted GitHub Actions runner that runs this board's hardware-CI jobs
     (the place's runner tag).
@@ -172,21 +146,71 @@ Usage
     5   new                                                           a port not in NetBox yet: add it
     Serial port on lab-host-03: ttyUSB1
 
+    The device the board's JTAG cable (USB-JTAG) is plugged into - usually the
+    exporter host. ... none: the board has no JTAG cable, so no JTAG template suits
+    it.
+
+    Devices with console server ports in NetBox at lab3
+    #   Device        Address     Free ports
+    ──────────────────────────────────────────────────────────────────────────────
+    1   lab-host-03   10.0.0.40   2 of 4
+    2   skip                      it has one: don't record it in NetBox
+    3   none                      the board has no JTAG cable
+    4   new                       a device not listed: add it, or add ports to it
+    JTAG device (lab-host-03): none
+
+    The USB SD mux the board's SD card is in. ... none: its SD card isn't in one, so
+    no SD mux template suits it.
+
+    SD muxes in NetBox at lab3
+    #   SD mux      Serial         Control device   Feeds
+    ──────────────────────────────────────────────────────────────────────────────
+    1   mux-rack3   000000001234   /dev/sg3         zcu102-lab3-000 SD
+    2   mux-b       000000004321   /dev/sg4         free
+    3   none                                        the board's SD card isn't in an SD mux
+    4   new                                         an SD mux not in NetBox yet: add it
+    SD mux (mux-b):
+
+    Board templates
+    #   Template    Fit           Boot strategy    Description
+    ──────────────────────────────────────────────────────────────────────────────
+    1   soc-sdmux   recommended   BootFPGASoC      SoC booted from an SD card through a
+                                                   USB SD mux
+    2   rpi-ssh     fits          BootRPI          Raspberry Pi driven over SSH
+    3   soc-ssh     fits          BootFPGASoCSSH   SoC whose boot files are updated over SSH
+    Not offered: they use hardware the board doesn't have.
+      fabric-jtag needs JTAG
+      soc-tftp needs JTAG
+      zynqmp-jtag needs JTAG
+    Board template (soc-sdmux):
+
+    Boot strategies
+    #   Strategy          Fit           Description
+    ────────────────────────────────────────────────────────────────────────────────
+    1   BootFPGASoC       recommended   BootFPGASoC strategy for FPGA SoC devices
+                                        using Kuiper releases.
+    2   BootFPGASoCSSH    also runs     Strategy to boot an FPGA SoC device using
+                                        ShellDriver and SSHDriver.
+    ...
+    5   BootTickFPGASSH   also runs     BootFPGASoCSSH + runtime Tick deploy
+                                        (bitstream, overlay, module).
+    Not offered: soc-sdmux doesn't export what they bind.
+      BootFabric needs XilinxDeviceJTAG, XilinxVivadoTool
+      ...
+      BootOpenFPGALoader needs USBDebugger or XilinxDeviceJTAG
+    Boot strategy (BootFPGASoC):
+
     Template fields for soc-sdmux
     Field               Question                             Default
     ──────────────────────────────────────────────────────────────────────────────
     target_ip           Board IP address, for SSH to its     required
                         Linux
-    boot_partition      SD card boot partition on the        /dev/disk/by-label/BOOT
-                        exporter host, through the SD mux
     kuiper_bootbin      BOOT.BIN, as release:<path> or a     unset
                         file on the test runner
     ...
     target_password     Board Linux SSH password             analog
     target_username     Board Linux SSH username             root
       Board IP address, for SSH to its Linux (required): 10.0.0.42
-      SD card boot partition on the exporter host, through the SD mux (Enter for
-    /dev/disk/by-label/BOOT):
       BOOT.BIN, as release:<path> or a file on the test runner (Enter to leave
     unset): release:zynqmp-zcu102-rev10-ad9081/m8_l4/BOOT.BIN
       ...
@@ -213,12 +237,20 @@ Usage
       Power in NetBox     zcu102-lab3-001 power port -> pdu-rack3 Outlet 3
       Serial in NetBox    zcu102-lab3-001 UART -> lab-host-03 ttyUSB1
                           serial device /dev/serial/by-id/usb-FTDI_Quad_RS232-HS-if01-port0
+      SD mux in NetBox    zcu102-lab3-001 SD -> mux-b DUT
+                          control device /dev/sg4
+                          boot partition /dev/disk/by-id/usb-LinuxAut_sdmux_HS-SD_MMC_000000004321-0:0-part1
 
     Proceed? [y/n] (y): y
     NetBox device ready: https://netbox.example.com/dcim/devices/95/
       connected zcu102-lab3-001 power to pdu-rack3 Outlet 3
       connected zcu102-lab3-001 UART to lab-host-03 ttyUSB1
+      connected zcu102-lab3-001 SD to mux-b DUT
     ...
+
+The questions go from what the board is (name, carrier, chip, runner), to where it is and what
+it is wired to (site, power, exporter host, serial console, JTAG cable, SD mux), to the template
+that suits that hardware, its boot strategy and the template's own fields.
 
 Each set of options is listed as a numbered table; answer with the number or the name,
 or press Enter for the default shown in parentheses.
@@ -226,9 +258,11 @@ or press Enter for the default shown in parentheses.
 Use ``--dry-run`` to render and schema-validate the exporter config and print the full plan
 without touching NetBox, SSH, or the coordinator - useful for checking your answers before
 committing to a real board. A dry run never asks for NetBox or coordinator credentials and
-doesn't read NetBox: the site is typed, the power type and its fields are asked directly, the
-serial console device and the SD mux's devices are asked as template fields, and the plan says
-the power device, serial port, JTAG port and SD mux are chosen when run without ``--dry-run``.
+doesn't read NetBox: the site is typed, the power type and its fields are asked directly,
+*Does the board have a JTAG cable?* and *Is the board's SD card in a USB SD mux?* stand in for
+the JTAG and SD mux picks to recommend the template, the serial console device and the SD mux's
+devices are asked as template fields, and the plan says the power device, serial port, JTAG port
+and SD mux are chosen when run without ``--dry-run``.
 
 Each question says what the answer is used for. Template fields are asked by what they are
 (*Board IP address*, *Board Linux SSH password*, ...), after a table of the
@@ -243,15 +277,41 @@ with ``http://`` or ``https://``.
 
 The templates name their resource group ``<CARRIER>_<CHIP>`` (e.g. ``ZCU102_AD9081``) from
 the ``carrier`` and ``chip`` fields. The command fills those from the *Carrier board* and
-*ADI daughter board or chip* answers, so they are not asked again as template fields. Choose the
-template by boot strategy (see :doc:`exporter-setup`); the *Boot strategy* prompt offers only
-the strategies that can run on what the template exports (see `Boot strategy`_), the one the
-template declares first and as the default. The power type - picked from NetBox's power device, or asked
+*ADI daughter board or chip* answers, so they are not asked again as template fields. The
+*Board template* list recommends the templates that use the board's hardware (see
+`Board template`_); the *Boot strategy* prompt then offers only the strategies that can run on
+what the chosen template exports (see `Boot strategy`_), the one the template declares first and
+as the default. The power type - picked from NetBox's power device, or asked
 as *Power category* and *Power type* (see `Power devices`_) - chooses the template's
 ``power`` fragment: any of the types in :ref:`power-types`, covering this package's outlets
 and all of labgrid's power options. The command sets the place's ``power-driver`` tag, plus
 ``power-output-driver`` for relay types. Credentials, reachability notes (e.g. ``tasmota``
 and ``laa`` connect from the client) and required host tools are printed in the plan.
+
+Board template
+~~~~~~~~~~~~~~
+
+A template (``exporter_configs/templates/*.yaml``) is the set of resources the board's exporter
+publishes. Beyond the serial console and network every board has, some use hardware only some
+boards have: ``fabric-jtag``, ``soc-tftp`` and ``zynqmp-jtag`` program the board over a JTAG
+cable (``XilinxDeviceJTAG``, ``XilinxVivadoTool``), and ``soc-sdmux`` boots it from an SD card in
+a USB SD mux (``USBSDMuxDevice``, ``MassStorageDevice``). The *JTAG device* and *SD mux* answers
+say which of these the board has (*none* for one it hasn't), so the *Board template* list:
+
+- marks *recommended* the templates that use the most of the board's hardware, and lists them
+  first; the first is the default. With a JTAG cable that is all three JTAG templates, with an
+  SD mux ``soc-sdmux``, with neither ``rpi-ssh`` and ``soc-ssh``. A tie stays a tie, in name
+  order - the carrier name isn't used to guess - so pick the one for the board's boot flow (see
+  :doc:`exporter-setup`);
+- marks *fits* the other templates the board can use (``soc-ssh`` needs only the serial console
+  and network, so one always fits);
+- lists under the table the templates that use hardware the board doesn't have, with what each
+  needs (``soc-sdmux needs SD mux``); they can't be picked.
+
+What hardware a template uses is read from the resource classes it exports, so a new template
+needs no change here. A template saved by an earlier run that the board's hardware no longer
+suits - a dry run was told the board has a JTAG cable, and the real run's *JTAG device* is
+*none* - is asked again.
 
 Boot strategy
 ~~~~~~~~~~~~~
@@ -376,12 +436,13 @@ IP) is the default.
 The serial path is the device on the *exporter host*, the same as the template field: prefer a
 stable ``/dev/serial/by-id/...`` path over ``/dev/ttyUSB0``, which can change on reboot.
 
-**JTAG**: NetBox has no JTAG (or USB) port type, so a board whose template exports
-``XilinxDeviceJTAG`` (``fabric-jtag``, ``soc-tftp``, ``zynqmp-jtag``) has its JTAG cable recorded
-as a ``JTAG`` console port on the board, cabled to a console server port - by default on the
-same device as the serial console. It is a record of the wiring only: labgrid's JTAG settings
-(the xsdb ``root_target``) don't depend on it. The *JTAG device* list adds *skip* to leave it
-out. Ports with a serial path, or that feed a serial console, aren't offered for JTAG; a new
+**JTAG**: every board is asked where its JTAG cable is plugged in, before its template, which
+the answer helps pick (see `Board template`_). NetBox has no JTAG (or USB) port type, so the
+cable is recorded as a ``JTAG`` console port on the board, cabled to a console server port - by
+default on the same device as the serial console - whatever template is picked. It is a record
+of the wiring only: labgrid's JTAG settings (the xsdb ``root_target``) don't depend on it. The
+*JTAG device* list adds *none*, for a board without a JTAG cable (the JTAG templates aren't
+offered then), and *skip*, to leave out of NetBox a cable the board has. Ports with a serial path, or that feed a serial console, aren't offered for JTAG; a new
 JTAG port's name is asked (default ``JTAG``, or ``JTAG 2``, ... if taken).
 
 .. code-block:: console
@@ -392,12 +453,13 @@ JTAG port's name is asked (default ``JTAG``, or ``JTAG 2``, ... if taken).
 SD mux
 ------
 
-A board whose template exports a USB SD mux (``USBSDMuxDevice``, today ``soc-sdmux``) boots
-from an SD card the mux switches between it and the exporter host. NetBox has no SD card
-component, so the card slot is recorded the way JTAG is: an ``SD`` **interface** on the board,
-cabled to the ``DUT`` interface of the **SD mux**, a device with the ``labgrid-sd-mux`` role. After
-the serial console and JTAG, the command lists the site's SD muxes, with each one's serial
-number, control device and what it feeds:
+A USB SD mux switches a board's SD card between the board and the exporter host, so a template
+that exports one (``USBSDMuxDevice``, today ``soc-sdmux``) can write the boot files to the card.
+NetBox has no SD card component, so the card slot is recorded the way JTAG is: an ``SD``
+**interface** on the board, cabled to the ``DUT`` interface of the **SD mux**, a device with the
+``labgrid-sd-mux`` role. After the serial console and JTAG, every board is asked about its SD
+mux, before its template: the command lists the site's SD muxes, with each one's serial number,
+control device and what it feeds:
 
 - **Pick one** and its ``labgrid_sdmux`` custom field - its control device (``/dev/sg*``) and
   the card's boot partition on the exporter host - answers the template's two SD mux questions,
@@ -407,7 +469,12 @@ number, control device and what it feeds:
   the template's defaults, and saved on it.
 - **Pick new** for a mux NetBox doesn't have: its name (default ``<board>-sdmux``) and its USB
   serial number (``usbsdmux /dev/sg0 info``, or the label; Enter leaves it unset) are asked,
-  then the two devices. With no SD muxes at the site, this is where the command starts.
+  then the two devices.
+- **Pick none** if the board's SD card isn't in a mux: ``soc-sdmux`` isn't offered then. It is
+  the default when the site has no free mux.
+
+A board's mux is recorded in NetBox whatever template is picked; only ``soc-sdmux`` uses its
+devices.
 
 .. code-block:: console
 
@@ -416,7 +483,8 @@ number, control device and what it feeds:
     ──────────────────────────────────────────────────────────────────────────────
     1   mux-rack3   000000001234   /dev/sg3         zcu102-lab3-000 SD
     2   mux-b       000000004321   /dev/sg4         free
-    3   new                                         an SD mux not in NetBox yet: add it
+    3   none                                        the board's SD card isn't in an SD mux
+    4   new                                         an SD mux not in NetBox yet: add it
     SD mux (mux-b):
 
 As with the serial path, prefer stable ``/dev/disk/by-id/...`` paths for the boot partition:
@@ -587,11 +655,14 @@ The next run lists the saved runs before anything else:
     Saved answers for zcu102-lab3-001
     Question                                  Answer
     ────────────────────────────────────────────────────────────────────────────────
-    Board template                            soc-sdmux
     Board name                                zcu102-lab3-001
     ...
     NetBox site slug                          lab4
     Exporter host SSH login                   labadmin@lab-host-03
+    Board has a JTAG cable                    no
+    Board's SD card in an SD mux              yes
+    Board template                            soc-sdmux
+    Boot strategy                             BootFPGASoC
     Board IP address, for SSH to its Linux    10.0.0.42
     BOOT.BIN, as release:<path> or a file     release:zynqmp-zcu102-rev10-ad9081/m8_
     on the test runner                        l4/BOOT.BIN
@@ -625,10 +696,18 @@ has is asked again. It deploys to the same coordinator as the saved run, so
 ``--coord`` need not be given again; naming a different one (``--coord`` or ``LG_COORDINATOR``)
 runs every step again, because the exporter already deployed points at the first.
 
+A run saved before templates were recommended from the board's hardware already has its
+template. Resuming it keeps that template and takes the board's hardware from it, so JTAG and
+the SD mux are asked only if the template uses them and NetBox has no answer saved for them -
+a ``soc-ssh`` run asks nothing new. **review** asks every question, in the new order.
+
 A dry run saves its answers too, with the plan marked as checked, so you can check the plan
 with ``--dry-run`` and then run for real, picking **resume**: it asks only for the NetBox
 devices a dry run doesn't pick (power device, serial and JTAG ports, SD mux), then goes to
-``Proceed?``.
+``Proceed?``. What the dry run was told about the board's hardware is the default there:
+*none* for a JTAG cable or SD mux it hasn't, and *new* for an SD mux when the site has no free
+one. If the picks show the hardware isn't what the dry run was told, and the saved template no
+longer suits it, the template is asked again.
 
 The NetBox API token and the coordinator password are never saved. The NetBox URL, the
 coordinator username and every other answer are, including template fields such as the
