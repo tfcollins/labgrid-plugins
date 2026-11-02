@@ -299,8 +299,8 @@ def resolve_serial_by_id(ssh_host: str, path: str) -> str:
     if not path or path.startswith("/dev/serial/by-id/"):
         return path
     script = (
-        f'target=$(readlink -f {shlex.quote(path)}); '
-        'for l in /dev/serial/by-id/*; do '
+        f"target=$(readlink -f {shlex.quote(path)}); "
+        "for l in /dev/serial/by-id/*; do "
         '[ "$(readlink -f "$l")" = "$target" ] && echo "$l"; done; true'
     )
     try:
