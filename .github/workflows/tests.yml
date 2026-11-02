@@ -125,6 +125,7 @@ jobs:
           tests/test_netbox_cli.py \
           tests/test_netbox_connections.py \
           tests/test_netbox_recommend.py \
+          tests/test_netbox_discover.py \
           tests/test_exporter_configs_validate.py \
           tests/test_exporter_templates.py \
           tests/test_power_types.py \
