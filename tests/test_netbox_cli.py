@@ -14,13 +14,16 @@ import json
 import re
 import stat
 import sys
+from dataclasses import replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from click.testing import CliRunner
+from rich.console import Console
 from rich.prompt import Confirm, Prompt
 
-from adi_lg_plugins.tools.netbox import cli
+from adi_lg_plugins.tools.netbox import cli, discover
 
 EXPORTER_CONFIGS_DIR = Path(__file__).resolve().parents[1] / "exporter_configs"
 DRY_RUN = ["add-hardware", "--dry-run", "--exporter-configs-dir", str(EXPORTER_CONFIGS_DIR)]
@@ -51,6 +54,24 @@ def saved_runs(monkeypatch, tmp_path):
     """Keep saved answers out of the real ~/.cache; returns where they go."""
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
     return tmp_path / "cache" / "adi-lg" / "netbox-add-hardware"
+
+
+@pytest.fixture(autouse=True)
+def host_hardware(monkeypatch):
+    """What add-hardware finds on the exporter host: by default it can't look there.
+
+    Set ``.found`` to a HostHardware for it to be found; ``.hosts`` lists the hosts looked on.
+    """
+    host = SimpleNamespace(found=None, hosts=[])
+
+    def discover_host(ssh_host):
+        host.hosts.append(ssh_host)
+        if host.found is None:
+            raise RuntimeError(f"ssh: Could not resolve hostname {ssh_host}")
+        return host.found
+
+    monkeypatch.setattr(cli.discover, "discover_host", discover_host)
+    return host
 
 
 @pytest.fixture(autouse=True)
@@ -2331,3 +2352,461 @@ def test_a_saved_template_that_is_gone_is_asked_about_its_hardware_first(monkeyp
         "SD mux",
         "Board template",
     ]
+
+
+# --- Hardware found on the exporter host --------------------------------------
+
+_OLD_CONFIG = "/etc/labgrid/old.yaml"
+_ADAPTER = "/dev/serial/by-id/usb-FT4"
+_FOUND_MUX = discover.SDMux("000000001234", "/dev/sg1", "/dev/disk/by-id/usb-sdmux_1234-0:0")
+# A free and a used serial port, a JTAG cable no board uses, a free SD mux, and Vivado.
+_FOUND = discover.HostHardware(
+    serial=(
+        discover.SerialAdapter(f"{_ADAPTER}-if00", "/dev/ttyUSB0", "FTDI Quad", "FT4", _OLD_CONFIG),
+        discover.SerialAdapter(f"{_ADAPTER}-if01", "/dev/ttyUSB1", "FTDI Quad", "FT4"),
+    ),
+    jtag=(discover.JTAGCable("Digilent USB Device", "0403:6014", "210299A567FE"),),
+    sdmuxes=(_FOUND_MUX,),
+    vivado=(discover.VivadoInstall("/tools/Xilinx/2025.2/Vivado", True),),
+)
+_NO_FREE_MUX = (replace(_FOUND_MUX, used_by=_OLD_CONFIG),)
+
+
+def test_what_is_plugged_into_the_exporter_host_is_listed_once_it_is_named(
+    monkeypatch, host_hardware
+):
+    host_hardware.found = replace(_FOUND, jtag_users=(_OLD_CONFIG,))
+    _stub_prompts(monkeypatch, {**_SOC_SSH, "SD mux": "none"})
+    _stub_services(monkeypatch)
+    monkeypatch.setattr(cli, "console", Console(width=120))  # by-id links are long
+
+    result = _invoke(*_REAL_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert host_hardware.hosts == ["h"]
+    row = _rows(result.output)
+    assert row("Found on h")
+    assert row("serial", f"{_ADAPTER}-if00", "ttyUSB0", _OLD_CONFIG)
+    assert row("serial", f"{_ADAPTER}-if01", "ttyUSB1", "free")
+    assert row("JTAG", "Digilent USB Device", "210299A567FE")
+    assert row("SD mux", "/dev/sg1", "000000001234", "free")
+    assert row("Vivado", "/tools/Xilinx/2025.2/Vivado")
+    assert row("Using a JTAG cable without saying which:", _OLD_CONFIG)
+    # Before the questions it gives defaults to.
+    assert result.output.index("Found on h") < result.output.index("The device the board's serial")
+
+
+@pytest.mark.parametrize(
+    ("found", "jtag", "sdmux"),
+    [
+        (_FOUND, True, True),
+        (discover.HostHardware(), False, False),
+        # Taken: as many boards use JTAG as there are cables, and the mux is in use.
+        (replace(_FOUND, jtag_users=(_OLD_CONFIG,), sdmuxes=_NO_FREE_MUX), False, False),
+    ],
+)
+def test_a_dry_run_s_hardware_questions_default_to_what_is_free_on_the_host(
+    monkeypatch, host_hardware, found, jtag, sdmux
+):
+    host_hardware.found = found
+    asked = _stub_prompts(monkeypatch, _SOC_SSH)
+
+    result = _invoke(*DRY_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert asked.kwargs["Does the board have a JTAG cable?"]["default"] is jtag
+    assert asked.kwargs["Is the board's SD card in a USB SD mux?"]["default"] is sdmux
+    if found == discover.HostHardware():
+        assert "no USB serial adapters, JTAG cables, SD muxes or Vivado installs" in result.output
+
+
+@pytest.mark.parametrize(("jtag_users", "default"), [((), "h"), ((_OLD_CONFIG,), "none")])
+def test_the_jtag_device_defaults_to_none_unless_the_host_has_a_free_cable(
+    monkeypatch, host_hardware, jtag_users, default
+):
+    host_hardware.found = replace(_FOUND, jtag_users=jtag_users)
+    asked = _stub_prompts(monkeypatch, {**_SOC_SSH, "SD mux": "none"})
+    _stub_services(monkeypatch)
+
+    result = _invoke(*_REAL_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert asked.kwargs["JTAG device"]["default"] == default
+
+
+def test_the_serial_console_device_is_picked_from_the_free_adapters_on_the_host(
+    monkeypatch, host_hardware
+):
+    host_hardware.found = replace(_FOUND, sdmuxes=())
+    calls = _stub_services(monkeypatch)
+    rendered = _rendered(monkeypatch)
+    conversation = _serial_run(
+        [
+            ("Serial device name in NetBox", ""),
+            ("  Serial console device", "1"),  # by row number: if00 is in use, so not listed
+        ]
+    )
+
+    result, prompts = _type_into_real_prompts(monkeypatch, _with_new_power(conversation))
+
+    assert result.exit_code == 0, result.output
+    _assert_asked_in_order(_with_new_power(conversation), prompts)
+    assert rendered["serial_port"] == f"{_ADAPTER}-if01"
+    assert calls["UART"]["path"] == f"{_ADAPTER}-if01"
+
+
+def test_a_serial_console_device_not_found_can_still_be_typed_and_is_warned_about(
+    monkeypatch, host_hardware
+):
+    host_hardware.found = replace(_FOUND, sdmuxes=())
+    asked = _stub_prompts(monkeypatch, {**_SOC_SSH, "  Serial console device": "/dev/ttyACM0"})
+    calls = _stub_services(monkeypatch)
+
+    result = _invoke(*_REAL_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert asked.kwargs["Serial console device on the exporter host"]["default"] == (
+        f"{_ADAPTER}-if01"
+    )
+    assert calls["UART"]["path"] == "/dev/ttyACM0"
+    assert "/dev/ttyACM0 isn't one of the USB serial adapters found on h" in " ".join(
+        result.output.split()
+    )
+
+
+def test_the_sd_mux_in_netbox_that_is_on_the_host_is_the_default(monkeypatch, host_hardware):
+    host_hardware.found = _FOUND
+    settings = {"sdmux_path": "/dev/sg1", "boot_partition": _FOUND_MUX.partition}
+    muxes = [
+        _mux("mux-a", _MUX_SETTINGS, "000000005678"),  # elsewhere
+        _mux("mux-b", settings, "000000001234"),
+        _mux("mux-c"),  # made by hand: no serial number, so it could be anywhere
+    ]
+    asked = _stub_prompts(monkeypatch, _SOC_SSH)  # Enter at SD mux
+    calls = _stub_services(monkeypatch, muxes=muxes)
+
+    result = _invoke(*_REAL_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert asked.kwargs["SD mux"]["default"] == "mux-b"
+    assert _rows(result.output)("mux-b", "000000001234", "on h")
+    assert calls["sdmux"]["device"] == "mux-b"
+    assert "Warning" not in result.output  # its control device is there
+
+
+def test_a_new_sd_mux_takes_its_serial_and_devices_from_the_host(monkeypatch, host_hardware):
+    host_hardware.found = _FOUND
+    asked = _stub_prompts(monkeypatch, _SOC_SSH)  # Enter at each SD mux question
+    # NetBox's only free mux is another one: its serial isn't on this host.
+    calls = _stub_services(monkeypatch, muxes=[_mux("mux-a", _MUX_SETTINGS, "000000005678")])
+
+    result = _invoke(*_REAL_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert asked.kwargs["SD mux"]["default"] == "new"
+    assert calls["sdmux"] == {
+        "site_slug": "lab3",
+        "device": "b1-sdmux",
+        "serial": "000000001234",
+        "settings": {"sdmux_path": "/dev/sg1", "boot_partition": _FOUND_MUX.partition},
+    }
+
+
+def test_the_sd_mux_defaults_to_none_when_the_host_has_no_free_one(monkeypatch, host_hardware):
+    host_hardware.found = replace(_FOUND, sdmuxes=_NO_FREE_MUX)
+    asked = _stub_prompts(monkeypatch, _SOC_SSH)
+    # Without the host, NetBox's only free mux would be the default.
+    _stub_services(monkeypatch, muxes=[_mux("mux-c")])
+
+    result = _invoke(*_REAL_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert asked.kwargs["SD mux"]["default"] == "none"
+
+
+def test_an_sd_mux_control_device_not_found_is_warned_about(monkeypatch, host_hardware):
+    host_hardware.found = _FOUND
+    _stub_prompts(monkeypatch, {**_SOC_SSH, "SD mux": "mux-b"})
+    _stub_services(monkeypatch, muxes=[_mux("mux-b", _MUX_SETTINGS, "000000001234")])
+
+    result = _invoke(*_REAL_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert "/dev/sg3 isn't the control device of an SD mux found on h" in " ".join(
+        result.output.split()
+    )
+
+
+@pytest.mark.parametrize(
+    ("install", "offered", "rendered_as"),
+    [
+        (
+            "/tools/Xilinx/2025.2/Vivado",
+            "Enter for /tools/Xilinx/2025.2/Vivado, - for ",
+            "/tools/Xilinx/2025.2/Vivado",
+        ),
+        # The template's own default: Enter leaves it to the template.
+        ("/tools/Xilinx/2025.1/Vivado", "Enter for /tools/Xilinx/2025.1/Vivado)", None),
+    ],
+)
+def test_the_vivado_install_found_on_the_host_is_the_default(
+    monkeypatch, host_hardware, install, offered, rendered_as
+):
+    vivado = (discover.VivadoInstall(install, True),)
+    host_hardware.found = replace(_FOUND, sdmuxes=(), vivado=vivado)
+    asked = _stub_prompts(
+        monkeypatch, {**_SOC_SSH, "JTAG device": "h", "Board template": "zynqmp-jtag"}
+    )
+    _stub_services(monkeypatch)
+    rendered = _rendered(monkeypatch)
+
+    result = _invoke(*_REAL_RUN)
+
+    assert result.exit_code == 0, result.output
+    (vivado,) = [p for p in asked if p.startswith("  Vivado install directory")]
+    assert offered in vivado
+    assert rendered.get("vivado_path") == rendered_as
+
+
+def test_no_discover_doesn_t_look_on_the_exporter_host(monkeypatch, host_hardware):
+    host_hardware.found = replace(_FOUND, jtag_users=(_OLD_CONFIG,))
+    asked = _stub_prompts(monkeypatch, _SOC_SSH)
+    _stub_services(monkeypatch)
+
+    result = _invoke(*_REAL_RUN, "--no-discover")
+
+    assert result.exit_code == 0, result.output
+    assert host_hardware.hosts == []
+    assert "Found on" not in result.output
+    assert asked.kwargs["JTAG device"]["default"] == "h"  # the serial device, as without it
+
+
+def test_a_host_it_can_t_look_on_is_warned_about_and_the_run_goes_on(monkeypatch, host_hardware):
+    asked = _stub_prompts(monkeypatch, _SOC_SSH)
+    _stub_services(monkeypatch)
+
+    result = _invoke(*_REAL_RUN)
+
+    assert result.exit_code == 0, result.output
+    output = " ".join(result.output.split())
+    assert (
+        "Couldn't look for the board's hardware on h: ssh: Could not resolve hostname h" in output
+    )
+    assert "--no-discover" in output
+    assert asked.kwargs["JTAG device"]["default"] == "h"
+
+
+def test_a_resumed_run_whose_plan_was_checked_doesn_t_look_again(
+    monkeypatch, host_hardware, saved_runs
+):
+    host_hardware.found = _FOUND
+    _stub_prompts(monkeypatch, {**_SOC_SSH, "SD mux": "none"})
+    _stub_services(monkeypatch)
+    _fail_deploy(monkeypatch)
+    assert _invoke(*_REAL_RUN).exit_code == 1
+    _stub_prompts(monkeypatch, {})  # Enter at each: resume b1 with its saved answers
+    monkeypatch.setattr(cli.Confirm, "ask", staticmethod(lambda *a, **k: True))
+    _stub_services(monkeypatch)
+
+    result = _invoke(*_REAL_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert host_hardware.hosts == ["h"]  # the first run's look
+
+
+def test_what_is_found_never_changes_a_resumed_run_s_answers(
+    monkeypatch, host_hardware, saved_runs
+):
+    _stub_prompts(monkeypatch, _SOC_SSH)  # nothing found: a soc-ssh board, no JTAG, no SD mux
+    _stub_services(monkeypatch)
+    _fail_deploy(monkeypatch)
+    assert _invoke(*_REAL_RUN).exit_code == 1
+    saved = _saved(saved_runs)
+    del saved["answers"]["field.target_ip"]  # stopped before it was answered
+    saved["done"] = []
+    (saved_runs / "b1.json").write_text(json.dumps(saved))
+    # Now a free JTAG cable, a free SD mux and other serial adapters are there.
+    host_hardware.found = _FOUND
+    asked = _stub_prompts(monkeypatch, {"  Board IP address": "10.0.0.5"})
+    monkeypatch.setattr(cli.Confirm, "ask", staticmethod(lambda *a, **k: True))
+    calls = _stub_services(monkeypatch)
+
+    result = _invoke(*_REAL_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert host_hardware.hosts == ["h", "h"]
+    hardware = ("Serial", "JTAG", "SD mux", "Does", "Is the board", "Board template", "  Serial")
+    assert not [p for p in asked if p.startswith(hardware)]
+    assert "JTAG" not in calls and "sdmux" not in calls
+    assert calls["UART"]["path"] == "/dev/ttyUSB0"
+    assert calls["tags"]["boot-strategy"] == "BootFPGASoCSSH"
+
+
+def test_devices_another_exporter_config_uses_are_warned_about(monkeypatch, host_hardware):
+    host_hardware.found = replace(_FOUND, sdmuxes=_NO_FREE_MUX)
+    settings = {"sdmux_path": "/dev/sg1", "boot_partition": _FOUND_MUX.partition}
+    _stub_prompts(
+        monkeypatch,
+        {**_SOC_SSH, "  Serial console device": f"{_ADAPTER}-if00", "SD mux": "mux-b"},
+    )
+    _stub_services(monkeypatch, muxes=[_mux("mux-b", settings, "000000001234")])
+
+    result = _invoke(*_REAL_RUN)
+
+    assert result.exit_code == 0, result.output
+    output = " ".join(result.output.split())
+    assert f"Warning: {_ADAPTER}-if00 is already used by {_OLD_CONFIG} on h" in output
+    assert f"Warning: /dev/sg1 is already used by {_OLD_CONFIG} on h" in output
+
+
+def test_the_board_s_own_exporter_config_doesn_t_put_its_hardware_in_use(
+    monkeypatch, host_hardware
+):
+    # Onboarding it again: the exporter it was given uses its serial port and JTAG cable.
+    own = cli.provision.exporter_config("b1")
+    host_hardware.found = replace(
+        _FOUND, serial=(replace(_FOUND.serial[0], used_by=own),), sdmuxes=(), jtag_users=(own,)
+    )
+    asked = _stub_prompts(monkeypatch, {k: v for k, v in _SOC_SSH.items() if k != "JTAG device"})
+    _stub_services(monkeypatch)
+
+    result = _invoke(*_REAL_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert asked.kwargs["Serial console device on the exporter host"]["default"] == (
+        f"{_ADAPTER}-if00"
+    )
+    assert asked.kwargs["JTAG device"]["default"] == "h"
+    assert "Warning" not in result.output
+
+
+def test_a_new_sd_mux_s_serial_number_is_one_netbox_doesn_t_have(monkeypatch, host_hardware):
+    recorded = discover.SDMux("000000005678", "/dev/sg2", "/dev/disk/by-id/usb-sdmux_5678-0:0")
+    host_hardware.found = replace(_FOUND, sdmuxes=(recorded, _FOUND_MUX))
+    replies = {"SD mux": "new", "SD mux name in NetBox": "b1-sdmux", "SD mux serial": "1234"}
+    asked = _stub_prompts(monkeypatch, {**_SOC_SSH, **replies})
+    _stub_services(monkeypatch, muxes=[_mux("mux-a", serial="000000005678")])
+
+    result = _invoke(*_REAL_RUN)
+
+    assert result.exit_code == 0, result.output
+    serial = asked.kwargs["SD mux serial number (Enter to leave unset)"]
+    assert serial["default"] == "000000001234"
+
+
+def test_a_dry_run_s_device_fields_default_to_the_free_ones_on_the_host(monkeypatch, host_hardware):
+    host_hardware.found = _FOUND
+    asked = _stub_prompts(monkeypatch, {**_SOC_SSH, **_SOC_SDMUX})
+
+    result = _invoke(*DRY_RUN)
+
+    assert result.exit_code == 0, result.output
+    prompts = " ".join(asked)
+    assert f"(Enter for {_ADAPTER}-if01, - for /dev/ttyUSB0)" in prompts
+    assert "(Enter for /dev/sg1, - for /dev/sg0)" in prompts
+    assert f"(Enter for {_FOUND_MUX.partition}, - for /dev/disk/by-label/BOOT)" in prompts
+
+
+def test_what_a_dry_run_was_told_beats_what_is_found(monkeypatch, host_hardware, saved_runs):
+    _stub_prompts(monkeypatch, _SOC_SSH)  # no JTAG cable, no SD mux
+    _invoke(*DRY_RUN)
+    host_hardware.found = _FOUND  # a free JTAG cable and SD mux
+    replies = {"Resume a saved run": "b1", "Use the saved answers": "review", "SD mux": "none"}
+    asked = _stub_prompts(monkeypatch, replies)
+    monkeypatch.setattr(cli.Confirm, "ask", staticmethod(lambda *a, **k: True))
+    _stub_services(monkeypatch)
+
+    result = _invoke(*_REAL_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert host_hardware.hosts[-1] == "h"  # it looked
+    assert asked.kwargs["JTAG device"]["default"] == "none"
+    assert asked.kwargs["SD mux"]["default"] == "none"
+
+
+def test_a_serial_device_it_can_t_see_isn_t_warned_about(monkeypatch, host_hardware):
+    # Only USB serial adapters are looked for, not a built-in UART.
+    host_hardware.found = replace(_FOUND, sdmuxes=())
+    _stub_prompts(monkeypatch, {**_SOC_SSH, "Serial device": "h", "Serial port on h": "A"})
+    _stub_services(monkeypatch, consoles=[_host("h", ("A", "/dev/ttyS0"))])
+
+    result = _invoke(*_REAL_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert "Warning" not in result.output
+
+
+def test_a_template_s_default_device_left_in_a_dry_run_is_warned_about_too(
+    monkeypatch, host_hardware
+):
+    # Its only adapter, /dev/ttyUSB0, is in use: Enter keeps the template's /dev/ttyUSB0.
+    host_hardware.found = replace(_FOUND, serial=_FOUND.serial[:1], sdmuxes=())
+    _stub_prompts(monkeypatch, _SOC_SSH)
+
+    result = _invoke(*DRY_RUN)
+
+    assert result.exit_code == 0, result.output
+    output = " ".join(result.output.split())
+    assert f"Warning: /dev/ttyUSB0 is already used by {_OLD_CONFIG} on h" in output
+
+
+def test_a_mux_taken_by_a_config_that_doesn_t_name_it_isn_t_shown_free(monkeypatch, host_hardware):
+    host_hardware.found = replace(_FOUND, sdmux_users=(_OLD_CONFIG,))
+    _stub_prompts(monkeypatch, _SOC_SSH)
+    monkeypatch.setattr(cli, "console", Console(width=120))
+
+    result = _invoke(*DRY_RUN)
+
+    assert result.exit_code == 0, result.output
+    row = _rows(result.output)
+    assert row("SD mux", "/dev/sg1", "000000001234", "a config below")
+    assert row("Using an SD mux without saying which:", _OLD_CONFIG)
+
+
+def test_a_real_run_resuming_a_dry_run_looks_on_the_host_for_its_netbox_picks(
+    monkeypatch, host_hardware, saved_runs
+):
+    # The dry run couldn't look; it was told the board's SD card is in a mux.
+    _stub_prompts(
+        monkeypatch,
+        {**_SOC_SSH, "Board template": "soc-sdmux", "Is the board's SD card in a USB SD mux": True},
+    )
+    assert _invoke(*DRY_RUN).exit_code == 0
+    host_hardware.found = _FOUND
+    settings = {"sdmux_path": "/dev/sg1", "boot_partition": _FOUND_MUX.partition}
+    muxes = [_mux("mux-a", _MUX_SETTINGS, "000000005678"), _mux("mux-b", settings, "000000001234")]
+    asked = _stub_prompts(monkeypatch, {})  # Enter at each: resume b1 with its saved answers
+    monkeypatch.setattr(cli.Confirm, "ask", staticmethod(lambda *a, **k: True))
+    calls = _stub_services(monkeypatch, muxes=muxes)
+
+    result = _invoke(*_REAL_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert host_hardware.hosts == ["h", "h"]  # its NetBox picks are still to be made
+    assert asked.kwargs["SD mux"]["default"] == "mux-b"  # the one on h
+    assert calls["sdmux"]["device"] == "mux-b"
+
+
+def test_a_checked_run_still_asking_a_netbox_pick_looks_on_the_host(
+    monkeypatch, host_hardware, saved_runs
+):
+    # A soc-sdmux run saved before SD muxes: its plan was checked, and the SD mux is asked.
+    _sdmux_run_saved(monkeypatch)
+    path = saved_runs / "b1.json"
+    saved = json.loads(path.read_text())
+    assert "plan" in saved["done"]
+    for key in ("sdmux_device", "sdmux_device_name", "sdmux_serial", "hw.jtag", "hw.sdmux"):
+        del saved["answers"][key]
+    path.write_text(json.dumps(saved))
+    host_hardware.found = _FOUND
+    settings = {"sdmux_path": "/dev/sg1", "boot_partition": _FOUND_MUX.partition}
+    muxes = [_mux("mux-a", _MUX_SETTINGS, "000000005678"), _mux("mux-b", settings, "000000001234")]
+    asked = _stub_prompts(monkeypatch, {})  # Enter at each: resume b1 with its saved answers
+    calls = _stub_services(monkeypatch, muxes=muxes)
+
+    result = _invoke(*_REAL_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert host_hardware.hosts == ["h", "h"]
+    assert asked.kwargs["SD mux"]["default"] == "mux-b"  # the one on h
+    assert calls["sdmux"]["device"] == "mux-b"

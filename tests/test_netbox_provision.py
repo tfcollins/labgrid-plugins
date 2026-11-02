@@ -295,6 +295,9 @@ def test_deploy_exporter_stages_and_installs(tmp_path, monkeypatch):
         in install_cmd
     )
     assert "sudo mv" in install_cmd
+    # Where add-hardware's look on the host expects the board's own config.
+    assert f"resources.yaml {provision.exporter_config('rack1')} &&" in install_cmd
+    assert provision.exporter_config("rack1") == "/etc/labgrid/exporters/rack1/resources.yaml"
 
 
 def test_deploy_exporter_wraps_execution_error(tmp_path, monkeypatch):

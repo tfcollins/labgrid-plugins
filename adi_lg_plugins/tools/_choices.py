@@ -27,12 +27,14 @@ def ask_choice(
     headers: Sequence[str] = (),
     default: str | None = None,
     note: str | None = None,
+    other: str | None = None,
 ) -> str:
     """List ``options`` numbered, then ask for one by number or name.
 
     An option is a name, or a tuple of the name and its description column(s),
     titled by ``headers`` (the first header names the option column). ``note``
-    is printed under the options.
+    is printed under the options. ``other`` says what may be typed instead
+    (e.g. "a device path"); any other non-blank answer is then taken as typed.
     """
     rows = [(o,) if isinstance(o, str) else tuple(o) for o in options]
     names = [r[0] for r in rows]
@@ -40,16 +42,21 @@ def ask_choice(
     if note:
         console.print(note)
     by_number = {str(i): name for i, name in enumerate(names, 1)}
+    choices = {} if other else {"choices": names + list(by_number)}
     while True:
-        answer = (
-            Prompt.ask(prompt, choices=names + list(by_number), show_choices=False, default=default)
-            or ""
-        ).strip()
+        answer = (Prompt.ask(prompt, **choices, show_choices=False, default=default) or "").strip()
         if answer in names:
             return answer
         if answer in by_number:
             return by_number[answer]
-        console.print("    [red]enter a number or a name from the list[/red]")
+        # A number is a row, even a mistyped one: not a path or name typed instead.
+        if other and answer and not answer.isdigit():
+            return answer
+        console.print(
+            "    [red]enter a number or a name from the list"
+            + (f", or {other}" if other else "")
+            + "[/red]"
+        )
 
 
 def _render(rows: list[tuple[str, ...]], headers: Sequence[str], default: str | None):
@@ -58,8 +65,9 @@ def _render(rows: list[tuple[str, ...]], headers: Sequence[str], default: str | 
             box=box.SIMPLE_HEAD, show_header=bool(headers), show_edge=False, pad_edge=False
         )
         table.add_column("#", justify="right", style="dim")
-        for header in headers or [""] * len(rows[0]):
-            table.add_column(header)
+        for i, header in enumerate(headers or [""] * len(rows[0])):
+            # The option is what is typed, so it is wrapped, never cut short.
+            table.add_column(header, overflow="fold" if i == 0 else "ellipsis")
         for i, row in enumerate(rows, 1):
             table.add_row(str(i), *row, style="bold" if row[0] == default else None)
         return table

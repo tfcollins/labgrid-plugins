@@ -2,7 +2,8 @@
 
 Registers a new board in NetBox, cabled to an outlet on the power device
 that switches it, to the ports its serial console and JTAG are on and to
-the SD mux its card is in (each picked from NetBox, or added), renders+validates its
+the SD mux its card is in (each picked from NetBox, or added; what is plugged
+into the exporter host gives the defaults), renders+validates its
 exporter config from the template recommended for that hardware, SSH-deploys it as a systemd service on the exporter host
 and verifies it comes up, then creates the matching labgrid Place
 (create/add-match/set-tags) on the coordinator. Answers are saved as they are given, so a
@@ -41,7 +42,7 @@ from adi_lg_plugins.hw_ci.coordinator import (
 from adi_lg_plugins.tools._answers import NEW, Run, SavedAnswers, answers_dir, pick_run
 from adi_lg_plugins.tools._choices import ask_choice
 
-from . import client, provision, recommend
+from . import client, discover, provision, recommend
 
 console = Console()
 
@@ -394,22 +395,39 @@ def _ask_console_port(device, ports: list, board: str, prompt: str, default: str
         )
 
 
-def _ask_serial(run: Run, devices: list, *, site: str, board: str, host: str, default_path) -> None:
+def _ask_serial(
+    run: Run, devices: list, *, site: str, board: str, host: str, default_path, found=None
+) -> None:
     """Ask which console server port the board's serial console is on, and its device path.
 
     ``devices`` are the site's devices with console server ports; the one that
-    is the exporter host is the default. The answers are saved for
-    :func:`_console_link`.
+    is the exporter host is the default. The path is picked from the free USB
+    serial adapters ``found`` on the exporter host, if it was looked on, or
+    typed. The answers are saved for :func:`_console_link`.
     """
     by_name = {d.name: d for d in devices}
     label = provision.TEMPLATE_FIELDS["serial_port"]
+    free = found.free_serial if found else ()
+    # A free adapter, rather than the template's default.
+    suggested = free[0].link if free else default_path
+
+    def ask(default):
+        if not free:
+            return _ask_required(f"  {label}", default=default)
+        console.print(f"\n[bold]Free USB serial adapters on {escape(host)}[/bold]")
+        return ask_choice(
+            console,
+            f"  {label}",
+            [(a.link, os.path.basename(a.tty), a.adapter) for a in free],
+            headers=("Serial device", "Now", "Adapter"),
+            default=default,
+            other="a device path",
+        )
 
     def ask_path(default):
+        # A dry run's "" (the template's default) is no answer to offer here.
         path = run.answer(
-            "field.serial_port",
-            label,
-            lambda default: _ask_required(f"  {label}", default=default),
-            default=default,
+            "field.serial_port", label, lambda saved: ask(saved or default), default=default
         )
         # A dry run saves Enter on the template field as "": the template's default.
         return path or run.given("field.serial_port", label, default_path)
@@ -444,7 +462,7 @@ def _ask_serial(run: Run, devices: list, *, site: str, board: str, host: str, de
             ),
         )
         run.given("serial_netbox_port", "Serial port in NetBox", NEW)
-        ask_path(default_path)
+        ask_path(suggested)
         return
 
     device = by_name[picked]
@@ -463,7 +481,7 @@ def _ask_serial(run: Run, devices: list, *, site: str, board: str, host: str, de
         run.given("field.serial_port", label, known)
     else:
         named = port and port.name.startswith("tty")
-        ask_path(f"/dev/{port.name}" if named else default_path)
+        ask_path(f"/dev/{port.name}" if named else suggested)
 
 
 def _power_link(run: Run, power: str, context: dict[str, str]) -> _PowerLink | None:
@@ -663,7 +681,7 @@ def _ask_jtag(
     """Ask which console server port the board's JTAG cable is recorded on, or to skip it.
 
     ``offer_none`` offers ``none``: the board has no JTAG cable, the default
-    if a dry run was told so (``has_jtag``).
+    if a dry run was told so or the exporter host has no free one (``has_jtag``).
 
     ``serial_device`` (where the serial console is) is the default device,
     listed even when NetBox doesn't have it yet. The answers are saved for
@@ -771,11 +789,21 @@ def _sdmux_link(answers: dict) -> _SDMuxLink | None:
     )
 
 
-def _ask_sdmux_device(muxes: list, site: str, board: str, default: str | None, extra=()) -> str:
-    """Pick an SD mux that is free, or already feeds this board; or a new one."""
+def _ask_sdmux_device(
+    muxes: list, site: str, board: str, default: str | None, extra=(), here=(), host=""
+) -> str:
+    """Pick an SD mux that is free, or already feeds this board; or a new one.
+
+    Those whose serial number is in ``here`` are marked as on the exporter ``host``.
+    """
     console.print(f"\n[bold]SD muxes in NetBox at {escape(site)}[/bold]")
     rows = [
-        (m.name, m.serial, m.settings.get("sdmux_path", ""), m.connected_to or "free")
+        (
+            m.name,
+            m.serial + (f" on {host}" if m.serial and m.serial in here else ""),
+            m.settings.get("sdmux_path", ""),
+            m.connected_to or "free",
+        )
         for m in muxes
     ]
     rows += [*extra, (NEW, "", "", "an SD mux not in NetBox yet: add it")]
@@ -806,6 +834,8 @@ def _ask_sdmux(
     defaults: dict,
     offer_none: bool = True,
     has_sdmux: bool | None = None,
+    found=None,
+    host: str = "",
 ) -> None:
     """Ask which SD mux the board's SD card is in, and its devices on the exporter host.
 
@@ -813,13 +843,28 @@ def _ask_sdmux(
     gives the control device and boot partition; otherwise they are asked,
     defaulting to ``defaults``, and saved on it. ``offer_none`` offers
     ``none``: the board's SD card isn't in one. ``has_sdmux`` is what a dry
-    run was told, if it was. The answers are saved for :func:`_sdmux_link`.
+    run was told, if it was. ``found`` is what is plugged into the exporter
+    ``host``, if it was looked on: a free mux there is the default, by its
+    serial number if NetBox has it, and gives a new one's serial number and
+    devices. The answers are saved for :func:`_sdmux_link`.
     """
     free = [
         m.name for m in muxes if m.connected_to is None or m.connected_to.startswith(f"{board} ")
     ]
+    serials = {m.name: m.serial for m in muxes}
+    on_host = {m.serial: m for m in found.sdmuxes} if found else {}
+    plugged_in = []
+    if found is not None:
+        spare = {m.serial for m in found.free_sdmuxes}
+        # A mux NetBox has elsewhere isn't this board's.
+        free = [n for n in free if not serials[n] or serials[n] in spare]
+        plugged_in = [n for n in free if serials[n]]
+        if has_sdmux is None:
+            has_sdmux = bool(spare)
     if offer_none and has_sdmux is False:
         default = _NONE
+    elif plugged_in:
+        default = plugged_in[0]
     elif len(free) == 1:
         default = free[0]
     elif not free and (has_sdmux or offer_none):
@@ -831,7 +876,9 @@ def _ask_sdmux(
         picked = run.answer(
             "sdmux_device",
             "SD mux",
-            lambda default: _ask_sdmux_device(muxes, site, board, default, extra),
+            lambda default: _ask_sdmux_device(
+                muxes, site, board, default, extra, here=on_host, host=host
+            ),
             default=default,
             choices=[*(m.name for m in muxes), *(row[0] for row in extra), NEW],
             explain=(
@@ -849,7 +896,14 @@ def _ask_sdmux(
         picked = run.given("sdmux_device", "SD mux", NEW)
     if picked == _NONE:
         return
+    serial = serials.get(picked, "")
     if picked == NEW:
+        recorded = set(serials.values())
+        spare = (
+            next((m for m in found.free_sdmuxes if m.serial not in recorded), None)
+            if found
+            else None
+        )
         run.answer(
             "sdmux_device_name",
             "SD mux name in NetBox",
@@ -860,7 +914,7 @@ def _ask_sdmux(
                 f"{client.SDMUX_ROLE_NAME} role."
             ),
         )
-        run.answer(
+        serial = run.answer(
             "sdmux_serial",
             "SD mux serial number",
             lambda default: Prompt.ask(
@@ -868,12 +922,15 @@ def _ask_sdmux(
                 default=default or "",
                 show_default=bool(default),
             ),
+            default=spare.serial if spare else None,
             explain=(
                 "Its USB serial number (usbsdmux <control device> info, or the label on it), "
                 "saved in NetBox to tell the muxes apart."
             ),
         )
     settings = next((m.settings for m in muxes if m.name == picked), {})
+    mux = on_host.get(serial) if serial else None
+    host_defaults = {"sdmux_path": mux.sg, "boot_partition": mux.partition} if mux else {}
     for var in _SDMUX_FIELDS:
         label = provision.TEMPLATE_FIELDS[var]
         if settings.get(var):
@@ -883,11 +940,93 @@ def _ask_sdmux(
             f"field.{var}",
             label,
             lambda default, label=label: _ask_required(f"  {label}", default=default),
-            default=defaults.get(var),
+            default=host_defaults.get(var, defaults.get(var)),
         )
         # A dry run saves Enter on the template field as "": the template's default.
         if not value:
             run.given(f"field.{var}", label, defaults.get(var))
+
+
+def _look_on_host(host: str, board: str) -> discover.HostHardware | None:
+    """What is plugged into the exporter host, listed; None, with a warning, if it can't look."""
+    console.print(f"\n[dim]Looking for the board's hardware on {escape(host)} (read-only)[/dim]")
+    try:
+        found = discover.discover_host(host)
+    except RuntimeError as e:
+        console.print(
+            f"[yellow]Couldn't look for the board's hardware on {escape(host)}: "
+            f"{escape(str(e))} - the questions keep their usual defaults (--no-discover "
+            "skips looking)[/yellow]"
+        )
+        return None
+    # A board being onboarded again: its own exporter config uses its hardware.
+    found = found.without(provision.exporter_config(board))
+    console.print(f"\n[bold]Found on {escape(host)}[/bold]")
+
+    def taken(mux):
+        return "free" if mux in found.free_sdmuxes else "a config below"
+
+    rows = [
+        *(("serial", a.link, os.path.basename(a.tty), a.used_by or "free") for a in found.serial),
+        *(("JTAG", c.name, c.serial, "") for c in found.jtag),
+        *(("SD mux", m.sg, m.serial, m.used_by or taken(m)) for m in found.sdmuxes),
+        *(("Vivado", v.path, "" if v.xsdb else "no xsdb beside it", "") for v in found.vivado),
+    ]
+    if not rows:
+        console.print("  no USB serial adapters, JTAG cables, SD muxes or Vivado installs")
+        return found
+    table = Table(box=box.SIMPLE_HEAD, show_edge=False, pad_edge=False)
+    for header in ("Hardware", "Device", "Details", "In use by"):
+        # A by-id link's end (-if00-port0) tells an adapter's ports apart: wrap, don't cut.
+        table.add_column(header, overflow="fold")
+    for row in rows:
+        table.add_row(*(escape(cell) for cell in row))
+    console.print(Padding(table, (0, 0, 0, 2)))
+    # Exporter configs don't say which JTAG cable they use, and may not say which SD mux.
+    named = {m.used_by for m in found.sdmuxes}
+    for kind, users in (
+        ("a JTAG cable", found.jtag_users),
+        ("an SD mux", [c for c in found.sdmux_users if c not in named]),
+    ):
+        if users:
+            console.print(
+                f"  [dim]Using {kind} without saying which: {escape(', '.join(users))}[/dim]"
+            )
+    return found
+
+
+def _host_defaults(found: discover.HostHardware | None) -> dict[str, str]:
+    """Template field defaults from what is free on the exporter host."""
+    if found is None:
+        return {}
+    mux = next(iter(found.free_sdmuxes), None)
+    values = {
+        "serial_port": found.free_serial[0].link if found.free_serial else None,
+        "sdmux_path": mux and mux.sg,
+        "boot_partition": mux and mux.partition,
+        "vivado_path": found.vivado_path,
+    }
+    return {var: value for var, value in values.items() if value}
+
+
+def _host_warnings(found: discover.HostHardware | None, host: str, context: dict) -> list[str]:
+    """What the exporter config will name that isn't on the exporter host, or is in use there."""
+    if found is None:
+        return []
+    warnings = []
+    path = context.get("serial_port") or ""
+    adapter = next((a for a in found.serial if path in (a.link, a.tty)), None)
+    if adapter is None and path.startswith(("/dev/serial/by-id/", "/dev/ttyUSB", "/dev/ttyACM")):
+        warnings.append(f"{path} isn't one of the USB serial adapters found on {host}")
+    elif adapter is not None and adapter.used_by:
+        warnings.append(f"{path} is already used by {adapter.used_by} on {host}")
+    sg = context.get("sdmux_path")
+    mux = next((m for m in found.sdmuxes if m.sg == sg), None)
+    if sg and mux is None:
+        warnings.append(f"{sg} isn't the control device of an SD mux found on {host}")
+    elif mux is not None and mux.used_by:
+        warnings.append(f"{sg} is already used by {mux.used_by} on {host}")
+    return warnings
 
 
 # Board, carrier and chip names end up in a systemd unit name, a place name, a
@@ -1006,6 +1145,11 @@ def _ask_field(
     help="Path to the exporter_configs/ dir (default: searched upward from cwd)",
 )
 @click.option("--dry-run", is_flag=True, help="Render/print the plan; make no changes")
+@click.option(
+    "--no-discover",
+    is_flag=True,
+    help="Don't look on the exporter host for the board's serial, JTAG, SD mux and Vivado",
+)
 def add_hardware(
     netbox_url,
     netbox_token,
@@ -1016,6 +1160,7 @@ def add_hardware(
     coord_password,
     exporter_configs_dir,
     dry_run,
+    no_discover,
 ):
     """Interactively register a new board: NetBox + exporter host + labgrid place."""
     try:
@@ -1045,6 +1190,7 @@ def add_hardware(
             templates,
             exporter_configs_dir,
             dry_run=dry_run,
+            look_on_host=not no_discover,
             netbox_url=netbox_url,
             netbox_token=netbox_token,
             netbox_verify=netbox_ca_bundle or netbox_verify,
@@ -1060,6 +1206,7 @@ def _onboard(
     exporter_configs_dir: Path,
     *,
     dry_run: bool,
+    look_on_host: bool = True,
     netbox_url: str | None,
     netbox_token: str | None,
     netbox_verify: bool | str,
@@ -1199,6 +1346,12 @@ def _onboard(
         ),
     )
     ssh_user, ssh_host = ssh_target.split("@", 1)
+    # What is plugged into the exporter host gives the hardware questions their
+    # defaults, never their answers. A resumed run whose plan was checked asks
+    # none of them, unless it still has NetBox picks to make.
+    found = None
+    if look_on_host and (look_up or run.mode != "resume" or not run.saved.is_done("plan")):
+        found = _look_on_host(ssh_host, name)
     consoles = netbox(client.console_devices, site_slug) if look_up else None
     serial_link = jtag_link = None
     if netbox_serial:
@@ -1210,6 +1363,7 @@ def _onboard(
                 board=name,
                 host=ssh_host,
                 default_path=hw_defaults.get("serial_port"),
+                found=found,
             )
         # A stable /dev/serial/by-id name, not a /dev/ttyUSBn that changes with plug order.
         serial_link = _console_link(
@@ -1217,6 +1371,9 @@ def _onboard(
             client.UART,
             lambda path: provision.resolve_serial_by_id(ssh_host, path),
         )
+    has_jtag = run.saved.answers.get("hw.jtag")
+    if has_jtag is None and found is not None:
+        has_jtag = found.free_jtag
     if netbox_jtag:
         if look_up:
             _ask_jtag(
@@ -1226,7 +1383,7 @@ def _onboard(
                 board=name,
                 serial_device=serial_link.device if serial_link else ssh_host.split(".")[0],
                 offer_none=not earlier,
-                has_jtag=run.saved.answers.get("hw.jtag"),
+                has_jtag=has_jtag,
             )
         jtag_link = _console_link(run.saved.answers, client.JTAG)
     sdmux_link = None
@@ -1241,6 +1398,8 @@ def _onboard(
                 defaults=hw_defaults,
                 offer_none=not earlier,
                 has_sdmux=run.saved.answers.get("hw.sdmux"),
+                found=found,
+                host=ssh_host,
             )
         sdmux_link = _sdmux_link(run.saved.answers)
 
@@ -1256,7 +1415,7 @@ def _onboard(
                 "hw.jtag",
                 "Board has a JTAG cable",
                 lambda default: Confirm.ask("Does the board have a JTAG cable?", default=default),
-                default=True,
+                default=found.free_jtag if found else True,
                 explain=(
                     "A dry run doesn't read NetBox, so it asks what the board is wired to, to "
                     "recommend the templates that use it."
@@ -1268,7 +1427,7 @@ def _onboard(
                 lambda default: Confirm.ask(
                     "Is the board's SD card in a USB SD mux?", default=default
                 ),
-                default=False,
+                default=bool(found.free_sdmuxes) if found else False,
             )
         else:
             has_jtag = run.given(
@@ -1407,6 +1566,8 @@ def _onboard(
             console.print(table)
         else:
             console.print("  (none)")
+    # Offered like a saved answer: Enter takes it, "-" the template's default.
+    on_host = _host_defaults(found)
     for var in var_names:
         answer = run.answer(
             f"field.{var}",
@@ -1418,6 +1579,7 @@ def _onboard(
                 saved=saved,
                 secret="password" in var,
             ),
+            default=on_host.get(var) if on_host.get(var) != defaults.get(var) else None,
         )
         if answer:
             context[var] = answer
@@ -1527,6 +1689,10 @@ def _onboard(
             ]
         )
     )
+
+    # A field left blank renders as the template's default.
+    for warning in _host_warnings(found, ssh_host, {**defaults, **context}):
+        console.print(f"[yellow]Warning: {escape(warning)}[/yellow]")
 
     if dry_run:
         console.print("\n[yellow]Dry run - no NetBox/SSH/coordinator changes made.[/yellow]")

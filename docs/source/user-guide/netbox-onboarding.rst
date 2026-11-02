@@ -4,7 +4,7 @@ NetBox Onboarding
 ``adi-lg netbox add-hardware`` automates the whole of :doc:`onboarding-a-lab-host` Steps 2-4
 for a single new board: it registers the board as a device in NetBox and records which outlet
 powers it, which ports its serial console and JTAG are plugged into and which SD mux its card is
-in, renders and validates
+in (defaulting each to what it finds plugged into the exporter host), renders and validates
 its exporter config, deploys that config to the exporter host as a systemd service and verifies
 it comes up, then creates the matching labgrid Place on the coordinator (``create`` /
 ``add-match`` / ``set-tags``). Run it instead of hand-editing a template and typing
@@ -17,6 +17,7 @@ it comes up, then creates the matching labgrid Place on the coordinator (``creat
 - `Power devices`_
 - `Serial console and JTAG`_
 - `SD mux`_
+- `Hardware found on the exporter host`_
 - `What it creates`_ — `In NetBox`_, `On the exporter host`_, `On the coordinator`_
 - `Resuming after a failure`_
 - `Re-running for an existing board`_
@@ -128,6 +129,19 @@ Usage
     sudo.
     Exporter host SSH login (user@host): labadmin@lab-host-03
 
+    Looking for the board's hardware on lab-host-03 (read-only)
+
+    Found on lab-host-03
+      Hardware   Device                                                Details        In use by
+      ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+      serial     /dev/serial/by-id/usb-FTDI_Quad_RS232-HS-if00-port0   ttyUSB0        /etc/labgrid/exporters/zcu102-lab3-000/resources.yaml
+      serial     /dev/serial/by-id/usb-FTDI_Quad_RS232-HS-if01-port0   ttyUSB1        free
+      JTAG       Digilent Digilent USB Device                          210299A567FE
+      SD mux     /dev/sg3                                              000000001234   /etc/labgrid/exporters/zcu102-lab3-000/resources.yaml
+      SD mux     /dev/sg4                                              000000004321   free
+      Vivado     /tools/Xilinx/2025.1/Vivado
+      Using a JTAG cable without saying which: /etc/labgrid/exporters/zcu102-lab3-000/resources.yaml
+
     The device the board's serial console (USB-UART) is plugged into - usually the
     exporter host. Pick it from NetBox or add it; the board's UART console port is
     cabled to the port you choose.
@@ -157,18 +171,18 @@ Usage
     2   skip                      it has one: don't record it in NetBox
     3   none                      the board has no JTAG cable
     4   new                       a device not listed: add it, or add ports to it
-    JTAG device (lab-host-03): none
+    JTAG device (none):
 
     The USB SD mux the board's SD card is in. ... none: its SD card isn't in one, so
     no SD mux template suits it.
 
     SD muxes in NetBox at lab3
-    #   SD mux      Serial         Control device   Feeds
-    ──────────────────────────────────────────────────────────────────────────────
-    1   mux-rack3   000000001234   /dev/sg3         zcu102-lab3-000 SD
-    2   mux-b       000000004321   /dev/sg4         free
-    3   none                                        the board's SD card isn't in an SD mux
-    4   new                                         an SD mux not in NetBox yet: add it
+    #   SD mux      Serial                        Control device   Feeds
+    ──────────────────────────────────────────────────────────────────────────────────────────────
+    1   mux-rack3   000000001234 on lab-host-03   /dev/sg3         zcu102-lab3-000 SD
+    2   mux-b       000000004321 on lab-host-03   /dev/sg4         free
+    3   none                                                       the board's SD card isn't in an SD mux
+    4   new                                                        an SD mux not in NetBox yet: add it
     SD mux (mux-b):
 
     Board templates
@@ -250,7 +264,10 @@ Usage
 
 The questions go from what the board is (name, carrier, chip, runner), to where it is and what
 it is wired to (site, power, exporter host, serial console, JTAG cable, SD mux), to the template
-that suits that hardware, its boot strategy and the template's own fields.
+that suits that hardware, its boot strategy and the template's own fields. Once the exporter host
+is named, the command looks there for what is plugged in, without changing anything, and the
+questions about the board's wiring default to what it finds (see
+`Hardware found on the exporter host`_).
 
 Each set of options is listed as a numbered table; answer with the number or the name,
 or press Enter for the default shown in parentheses.
@@ -262,7 +279,8 @@ doesn't read NetBox: the site is typed, the power type and its fields are asked 
 *Does the board have a JTAG cable?* and *Is the board's SD card in a USB SD mux?* stand in for
 the JTAG and SD mux picks to recommend the template, the serial console device and the SD mux's
 devices are asked as template fields, and the plan says the power device, serial port, JTAG port
-and SD mux are chosen when run without ``--dry-run``.
+and SD mux are chosen when run without ``--dry-run``. A dry run still looks on the exporter host
+(read-only, over SSH) for those defaults, unless ``--no-discover`` is given.
 
 Each question says what the answer is used for. Template fields are asked by what they are
 (*Board IP address*, *Board Linux SSH password*, ...), after a table of the
@@ -357,6 +375,9 @@ Every option is optional; anything not supplied is prompted for.
 * ``--exporter-configs-dir <path>``: the ``exporter_configs/`` directory (default: searched
   upward from the current directory for ``exporter_configs/validate.py``).
 * ``--dry-run``: render, validate, and print the plan; make no changes.
+* ``--no-discover``: don't look on the exporter host for the board's serial adapter, JTAG cable,
+  SD mux and Vivado (see `Hardware found on the exporter host`_) - for a host that isn't
+  reachable yet, rather than waiting for the SSH connection to time out.
 
 NetBox credentials that are not set by option or environment are asked for before the site,
 because the site, the board's power device, its serial and JTAG ports and its SD mux are picked
@@ -434,7 +455,10 @@ IP) is the default.
   starts.
 
 The serial path is the device on the *exporter host*, the same as the template field: prefer a
-stable ``/dev/serial/by-id/...`` path over ``/dev/ttyUSB0``, which can change on reboot.
+stable ``/dev/serial/by-id/...`` path over ``/dev/ttyUSB0``, which can change on reboot. When the
+command has looked on the exporter host, the path question lists the free USB serial adapters
+there by their ``/dev/serial/by-id`` links, the first one the default: answer with a row number,
+or type any path.
 
 **JTAG**: every board is asked where its JTAG cable is plugged in, before its template, which
 the answer helps pick (see `Board template`_). NetBox has no JTAG (or USB) port type, so the
@@ -442,8 +466,10 @@ cable is recorded as a ``JTAG`` console port on the board, cabled to a console s
 default on the same device as the serial console - whatever template is picked. It is a record
 of the wiring only: labgrid's JTAG settings (the xsdb ``root_target``) don't depend on it. The
 *JTAG device* list adds *none*, for a board without a JTAG cable (the JTAG templates aren't
-offered then), and *skip*, to leave out of NetBox a cable the board has. Ports with a serial path, or that feed a serial console, aren't offered for JTAG; a new
-JTAG port's name is asked (default ``JTAG``, or ``JTAG 2``, ... if taken).
+offered then), and *skip*, to leave out of NetBox a cable the board has. *none* is the default
+when the exporter host has no free JTAG cable. Ports with a serial path, or that feed a serial
+console, aren't offered for JTAG; a new JTAG port's name is asked (default ``JTAG``, or
+``JTAG 2``, ... if taken).
 
 .. code-block:: console
 
@@ -471,7 +497,12 @@ control device and what it feeds:
   serial number (``usbsdmux /dev/sg0 info``, or the label; Enter leaves it unset) are asked,
   then the two devices.
 - **Pick none** if the board's SD card isn't in a mux: ``soc-sdmux`` isn't offered then. It is
-  the default when the site has no free mux.
+  the default when the site has no free mux, or the exporter host has none.
+
+When the command has looked on the exporter host, a mux whose serial number it found there is
+marked *on <host>*, and a free one is the default; a free mux NetBox has with a serial number
+that isn't there is not. With no free mux in NetBox, *new* is the default and the free mux on the
+host gives its serial number, control device and boot partition.
 
 A board's mux is recorded in NetBox whatever template is picked; only ``soc-sdmux`` uses its
 devices.
@@ -489,6 +520,70 @@ devices.
 
 As with the serial path, prefer stable ``/dev/disk/by-id/...`` paths for the boot partition:
 ``/dev/sg*`` and ``/dev/sd*`` numbers can change when USB devices are replugged.
+
+Hardware found on the exporter host
+-----------------------------------
+
+Once the *Exporter host SSH login* is answered, the command looks on the exporter host for what
+is plugged in, and the questions about the board's wiring default to what it finds. It lists:
+
+- the USB serial adapters, by their ``/dev/serial/by-id`` links and the ``/dev/ttyUSB*`` each
+  points at now. A JTAG cable's JTAG channel isn't one, but a combined cable's UARTs (a
+  ``JTAG+3Serial`` on a Xilinx board) are;
+- the JTAG cables: Xilinx's (USB vendor ``03fd``), Digilent's, and any whose USB product says
+  ``JTAG``;
+- the USB SD muxes (``0424:4041``), by the ``/dev/sg*`` that switches each, its serial number
+  and the card's ``/dev/disk/by-id`` link;
+- the Vivado installs under ``/tools/Xilinx`` and ``/opt/Xilinx``, and whether the ``xsdb`` that
+  ``XilinxVivadoTool`` runs, in the ``Vitis`` beside each, is there.
+
+Each is marked with the exporter config already using it: one that names its ``/dev`` path (or
+a link to it; for an SD mux, its card or a partition on the card), its USB serial number, or its
+USB port in a udev ``ID_PATH`` match. A card switched to the board isn't visible on the host, so
+its partitions can't be matched then; the count below still takes its mux. The configs
+read are ``/etc/labgrid/**/*.yaml`` and the ones that ``labgrid-exporter`` systemd units
+(system, or users' own) start with. An exporter config doesn't say which JTAG cable it uses, and
+may not say which SD mux, so those are counted: a JTAG cable is free while there are more
+cables than configs exporting ``XilinxDeviceJTAG``, and each config exporting a
+``USBSDMuxDevice`` without naming one takes one. The board's own config
+(``/etc/labgrid/exporters/<board>/resources.yaml``, when it is onboarded again) uses nothing.
+
+What it finds gives these defaults:
+
+- **Serial console device**: the free adapters are listed to pick from (see
+  `Serial console and JTAG`_).
+- **JTAG device**: *none* if there is no free JTAG cable.
+- **SD mux**: the free mux, by its serial number if NetBox has it, or *none* if there is no
+  free mux; a new mux's serial number, control device and boot partition (the card's
+  ``-part1``) are the free one's (see `SD mux`_).
+- **Does the board have a JTAG cable?** and **Is the board's SD card in a USB SD mux?** (a dry
+  run): yes if there is a free one.
+- **Vivado install directory**: the newest install with ``xsdb`` beside it; Enter takes it and
+  ``-`` the template's default. A dry run's serial console device and SD mux devices default to
+  the free ones in the same way.
+
+They are only defaults: an answer is never taken from what is found, and a resumed run's saved
+answers are kept. A resumed run whose plan was checked doesn't look, unless it still has NetBox
+picks to make (a run saved by an older version, say). The plan warns when the serial console device or the SD mux's control device isn't one
+found on the host, or another exporter config uses it:
+
+.. code-block:: console
+
+    Warning: /dev/ttyUSB3 isn't one of the USB serial adapters found on lab-host-03
+    Warning: /dev/sg3 is already used by /etc/labgrid/exporters/zcu102-lab3-000/resources.yaml on lab-host-03
+
+It looks with a short Python script sent over SSH (``python3 -c``; the host has Python for
+``labgrid-exporter``) that only lists directories and reads links, ``/sys`` attributes and the
+exporter configs. It never opens a device - opening a serial port can reset a board - runs
+nothing else, and sends back only paths, IDs and file names, never the configs' contents. It
+runs as the SSH user, without ``sudo``, so a config that user can't read isn't counted. If it
+can't look (SSH fails, or the host has no ``python3``), it says why and the questions keep their
+usual defaults:
+
+.. code-block:: console
+
+    Couldn't look for the board's hardware on lab-host-03: ssh: Could not resolve hostname
+    lab-host-03 - the questions keep their usual defaults (--no-discover skips looking)
 
 What it creates
 ---------------

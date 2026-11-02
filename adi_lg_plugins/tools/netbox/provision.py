@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import importlib.util
 import logging
+import posixpath
 import re
 import shlex
 import tempfile
@@ -330,6 +331,11 @@ def missing_power_env(ssh_host: str, power: str) -> list[str]:
     return missing
 
 
+def exporter_config(name: str) -> str:
+    """Where :func:`deploy_exporter` puts board ``name``'s exporter config on the exporter host."""
+    return f"/etc/labgrid/exporters/{name}/resources.yaml"
+
+
 def deploy_exporter(
     ssh_host: str,
     ssh_user: str,
@@ -353,6 +359,7 @@ def deploy_exporter(
     conn = sshmanager.get(ssh_host)
     stage = f"{STAGE_DIR}/{name}"
     unit_name = f"labgrid-exporter-{name}.service"
+    config = exporter_config(name)
 
     unit_path = Path(tempfile.mkdtemp(prefix="adi-lg-netbox-unit-")) / unit_name
     unit_path.write_text(_unit_text(coord, name, ssh_user, exporter_bin))
@@ -362,8 +369,8 @@ def deploy_exporter(
         conn.put_file(str(rendered_yaml), f"{stage}/resources.yaml")
         conn.put_file(str(unit_path), f"{stage}/{unit_name}")
         conn.run_check(
-            f"sudo mkdir -p /etc/labgrid/exporters/{name} && "
-            f"sudo mv {stage}/resources.yaml /etc/labgrid/exporters/{name}/resources.yaml && "
+            f"sudo mkdir -p {posixpath.dirname(config)} && "
+            f"sudo mv {stage}/resources.yaml {config} && "
             f"sudo mv {stage}/{unit_name} /etc/systemd/system/{unit_name} && "
             f"sudo systemctl daemon-reload && "
             # restart, not `enable --now`, so a re-run loads the new config into a

@@ -98,3 +98,49 @@ def test_a_note_follows_the_options_before_the_prompt(monkeypatch):
     lines = console.file.getvalue().splitlines()
     assert lines.index("beta is slow") == lines.index("PROMPT") - 1
     assert any("beta" in line for line in lines[: lines.index("beta is slow")])
+
+
+def test_an_answer_not_listed_is_taken_when_other_answers_are_allowed(monkeypatch):
+    calls = _answers(monkeypatch, "", "/dev/ttyACM0")
+    console = _console()
+
+    answer = ask_choice(console, "Device", ["/dev/ttyUSB0"], other="a device path")
+
+    assert answer == "/dev/ttyACM0"
+    assert len(calls) == 2  # a blank answer is asked again
+    assert "choices" not in calls[0][1]  # so the prompt itself doesn't refuse it
+    assert "or a device path" in console.file.getvalue()
+
+
+@pytest.mark.parametrize(
+    ("answer", "expected"), [("1", "/dev/ttyUSB0"), ("/dev/ttyUSB0", "/dev/ttyUSB0")]
+)
+def test_a_listed_answer_is_still_taken_by_number_or_name_when_others_are_allowed(
+    monkeypatch, answer, expected
+):
+    _answers(monkeypatch, answer)
+
+    assert ask_choice(_console(), "Device", ["/dev/ttyUSB0"], other="a device path") == expected
+
+
+def test_an_option_too_long_for_the_terminal_is_wrapped_not_cut(monkeypatch):
+    # What is typed must be readable in full; a by-id link differs only at its end.
+    _answers(monkeypatch, "1")
+    console = Console(file=StringIO(), width=40)
+    long = "/dev/serial/by-id/usb-Silicon_Labs_CP2108-if01-port0"
+
+    ask_choice(console, "Device", [(long, "ttyUSB1")], headers=("Device", "Now"))
+
+    assert "if01-port0" in console.file.getvalue()
+    assert "…" not in console.file.getvalue()
+
+
+def test_a_row_number_not_listed_isn_t_taken_as_another_answer(monkeypatch):
+    calls = _answers(monkeypatch, "4", "/dev/ttyACM0")
+    console = _console()
+
+    answer = ask_choice(console, "Device", ["/dev/ttyUSB0"], other="a device path")
+
+    assert answer == "/dev/ttyACM0"
+    assert len(calls) == 2
+    assert "enter a number or a name from the list, or a device path" in console.file.getvalue()

@@ -144,7 +144,8 @@ netbox add-hardware
 
 Onboard one new board in a single interactive pass: register it as a device in NetBox,
 cabled to an outlet on its power device, to the ports its serial console and JTAG are
-plugged into and to the SD mux its card is in (each picked from NetBox, or added), render
+plugged into and to the SD mux its card is in (each picked from NetBox, or added, with what is
+plugged into the exporter host as the default), render
 and validate its exporter config from the template in ``exporter_configs/templates/`` that suits
 that hardware (the ones using its JTAG cable or SD mux are recommended), tag it with a boot
 strategy that can run on what the template exports (the one the template is written for is
@@ -171,6 +172,7 @@ a ``labgrid-plugins`` checkout.
 * ``--coord-user <name>`` / ``--coord-password <password>``: Coordinator API login (env: ``LG_API_USERNAME`` / ``LG_API_PASSWORD``).
 * ``--exporter-configs-dir <path>``: ``exporter_configs/`` directory (default: searched upward from the current directory).
 * ``--dry-run``: Render, validate, and print the plan; make no changes.
+* ``--no-discover``: Don't look on the exporter host (read-only, over SSH) for the board's serial adapter, JTAG cable, SD mux and Vivado.
 
 Answers are saved as they are given (never the token or passwords), so a run that fails
 can be resumed: the next run offers to pick up where it stopped, skipping steps it already
