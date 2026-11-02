@@ -1347,9 +1347,10 @@ def _onboard(
     )
     ssh_user, ssh_host = ssh_target.split("@", 1)
     # What is plugged into the exporter host gives the hardware questions their
-    # defaults, never their answers. A resumed run whose plan was checked asks none.
+    # defaults, never their answers. A resumed run whose plan was checked asks
+    # none of them, unless it still has NetBox picks to make.
     found = None
-    if look_on_host and (run.mode != "resume" or not run.saved.is_done("plan")):
+    if look_on_host and (look_up or run.mode != "resume" or not run.saved.is_done("plan")):
         found = _look_on_host(ssh_host, name)
     consoles = netbox(client.console_devices, site_slug) if look_up else None
     serial_link = jtag_link = None

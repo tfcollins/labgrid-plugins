@@ -457,8 +457,8 @@ IP) is the default.
 The serial path is the device on the *exporter host*, the same as the template field: prefer a
 stable ``/dev/serial/by-id/...`` path over ``/dev/ttyUSB0``, which can change on reboot. When the
 command has looked on the exporter host, the path question lists the free USB serial adapters
-there by their ``/dev/serial/by-id`` links, the first one the default: answer with a number, or
-type any path.
+there by their ``/dev/serial/by-id`` links, the first one the default: answer with a row number,
+or type any path.
 
 **JTAG**: every board is asked where its JTAG cable is plugged in, before its template, which
 the answer helps pick (see `Board template`_). NetBox has no JTAG (or USB) port type, so the
@@ -563,8 +563,8 @@ What it finds gives these defaults:
   the free ones in the same way.
 
 They are only defaults: an answer is never taken from what is found, and a resumed run's saved
-answers are kept. A resumed run whose plan was checked has no questions left, so it doesn't
-look. The plan warns when the serial console device or the SD mux's control device isn't one
+answers are kept. A resumed run whose plan was checked doesn't look, unless it still has NetBox
+picks to make (a run saved by an older version, say). The plan warns when the serial console device or the SD mux's control device isn't one
 found on the host, or another exporter config uses it:
 
 .. code-block:: console

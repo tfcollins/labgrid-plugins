@@ -133,3 +133,14 @@ def test_an_option_too_long_for_the_terminal_is_wrapped_not_cut(monkeypatch):
 
     assert "if01-port0" in console.file.getvalue()
     assert "…" not in console.file.getvalue()
+
+
+def test_a_row_number_not_listed_isn_t_taken_as_another_answer(monkeypatch):
+    calls = _answers(monkeypatch, "4", "/dev/ttyACM0")
+    console = _console()
+
+    answer = ask_choice(console, "Device", ["/dev/ttyUSB0"], other="a device path")
+
+    assert answer == "/dev/ttyACM0"
+    assert len(calls) == 2
+    assert "enter a number or a name from the list, or a device path" in console.file.getvalue()

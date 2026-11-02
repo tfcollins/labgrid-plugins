@@ -49,7 +49,8 @@ def ask_choice(
             return answer
         if answer in by_number:
             return by_number[answer]
-        if other and answer:
+        # A number is a row, even a mistyped one: not a path or name typed instead.
+        if other and answer and not answer.isdigit():
             return answer
         console.print(
             "    [red]enter a number or a name from the list"

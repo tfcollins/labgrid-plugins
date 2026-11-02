@@ -2761,3 +2761,52 @@ def test_a_mux_taken_by_a_config_that_doesn_t_name_it_isn_t_shown_free(monkeypat
     row = _rows(result.output)
     assert row("SD mux", "/dev/sg1", "000000001234", "a config below")
     assert row("Using an SD mux without saying which:", _OLD_CONFIG)
+
+
+def test_a_real_run_resuming_a_dry_run_looks_on_the_host_for_its_netbox_picks(
+    monkeypatch, host_hardware, saved_runs
+):
+    # The dry run couldn't look; it was told the board's SD card is in a mux.
+    _stub_prompts(
+        monkeypatch,
+        {**_SOC_SSH, "Board template": "soc-sdmux", "Is the board's SD card in a USB SD mux": True},
+    )
+    assert _invoke(*DRY_RUN).exit_code == 0
+    host_hardware.found = _FOUND
+    settings = {"sdmux_path": "/dev/sg1", "boot_partition": _FOUND_MUX.partition}
+    muxes = [_mux("mux-a", _MUX_SETTINGS, "000000005678"), _mux("mux-b", settings, "000000001234")]
+    asked = _stub_prompts(monkeypatch, {})  # Enter at each: resume b1 with its saved answers
+    monkeypatch.setattr(cli.Confirm, "ask", staticmethod(lambda *a, **k: True))
+    calls = _stub_services(monkeypatch, muxes=muxes)
+
+    result = _invoke(*_REAL_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert host_hardware.hosts == ["h", "h"]  # its NetBox picks are still to be made
+    assert asked.kwargs["SD mux"]["default"] == "mux-b"  # the one on h
+    assert calls["sdmux"]["device"] == "mux-b"
+
+
+def test_a_checked_run_still_asking_a_netbox_pick_looks_on_the_host(
+    monkeypatch, host_hardware, saved_runs
+):
+    # A soc-sdmux run saved before SD muxes: its plan was checked, and the SD mux is asked.
+    _sdmux_run_saved(monkeypatch)
+    path = saved_runs / "b1.json"
+    saved = json.loads(path.read_text())
+    assert "plan" in saved["done"]
+    for key in ("sdmux_device", "sdmux_device_name", "sdmux_serial", "hw.jtag", "hw.sdmux"):
+        del saved["answers"][key]
+    path.write_text(json.dumps(saved))
+    host_hardware.found = _FOUND
+    settings = {"sdmux_path": "/dev/sg1", "boot_partition": _FOUND_MUX.partition}
+    muxes = [_mux("mux-a", _MUX_SETTINGS, "000000005678"), _mux("mux-b", settings, "000000001234")]
+    asked = _stub_prompts(monkeypatch, {})  # Enter at each: resume b1 with its saved answers
+    calls = _stub_services(monkeypatch, muxes=muxes)
+
+    result = _invoke(*_REAL_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert host_hardware.hosts == ["h", "h"]
+    assert asked.kwargs["SD mux"]["default"] == "mux-b"  # the one on h
+    assert calls["sdmux"]["device"] == "mux-b"
