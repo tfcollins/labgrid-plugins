@@ -14,6 +14,7 @@ from __future__ import annotations
 import importlib.util
 import logging
 import re
+import shlex
 import tempfile
 import time
 from pathlib import Path
@@ -283,6 +284,31 @@ def check_prerequisites(ssh_host: str) -> str:
             "absolute path - make labgrid-exporter an executable on that user's PATH"
         )
     return path
+
+
+def resolve_serial_by_id(ssh_host: str, path: str) -> str:
+    """The ``/dev/serial/by-id`` name of the serial device ``path`` on the exporter host.
+
+    ``/dev/ttyUSBn`` numbers change with plug order; the by-id names don't.
+    ``path`` is returned as is if it is already a by-id path or no by-id link
+    points at it (a built-in UART, or a host without udev's links).
+    """
+    from labgrid.driver.exception import ExecutionError
+    from labgrid.util.ssh import sshmanager
+
+    if not path or path.startswith("/dev/serial/by-id/"):
+        return path
+    script = (
+        f'target=$(readlink -f {shlex.quote(path)}); '
+        'for l in /dev/serial/by-id/*; do '
+        '[ "$(readlink -f "$l")" = "$target" ] && echo "$l"; done; true'
+    )
+    try:
+        out = sshmanager.get(ssh_host).run_check(script)
+    except ExecutionError:
+        return path
+    lines = out if isinstance(out, list) else str(out).splitlines()
+    return next((line.strip() for line in sorted(lines) if line.strip().startswith("/dev/")), path)
 
 
 def missing_power_env(ssh_host: str, power: str) -> list[str]:

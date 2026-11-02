@@ -163,6 +163,39 @@ def _fake_conn():
     return conn
 
 
+def test_resolve_serial_by_id_returns_the_by_id_link(monkeypatch):
+    conn = _fake_conn()
+    conn.run_check.return_value = ["/dev/serial/by-id/usb-FTDI_FT232R-if00-port0"]
+    monkeypatch.setattr(ssh_mod.sshmanager, "get", lambda host: conn)
+
+    assert (
+        provision.resolve_serial_by_id("lab-host-03", "/dev/ttyUSB0")
+        == "/dev/serial/by-id/usb-FTDI_FT232R-if00-port0"
+    )
+
+
+def test_resolve_serial_by_id_keeps_a_path_with_no_link(monkeypatch):
+    monkeypatch.setattr(ssh_mod.sshmanager, "get", lambda host: _fake_conn())
+
+    assert provision.resolve_serial_by_id("lab-host-03", "/dev/ttyS0") == "/dev/ttyS0"
+
+
+def test_resolve_serial_by_id_keeps_a_path_when_the_host_is_unreachable(monkeypatch):
+    def unreachable(host):
+        raise ExecutionError("failed to connect")
+
+    monkeypatch.setattr(ssh_mod.sshmanager, "get", unreachable)
+
+    assert provision.resolve_serial_by_id("lab-host-03", "/dev/ttyUSB0") == "/dev/ttyUSB0"
+
+
+def test_resolve_serial_by_id_leaves_a_by_id_path_alone(monkeypatch):
+    path = "/dev/serial/by-id/usb-FTDI_FT232R-if00-port0"
+    monkeypatch.setattr(ssh_mod.sshmanager, "get", lambda host: pytest.fail("no SSH needed"))
+
+    assert provision.resolve_serial_by_id("lab-host-03", path) == path
+
+
 def test_check_prerequisites_raises_when_exporter_missing(monkeypatch):
     conn = _fake_conn()
     conn.run_check.side_effect = ExecutionError("command -v labgrid-exporter", [], ["not found"])

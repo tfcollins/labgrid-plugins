@@ -304,14 +304,19 @@ def _console_settled(answers: dict, kind: str) -> bool:
     return picked != NEW or bool(answers.get(f"{key}_device_name"))
 
 
-def _console_link(answers: dict, kind: str) -> _ConsoleLink | None:
-    """The connection saved answers describe; None if it is left out."""
+def _console_link(answers: dict, kind: str, resolve_path=None) -> _ConsoleLink | None:
+    """The connection saved answers describe; None if it is left out.
+
+    ``resolve_path`` maps the serial device the answers name to the path to record.
+    """
     key = _CONSOLE_KEY[kind]
     picked = answers[f"{key}_device"]
     if picked == _SKIP:
         return None
     device = answers[f"{key}_device_name"] if picked == NEW else picked
     path = answers.get("field.serial_port", "") if kind == client.UART else ""
+    if path and resolve_path:
+        path = resolve_path(path)
     port = answers[f"{key}_netbox_port"]
     if port == NEW:
         port = answers["jtag_port_name"] if kind == client.JTAG else _serial_port_name(path)
@@ -1187,7 +1192,12 @@ def _onboard(
                 host=ssh_host,
                 default_path=defaults.get("serial_port"),
             )
-        serial_link = _console_link(run.saved.answers, client.UART)
+        # A stable /dev/serial/by-id name, not a /dev/ttyUSBn that changes with plug order.
+        serial_link = _console_link(
+            run.saved.answers,
+            client.UART,
+            lambda path: provision.resolve_serial_by_id(ssh_host, path),
+        )
     if netbox_jtag:
         if look_up:
             _ask_jtag(

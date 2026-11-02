@@ -194,6 +194,7 @@ def _stub_services(monkeypatch, *, place=None, power_devices=(), consoles=(), mu
     monkeypatch.setattr(cli.client, "ensure_schema", lambda nb: None)
     monkeypatch.setattr(cli.client, "create_or_update_device", device)
     monkeypatch.setattr(cli.provision, "check_prerequisites", lambda host: "/usr/bin/lg-exp")
+    monkeypatch.setattr(cli.provision, "resolve_serial_by_id", lambda host, path: path)
     monkeypatch.setattr(cli.provision, "deploy_exporter", deploy)
     monkeypatch.setattr(cli.provision, "verify_exporter_active", lambda host, name: None)
     monkeypatch.setattr(cli.provision, "missing_power_env", lambda host, power: [])
