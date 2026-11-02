@@ -635,6 +635,9 @@ def connect_console(
         current = (ports[port].custom_fields or {}).get(SERIAL_PATH_FIELD)
         if not current:
             ports[port].custom_fields[SERIAL_PATH_FIELD] = path
+            # Visible in NetBox's port and cable lists, which don't show custom fields.
+            if not getattr(ports[port], "description", ""):
+                ports[port].description = path
             ports[port].save()
             return [f"recorded the serial path {path} on {device} {port}"]
         if current != path:
@@ -654,7 +657,9 @@ def connect_console(
         label=_port_label,
         create=create,
         settle=settle,
-        far_fields={"custom_fields": {SERIAL_PATH_FIELD: path}} if path else None,
+        far_fields=(
+            {"custom_fields": {SERIAL_PATH_FIELD: path}, "description": path} if path else None
+        ),
     )
 
 

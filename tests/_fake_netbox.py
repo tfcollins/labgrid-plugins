@@ -23,7 +23,7 @@ class Record(SimpleNamespace):
         return self  # already a snapshot
 
     # Fields a save writes back; the others are read-only views of related objects.
-    _SAVED = ("name", "serial", "custom_fields")
+    _SAVED = ("name", "serial", "custom_fields", "description")
 
     def save(self):
         row = self._endpoint.rows[self.id]
