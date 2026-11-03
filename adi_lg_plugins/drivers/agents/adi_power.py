@@ -37,7 +37,7 @@ def _secret(name, required=True):
 
 def handle_probe():
     """Return the fixed set of supported backends for upload smoke tests."""
-    return ["apc", "cyberpower", "homeassistant", "kasa", "vesync"]
+    return ["apc", "cyberpower", "homeassistant", "kasa", "scpi", "vesync"]
 
 
 def handle_apc_set(address, outlet, on):
@@ -159,6 +159,34 @@ def handle_kasa(action, host, selector):
     )
 
 
+def handle_scpi(action, host, port, channels):
+    """Switch or read SCPI bench-supply outputs; self-contained like the other helpers."""
+    import re
+    import socket
+
+    channels = channels.replace(" ", "")
+    if not re.match(r"^\d+(,\d+)*$", channels):
+        raise ValueError(f"SCPI channels must be digits separated by commas, got {channels!r}")
+    if action not in {"on", "off", "get"}:
+        raise ValueError(f"unsupported SCPI action: {action!r}")
+    with socket.create_connection((host, port), timeout=5.0) as sock:
+        stream = sock.makefile("rw", newline="\n")
+        if action == "get":
+            states = []
+            for channel in channels.split(","):
+                stream.write(f"OUTP? (@{channel})\n")
+                stream.flush()
+                states.append(stream.readline().strip() in {"1", "ON"})
+            return all(states)
+        stream.write(f"OUTP {action.upper()},(@{channels})\n")
+        stream.write("SYST:ERR?\n")
+        stream.flush()
+        error = stream.readline().strip()
+        if not error.startswith("+0") and not error.startswith("0"):
+            raise RuntimeError(f"SCPI supply at {host} rejected OUTP {action}: {error}")
+    return None
+
+
 def handle_vesync(action, outlet_names):
     from pyvesync import VeSync
 
@@ -202,5 +230,6 @@ methods = {
     "cyberpower_set": handle_cyberpower_set,
     "homeassistant": handle_homeassistant,
     "kasa": handle_kasa,
+    "scpi": handle_scpi,
     "vesync": handle_vesync,
 }

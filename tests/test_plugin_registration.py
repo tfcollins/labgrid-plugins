@@ -25,6 +25,7 @@ _DRIVERS = [
     "OpenFPGALoaderDriver",
     "TFTPServerDriver",
     "KasaPowerDriver",
+    "ScpiPowerDriver",
     "BootFPGASoC",
     "BootFPGASoCSSH",
     "BootTickFPGASSH",
@@ -46,6 +47,7 @@ _RESOURCES = [
     "TFTPServerResource",
     "XilinxDeviceJTAG",
     "KasaOutlet",
+    "ScpiPowerSupply",
 ]
 
 

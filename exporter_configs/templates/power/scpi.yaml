@@ -1,0 +1,7 @@
+## Power fragment: SCPI bench supply (LAN, e.g. Keysight E36233A) (scpi), included by the stock exporter
+## templates. Generated from adi_lg_plugins/hw_ci/power.py - edit there, then run
+## `python -m adi_lg_plugins.hw_ci.power exporter_configs/templates/power`.
+  ScpiPowerSupply:
+    cls: ScpiPowerSupply
+    host: "{{ power_host }}"
+    channels: "{{ power_outlet }}"
