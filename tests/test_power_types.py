@@ -294,6 +294,7 @@ OUTLET_FIELD = {
     "pdudaemon": "power_index",
     "vesync": None,
     "kasa": "power_outlet",
+    "scpi": "power_outlet",
     "homeassistant": None,
     "tasmota": None,
     "usb-hub": "power_index",

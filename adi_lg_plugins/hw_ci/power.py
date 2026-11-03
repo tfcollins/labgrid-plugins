@@ -407,6 +407,20 @@ POWER_TYPES: dict[str, PowerType] = {
         ),
         # --- Bench power supply ---
         PowerType(
+            "scpi",
+            SUPPLY,
+            "SCPI bench supply (LAN, e.g. Keysight E36233A)",
+            "adi_lg_plugins",
+            "ScpiPowerDriver",
+            "ScpiPowerSupply",
+            "ScpiPowerSupply",
+            fields=(
+                _f("host", "host", "Supply hostname or IP"),
+                _outlet("outlet", "channels", "Output channel(s), comma-separated, e.g. 1,2"),
+            ),
+            note="Raw SCPI socket on TCP 5025; no credentials.",
+        ),
+        PowerType(
             "sigrok",
             SUPPLY,
             "Bench supply via sigrok",

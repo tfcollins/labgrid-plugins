@@ -18,6 +18,7 @@ _MODULES = (
     "cyberpowerpdu",
     "homeassistant",
     "kasa",
+    "scpisupply",
     "kuiperrelease",
     "massstorage",
     "tftpserver",

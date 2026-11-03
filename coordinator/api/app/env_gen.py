@@ -59,6 +59,7 @@ POWER_RESOURCE_DRIVERS: dict[str, list[tuple[str, DriverConfigFactory]]] = {
     "PDUDaemonPort": [("PDUDaemonDriver", _no_config)],
     "VesyncOutlet": [("VesyncPowerDriver", _no_config)],
     "KasaOutlet": [("KasaPowerDriver", _no_config)],
+    "ScpiPowerSupply": [("ScpiPowerDriver", _no_config)],
     "HomeAssistantOutlet": [("HomeAssistantPowerDriver", _no_config)],
     "TasmotaPowerPort": [("TasmotaPowerDriver", _no_config)],
     "NetworkUSBPowerPort": [("USBPowerDriver", _no_config)],
