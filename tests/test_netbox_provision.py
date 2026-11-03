@@ -48,6 +48,7 @@ def test_stock_templates_are_named_by_boot_path():
         "fabric-jtag.yaml",
         "rpi-ssh.yaml",
         "soc-sdmux.yaml",
+        "soc-selmap.yaml",
         "soc-ssh.yaml",
         "soc-tftp.yaml",
         "zynqmp-jtag.yaml",
@@ -63,6 +64,7 @@ def test_stock_templates_are_named_by_boot_path():
         ("zynqmp-jtag.yaml", {"target_ip"}),
         ("fabric-jtag.yaml", {"target_ip", "bitstream_path", "kernel_path"}),
         ("rpi-ssh.yaml", {"target_ip"}),
+        ("soc-selmap.yaml", {"target_ip"}),
     ],
 )
 def test_required_template_vars_are_the_fields_without_a_default(template, required):
