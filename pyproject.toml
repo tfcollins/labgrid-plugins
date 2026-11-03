@@ -135,6 +135,8 @@ tickoverlaydriver = "adi_lg_plugins.drivers.tickoverlaydriver:TickOverlayDriver"
 TickOverlayDriver = "adi_lg_plugins.drivers.tickoverlaydriver:TickOverlayDriver"
 kasapowerdriver = "adi_lg_plugins.drivers.kasadriver:KasaPowerDriver"
 KasaPowerDriver = "adi_lg_plugins.drivers.kasadriver:KasaPowerDriver"
+scpipowerdriver = "adi_lg_plugins.drivers.scpidriver:ScpiPowerDriver"
+ScpiPowerDriver = "adi_lg_plugins.drivers.scpidriver:ScpiPowerDriver"
 
 [project.entry-points."labgrid.resources"]
 apcresource = "adi_lg_plugins.resources.apcpdu:APCOutlet"
@@ -161,6 +163,8 @@ tickartifacts = "adi_lg_plugins.resources.tickartifacts:TickArtifacts"
 TickArtifacts = "adi_lg_plugins.resources.tickartifacts:TickArtifacts"
 kasaresource = "adi_lg_plugins.resources.kasa:KasaOutlet"
 KasaOutlet = "adi_lg_plugins.resources.kasa:KasaOutlet"
+scpiresource = "adi_lg_plugins.resources.scpisupply:ScpiPowerSupply"
+ScpiPowerSupply = "adi_lg_plugins.resources.scpisupply:ScpiPowerSupply"
 
 
 [project.entry-points."labgrid.strategies"]
