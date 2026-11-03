@@ -50,6 +50,9 @@ Each is named for the boot path it serves:
    * - ``soc-sdmux.yaml``
      - Zynq / ZynqMP SoC (ZCU102, ZC706, ...) whose SD card is written through a USB SD mux
      - ``BootFPGASoC``, or ``BootFPGASoCSSH``
+   * - ``soc-selmap.yaml``
+     - Carrier whose FPGA is loaded over SelectMAP from the running Linux (ADSY1100 on SSTF)
+     - ``BootSelMap``
    * - ``soc-ssh.yaml``
      - Zynq / ZynqMP SoC without an SD mux; boot files copied over SSH into the running Linux
      - ``BootFPGASoCSSH``
