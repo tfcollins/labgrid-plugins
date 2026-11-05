@@ -2165,9 +2165,17 @@ def test_a_board_without_jtag_or_an_sd_mux_is_offered_the_templates_using_neithe
     result = _invoke(*_REAL_RUN)
 
     assert result.exit_code == 0, result.output
-    assert _template_question(asked)["choices"] == ["rpi-ssh", "soc-ssh", "1", "2"]
+    assert _template_question(asked)["choices"] == [
+        "rpi-ssh",
+        "soc-selmap",
+        "soc-ssh",
+        "1",
+        "2",
+        "3",
+    ]
     row = _rows(result.output)
     assert row("rpi-ssh", "recommended")
+    assert row("soc-selmap", "recommended", "BootSelMap")
     assert row("soc-ssh", "recommended")
     assert row("zynqmp-jtag needs JTAG")
     assert row("soc-sdmux needs SD mux")

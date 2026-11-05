@@ -101,6 +101,7 @@ def test_a_board_with_jtag_is_recommended_every_jtag_template():
         ("soc-tftp", "recommended"),
         ("zynqmp-jtag", "recommended"),
         ("rpi-ssh", "fits"),
+        ("soc-selmap", "fits"),
         ("soc-ssh", "fits"),
     ]
 
@@ -109,6 +110,7 @@ def test_a_board_with_an_sd_mux_is_recommended_the_sd_mux_template():
     assert recommend.rank_templates(_templates(), {"sdmux"}) == [
         ("soc-sdmux", "recommended"),
         ("rpi-ssh", "fits"),
+        ("soc-selmap", "fits"),
         ("soc-ssh", "fits"),
     ]
 
@@ -116,6 +118,7 @@ def test_a_board_with_an_sd_mux_is_recommended_the_sd_mux_template():
 def test_a_board_with_neither_is_offered_the_templates_that_use_neither():
     assert recommend.rank_templates(_templates(), set()) == [
         ("rpi-ssh", "recommended"),
+        ("soc-selmap", "recommended"),
         ("soc-ssh", "recommended"),
     ]
 
@@ -128,5 +131,6 @@ def test_a_board_with_both_is_recommended_every_template_using_either():
         ("soc-tftp", "recommended"),
         ("zynqmp-jtag", "recommended"),
         ("rpi-ssh", "fits"),
+        ("soc-selmap", "fits"),
         ("soc-ssh", "fits"),
     ]
