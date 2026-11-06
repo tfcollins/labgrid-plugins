@@ -32,6 +32,17 @@ vi.mock("../../api/client", () => ({
   },
 }));
 
+vi.mock("../../api/netbox", () => ({
+  netboxApi: {
+    getPlace: vi.fn().mockResolvedValue({
+      configured: true,
+      matched: false,
+      device: null,
+      error: null,
+    }),
+  },
+}));
+
 vi.mock("../../auth/AuthContext", () => ({
   useAuth: () => ({
     user: { username: "alice", role: "user" },
@@ -67,6 +78,13 @@ describe("PlaceDetail", () => {
     render(wrap(<PlaceDetail />));
     fireEvent.click(await screen.findByRole("button", { name: /acquire/i }));
     await waitFor(() => expect(api.acquirePlace).toHaveBeenCalledWith("vcu118-lab1"));
+  });
+
+  it("shows the NetBox section in the sidebar", async () => {
+    const { netboxApi } = await import("../../api/netbox");
+    render(wrap(<PlaceDetail />));
+    expect(await screen.findByText(/No single NetBox device is named/)).toBeInTheDocument();
+    expect(netboxApi.getPlace).toHaveBeenCalledWith("vcu118-lab1");
   });
 
   it("renders place tags as chips", async () => {

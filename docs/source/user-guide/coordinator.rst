@@ -117,6 +117,41 @@ The endpoint returns ``503`` while ``LG_DEPLOYMENT_TOKEN`` is unset and
 ``401`` for a missing or wrong token. Event history is kept in the API's
 SQLite database alongside the place/resource history.
 
+.. _coordinator-netbox:
+
+NetBox on the place page
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Set ``LG_NETBOX_URL`` and ``LG_NETBOX_TOKEN`` in ``coordinator/.env`` and each place's
+detail page gains a **NetBox** section in its sidebar. It shows the NetBox device with the
+same name as the place: its status, site, rack and position, type, primary IP, and what its
+power and console ports are cabled to, with links into NetBox. :doc:`netbox-onboarding`
+(``adi-lg netbox add-hardware``) registers each board under its place name, so boards added
+that way match with no extra setup.
+
+.. code-block:: bash
+
+   # coordinator/.env
+   LG_NETBOX_URL=https://netbox.example.com
+   LG_NETBOX_TOKEN=<NetBox API token; read access is enough>
+
+   # Optional
+   LG_NETBOX_PUBLIC_URL=https://netbox.example.com  # links for browsers, if different
+   LG_NETBOX_CA_BUNDLE=/path/in/api/container/ca.pem  # NetBox behind an internal CA
+   LG_NETBOX_VERIFY=false                             # or skip certificate checks
+   LG_NETBOX_CACHE_TTL_SECONDS=60
+
+These are separate from the ``NETBOX_URL`` / ``NETBOX_TOKEN`` that ``add-hardware`` reads,
+which needs a token that can write. The token can be a v1 token or a NetBox 4.5+ ``nbt_``
+token.
+
+The section is hidden while NetBox isn't configured. A place with no device of its name, or
+with one of that name in more than one site, shows "No single NetBox device is named ...".
+Lookups are cached for a minute. If NetBox can't be asked (unreachable, token rejected, CA
+bundle unreadable), the last answer is shown if there is one; otherwise the section says
+why ("NetBox lookup failed." and, for example, "NetBox rejected the API token (HTTP 403)"),
+and the API log has the details. The page and the API itself never fail because of NetBox.
+
 Connecting Exporters
 --------------------
 
@@ -165,6 +200,8 @@ The API server exposes the following endpoints:
 
 - ``GET /api/places`` - List all places
 - ``GET /api/places/{name}`` - Get place details
+- ``GET /api/places/{name}/netbox`` - The place's NetBox device, rack and cabling (see
+  :ref:`coordinator-netbox`)
 - ``POST /api/places`` - Create a place (body: ``{"name": "..."}``\ )
 - ``DELETE /api/places/{name}`` - Delete a place
 - ``POST /api/places/{name}/acquire`` - Acquire a place

@@ -46,6 +46,10 @@ resources:
    :alt: Place detail panel showing match patterns and acquired resources
    :width: 100%
 
+When the API is connected to NetBox, the place page's sidebar also shows the board's
+NetBox device: its rack and position, IP, and what its power and console are cabled to.
+See :ref:`coordinator-netbox`.
+
 Resources Page
 --------------
 

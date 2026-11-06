@@ -21,6 +21,14 @@ class Settings(BaseSettings):
     recording_retention_days: int = 30
     recording_max_bytes_per_place: int = 1024 * 1024 * 1024
 
+    # NetBox lookup for the place detail page; off unless url and token are set.
+    netbox_url: str | None = None
+    netbox_token: str | None = None
+    netbox_public_url: str | None = None  # base for links shown to browsers; defaults to url
+    netbox_verify: bool = True  # False skips TLS certificate checks
+    netbox_ca_bundle: str | None = None  # CA file for a NetBox behind an internal CA
+    netbox_cache_ttl_seconds: int = 60
+
     model_config = {"env_prefix": "LG_"}
 
 

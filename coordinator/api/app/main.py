@@ -123,6 +123,18 @@ async def lifespan(app: FastAPI):
 
     app.state.catalog = load_catalog(settings.board_catalog_path)
 
+    from .netbox import NetBoxClient
+
+    netbox = NetBoxClient(
+        url=settings.netbox_url,
+        token=settings.netbox_token,
+        public_url=settings.netbox_public_url,
+        ttl_seconds=settings.netbox_cache_ttl_seconds,
+        verify=settings.netbox_verify,
+        ca_bundle=settings.netbox_ca_bundle,
+    )
+    app.state.netbox = netbox
+
     client = CoordinatorClient(
         address=settings.coordinator_address,
         name=settings.api_name,
@@ -189,6 +201,7 @@ async def lifespan(app: FastAPI):
         pass
     await client.stop()
     await cmgr.shutdown()
+    await netbox.close()
     await recorder.stop()
 
 
