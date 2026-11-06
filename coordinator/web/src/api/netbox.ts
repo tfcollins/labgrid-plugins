@@ -42,11 +42,14 @@ export interface NetBoxDevice {
   console_connections: NetBoxConsoleConnection[];
 }
 
-/** `configured` is false when the API has no NetBox URL/token set. */
+/** `configured` is false when the API has no NetBox URL/token set; `error`
+ * says why NetBox couldn't be asked (so "not matched" isn't mistaken for
+ * "not in NetBox"). */
 export interface PlaceNetBox {
   configured: boolean;
   matched: boolean;
   device: NetBoxDevice | null;
+  error: string | null;
 }
 
 export const netboxApi = {

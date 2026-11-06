@@ -79,7 +79,8 @@ function DeviceDetails({ device }: { device: NetBoxDevice }) {
 }
 
 /** The place's NetBox device, as a RelatedPanel section. Renders nothing until
- * loaded, on error, or when the API has no NetBox configured. */
+ * loaded, if the API request fails, or when the API has no NetBox configured;
+ * says so when the API couldn't ask NetBox. */
 export default function NetBoxSection({ place }: { place: string }) {
   const { data } = useQuery({
     queryKey: ["place-netbox", place],
@@ -95,6 +96,11 @@ export default function NetBoxSection({ place }: { place: string }) {
     <RelatedPanel.Section title="NetBox">
       {data.matched && data.device ? (
         <DeviceDetails device={data.device} />
+      ) : data.error ? (
+        <Stack spacing={1}>
+          <Text color="text.secondary">NetBox lookup failed.</Text>
+          <Text color="text.secondary" fontSize="xs" maxW="xs">{data.error}</Text>
+        </Stack>
       ) : (
         <Text color="text.secondary">
           No single NetBox device is named <Code fontSize="xs">{place}</Code>.

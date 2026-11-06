@@ -5,9 +5,9 @@ add-hardware`` registers each board under its place name. Only an exact,
 unique name match counts - a near miss would show another board's rack,
 outlet and console as this place's.
 
-Failures never raise into the API: an unreachable NetBox, a bad token or an
-unexpected payload is logged and reported as "not matched" (or the last good
-answer, while it is cached).
+Failures never raise into the API: an unreachable NetBox, a rejected token or
+an unreadable CA bundle is logged and reported in ``error`` - or, when there is
+one, the last good answer is served instead.
 """
 
 from __future__ import annotations
@@ -72,6 +72,9 @@ class PlaceNetBoxResponse(BaseModel):
     configured: bool = True
     matched: bool = False
     device: NetBoxDeviceInfo | None = None
+    # Set when NetBox couldn't be asked (unreachable, token rejected, ...), so
+    # "not matched" isn't mistaken for "this board isn't in NetBox".
+    error: str | None = None
 
 
 def _name(obj: Any) -> str | None:
@@ -93,6 +96,20 @@ def _peer(port: dict) -> tuple[str | None, str | None]:
     return _name(peers[0].get("device")), peers[0].get("name")
 
 
+def _describe(e: Exception) -> str:
+    """A short, secret-free reason a lookup failed, for the place page."""
+    if isinstance(e, httpx.HTTPStatusError):
+        code = e.response.status_code
+        if code in (401, 403):
+            return f"NetBox rejected the API token (HTTP {code})"
+        return f"NetBox returned HTTP {code}"
+    if isinstance(e, httpx.TimeoutException):
+        return "NetBox did not answer in time"
+    if isinstance(e, httpx.TransportError):
+        return f"cannot reach NetBox: {e}"
+    return f"NetBox lookup failed: {type(e).__name__}"
+
+
 class NetBoxClient:
     def __init__(
         self,
@@ -107,9 +124,15 @@ class NetBoxClient:
         self.token = token
         self.public_url = public_url.rstrip("/") if public_url else self.url
         self.ttl_seconds = ttl_seconds
-        self.verify: bool | ssl.SSLContext = (
-            ssl.create_default_context(cafile=ca_bundle) if verify and ca_bundle else verify
-        )
+        self._setup_error: str | None = None
+        self.verify: bool | ssl.SSLContext = verify
+        if verify and ca_bundle:
+            try:
+                self.verify = ssl.create_default_context(cafile=ca_bundle)
+            except (OSError, ssl.SSLError) as e:
+                # Reported on every lookup rather than stopping the API from starting.
+                self._setup_error = f"cannot load NetBox CA bundle {ca_bundle}: {e}"
+                logger.error("%s", self._setup_error)
         self._cache: dict[str, tuple[float, PlaceNetBoxResponse]] = {}
         self._client: httpx.AsyncClient | None = None
 
@@ -135,6 +158,8 @@ class NetBoxClient:
     async def get_place_info(self, place_name: str) -> PlaceNetBoxResponse:
         if not self.is_configured:
             return PlaceNetBoxResponse(configured=False, matched=False, device=None)
+        if self._setup_error:
+            return PlaceNetBoxResponse(configured=True, error=self._setup_error)
 
         now = time.monotonic()
         cached = self._cache.get(place_name)
@@ -147,7 +172,7 @@ class NetBoxClient:
             logger.warning("NetBox lookup failed for place '%s': %s", place_name, e)
             if cached:
                 return cached[1]
-            return PlaceNetBoxResponse(configured=True, matched=False, device=None)
+            return PlaceNetBoxResponse(configured=True, error=_describe(e))
         self._cache[place_name] = (now, res)
         return res
 

@@ -48,7 +48,12 @@ describe("NetBoxSection", () => {
   beforeEach(() => vi.clearAllMocks());
 
   it("shows the matched device with links into NetBox", async () => {
-    vi.mocked(netboxApi.getPlace).mockResolvedValue({ configured: true, matched: true, device });
+    vi.mocked(netboxApi.getPlace).mockResolvedValue({
+      configured: true,
+      matched: true,
+      device,
+      error: null,
+    });
     render(wrap(<NetBoxSection place="tron" />));
 
     const link = await screen.findByRole("link", { name: /tron/ });
@@ -74,6 +79,7 @@ describe("NetBoxSection", () => {
       configured: true,
       matched: false,
       device: null,
+      error: null,
     });
     render(wrap(<NetBoxSection place="tron" />));
 
@@ -81,11 +87,26 @@ describe("NetBoxSection", () => {
     expect(screen.getByText(/No single NetBox device is named/)).toBeInTheDocument();
   });
 
+  it("says when NetBox couldn't be asked, rather than that the board isn't in it", async () => {
+    vi.mocked(netboxApi.getPlace).mockResolvedValue({
+      configured: true,
+      matched: false,
+      device: null,
+      error: "NetBox rejected the API token (HTTP 403)",
+    });
+    render(wrap(<NetBoxSection place="tron" />));
+
+    expect(await screen.findByText("NetBox lookup failed.")).toBeInTheDocument();
+    expect(screen.getByText("NetBox rejected the API token (HTTP 403)")).toBeInTheDocument();
+    expect(screen.queryByText(/No single NetBox device/)).not.toBeInTheDocument();
+  });
+
   it("renders nothing when NetBox isn't configured", async () => {
     vi.mocked(netboxApi.getPlace).mockResolvedValue({
       configured: false,
       matched: false,
       device: null,
+      error: null,
     });
     const { container } = render(wrap(<NetBoxSection place="tron" />));
 

@@ -145,6 +145,7 @@ async def test_netbox_client_network_error_graceful():
     res = await client.get_place_info("err")
     assert res.configured is True
     assert res.matched is False
+    assert res.error.startswith("cannot reach NetBox")
     assert res.device is None
     await client.close()
 
@@ -179,7 +180,7 @@ def test_get_place_netbox_endpoint_returns_the_lookup(client_with_data):
     finally:
         del app.state.netbox
     assert resp.status_code == 200
-    assert resp.json() == {"configured": True, "matched": False, "device": None}
+    assert resp.json() == {"configured": True, "matched": False, "device": None, "error": None}
     assert seen == ["vcu118-lab1"]
 
 
@@ -224,6 +225,7 @@ async def test_a_name_shared_by_several_devices_is_not_matched():
 
     assert res.configured is True
     assert res.matched is False
+    assert res.error is None  # NetBox answered; there's just no single match
     await client.close()
 
 
@@ -240,6 +242,7 @@ async def test_a_rejected_token_is_not_matched_and_not_cached():
 
     assert res.configured is True
     assert res.matched is False
+    assert res.error == "NetBox rejected the API token (HTTP 403)"
     assert route.call_count == 2  # retried, not served from cache
     await client.close()
 
@@ -263,6 +266,7 @@ async def test_the_last_answer_is_kept_while_netbox_is_down():
 
     assert res.matched is True
     assert res.device.id == 7
+    assert res.error is None
     await client.close()
 
 
@@ -285,3 +289,16 @@ async def test_the_device_is_shown_when_its_cabling_cannot_be_read():
     assert res.device.power_connections == []
     assert res.device.console_connections == []
     await client.close()
+
+
+@pytest.mark.asyncio
+async def test_an_unreadable_ca_bundle_is_reported_not_raised(tmp_path):
+    client = NetBoxClient(
+        url="http://netbox.mock", token="t", ca_bundle=str(tmp_path / "missing.pem")
+    )
+
+    res = await client.get_place_info("tron")
+
+    assert res.configured is True
+    assert res.matched is False
+    assert "cannot load NetBox CA bundle" in res.error

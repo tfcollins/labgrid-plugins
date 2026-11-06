@@ -38,6 +38,7 @@ vi.mock("../../api/netbox", () => ({
       configured: true,
       matched: false,
       device: null,
+      error: null,
     }),
   },
 }));

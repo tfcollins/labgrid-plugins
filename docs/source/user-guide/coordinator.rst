@@ -147,8 +147,10 @@ token.
 
 The section is hidden while NetBox isn't configured. A place with no device of its name, or
 with one of that name in more than one site, shows "No single NetBox device is named ...".
-Lookups are cached for a minute. If NetBox can't be reached, the last answer is shown, or
-nothing. The page itself never fails because of NetBox.
+Lookups are cached for a minute. If NetBox can't be asked (unreachable, token rejected, CA
+bundle unreadable), the last answer is shown if there is one; otherwise the section says
+why ("NetBox lookup failed." and, for example, "NetBox rejected the API token (HTTP 403)"),
+and the API log has the details. The page and the API itself never fail because of NetBox.
 
 Connecting Exporters
 --------------------
