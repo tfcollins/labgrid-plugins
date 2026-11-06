@@ -14,6 +14,7 @@ from ..models import (
     SetCommentRequest,
     SetTagsRequest,
 )
+from ..netbox import PlaceNetBoxResponse
 from ..places.store import PlaceAcquisitionStore
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,17 @@ async def get_place(name: str, request: Request):
     if place is None:
         raise HTTPException(status_code=404, detail=f"Place '{name}' not found")
     return await _hydrate_owner(request, place)
+
+
+@router.get("/places/{name}/netbox", response_model=PlaceNetBoxResponse)
+async def get_place_netbox(name: str, request: Request):
+    """The NetBox device named after this place: rack, IP, and power and console cabling."""
+    if _get_client(request).get_place(name) is None:
+        raise HTTPException(status_code=404, detail=f"Place '{name}' not found")
+    netbox = getattr(request.app.state, "netbox", None)
+    if netbox is None:
+        return PlaceNetBoxResponse(configured=False)
+    return await netbox.get_place_info(name)
 
 
 @router.post("/places", status_code=201)

@@ -24,6 +24,12 @@ services:
       - LG_RECORDING_RETENTION_DAYS
       - LG_RECORDING_MAX_BYTES_PER_PLACE
       - LG_DEPLOYMENT_TOKEN
+      - LG_NETBOX_URL
+      - LG_NETBOX_TOKEN
+      - LG_NETBOX_PUBLIC_URL
+      - LG_NETBOX_VERIFY
+      - LG_NETBOX_CA_BUNDLE
+      - LG_NETBOX_CACHE_TTL_SECONDS
     volumes:
       - api-data:/data
       - ~/.ssh:/etc/ssh-host-keys:ro

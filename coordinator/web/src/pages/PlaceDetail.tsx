@@ -16,6 +16,7 @@ import { isSDMuxResource } from "../api/sdmux";
 import PowerControls from "../components/PowerControls";
 import SDMuxControls from "../components/SDMuxControls";
 import DownloadEnvModal from "../components/DownloadEnvModal";
+import NetBoxSection from "../components/NetBoxSection";
 import RelatedPanel from "../components/RelatedPanel";
 import Term from "../components/Term";
 import { useRelationships } from "../hooks/useRelationships";
@@ -573,6 +574,8 @@ export default function PlaceDetail() {
             )}
           </RelatedPanel.Section>
         )}
+
+        <NetBoxSection place={name} />
 
         <RelatedPanel.Footer to={`/topology?focus=place:${encodeURIComponent(name)}`}>
           Show in Topology →
