@@ -622,11 +622,13 @@ This component has no class-specific YAML arguments. Use ``{}``.
    * - Binding
      - Provider
    * - ``xilinxdevicejtag``
-     - ``XilinxDeviceJTAG`` supplies JTAG target IDs, boot artifact paths, and
-       the exporter host on which those paths are visible.
+     - ``XilinxDeviceJTAG`` supplies JTAG target IDs, boot artifact paths, the
+       exporter host on which those paths are visible, and the optional cable
+       ``serial`` and hw_server ``agent_url``.
    * - ``xilinxvivado``
-     - ``XilinxVivadoTool`` locates the Vivado installation and ``xsdb``
-       executable used to run programming scripts.
+     - ``XilinxVivadoTool`` (optional) locates the Vivado installation and ``xsdb``
+       executable used to run programming scripts. Without it, the ``xsdb`` entry
+       of the environment's ``tools:`` section is used, else ``xsdb`` on ``PATH``.
 
 **Example**
 

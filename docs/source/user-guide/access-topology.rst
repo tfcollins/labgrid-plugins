@@ -141,8 +141,8 @@ Driver transport matrix
      - Client → exporter SSH; exporter → CyberPower PDU, UDP/161.
      - ``pysnmp`` and PDU LAN reachability are required on the exporter.
    * - ``XilinxJTAGDriver``
-     - **Yes.** ``xsdb`` runs on the exporter selected by ``XilinxDeviceJTAG``; generated Tcl and client-readable xsdb payloads are staged automatically.
-     - Client → exporter SSH; ``jtag_url`` is resolved by the exporter-side ``xsdb`` process. ProxyJump-only exporters are not supported by the current Tcl staging helper.
+     - **Yes.** ``xsdb`` runs on the exporter selected by ``XilinxDeviceJTAG``; generated Tcl and client-readable xsdb payloads are staged automatically. With ``agent_url`` set on ``XilinxDeviceJTAG``, ``xsdb`` instead runs on the client and connects to that hw_server.
+     - Client → exporter SSH; ``jtag_url`` is resolved by the exporter-side ``xsdb`` process. With ``agent_url``: client → hw_server TCP (3121 by default), no SSH. ProxyJump-only exporters are not supported by the current Tcl staging helper.
      - Xilinx tools and JTAG/hw_server access must be on the exporter. Prefix a payload with ``exporter:`` when it already exists there. For compatibility, an absolute path absent on the client is also treated as exporter-local. ``dcc_log_path`` is an exporter-side output path and is not copied back to the client.
    * - ``OpenFPGALoaderDriver``
      - **Yes.** The bitstream is staged and ``openFPGALoader`` runs on the exporter selected by the bound debugger or ``XilinxDeviceJTAG`` resource.
@@ -180,7 +180,8 @@ Driver transport matrix
 The lower-case entry-point aliases have the same behavior as the class names
 shown above.  ``XilinxJTAGDriver`` also has an explicit diagnostic escape
 hatch: ``LG_FORCE_LOCAL_XSDB=1`` ignores exporter metadata and requires all
-Xilinx tools, payload paths, and JTAG/hw_server access on the client.
+Xilinx tools, payload paths, and JTAG/hw_server access on the client. The ``serial`` setting on ``XilinxDeviceJTAG`` restricts every target selection to
+one JTAG cable whichever way xsdb runs; see :ref:`cable selection <xilinx-jtag-cable-agent>`.
 
 .. _strategy-transport-matrix:
 

@@ -1397,6 +1397,10 @@ cable; see :doc:`hardware-ci-runner-setup` for host setup.
 - **microblaze_target** (default=3): JTAG target ID for the Microblaze processor core
 - **bitstream_path** (optional): Path to ``.bit`` bitstream (required for ``flash_bitstream``)
 - **kernel_path** (optional): Path to Microblaze Linux kernel image (``.strip``), required for ``download_kernel``
+- **serial** (optional): JTAG cable serial; restricts every target the driver selects to that
+  cable (see :ref:`cable selection <xilinx-jtag-cable-agent>`)
+- **agent_url** (optional): ``tcp:<host>:<port>`` of a hw_server for xsdb to connect to from
+  the client (see :ref:`cable selection <xilinx-jtag-cable-agent>`)
 - **vivado_path** (optional, default ``/tools/Xilinx/2025.1/Vivado``): Root of the Vivado install
 - **xsdb_path** (optional): Absolute path to ``xsdb``. If unset, derived as
   ``{dirname(vivado_path)}/Vitis/bin/xsdb`` (the standard 2022.2+ layout).
@@ -1551,6 +1555,85 @@ case, the TCL script is pushed to the exporter via ``scp`` and ``xsdb`` is
 invoked via ``ssh <host> xsdb <remote_script>``. The temporary script file is
 removed from the exporter after each call. This matches the
 coordinator/exporter topology where the JTAG cable lives on the exporter host.
+
+.. _xilinx-jtag-cable-agent:
+
+**Cable selection, remote hw_server and xsdb lookup**
+
+Every xsdb script the driver runs passes through one rewrite step first, so these settings
+apply to all of its methods, including ``run()``:
+
+- **serial** (on ``XilinxDeviceJTAG``):
+
+  - ``targets -set [-nocase] -filter {expr}`` becomes
+    ``-filter {(expr) && jtag_cable_serial == "<serial>"}``.
+  - ``targets <n>`` (``root_target``, ``microblaze_target``) selects the n-th target *on that
+    cable*. With only one cable on the host that's the same target as before.
+  - A wrong serial matches no target, so the call fails instead of driving another board.
+  - A target selection in any other form raises ``ExecutionError``.
+- **agent_url** (on ``XilinxDeviceJTAG``):
+
+  - xsdb runs on the client, and every ``connect`` (or ``connect -url`` to the local
+    hw_server) becomes ``connect -url <agent_url>``. Payloads stay on the client.
+  - ``tcp::3121`` (empty host) means the place's exporter host. The exporter's hw_server has to
+    listen on the network, which is its default (``TCP::3121``).
+  - A ``jtag_url`` naming any other hw_server is left as it is.
+- **xsdb lookup**: ``XilinxVivadoTool`` is optional. Without it the driver uses the ``xsdb``
+  entry of the environment's ``tools:`` section, else ``xsdb`` on ``PATH``.
+
+.. code-block:: yaml
+
+    imports:
+      - adi_lg_plugins
+    tools:
+      xsdb: /tools/Xilinx/2025.1/Vitis/bin/xsdb
+    targets:
+      main:
+        resources:
+          XilinxDeviceJTAG:
+            agent_url: tcp:tron.local:3121   # tron's hw_server, xsdb runs here
+            serial: '210299A567FE'           # the cable on that hw_server
+        drivers:
+          XilinxJTAGDriver: {}
+
+An exporter can only publish ``serial`` or ``agent_url`` once its own labgrid-plugins install has
+these attributes, so update the exporter before adding them to its configuration.
+
+*Generic commands*:
+
+.. code-block:: python
+
+    out = jtag.run(['targets -set -nocase -filter {name =~ "PSU"}',
+                    'puts [mrd -force -value 0xff5e0200]'])   # one session, returns stdout
+    jtag.program_bitstream("system_top.bit")   # fpga -f at root_target (default: bitstream_path)
+    jtag.load("system_top.bit")                # BootstrapProtocol: .bit/.bin -> program_bitstream,
+                                               # .elf -> load_and_run_elf on Cortex-A9 #0
+    jtag.force_bootmode_reset("sd")            # = set_zynqmp_boot_mode("sd1-ls", reset=True)
+
+- **run()** wraps the commands in ``connect`` … ``disconnect`` (``interactive=True`` leaves
+  the session open until xsdb exits). It raises ``ExecutionError`` if xsdb fails.
+- **force_bootmode_reset()** takes the boot mode names of the MLE labgrid fork and upstream
+  labgrid PR #706, in addition to everything :ref:`set_zynqmp_boot_mode
+  <zynqmp-boot-mode-override>` takes:
+
+  - ``ps_jtag`` / ``jtag`` → ``jtag``
+  - ``quad_spi_24`` → ``qspi24``
+  - ``quad_spi_32`` / ``qspi`` → ``qspi32``
+  - ``sd_0`` → ``sd0``, ``sd_1`` → ``sd1``
+  - ``sd`` / ``sd_1_ls`` → ``sd1-ls``
+  - ``usb`` / ``usb_0`` → ``usb0``
+  - ``pjtag_0`` / ``pjtag_1``
+
+  A full register word with ``use_alt`` set (``"0xE100"``) also works. A word without
+  ``use_alt`` is rejected, because the BootROM would ignore it.
+
+Checked 2026-11-07:
+
+- **serial**: on mini2's ZCU102 and nemo's ZC706 through the coordinator, ``get``/``set`` boot
+  mode, ``run()``, ``program_bitstream`` and ``load(".bit")`` worked with the right serial and
+  failed with a wrong one.
+- **agent_url**: xsdb on nemo, with no ``XilinxVivadoTool`` bound, drove tron's hw_server
+  (``tcp:10.0.0.79:3121``), and ``force_bootmode_reset("sd")`` set tron to SD1-LS.
 
 **Troubleshooting**
 

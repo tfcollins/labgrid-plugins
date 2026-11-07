@@ -9,9 +9,16 @@ bound ``xilinxdevicejtag`` resource: when it carries exporter-host info
 staged to the exporter and xsdb runs there over a reused ssh connection;
 otherwise xsdb runs locally. Prefix a path with ``exporter:`` to explicitly
 refer to a file which already exists on the xsdb host and skip staging.
+
+Two optional ``XilinxDeviceJTAG`` settings apply to every xsdb script the
+driver runs (see :meth:`XilinxJTAGDriver._scope_tcl`):
+
+* ``agent_url`` -- xsdb runs on the client and connects to that hw_server.
+* ``serial`` -- every target selection is restricted to that JTAG cable.
 """
 
 import os
+import re
 import subprocess
 import tempfile
 
@@ -19,6 +26,7 @@ import attr
 from labgrid.driver.common import Driver
 from labgrid.driver.exception import ExecutionError
 from labgrid.factory import target_factory
+from labgrid.protocol import BootstrapProtocol
 from labgrid.step import step
 
 from ._remote import RemoteExecMixin
@@ -35,6 +43,53 @@ def _tcl_quote_path(path: str) -> str:
         return path
     encoded = path.encode("utf-8").hex()
     return f"[encoding convertfrom utf-8 [binary decode hex {encoded}]]"
+
+
+# xsdb script rewriting for agent_url / serial (see XilinxJTAGDriver._scope_tcl).
+_LOCAL_HW_SERVER_URLS = {"tcp:127.0.0.1:3121", "tcp:localhost:3121"}
+_CONNECT_LINE = re.compile(
+    r"^(?P<indent>[ \t]*)connect(?:[ \t]+-url[ \t]+(?P<url>\S+))?[ \t]*$", re.M
+)
+_FILTER_SELECT = re.compile(
+    r"(?P<head>\btargets[ \t]+-set(?:[ \t]+-nocase)?[ \t]+-filter[ \t]+)\{(?P<expr>[^{}]*)\}"
+)
+_INDEX_SELECT = re.compile(r"^(?P<indent>[ \t]*)targets[ \t]+(?P<n>\d+)[ \t]*$", re.M)
+_ANY_SELECT = re.compile(r"\btargets[ \t]+(?:-set\b|\d)")
+_CABLE_TARGET_PROC = """proc lg_cable_target {serial n} {
+    set ids {}
+    foreach p [targets -target-properties] {
+        if {[dict exists $p jtag_cable_serial] && [dict get $p jtag_cable_serial] eq $serial} {
+            lappend ids [dict get $p target_id]
+        }
+    }
+    set id [lindex [lsort -integer $ids] [expr {$n - 1}]]
+    if {$id eq ""} { error "no target $n on JTAG cable $serial" }
+    return $id
+}
+"""
+
+# MLE labgrid fork / upstream labgrid PR #706 boot mode names -> ZYNQMP_BOOT_MODES.
+_MLE_BOOT_MODE_ALIASES = {
+    "ps_jtag": "jtag",
+    "quad_spi_24": "qspi24",
+    "quad_spi_32": "qspi32",
+    "qspi": "qspi32",
+    "sd_0": "sd0",
+    "sd_1": "sd1",
+    "sd": "sd1-ls",
+    "sd_1_ls": "sd1-ls",
+    "usb": "usb0",
+    "usb_0": "usb0",
+    "pjtag_0": "pjtag0",
+    "pjtag_1": "pjtag1",
+}
+_BITSTREAM_SUFFIXES = (".bit", ".bin")
+
+
+def _setting(res, name: str) -> str | None:
+    """A non-empty string resource setting, else None (absent on older exporters)."""
+    value = getattr(res, name, None)
+    return value if isinstance(value, str) and value else None
 
 
 # ZynqMP CRL_APB.BOOT_MODE_USER (UG1087): [15:12] alt_boot_mode (rw), [8] use_alt
@@ -116,21 +171,23 @@ def decode_zynqmp_boot_mode_user(raw: int, por: int | None = None) -> dict:
 
 @target_factory.reg_driver
 @attr.s(eq=False)
-class XilinxJTAGDriver(RemoteExecMixin, Driver):
+class XilinxJTAGDriver(RemoteExecMixin, Driver, BootstrapProtocol):
     """Program Xilinx FPGAs via JTAG using xsdb.
 
     Bindings:
 
     * ``xilinxdevicejtag`` — ``XilinxDeviceJTAG`` resource containing JTAG
-      target IDs and caller-local bitstream/kernel paths. Payloads are staged
-      automatically; ``exporter:/path`` denotes a pre-existing exporter file.
-    * ``xilinxvivado`` — ``XilinxVivadoTool`` resource containing
-      ``vivado_path`` and ``xsdb_path``.
+      target IDs, caller-local bitstream/kernel paths and the optional
+      ``serial`` / ``agent_url``. Payloads are staged automatically;
+      ``exporter:/path`` denotes a pre-existing exporter file.
+    * ``xilinxvivado`` (optional) — ``XilinxVivadoTool`` resource containing
+      ``vivado_path`` and ``xsdb_path``. Without it the ``xsdb`` tool from the
+      labgrid environment's ``tools:`` section is used, else ``xsdb`` on PATH.
     """
 
     bindings = {
         "xilinxdevicejtag": {"XilinxDeviceJTAG"},
-        "xilinxvivado": {"XilinxVivadoTool"},
+        "xilinxvivado": {"XilinxVivadoTool", None},
     }
 
     # RemoteExecMixin: the resource that locates the exporter host.
@@ -139,12 +196,84 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
         self.logger.info("XilinxJTAGDriver initialized")
-        self.logger.debug(f"xsdb path: {self.xilinxvivado.xsdb_path}")
+        self.logger.debug(f"xsdb path: {self._xsdb_bin()}")
+
+    def _xsdb_bin(self) -> str:
+        """xsdb executable: XilinxVivadoTool, else the env's ``xsdb`` tool, else PATH."""
+        if self.xilinxvivado is not None and getattr(self.xilinxvivado, "xsdb_path", None):
+            return self.xilinxvivado.xsdb_path
+        env = getattr(self.target, "env", None)
+        if env:
+            return env.config.get_tool("xsdb")
+        return "xsdb"
 
     def _exporter_host(self, res):
         if os.environ.get("LG_FORCE_LOCAL_XSDB", "").lower() in ("1", "true", "yes", "on"):
             return None
+        if _setting(res, "agent_url"):
+            # xsdb runs on the client and reaches hw_server over TCP.
+            return None
         return super()._exporter_host(res)
+
+    def _agent_url(self) -> str | None:
+        """``agent_url`` with an empty host filled in from the place's exporter."""
+        url = _setting(self.xilinxdevicejtag, "agent_url")
+        if not url:
+            return None
+        scheme, host, port = url.split(":", 2)
+        if not host:
+            host = RemoteExecMixin._exporter_host(self.xilinxdevicejtag) or "127.0.0.1"
+        return f"{scheme}:{host}:{port}"
+
+    def _scope_tcl(self, tcl_script: str) -> str:
+        """Apply ``agent_url`` and ``serial`` to an xsdb script.
+
+        * ``agent_url``: ``connect`` and ``connect -url <local hw_server>``
+          become ``connect -url <agent_url>``. A ``connect -url`` naming any
+          other hw_server is left as it is.
+        * ``serial``: ``targets -set [-nocase] -filter {expr}`` gains
+          ``&& jtag_cable_serial == "<serial>"``, and ``targets <n>`` selects the
+          n-th target on that cable rather than the n-th overall (the same
+          target when it is the only cable). A ``targets`` selection in any
+          other form can't be scoped and raises ``ExecutionError``.
+        """
+        agent_url = self._agent_url()
+        if agent_url:
+
+            def connect(m):
+                url = m.group("url")
+                if url and url.lower() not in _LOCAL_HW_SERVER_URLS:
+                    return m.group(0)
+                return f"{m.group('indent')}connect -url {agent_url}"
+
+            tcl_script = _CONNECT_LINE.sub(connect, tcl_script)
+
+        serial = _setting(self.xilinxdevicejtag, "serial")
+        if not serial:
+            return tcl_script
+        scoped = _FILTER_SELECT.sub(
+            lambda m: (
+                f'{m.group("head")}{{({m.group("expr")}) && jtag_cable_serial == "{serial}"}}'
+            ),
+            tcl_script,
+        )
+        scoped, n_index = _INDEX_SELECT.subn(
+            lambda m: f'{m.group("indent")}targets [lg_cable_target "{serial}" {m.group("n")}]',
+            scoped,
+        )
+        for line in scoped.splitlines():
+            if (
+                _ANY_SELECT.search(line)
+                and "jtag_cable_serial" not in line
+                and ("lg_cable_target" not in line)
+            ):
+                raise ExecutionError(
+                    f"cannot restrict this xsdb target selection to JTAG cable {serial}: "
+                    f"{line.strip()!r} (use targets -set -filter {{...}} or targets <n>)"
+                )
+        if n_index:
+            scoped = _CABLE_TARGET_PROC + scoped
+        return scoped
 
     def _stage_payload(self, path: str) -> str:
         """Return an xsdb-host path, staging caller-local files as needed.
@@ -176,7 +305,8 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
 
         Returns (stdout, stderr, returncode) as strings.
         """
-        xsdb = self.xilinxvivado.xsdb_path
+        xsdb = self._xsdb_bin()
+        tcl_script = self._scope_tcl(tcl_script)
 
         if not tcl_script.strip().endswith("exit"):
             tcl_script = tcl_script.rstrip() + "\nexit\n"
@@ -220,12 +350,26 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
     @Driver.check_active
     @step()
     def flash_bitstream(self):
-        """Flash the FPGA bitstream via JTAG."""
+        """Flash the FPGA bitstream configured on the XilinxDeviceJTAG resource."""
         if not self.xilinxdevicejtag.bitstream_path:
             raise ExecutionError("Bitstream path not configured in XilinxDeviceJTAG resource")
+        self.program_bitstream(self.xilinxdevicejtag.bitstream_path)
 
-        bitstream_path = self._stage_payload(self.xilinxdevicejtag.bitstream_path)
-        self.logger.info(f"Flashing bitstream: {self.xilinxdevicejtag.bitstream_path}")
+    @Driver.check_active
+    @step(args=["filename"])
+    def program_bitstream(self, filename=None):
+        """Program a PL bitstream (``.bit`` or raw ``.bin``) with xsdb ``fpga -f``.
+
+        ``filename`` defaults to the resource's ``bitstream_path``. Paths follow
+        the driver's staging rules (``exporter:/path`` for a file already on the
+        exporter). The ``root_target`` target is selected first.
+        """
+        filename = filename or self.xilinxdevicejtag.bitstream_path
+        if not filename:
+            raise ExecutionError("No bitstream given and none configured on XilinxDeviceJTAG")
+        filename = os.fspath(filename)
+        bitstream_path = self._stage_payload(filename)
+        self.logger.info(f"Flashing bitstream: {filename}")
 
         tcl_script = f"""
         connect
@@ -1056,3 +1200,66 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
         if returncode != 0:
             self.logger.warning(f"Stop CPU warning: {stderr}")
         self.logger.debug(f"Stop CPU output: {stdout}")
+
+    @Driver.check_active
+    @step(args=["tcl_cmds"])
+    def run(self, tcl_cmds, interactive: bool = False, timeout: int = 300) -> str:
+        """Run Tcl commands in one xsdb session and return its stdout.
+
+        The session is ``connect``, then ``tcl_cmds`` in order, then
+        ``disconnect`` (left out with ``interactive=True``). ``agent_url`` and
+        ``serial`` from the resource apply as for every other method, so select
+        targets as ``targets -set [-nocase] -filter {...}`` or ``targets <n>``.
+        Raises ``ExecutionError`` if xsdb exits non-zero.
+        """
+        if isinstance(tcl_cmds, str):
+            tcl_cmds = [tcl_cmds]
+        lines = ["connect", *tcl_cmds]
+        if not interactive:
+            lines.append("disconnect")
+        stdout, stderr, returncode = self._run_xsdb("\n".join(lines) + "\n", timeout=timeout)
+        if returncode != 0:
+            raise ExecutionError(f"xsdb failed with exit code {returncode}: {stderr or stdout}")
+        return stdout
+
+    @Driver.check_active
+    @step(args=["filename"])
+    def load(self, filename=None):
+        """BootstrapProtocol: program a bitstream, or run a Zynq-7000 bare-metal ELF.
+
+        ``.bit`` / ``.bin`` go to :meth:`program_bitstream` (``filename`` may be
+        omitted to use the resource's ``bitstream_path``); ``.elf`` goes to
+        :meth:`load_and_run_elf` on Cortex-A9 #0. Anything else raises ValueError.
+        """
+        if filename is None:
+            return self.program_bitstream()
+        name = os.fspath(filename)
+        if name.lower().endswith(_BITSTREAM_SUFFIXES):
+            return self.program_bitstream(name)
+        if name.lower().endswith(".elf"):
+            return self.load_and_run_elf(name)
+        raise ValueError(f"XilinxJTAGDriver.load: unsupported file type: {name}")
+
+    @Driver.check_active
+    @step(args=["bootmode"])
+    def force_bootmode_reset(self, bootmode, jtag_url: str = "TCP:127.0.0.1:3121") -> dict:
+        """Boot a ZynqMP from ``bootmode`` now: alias of ``set_zynqmp_boot_mode(..., reset=True)``.
+
+        Accepts the boot mode names of the MLE labgrid fork / upstream labgrid
+        PR #706 (``ps_jtag``, ``quad_spi_24``, ``quad_spi_32``, ``qspi``,
+        ``sd_0``, ``sd_1``, ``sd``, ``sd_1_ls``, ``emmc``, ``usb``, ``usb_0``,
+        ``nand``, ``pjtag_0``, ``pjtag_1``, ``jtag``), every name
+        ``set_zynqmp_boot_mode`` takes, a 4-bit mode value, or a full
+        ``BOOT_MODE_USER`` word with ``use_alt`` set (e.g. ``"0xE100"``).
+        """
+        mode = bootmode
+        if isinstance(bootmode, str):
+            key = bootmode.strip().lower()
+            mode = _MLE_BOOT_MODE_ALIASES.get(key, key)
+            if mode.startswith("0x"):
+                mode = int(mode, 16)
+        if isinstance(mode, int) and not isinstance(mode, bool) and mode > 0xF:
+            if not mode & _USE_ALT or mode & ~0xF1FF:
+                raise ValueError(f"BOOT_MODE_USER word {bootmode!r} must be (mode << 12) | 0x100")
+            mode = (mode >> 12) & 0xF
+        return self.set_zynqmp_boot_mode(mode, reset=True, jtag_url=jtag_url)
