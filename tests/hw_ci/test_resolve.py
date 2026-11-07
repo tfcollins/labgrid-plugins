@@ -65,6 +65,26 @@ def test_resolve_reads_jtag_fields():
     assert r.jtag_xsdb == "/tools/Xilinx/2025.1/Vitis/bin/xsdb"
 
 
+def test_resolve_reads_jtag_serial_and_agent_url():
+    jtag = MagicMock(spec=["root_target", "microblaze_target", "agent_url", "serial"])
+    jtag.root_target, jtag.microblaze_target = 1, 3
+    jtag.agent_url = "tcp:tron.local:3121"
+    jtag.serial = "210299A567FE"
+    r = resolve_resources(_target({"XilinxDeviceJTAG": jtag}))
+    assert r.jtag_agent_url == "tcp:tron.local:3121"
+    assert r.jtag_serial == "210299A567FE"
+    out = render_github_output(r)
+    assert "LG_JTAG_AGENT_URL=tcp:tron.local:3121\n" in out
+    assert "LG_JTAG_SERIAL=210299A567FE\n" in out
+
+
+def test_unset_serial_and_agent_url_are_not_emitted():
+    jtag = MagicMock(spec=["root_target", "microblaze_target", "agent_url", "serial"])
+    jtag.root_target, jtag.microblaze_target, jtag.agent_url, jtag.serial = 1, 3, None, None
+    out = render_github_output(resolve_resources(_target({"XilinxDeviceJTAG": jtag})))
+    assert "LG_JTAG_AGENT_URL" not in out and "LG_JTAG_SERIAL" not in out
+
+
 def test_resolve_no_resources_is_all_none():
     r = resolve_resources(_target({}))
     assert r == ResolvedResources()

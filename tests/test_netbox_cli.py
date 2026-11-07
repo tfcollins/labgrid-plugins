@@ -1794,7 +1794,7 @@ def test_only_the_strategies_the_template_can_run_are_offered(monkeypatch):
     assert asked.kwargs["Boot strategy"]["default"] == "BootFPGASoCSSH"
     # soc-ssh exports no JTAG cable, so no JTAG strategy can be picked; each says why.
     assert "BootZynqMPJTAG" not in asked.kwargs["Boot strategy"]["choices"]
-    assert row("BootZynqMPJTAG needs XilinxDeviceJTAG, XilinxVivadoTool")
+    assert row("BootZynqMPJTAG needs XilinxDeviceJTAG")
     assert row("BootFPGASoC needs MassStorageDevice, USBSDMuxDevice")
 
 

@@ -102,6 +102,15 @@ board with no JTAG produces no ``LG_JTAG_*``.
    * - ``LG_JTAG_MB_TARGET``
      - ``XilinxDeviceJTAG`` ``.microblaze_target``
      - JTAG target index for the MicroBlaze / processor core.
+   * - ``LG_JTAG_SERIAL``
+     - ``XilinxDeviceJTAG`` ``.serial``
+     - JTAG cable serial, only if the resource sets one. Scope your own target
+       selections to it, e.g.
+       ``targets -set -filter {name =~ "PSU" && jtag_cable_serial == "$LG_JTAG_SERIAL"}``.
+   * - ``LG_JTAG_AGENT_URL``
+     - ``XilinxDeviceJTAG`` ``.agent_url``
+     - hw_server URL (``tcp:<host>:<port>``), only if the resource sets one. Run
+       ``connect -url $LG_JTAG_AGENT_URL`` instead of a plain ``connect``.
 
 .. note::
 

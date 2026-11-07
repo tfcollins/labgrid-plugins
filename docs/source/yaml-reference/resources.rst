@@ -482,6 +482,17 @@ Xilinx FPGA device JTAG configuration.
      - ``None``
      - Standalone DTB path retained for workflows whose kernel does not embed it.
        For example, ``/srv/images/system.dtb``.
+   * - ``serial``
+     - ``None``
+     - JTAG cable serial. Every target ``XilinxJTAGDriver`` selects is restricted to this
+       cable, so a host with several cables drives the right board. With a wrong serial,
+       xsdb finds no target and the call fails. Letters, digits, ``-`` and ``_`` only. For
+       example, ``210308A474DF``.
+   * - ``agent_url``
+     - ``None``
+     - hw_server to connect to, as ``tcp:<host>:<port>``. When set, xsdb runs on the client
+       and connects over TCP instead of running on the exporter over ssh. An empty host
+       (``tcp::3121``) means the place's exporter. For example, ``tcp:tron.local:3121``.
 
 **Example**
 
