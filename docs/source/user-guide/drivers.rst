@@ -1539,6 +1539,9 @@ can boot from a different device without anyone changing its switches:
     attempt.
   - ``set_zynqmp_boot_mode("sd1-ls")`` from there logged a second 0x3B error, so the
     BootROM tried SD again.
+  - With the SD card reachable again, a board held in JTAG mode sent no serial output for
+    45 s. ``set_zynqmp_boot_mode("sd1-ls")``, with no power cycle, then booted it through
+    FSBL, BL31, U-Boot and Linux to a login prompt in 43 s.
 
 **Remote vs Local Execution**
 
