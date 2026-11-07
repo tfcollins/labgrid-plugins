@@ -1508,8 +1508,7 @@ can boot from a different device without anyone changing its switches:
 
   - ``pins`` / ``pins_name``: the switches, read from ``BOOT_MODE_POR``
     (``0xFF5E0204``) bits [3:0]. That register holds three copies of the
-    pins, e.g. ``0x0EEE`` for SD1-LS. On hardware this has only been checked
-    with the switches on JTAG.
+    pins: a ZCU102 with its switches on SD1-LS reads ``0x0EEE``.
   - ``use_alt`` and ``alt_boot_mode``: the override.
   - ``effective`` / ``effective_name``: the mode the next system reset boots.
 
@@ -1529,6 +1528,17 @@ can boot from a different device without anyone changing its switches:
     and Linux to a login prompt.
   - The override was still set after that reset.
   - A power cycle cleared it.
+
+- **Verified 2026-11-07** on a ZCU102 (place ``mini2``, switches on SD1-LS). The BootROM's
+  error register ``PMU_GLOBAL.CSU_BR_ERROR`` (``0xFFD80528``) shows whether it tried to
+  boot. The SD card was unreachable during this test, so every SD attempt failed and logged
+  error 0x3B:
+
+  - ``set_zynqmp_boot_mode("jtag")`` read back ``0x100``. After the reset the error
+    register was unchanged and the A53 cores stayed in reset, so the BootROM made no boot
+    attempt.
+  - ``set_zynqmp_boot_mode("sd1-ls")`` from there logged a second 0x3B error, so the
+    BootROM tried SD again.
 
 **Remote vs Local Execution**
 
