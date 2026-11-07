@@ -251,6 +251,11 @@ Strategy to boot an FPGA SoC device using ShellDriver and SSHDriver.
    * - ``ipv4_poll_interval``
      - ``3.0``
      - Delay in seconds between IPv4-address polling attempts. For example, ``2.0``.
+   * - ``eth_interface``
+     - ``'eth0'``
+     - Network interface on the DUT polled for its IPv4 address before SSH file updates. Set it
+       when the board has more than one NIC and ``eth0`` isn't the one cabled to the network (for
+       example a PS GEM with no physical link). For example, ``eth1``.
 
 **Bindings**
 
@@ -407,6 +412,11 @@ BootFPGASoCSSH + runtime Tick deploy (bitstream, overlay, module).
    * - ``ipv4_poll_interval``
      - ``3.0``
      - Delay in seconds between IPv4-address polling attempts. For example, ``2.0``.
+   * - ``eth_interface``
+     - ``'eth0'``
+     - Network interface on the DUT polled for its IPv4 address before SSH file updates. Set it
+       when the board has more than one NIC and ``eth0`` isn't the one cabled to the network (for
+       example a PS GEM with no physical link). For example, ``eth1``.
 
 **Bindings**
 
