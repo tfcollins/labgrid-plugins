@@ -65,6 +65,22 @@ BootFPGASoC strategy for FPGA SoC devices using Kuiper releases.
    * - ``debug_write_boot_log``
      - ``False``
      - Writes captured UART boot output to a local debug log when enabled. For example, ``true``.
+   * - ``boot_mode``
+     - ``None``
+     - ZynqMP only; needs the ``jtag`` binding. A boot device mode (``sd1-ls``, ``sd1``,
+       ``sd0``, ``qspi32``, ...) overrides the board's boot mode switches through
+       ``BOOT_MODE_USER`` right after each power-on of the boot, so a board strapped for JTAG
+       still boots its SD card. ``jtag`` is only valid for the ``jtag_boot_mode`` state,
+       which holds the board at its BootROM. ``None`` follows the switches. For example,
+       ``sd1-ls``.
+   * - ``jtag_url``
+     - ``'TCP:127.0.0.1:3121'``
+     - hw_server URL for the boot mode override, as seen from the host running xsdb. For
+       example, ``TCP:127.0.0.1:3121``.
+   * - ``jtag_power_on_settle_s``
+     - ``5``
+     - Seconds between power-on and the boot mode override's first JTAG access. For example,
+       ``8``.
 
 **Bindings**
 
@@ -90,6 +106,9 @@ BootFPGASoC strategy for FPGA SoC devices using Kuiper releases.
        extracted boot files.
    * - ``ssh``
      - ``SSHDriver`` (optional) — synchronizes the target's IP address discovered via the serial console.
+   * - ``jtag``
+     - ``XilinxJTAGDriver`` (optional) — writes the ZynqMP boot mode override for ``boot_mode``
+       and the ``jtag_boot_mode`` state.
 
 **Example**
 
@@ -2728,6 +2747,14 @@ Bring up a ZynqMP board over JTAG via the mini U-Boot SPL.
    * - ``jtag_url``
      - ``'TCP:127.0.0.1:3121'``
      - hw_server connection URL passed to xsdb. For example, ``TCP:127.0.0.1:3121``.
+   * - ``boot_mode``
+     - ``None``
+     - Boot mode override written to ``BOOT_MODE_USER`` over JTAG after each power-on. ``None``
+       follows the switches. ``jtag`` resets the board into JTAG boot mode before every JTAG
+       flow, so a board strapped for SD or QSPI can't race the bootstrap. A boot device mode
+       (``sd1-ls``, ``sd1``, ``sd0``, ``qspi32``, ...) makes ``kuiper_shell`` (``shell``) boot
+       the board's own image from that device instead of the JTAG production chain. For
+       example, ``sd1-ls``.
    * - ``serial_host_override``
      - ``None``
      - Optional network-serial host substituted before activating the shell console. For example,

@@ -465,6 +465,19 @@ def test_bootzynqmpjtag_defaults_to_tmp_recovery():
     assert "fdt set /axi/ethernet@a0000000 status disabled" in boot["sd_boot_command"]
 
 
+def test_bootzynqmpjtag_boot_mode_follows_the_switches_by_default():
+    # tron carries an informational `boot-mode=jtag` tag; it must not become an override.
+    p = _place("BootZynqMPJTAG", extra_tags={"boot-mode": "jtag"})
+    doc = yaml.safe_load(render_env(p))
+    assert doc["targets"]["main"]["drivers"]["BootZynqMPJTAG"]["boot_mode"] == ""
+
+
+def test_bootzynqmpjtag_renders_the_boot_mode_override_tag():
+    p = _place("BootZynqMPJTAG", extra_tags={"boot-mode-override": "sd1-ls"})
+    doc = yaml.safe_load(render_env(p))
+    assert doc["targets"]["main"]["drivers"]["BootZynqMPJTAG"]["boot_mode"] == "sd1-ls"
+
+
 def test_bootzynqmpjtag_overrides_sd_boot_command():
     p = _place("BootZynqMPJTAG", extra_tags={"sd-boot-command": "run custom_boot"})
     doc = yaml.safe_load(render_env(p))

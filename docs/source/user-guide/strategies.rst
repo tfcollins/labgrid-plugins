@@ -2467,6 +2467,53 @@ All paths must be readable on the host that runs ``xsdb``.
 See ``examples/ultrascale_jtag_boot/`` for building the SPL and a per-board YAML, and
 :doc:`../yaml-reference/strategies` for every attribute.
 
+.. _strategy-zynqmp-boot-mode:
+
+ZynqMP boot mode switching
+--------------------------
+
+``BootZynqMPJTAG`` and ``BootFPGASoC`` can boot a ZynqMP board from a device other than the
+one its boot mode switches select. They write the ``BOOT_MODE_USER`` override over JTAG after
+power-on, then system-reset the board; see :ref:`the driver methods <zynqmp-boot-mode-override>`. Set it with the
+``boot_mode`` attribute. ``None``, the default, follows the switches. The override lasts until
+the next power cycle, so each boot applies it again.
+
+**BootZynqMPJTAG** (place tag ``boot-mode-override`` in rendered hardware-CI environments):
+
+- **A boot device** (``sd1-ls``, ``sd1``, ``sd0``, ``qspi32``, ...): ``kuiper_shell``
+  (``shell``) boots the board's own image from that device. It goes ``powered_on`` →
+  ``override_boot`` → ``kuiper_shell`` instead of the JTAG production chain, and runs the same
+  ``kuiper_verify_commands``.
+- **jtag**: every JTAG flow (``jtag_bootstrap``, ``production_boot``, ``recovery_linux``)
+  starts from the ``jtag_boot_mode`` state. That state resets the board into JTAG boot mode
+  and checks that it stayed there, so a board strapped for SD or QSPI can't race the
+  bootstrap with its own image.
+- **The** ``jtag_boot_mode`` **state** can also be reached on its own: the board is powered
+  and its BootROM is waiting for the debugger.
+
+**BootFPGASoC** needs the optional ``jtag`` binding (``XilinxJTAGDriver``):
+
+- **A boot device**: the override is applied right after the power-on in ``booting``, so a
+  board strapped for JTAG still boots the SD card that the strategy prepared.
+- **The** ``jtag_boot_mode`` **state** holds an SD-strapped board at its BootROM instead of
+  booting the card. ``boot_mode: jtag`` is rejected for the Linux states.
+
+.. code-block:: yaml
+
+   BootZynqMPJTAG:
+     # ...JTAG chain inputs as usual...
+     boot_mode: sd1-ls      # transition("shell") boots the SD card, no JTAG chain
+
+Checked on the ADRV9009-ZU11EG / ADRV2CRR-FMC (place ``tron``, switches on JTAG):
+
+- With ``boot_mode: sd1-ls``, ``transition("shell")`` booted the SD card to a verified Kuiper
+  shell in about 100 s.
+- With ``boot_mode: jtag``, ``jtag_boot_mode`` held the board at its BootROM in 26 s. The JTAG
+  production chain then ran from that state to a verified Kuiper shell in about 250 s.
+
+``BootFPGASoC``'s boot mode support has unit tests only. tron has no SD mux, and mini2's
+ZCU102 isn't cabled for JTAG.
+
 State Transition Reference
 ---------------------------
 

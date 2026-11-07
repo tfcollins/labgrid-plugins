@@ -6,6 +6,7 @@ from labgrid.factory import target_factory
 from labgrid.step import step
 from labgrid.strategy import Strategy, StrategyError
 
+from ._bootmode import JTAG, boot_with_override, hold_in_jtag_boot_mode, normalize_boot_mode
 from ._compat import never_retry
 
 
@@ -23,6 +24,10 @@ class Status(enum.Enum):
         net_refresh: Refresh network/DHCP lease and sync IP address to SSHDriver if bound.
         shell: Interactive shell session available.
         soft_off: Device being shut down gracefully.
+        jtag_boot_mode: (ZynqMP, needs the ``jtag`` binding) powered on and reset
+            into JTAG boot mode through the BOOT_MODE_USER override, whatever
+            the switches say; the BootROM waits for the debugger instead of
+            booting the SD card.
     """
 
     unknown = 0
@@ -35,6 +40,7 @@ class Status(enum.Enum):
     net_refresh = 7
     shell = 8
     soft_off = 9
+    jtag_boot_mode = 10
 
 
 @target_factory.reg_driver
@@ -83,6 +89,7 @@ class BootFPGASoC(Strategy):
         "image_writer": {"USBStorageDriver", None},
         "kuiper": {"KuiperDLDriver", "CloudsmithDLDriver"},
         "ssh": {"SSHDriver", None},
+        "jtag": {"XilinxJTAGDriver", None},
     }
 
     status = attr.ib(default=Status.unknown)
@@ -110,6 +117,15 @@ class BootFPGASoC(Strategy):
     trigger_dhcp_request = attr.ib(default=True)
 
     debug_write_boot_log = attr.ib(default=False)
+
+    # ZynqMP boot mode override (needs the ``jtag`` binding). None follows the
+    # switches. A device mode (e.g. "sd1-ls") is applied right after each
+    # power-on of the boot, so a board strapped for JTAG still boots the SD
+    # card. "jtag" is only valid for the jtag_boot_mode state.
+    boot_mode = attr.ib(default=None, converter=normalize_boot_mode)
+    jtag_url = attr.ib(default="TCP:127.0.0.1:3121")
+    # Seconds between power-on and the first JTAG access (PS power-up).
+    jtag_power_on_settle_s = attr.ib(default=5)
 
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
@@ -149,6 +165,17 @@ class BootFPGASoC(Strategy):
         """
         if not isinstance(status, Status):
             status = Status[status]
+
+        if self.boot_mode == JTAG and status in (
+            Status.booting,
+            Status.booted,
+            Status.net_refresh,
+            Status.shell,
+        ):
+            raise StrategyError(
+                "boot_mode='jtag' stops the board at the BootROM, so it can't reach "
+                f"{status.name}; use the jtag_boot_mode state instead"
+            )
 
         self.logger.info(f"Transitioning to {status} (Existing status: {self.status})")
 
@@ -217,6 +244,9 @@ class BootFPGASoC(Strategy):
             self.power.off()
             time.sleep(5)
             self.power.on()
+            if self.boot_mode:
+                time.sleep(self.jtag_power_on_settle_s)
+                boot_with_override(self, self.boot_mode, self.jtag_url)
             self.logger.info("Device powered on, booting...")
 
         elif status == Status.booted:
@@ -349,6 +379,13 @@ class BootFPGASoC(Strategy):
                     raise StrategyError(f"failed to restart iiod after boot: {detail}")
                 self.logger.info("Restarted iiod to refresh the post-probe IIO context")
             self.logger.info("Shell access ready")
+
+        elif status == Status.jtag_boot_mode:
+            self.transition(Status.powered_off)
+            time.sleep(5)
+            self.power.on()
+            time.sleep(self.jtag_power_on_settle_s)
+            hold_in_jtag_boot_mode(self, self.jtag_url)
 
         elif status == Status.soft_off:
             # Stage is relatively standalone

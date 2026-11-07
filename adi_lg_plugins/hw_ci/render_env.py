@@ -207,6 +207,10 @@ def render_env(
         #       serial-protocol-override=raw
         "recovery_root": place.extra_tags.get("recovery-root", "/tmp/recovery"),
         "jtag_url": place.extra_tags.get("jtag-url", "TCP:127.0.0.1:3121"),
+        # ZynqMP boot mode override (BOOT_MODE_USER over JTAG), e.g. `sd1-ls` to
+        # boot a JTAG-strapped board's SD card. Empty = follow the switches. Not
+        # the informational `boot-mode` tag, which records the switch setting.
+        "boot_mode_override": place.extra_tags.get("boot-mode-override", ""),
         "serial_host_override": place.extra_tags.get("serial-host-override", ""),
         "serial_protocol_override": place.extra_tags.get("serial-protocol-override", ""),
         "sd_boot_command": place.extra_tags.get(

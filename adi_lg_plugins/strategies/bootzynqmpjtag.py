@@ -41,6 +41,7 @@ from labgrid.factory import target_factory
 from labgrid.step import step
 from labgrid.strategy import Strategy, StrategyError
 
+from ._bootmode import JTAG, boot_with_override, hold_in_jtag_boot_mode, normalize_boot_mode
 from ._compat import never_retry
 
 
@@ -54,6 +55,12 @@ class Status(enum.Enum):
         jtag_bootstrap: Mini U-Boot SPL has been JTAG-loaded and started.
         production_boot: PMUFW, PL, and production U-Boot were loaded and the
             EL3-to-EL2 handoff was started.
+        jtag_boot_mode: Powered on, then reset into JTAG boot mode through the
+            BOOT_MODE_USER override, whatever the switches say; the BootROM
+            waits for the debugger.
+        override_boot: Powered on, then reset with the boot mode overridden to
+            ``boot_mode`` (e.g. ``sd1-ls``); the board is booting from that
+            device on its own.
     """
 
     unknown = 0
@@ -65,6 +72,8 @@ class Status(enum.Enum):
     sd_flash_done = 6
     production_uboot_prompt = 7
     kuiper_shell = 8
+    jtag_boot_mode = 9
+    override_boot = 10
 
 
 @target_factory.reg_driver
@@ -167,6 +176,15 @@ class BootZynqMPJTAG(Strategy):
     ddr_scrub_settle_ms = attr.ib(default=30000)
 
     jtag_url = attr.ib(default="TCP:127.0.0.1:3121")
+
+    # Boot mode override (CRL_APB.BOOT_MODE_USER, applied over JTAG after each
+    # power-on). None follows the switches. "jtag" resets the board into JTAG
+    # boot mode before every JTAG flow, so a board strapped for SD/QSPI can't
+    # race the bootstrap with its own image. A device mode (e.g. "sd1-ls")
+    # makes kuiper_shell boot the board's own image from that device instead
+    # of the JTAG production chain.
+    boot_mode = attr.ib(default=None, converter=normalize_boot_mode)
+
     serial_host_override = attr.ib(default=None)
     serial_protocol_override = attr.ib(default=None)
 
@@ -219,6 +237,17 @@ class BootZynqMPJTAG(Strategy):
         shell.bypass_login = True
         self.target.activate(shell)
         return shell
+
+    def _boots_from_device(self):
+        """True when boot_mode makes the board boot its own image (not JTAG)."""
+        return self.boot_mode not in (None, JTAG)
+
+    def _power_on_for_jtag(self):
+        """Power-on step of the JTAG flows: JTAG boot mode forced if boot_mode='jtag'."""
+        if self.boot_mode == JTAG:
+            self.transition(Status.jtag_boot_mode)
+        else:
+            self.transition(Status.powered_on)
 
     @never_retry
     @step()
@@ -278,6 +307,17 @@ class BootZynqMPJTAG(Strategy):
             self._require_shell()
         elif status in (Status.production_uboot_prompt, Status.kuiper_shell):
             self._require_shell()
+            if status == Status.production_uboot_prompt and self._boots_from_device():
+                raise StrategyError(
+                    f"production_uboot_prompt is the JTAG chain; boot_mode={self.boot_mode!r} "
+                    "boots the board's own image (use kuiper_shell or override_boot)"
+                )
+        elif status == Status.override_boot:
+            if not self._boots_from_device():
+                raise StrategyError(
+                    "override_boot requires boot_mode set to a boot device (e.g. 'sd1-ls')"
+                )
+            self._require_shell()
 
         self.logger.info(f"Transitioning to {status} (existing: {self.status})")
 
@@ -305,7 +345,7 @@ class BootZynqMPJTAG(Strategy):
         elif status == Status.jtag_bootstrap:
             psu_init_tcl = self._require("psu_init_tcl")
             spl_elf = self._require("spl_elf")
-            self.transition(Status.powered_on)
+            self._power_on_for_jtag()
             self.target.activate(self.jtag)
             self.logger.info("JTAG-bootstrapping ZynqMP mini U-Boot SPL...")
             self.jtag.load_zynqmp_uboot(
@@ -321,7 +361,7 @@ class BootZynqMPJTAG(Strategy):
             self.logger.info("ZynqMP mini U-Boot SPL bootstrapped via JTAG")
 
         elif status == Status.production_boot:
-            self.transition(Status.powered_on)
+            self._power_on_for_jtag()
             if self.shell:
                 self._activate_shell_bypass()
             self.target.activate(self.jtag)
@@ -349,7 +389,7 @@ class BootZynqMPJTAG(Strategy):
             self.logger.info("ZynqMP production U-Boot started via JTAG handoff")
 
         elif status == Status.recovery_linux:
-            self.transition(Status.powered_on)
+            self._power_on_for_jtag()
             self._activate_shell_bypass()
             self.target.activate(self.jtag)
             self.jtag.load_zynqmp_recovery_linux(
@@ -421,9 +461,22 @@ class BootZynqMPJTAG(Strategy):
             self.shell._check_prompt_uboot()
             self.logger.info("Production U-Boot prompt verified on external UART")
 
+        elif status == Status.jtag_boot_mode:
+            self.transition(Status.powered_on)
+            hold_in_jtag_boot_mode(self, self.jtag_url)
+
+        elif status == Status.override_boot:
+            self.transition(Status.powered_on)
+            # Open the console before the reset so the whole boot is captured.
+            self._activate_shell_bypass()
+            boot_with_override(self, self.boot_mode, self.jtag_url)
+
         elif status == Status.kuiper_shell:
-            self.transition(Status.production_uboot_prompt)
-            self.shell.console.sendline(self.sd_boot_command)
+            if self._boots_from_device():
+                self.transition(Status.override_boot)
+            else:
+                self.transition(Status.production_uboot_prompt)
+                self.shell.console.sendline(self.sd_boot_command)
             self.shell.console.expect(self.kuiper_kernel_marker, timeout=self.kuiper_boot_timeout)
             self.shell.console.expect(self.kuiper_shell_marker, timeout=self.kuiper_boot_timeout)
 

@@ -73,6 +73,11 @@ targets:
         # xsdb runs on the exporter via RemoteExecMixin, so the hw_server
         # endpoint is exporter-local; override with the `jtag-url` tag.
         jtag_url: '${jtag_url}'
+        # Boot mode override (`boot-mode-override` place tag; empty = switches).
+        # `sd1-ls` makes transition("shell") boot the SD card's own image
+        # instead of the JTAG production chain; `jtag` forces JTAG boot mode
+        # before the JTAG flows on a board strapped for SD.
+        boot_mode: '${boot_mode_override}'
         # Serial quirks (per-place tags; empty = labgrid defaults). ser2net
         # benches whose rfc2217 hangs pyserial's 'purge' negotiation set
         # `serial-protocol-override=raw`; benches whose coordinator-advertised
