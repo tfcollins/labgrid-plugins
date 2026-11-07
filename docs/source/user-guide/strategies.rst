@@ -2511,10 +2511,15 @@ Checked on the ADRV9009-ZU11EG / ADRV2CRR-FMC (place ``tron``, switches on JTAG)
 - With ``boot_mode: jtag``, ``jtag_boot_mode`` held the board at its BootROM in 26 s. The JTAG
   production chain then ran from that state to a verified Kuiper shell in about 250 s.
 
-On a ZCU102 (place ``mini2``, switches on SD1-LS), ``BootFPGASoC``'s ``jtag_boot_mode`` held
-the board at its BootROM (``BOOT_MODE_USER`` = ``0x100``). ``BootFPGASoC`` with a boot device
-``boot_mode`` has unit tests only so far: the board's SD mux and serial console were off the USB
-bus during that session.
+Checked on a ZCU102 / AD9081 (place ``mini2``, switches on SD1-LS):
+
+- With the JTAG binding and ``boot_mode: sd1-ls``, ``BootFPGASoC`` ``transition("shell")``
+  prepared the SD card, booted it to a Kuiper shell in 85 s, and the AD9081 IIO devices were
+  present.
+- ``jtag_boot_mode`` held the board at its BootROM: ``BOOT_MODE_USER`` read ``0x100`` and the
+  console was silent for 45 s.
+- Switching that board to ``sd1-ls`` over JTAG, with no power cycle, booted it to a login prompt
+  in 43 s.
 
 State Transition Reference
 ---------------------------
