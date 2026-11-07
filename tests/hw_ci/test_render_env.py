@@ -379,6 +379,65 @@ def test_bootnoosjtag_a9_target_name_override_via_extra_subs():
     assert "${a9_target_name}" not in out
 
 
+def test_any_place_renders_an_openfpgaloader_env_with_the_strategy_override():
+    # nemo's boot-strategy is BootFPGASoCTFTP; its openfpgaloader-* tags still
+    # give a PL-programming env, with the exporter-side bitstream-path tag.
+    p = Place(
+        name="nemo",
+        carrier="zc706",
+        daughter_board="adrv9009",
+        boot_strategy="BootFPGASoCTFTP",
+        extra_tags={
+            "power-driver": "HomeAssistantPowerDriver",
+            "openfpgaloader-board": "zc706",
+            "openfpgaloader-usb-serial": "210251841453",
+            "bitstream-path": "/srv/recovery/zc706/system_top.bit",
+        },
+    )
+    doc = yaml.safe_load(render_env(p, strategy="BootOpenFPGALoader"))
+    drivers = doc["targets"]["main"]["drivers"]
+    assert "BootFPGASoCTFTP" not in drivers
+    assert drivers["OpenFPGALoaderDriver"]["board"] == "zc706"
+    assert drivers["OpenFPGALoaderDriver"]["usb_serial"] == "210251841453"
+    assert drivers["BootOpenFPGALoader"]["bitstream_path"] == "/srv/recovery/zc706/system_top.bit"
+    assert drivers["BootOpenFPGALoader"]["power_settle_time"] == 10
+
+
+def test_openfpgaloader_power_settle_is_overridable():
+    p = Place(
+        name="x",
+        carrier="zcu102",
+        daughter_board="ad9081",
+        boot_strategy="BootOpenFPGALoader",
+        extra_tags={"openfpgaloader-board": "zcu102", "openfpgaloader-power-settle": "15"},
+    )
+    doc = yaml.safe_load(render_env(p))
+    assert doc["targets"]["main"]["drivers"]["BootOpenFPGALoader"]["power_settle_time"] == 15
+
+
+def test_render_env_cli_passes_the_strategy_override(monkeypatch, tmp_path):
+    from adi_lg_plugins.hw_ci import cli
+
+    place = Place(
+        name="nemo",
+        carrier="zc706",
+        daughter_board="adrv9009",
+        boot_strategy="BootFPGASoCTFTP",
+        extra_tags={"openfpgaloader-board": "zc706"},
+    )
+    monkeypatch.setattr(cli.coord_mod, "resolve_coordinator", lambda c: "coord")
+    monkeypatch.setattr(cli.coord_mod, "list_live_places", lambda c, force_cli=False: ([place], []))
+    out = tmp_path / "env.yaml"
+
+    rc = cli.main(
+        ["render-env", "--place", "nemo", "--out", str(out), "--strategy", "BootOpenFPGALoader"]
+    )
+
+    assert rc == 0
+    drivers = yaml.safe_load(out.read_text())["targets"]["main"]["drivers"]
+    assert "BootOpenFPGALoader" in drivers and "BootFPGASoCTFTP" not in drivers
+
+
 def test_bootopenfpgaloader_renders_explicit_probe_configuration():
     p = Place(
         name="lablp",

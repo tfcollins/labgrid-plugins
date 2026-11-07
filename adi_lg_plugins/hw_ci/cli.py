@@ -372,7 +372,7 @@ def _cmd_render_env(args: argparse.Namespace) -> int:
         )
         return 2
     out_path = Path(args.out)
-    render_mod.render_env_to(match, out_path)
+    render_mod.render_env_to(match, out_path, strategy=args.strategy)
     print(f"wrote {out_path}", file=sys.stderr)
     return 0
 
@@ -572,6 +572,12 @@ def main(argv: list[str] | None = None) -> int:
     pr.add_argument("--place", required=True)
     pr.add_argument("--out", required=True)
     pr.add_argument("--force-cli", action="store_true")
+    pr.add_argument(
+        "--strategy",
+        default=None,
+        help="render this strategy's template instead of the place's boot-strategy tag "
+        "(e.g. BootOpenFPGALoader for PL-only programming of any tagged place)",
+    )
     pr.set_defaults(func=_cmd_render_env)
 
     prr = sub.add_parser(

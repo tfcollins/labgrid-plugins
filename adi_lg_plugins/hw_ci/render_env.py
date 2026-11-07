@@ -196,6 +196,9 @@ def render_env(
         "openfpgaloader_usb_busnum": place.extra_tags.get("openfpgaloader-usb-busnum", ""),
         "openfpgaloader_usb_devnum": place.extra_tags.get("openfpgaloader-usb-devnum", ""),
         "openfpgaloader_usb_serial": place.extra_tags.get("openfpgaloader-usb-serial", ""),
+        # On-board JTAG probes (ZC706, ZCU102, VCU118, ...) only enumerate on
+        # USB once the board is powered, so wait before openFPGALoader runs.
+        "openfpgaloader_power_settle": place.extra_tags.get("openfpgaloader-power-settle", "10"),
         # BootZynqMPJTAG (JTAG-strapped ZynqMP production boot): boot payloads
         # live at canonical names under `recovery-root` on the exporter host
         # (see the template header); serial overrides handle ser2net/pyserial

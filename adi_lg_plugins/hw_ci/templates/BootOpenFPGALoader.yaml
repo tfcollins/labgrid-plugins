@@ -30,3 +30,6 @@ targets:
       BootOpenFPGALoader:
         bitstream_path: '${bitstream_path}'
         boot_marker: '${boot_marker}'
+        # Seconds after power-on before programming: on-board JTAG probes
+        # enumerate only once the board is powered (`openfpgaloader-power-settle`).
+        power_settle_time: ${openfpgaloader_power_settle}
