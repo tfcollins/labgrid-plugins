@@ -100,3 +100,82 @@ def test_net_refresh_no_ssh_skips_sync():
     strategy.shell.run.assert_not_called()
     strategy.shell.get_ip_addresses.assert_not_called()
     assert strategy.status is Status.net_refresh
+
+
+# --- boot_mode: BOOT_MODE_USER override (ZynqMP) ----------------------------
+
+
+@pytest.fixture
+def no_sleep(monkeypatch):
+    monkeypatch.setattr("adi_lg_plugins.strategies.bootfpgasoc.time.sleep", lambda *_a: None)
+
+
+def _mode_strategy(boot_mode):
+    target = MagicMock()
+    target.bind.side_effect = lambda item: setattr(item, "target", target)
+    strategy = BootFPGASoC(target, "boot", boot_mode=boot_mode)
+    strategy.status = Status.sd_mux_to_dut
+    strategy.power = MagicMock()
+    strategy.jtag = MagicMock()
+    strategy.jtag.set_zynqmp_boot_mode.return_value = {
+        "effective_name": boot_mode,
+        "pins_name": "jtag",
+    }
+    strategy.jtag.get_zynqmp_boot_mode.return_value = {
+        "raw": 0x100,
+        "effective": 0,
+        "use_alt": True,
+        "pins_name": "sd1-ls",
+    }
+    return strategy
+
+
+def test_booting_applies_a_device_boot_mode_after_power_on(no_sleep):
+    strategy = _mode_strategy("sd1-ls")
+    order = []
+    strategy.power.on.side_effect = lambda: order.append(("on",))
+
+    def override(*args, **kwargs):
+        order.append(("override", *args))
+        return {"effective_name": "sd1-ls", "pins_name": "jtag"}
+
+    strategy.jtag.set_zynqmp_boot_mode.side_effect = override
+
+    strategy.transition(Status.booting)
+
+    assert order == [("on",), ("override", "sd1-ls")]
+    assert strategy.status is Status.booting
+
+
+def test_booting_without_boot_mode_leaves_jtag_alone(no_sleep):
+    strategy = _mode_strategy(None)
+    strategy.transition(Status.booting)
+    strategy.jtag.set_zynqmp_boot_mode.assert_not_called()
+
+
+def test_boot_mode_needs_the_jtag_binding(no_sleep):
+    strategy = _mode_strategy("sd1-ls")
+    strategy.jtag = None
+    with pytest.raises(StrategyError, match="XilinxJTAGDriver"):
+        strategy.transition(Status.booting)
+
+
+def test_jtag_boot_mode_state_holds_the_board_at_the_bootrom(no_sleep):
+    strategy = _mode_strategy(None)
+    strategy.shell = MagicMock()
+    strategy.status = Status.unknown
+
+    strategy.transition(Status.jtag_boot_mode)
+
+    strategy.power.on.assert_called_once()
+    strategy.jtag.set_zynqmp_boot_mode.assert_called_once_with(
+        "jtag", reset=True, jtag_url="TCP:127.0.0.1:3121"
+    )
+    assert strategy.status is Status.jtag_boot_mode
+
+
+def test_boot_mode_jtag_cannot_boot_linux(no_sleep):
+    strategy = _mode_strategy("jtag")
+    with pytest.raises(StrategyError, match="jtag_boot_mode state"):
+        strategy.transition(Status.booted)
+    strategy.power.on.assert_not_called()

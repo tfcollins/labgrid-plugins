@@ -263,3 +263,153 @@ def test_transition_shell_aliases_kuiper_shell():
         _make_strategy().transition("kuiper_shell")
     with pytest.raises(StrategyError):
         _make_strategy().transition("shell")
+
+
+# --- boot_mode: BOOT_MODE_USER override ------------------------------------
+
+
+def _boot_mode_strategy(boot_mode, **overrides):
+    target = MagicMock()
+    target.bind.side_effect = lambda item: setattr(item, "target", target)
+    s = BootZynqMPJTAG(
+        target,
+        "boot_zynqmp",
+        psu_init_tcl="/tmp/psu_init.tcl",
+        spl_elf="/tmp/u-boot-spl",
+        pmufw_bin="/tmp/pmufw.bin",
+        uboot_bin="/tmp/u-boot.bin",
+        handoff_bin="/tmp/el3-to-el2.bin",
+        boot_mode=boot_mode,
+        jtag_url="TCP:127.0.0.1:3121",
+    )
+    s.power = MagicMock()
+    s.jtag = MagicMock()
+    s.jtag.set_zynqmp_boot_mode.return_value = {
+        "effective_name": boot_mode,
+        "pins_name": "jtag",
+    }
+    s.jtag.get_zynqmp_boot_mode.return_value = {
+        "raw": 0x100,
+        "effective": 0,
+        "use_alt": True,
+        "pins_name": "sd1-ls",
+    }
+    s.shell = MagicMock()
+    s.shell.prompt = "# "
+    s.shell.run.return_value = ([], [], 0)
+    for k, v in overrides.items():
+        setattr(s, k, v)
+    return s
+
+
+@pytest.mark.parametrize(
+    ("given", "stored"), [(None, None), ("", None), ("SD1_LS", "sd1-ls"), (0, "jtag")]
+)
+def test_boot_mode_is_normalized(given, stored):
+    assert _boot_mode_strategy(given).boot_mode == stored
+
+
+def test_an_unknown_boot_mode_is_rejected_at_construction():
+    with pytest.raises(ValueError):
+        _boot_mode_strategy("floppy")
+
+
+def test_without_boot_mode_the_jtag_chain_never_touches_boot_mode():
+    s = _boot_mode_strategy(None)
+    s.transition("production_boot")
+    s.jtag.set_zynqmp_boot_mode.assert_not_called()
+    s.jtag.load_zynqmp_production_uboot.assert_called_once()
+
+
+def test_jtag_boot_mode_state_forces_and_verifies_jtag():
+    s = _boot_mode_strategy(None)
+    s.transition("jtag_boot_mode")
+    s.power.on.assert_called_once()
+    s.jtag.set_zynqmp_boot_mode.assert_called_once_with(
+        "jtag", reset=True, jtag_url="TCP:127.0.0.1:3121"
+    )
+    s.jtag.get_zynqmp_boot_mode.assert_called_once()
+    assert s.status == Status.jtag_boot_mode
+
+
+def test_jtag_boot_mode_fails_if_the_board_did_not_stay_in_jtag():
+    s = _boot_mode_strategy(None)
+    s.jtag.get_zynqmp_boot_mode.return_value = {
+        "raw": 0xE10E,
+        "effective": 0xE,
+        "use_alt": True,
+        "pins_name": "jtag",
+    }
+    with pytest.raises(StrategyError, match="JTAG boot mode"):
+        s.transition("jtag_boot_mode")
+
+
+def test_boot_mode_jtag_forces_jtag_before_the_production_chain():
+    s = _boot_mode_strategy("jtag")
+    order = []
+
+    def force(*args, **kwargs):
+        order.append("force")
+        return {"effective_name": "jtag", "pins_name": "sd1-ls"}
+
+    s.jtag.set_zynqmp_boot_mode.side_effect = force
+    s.jtag.load_zynqmp_production_uboot.side_effect = lambda **k: order.append("chain")
+
+    s.transition("production_boot")
+
+    assert order == ["force", "chain"]
+    assert s.status == Status.production_boot
+
+
+def test_boot_mode_jtag_also_guards_the_spl_bootstrap():
+    s = _boot_mode_strategy("jtag")
+    s.transition("jtag_bootstrap")
+    s.jtag.set_zynqmp_boot_mode.assert_called_once()
+    s.jtag.load_zynqmp_uboot.assert_called_once()
+
+
+def test_device_boot_mode_boots_kuiper_without_the_jtag_chain():
+    s = _boot_mode_strategy("sd1-ls")
+
+    s.transition("shell")
+
+    s.jtag.set_zynqmp_boot_mode.assert_called_once_with(
+        "sd1-ls", reset=True, jtag_url="TCP:127.0.0.1:3121"
+    )
+    s.jtag.load_zynqmp_production_uboot.assert_not_called()
+    s.shell.console.sendline.assert_not_called()  # no U-Boot SD command
+    expected = [c.args[0] for c in s.shell.console.expect.call_args_list]
+    assert expected == [s.kuiper_kernel_marker, s.kuiper_shell_marker]
+    assert s.shell.run_check.call_count == len(s.kuiper_verify_commands)
+    assert s.status == Status.kuiper_shell
+
+
+def test_console_is_open_before_the_override_reset():
+    s = _boot_mode_strategy("sd1-ls")
+    order = []
+    s.target.activate.side_effect = lambda d: order.append("shell" if d is s.shell else "other")
+
+    def override(*args, **kwargs):
+        order.append("override")
+        return {"effective_name": "sd1-ls", "pins_name": "jtag"}
+
+    s.jtag.set_zynqmp_boot_mode.side_effect = override
+
+    s.transition("override_boot")
+
+    assert "shell" in order
+    assert order.index("shell") < order.index("override")
+
+
+def test_override_boot_needs_a_device_boot_mode():
+    for mode in (None, "jtag"):
+        s = _boot_mode_strategy(mode)
+        with pytest.raises(StrategyError, match="override_boot requires"):
+            s.transition("override_boot")
+
+
+def test_production_uboot_prompt_is_refused_when_booting_from_a_device():
+    s = _boot_mode_strategy("sd1-ls")
+    with pytest.raises(StrategyError, match="JTAG chain"):
+        s.transition("production_uboot_prompt")
+    s.power.on.assert_not_called()
