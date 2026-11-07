@@ -1476,6 +1476,60 @@ cable; see :doc:`hardware-ci-runner-setup` for host setup.
     jtag.stop_zynq_cpu(a9_target_name='*Cortex-A9 MPCore #0')
     # halts A9 #0 — used between failed bootstrap attempts
 
+.. _zynqmp-boot-mode-override:
+
+*ZynqMP (UltraScale+) boot mode override*:
+
+A ZynqMP reads its boot mode from the mode switches at power-on, but software can
+override it. ``CRL_APB.BOOT_MODE_USER`` (``0xFF5E0200``, UG1087) holds an alternate
+mode in bits [15:12] and a ``use_alt`` flag in bit 8. The BootROM uses that mode on
+the next **system reset**. These methods write the register over JTAG, so a board
+can boot from a different device without anyone changing its switches:
+
+.. code-block:: python
+
+    jtag = target.get_driver("XilinxJTAGDriver")
+    target.activate(jtag)
+
+    jtag.get_zynqmp_boot_mode()
+    # {'pins_name': 'jtag', 'use_alt': False, 'effective_name': 'jtag', ...}
+
+    jtag.set_zynqmp_boot_mode("sd1-ls")   # write 0xE100, then rst -system:
+                                          # the board boots its SD card
+    jtag.set_zynqmp_boot_mode("jtag")     # stop an SD-strapped board at the BootROM
+    jtag.set_zynqmp_boot_mode("qspi32", reset=False)  # applies at the next reset
+    jtag.clear_zynqmp_boot_mode_override()            # the switches apply again
+
+- **Modes** (UG1085 boot mode table): ``jtag`` (0x0), ``qspi24`` (0x1), ``qspi32``
+  (0x2), ``sd0`` (0x3), ``nand`` (0x4), ``sd1`` (0x5), ``emmc`` (0x6), ``usb0``
+  (0x7), ``pjtag0`` (0x8), ``pjtag1`` (0x9) and ``sd1-ls`` (0xE, SD1 with a level
+  shifter). An integer from 0x0 to 0xF also works.
+- **What it returns.** Each method returns the decoded registers:
+
+  - ``pins`` / ``pins_name``: the switches, read from ``BOOT_MODE_POR``
+    (``0xFF5E0204``) bits [3:0]. That register holds three copies of the
+    pins, e.g. ``0x0EEE`` for SD1-LS. On hardware this has only been checked
+    with the switches on JTAG.
+  - ``use_alt`` and ``alt_boot_mode``: the override.
+  - ``effective`` / ``effective_name``: the mode the next system reset boots.
+
+  ``BOOT_MODE_USER[3:0]`` reports the overridden mode once ``use_alt`` is set,
+  not the switches. On a board strapped for JTAG, writing ``0xE100`` reads back
+  as ``0x0000E10E``.
+- **How long it lasts.** The override survives system resets and is cleared by
+  a power-on reset, so a power cycle hands the board back to its switches.
+- **Multiboot.** By default ``set_zynqmp_boot_mode`` clears ``CSU_MULTI_BOOT``
+  (``0xFFCA0010``) first, so the BootROM searches from ``BOOT.BIN``.
+- **Readback check.** Each method raises ``ExecutionError`` if the register
+  doesn't read back as written.
+- **Verified 2026-11-07** on the ADRV9009-ZU11EG / ADRV2CRR-FMC (place ``tron``,
+  switches on JTAG):
+
+  - ``set_zynqmp_boot_mode("sd1-ls")`` booted the SD card through FSBL, U-Boot
+    and Linux to a login prompt.
+  - The override was still set after that reset.
+  - A power cycle cleared it.
+
 **Remote vs Local Execution**
 
 The driver runs ``xsdb`` locally unless *any* sibling resource on the target

@@ -291,3 +291,177 @@ def test_load_zynqmp_production_uboot_rejects_partial_bl31_inputs(driver):
             "/tmp/u-boot.bin",
             bl31_bin="/tmp/bl31.bin",
         )
+
+
+# --- BOOT_MODE_USER (0xFF5E0200) boot-mode override -------------------------
+
+from adi_lg_plugins.drivers.xilinxjtagdriver import (  # noqa: E402
+    decode_zynqmp_boot_mode_user,
+    zynqmp_boot_mode_value,
+)
+
+
+def _reply_with(driver, raw, por=0x0):
+    """Make the fake xsdb print the register report like the real script does."""
+
+    def _fake(tcl_script, timeout=300):
+        driver._captured.append(tcl_script)
+        driver._timeouts.append(timeout)
+        return (
+            f"some xsdb noise\nBOOT_MODE_USER=0x{raw:08x} BOOT_MODE_POR=0x{por:08x}\n",
+            "",
+            0,
+        )
+
+    driver._run_xsdb = _fake
+
+
+@pytest.mark.parametrize(
+    ("mode", "value"),
+    [
+        ("jtag", 0x0),
+        ("qspi24", 0x1),
+        ("QSPI32", 0x2),
+        ("sd0", 0x3),
+        ("sd1", 0x5),
+        ("emmc", 0x6),
+        ("usb0", 0x7),
+        ("sd1-ls", 0xE),
+        ("sd1_ls", 0xE),
+        ("0xe", 0xE),
+        (5, 0x5),
+    ],
+)
+def test_boot_mode_names_and_values(mode, value):
+    assert zynqmp_boot_mode_value(mode) == value
+
+
+@pytest.mark.parametrize("mode", ["floppy", 0x10, -1, "0x1f", True, None])
+def test_invalid_boot_modes_are_rejected(mode):
+    with pytest.raises(ValueError):
+        zynqmp_boot_mode_value(mode)
+
+
+def test_decode_reads_switches_override_and_effective_mode():
+    # Readbacks from tron (ZU11EG, switches on JTAG), 2026-11-07.
+    # No override: BOOT_MODE_USER[3:0] is the switches.
+    info = decode_zynqmp_boot_mode_user(0x00000000, por=0x00000000)
+    assert (info["pins_name"], info["use_alt"], info["effective_name"]) == ("jtag", False, "jtag")
+    # After writing 0xE100, [3:0] follows the override; the switches stay in POR.
+    info = decode_zynqmp_boot_mode_user(0x0000E10E, por=0x00000000)
+    assert info["pins_name"] == "jtag"
+    assert info["use_alt"] is True
+    assert info["alt_boot_mode"] == 0xE
+    assert info["effective_name"] == "sd1-ls"
+    info = decode_zynqmp_boot_mode_user(0x00005105, por=0x00000000)
+    assert (info["pins_name"], info["effective_name"]) == ("jtag", "sd1")
+
+
+def test_decode_without_por_only_knows_the_switches_when_not_overridden():
+    assert decode_zynqmp_boot_mode_user(0x00000003)["pins_name"] == "sd0"
+    info = decode_zynqmp_boot_mode_user(0x0000E10E)
+    assert info["pins"] is None
+    assert info["effective_name"] == "sd1-ls"
+
+
+def test_set_boot_mode_writes_override_then_resets(driver):
+    _reply_with(driver, 0xE10E)
+
+    info = driver.set_zynqmp_boot_mode("sd1-ls")
+
+    tcl = driver._captured[0]
+    assert 'targets -set -nocase -filter {name =~ "PSU"}' in tcl
+    assert "mwr -force 0xffca0010 0x0" in tcl  # CSU_MULTI_BOOT cleared
+    assert "mwr -force 0xff5e0200 0xe100" in tcl
+    # Multiboot clear and override write come before the reset.
+    assert tcl.index("0xffca0010") < tcl.index("mwr -force 0xff5e0200") < tcl.index("rst -system")
+    assert "catch {con}" in tcl
+    assert info["effective_name"] == "sd1-ls"
+    assert info["pins_name"] == "jtag"
+
+
+def test_set_boot_mode_jtag_override(driver):
+    _reply_with(driver, 0x0100)
+
+    driver.set_zynqmp_boot_mode("jtag")
+
+    assert "mwr -force 0xff5e0200 0x0100" in driver._captured[0]
+
+
+def test_set_boot_mode_without_reset_or_multiboot_clear(driver):
+    _reply_with(driver, 0x5105)
+
+    driver.set_zynqmp_boot_mode(0x5, reset=False, clear_multiboot=False)
+
+    tcl = driver._captured[0]
+    assert "mwr -force 0xff5e0200 0x5100" in tcl
+    assert "rst -system" not in tcl
+    assert "0xffca0010" not in tcl
+
+
+def test_set_boot_mode_uses_the_given_hw_server(driver):
+    _reply_with(driver, 0x0100)
+
+    driver.set_zynqmp_boot_mode("jtag", jtag_url="TCP:10.0.0.79:3121")
+
+    assert "connect -url TCP:10.0.0.79:3121" in driver._captured[0]
+
+
+def test_set_boot_mode_fails_when_the_readback_does_not_match(driver):
+    _reply_with(driver, 0x0000)  # write ignored, e.g. wrong target
+
+    with pytest.raises(ExecutionError, match="did not take"):
+        driver.set_zynqmp_boot_mode("sd1-ls")
+
+
+def test_set_boot_mode_fails_when_xsdb_fails(driver):
+    driver._run_xsdb = lambda tcl, timeout=300: ("", "Cannot read DAP IDCODE", 1)
+
+    with pytest.raises(ExecutionError, match="DAP IDCODE"):
+        driver.set_zynqmp_boot_mode("jtag")
+
+
+def test_set_boot_mode_rejects_bad_mode_before_touching_jtag(driver):
+    with pytest.raises(ValueError):
+        driver.set_zynqmp_boot_mode("floppy")
+    assert driver._captured == []
+
+
+def test_get_boot_mode_reads_and_decodes(driver):
+    _reply_with(driver, 0xE10E)
+
+    info = driver.get_zynqmp_boot_mode()
+
+    tcl = driver._captured[0]
+    assert "mrd -force -value 0xff5e0200" in tcl
+    assert "mrd -force -value 0xff5e0204" in tcl
+    assert "mwr" not in tcl
+    assert "rst" not in tcl
+    assert info["pins_name"] == "jtag"
+    assert info["use_alt"] is True
+    assert info["effective_name"] == "sd1-ls"
+
+
+def test_get_boot_mode_fails_without_a_reading(driver):
+    driver._run_xsdb = lambda tcl, timeout=300: ("connected\n", "", 0)
+
+    with pytest.raises(ExecutionError):
+        driver.get_zynqmp_boot_mode()
+
+
+def test_clear_override(driver):
+    _reply_with(driver, 0x0000)
+
+    info = driver.clear_zynqmp_boot_mode_override()
+
+    tcl = driver._captured[0]
+    assert "mwr -force 0xff5e0200 0x0" in tcl
+    assert "rst -system" not in tcl
+    assert info["use_alt"] is False
+
+
+def test_clear_override_fails_if_use_alt_stays_set(driver):
+    _reply_with(driver, 0xE10E)
+
+    with pytest.raises(ExecutionError, match="use_alt"):
+        driver.clear_zynqmp_boot_mode_override()

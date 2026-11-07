@@ -37,6 +37,83 @@ def _tcl_quote_path(path: str) -> str:
     return f"[encoding convertfrom utf-8 [binary decode hex {encoded}]]"
 
 
+# ZynqMP CRL_APB.BOOT_MODE_USER (UG1087): [15:12] alt_boot_mode (rw), [8] use_alt
+# (rw), [3:0] boot_mode (ro): the mode pins captured at POR, replaced by
+# alt_boot_mode as soon as use_alt is set (so it is the mode the next system
+# reset boots, not the pins). The override survives a system reset
+# (``rst -system``) and is cleared by POR. BOOT_MODE_POR keeps the pins.
+ZYNQMP_BOOT_MODE_USER = 0xFF5E0200
+ZYNQMP_BOOT_MODE_POR = 0xFF5E0204
+ZYNQMP_CSU_MULTI_BOOT = 0xFFCA0010
+_USE_ALT = 0x100
+
+# Boot mode pin encodings, UG1085 "Boot Modes" table.
+ZYNQMP_BOOT_MODES = {
+    "jtag": 0x0,
+    "qspi24": 0x1,
+    "qspi32": 0x2,
+    "sd0": 0x3,
+    "nand": 0x4,
+    "sd1": 0x5,
+    "emmc": 0x6,
+    "usb0": 0x7,
+    "pjtag0": 0x8,
+    "pjtag1": 0x9,
+    "sd1-ls": 0xE,
+}
+_BOOT_MODE_NAMES = {value: name for name, value in ZYNQMP_BOOT_MODES.items()}
+
+
+def zynqmp_boot_mode_value(mode: str | int) -> int:
+    """The 4-bit boot mode for a name in ``ZYNQMP_BOOT_MODES`` or a pin value."""
+    if isinstance(mode, str):
+        key = mode.strip().lower().replace("_", "-")
+        if key in ZYNQMP_BOOT_MODES:
+            return ZYNQMP_BOOT_MODES[key]
+        try:
+            mode = int(key, 0)
+        except ValueError:
+            raise ValueError(
+                f"unknown ZynqMP boot mode {mode!r}; use one of "
+                f"{', '.join(ZYNQMP_BOOT_MODES)} or a value 0x0-0xF"
+            ) from None
+    if isinstance(mode, bool) or not isinstance(mode, int) or not 0 <= mode <= 0xF:
+        raise ValueError(f"ZynqMP boot mode must be 0x0-0xF, got {mode!r}")
+    return mode
+
+
+def zynqmp_boot_mode_name(value: int) -> str:
+    return _BOOT_MODE_NAMES.get(value, f"0x{value:X}")
+
+
+def decode_zynqmp_boot_mode_user(raw: int, por: int | None = None) -> dict:
+    """Split a BOOT_MODE_USER read (and optionally BOOT_MODE_POR) into fields.
+
+    ``effective`` is the mode the BootROM uses on the next system reset:
+    ``alt_boot_mode`` when ``use_alt`` is set, otherwise the strapped pins
+    (BOOT_MODE_USER[3:0] already reports exactly that). ``pins`` -- the boot
+    mode switches -- comes from BOOT_MODE_POR[3:0] when ``por`` is given, and
+    is otherwise only known while no override is set (``None`` if it is).
+    """
+    use_alt = bool(raw & _USE_ALT)
+    alt = (raw >> 12) & 0xF
+    effective = raw & 0xF
+    if por is not None:
+        pins = por & 0xF
+    else:
+        pins = None if use_alt else effective
+    return {
+        "raw": raw,
+        "por": por,
+        "pins": pins,
+        "pins_name": zynqmp_boot_mode_name(pins) if pins is not None else None,
+        "use_alt": use_alt,
+        "alt_boot_mode": alt,
+        "effective": effective,
+        "effective_name": zynqmp_boot_mode_name(effective),
+    }
+
+
 @target_factory.reg_driver
 @attr.s(eq=False)
 class XilinxJTAGDriver(RemoteExecMixin, Driver):
@@ -806,6 +883,161 @@ class XilinxJTAGDriver(RemoteExecMixin, Driver):
         if returncode != 0:
             raise ExecutionError(f"ZynqMP recovery Linux launch failed: {stderr or stdout}")
         self.logger.info("ZynqMP recovery Linux launched via JTAG")
+
+    def _zynqmp_psu_preamble(self, jtag_url: str) -> list[str]:
+        return [
+            f"connect -url {jtag_url}",
+            "after 500",
+            "configparams force-mem-accesses 1",
+            'targets -set -nocase -filter {name =~ "PSU"}',
+        ]
+
+    @staticmethod
+    def _boot_mode_report() -> str:
+        return (
+            'puts [format "BOOT_MODE_USER=0x%08x BOOT_MODE_POR=0x%08x" '
+            f"[mrd -force -value {ZYNQMP_BOOT_MODE_USER:#x}] "
+            f"[mrd -force -value {ZYNQMP_BOOT_MODE_POR:#x}]]"
+        )
+
+    @staticmethod
+    def _parse_boot_mode_marker(stdout: str) -> dict | None:
+        """The last BOOT_MODE_USER/BOOT_MODE_POR report xsdb printed, decoded."""
+        info = None
+        for line in stdout.splitlines():
+            fields = dict(
+                part.split("=", 1) for part in line.split() if part.startswith("BOOT_MODE_")
+            )
+            if "BOOT_MODE_USER" in fields:
+                por = fields.get("BOOT_MODE_POR")
+                info = decode_zynqmp_boot_mode_user(
+                    int(fields["BOOT_MODE_USER"], 16), int(por, 16) if por else None
+                )
+        return info
+
+    @Driver.check_active
+    @step()
+    def get_zynqmp_boot_mode(self, jtag_url: str = "TCP:127.0.0.1:3121") -> dict:
+        """Read ``CRL_APB.BOOT_MODE_USER`` (``0xFF5E0200``) of a ZynqMP over JTAG.
+
+        Returns the fields from :func:`decode_zynqmp_boot_mode_user`: the
+        boot mode switches (``pins``, from ``BOOT_MODE_POR``), whether a
+        software override (``use_alt``) is set, the override value, and the
+        ``effective`` mode the next system reset boots from. The board must be
+        powered.
+        """
+        lines = self._zynqmp_psu_preamble(jtag_url) + [
+            self._boot_mode_report(),
+            "disconnect",
+        ]
+        stdout, stderr, returncode = self._run_xsdb("\n".join(lines) + "\n", timeout=120)
+        info = self._parse_boot_mode_marker(stdout)
+        if returncode != 0 or info is None:
+            raise ExecutionError(f"Reading ZynqMP BOOT_MODE_USER failed: {stderr or stdout}")
+        self.logger.info(
+            "ZynqMP boot mode: switches=%s override=%s -> next reset boots %s "
+            "(BOOT_MODE_USER=0x%08x)",
+            info["pins_name"],
+            zynqmp_boot_mode_name(info["alt_boot_mode"]) if info["use_alt"] else "none",
+            info["effective_name"],
+            info["raw"],
+        )
+        return info
+
+    @Driver.check_active
+    @step()
+    def set_zynqmp_boot_mode(
+        self,
+        mode: str | int,
+        reset: bool = True,
+        clear_multiboot: bool = True,
+        jtag_url: str = "TCP:127.0.0.1:3121",
+    ) -> dict:
+        """Override a ZynqMP's boot mode pins over JTAG, then (by default) reboot.
+
+        Writes ``(mode << 12) | 0x100`` to ``CRL_APB.BOOT_MODE_USER``
+        (``0xFF5E0200``): ``alt_boot_mode`` = ``mode`` with ``use_alt`` set.
+        The BootROM reads it on the next **system reset**, so with
+        ``reset=True`` this issues ``rst -system`` and the board boots from
+        ``mode`` without touching its switches -- e.g. ``"sd1-ls"`` boots the
+        SD card of a board strapped for JTAG, and ``"jtag"`` stops a board
+        strapped for SD at the BootROM so it can be JTAG-booted without racing
+        the card.
+
+        The override survives later system resets and lasts until a power-on
+        reset (a power cycle) or :meth:`clear_zynqmp_boot_mode_override`.
+
+        Args:
+            mode: a name from ``ZYNQMP_BOOT_MODES`` (``jtag``, ``qspi24``,
+                ``qspi32``, ``sd0``, ``nand``, ``sd1``, ``emmc``, ``usb0``,
+                ``pjtag0``, ``pjtag1``, ``sd1-ls``) or a 4-bit pin value.
+            reset: issue ``rst -system`` after the write. Without it the new
+                mode only takes effect at the next system reset.
+            clear_multiboot: zero ``CSU_MULTI_BOOT`` (``0xFFCA0010``) first so
+                the BootROM starts its image search at ``BOOT.BIN`` rather than
+                a ``BOOT000N.BIN`` left by an earlier fallback.
+            jtag_url: hw_server URL as seen from the host running xsdb.
+
+        Returns:
+            The decoded register read back after the write (before the reset).
+        """
+        value = zynqmp_boot_mode_value(mode)
+        word = (value << 12) | _USE_ALT
+        name = zynqmp_boot_mode_name(value)
+        self.logger.info(
+            "Setting ZynqMP boot mode to %s (BOOT_MODE_USER=0x%04x)%s",
+            name,
+            word,
+            ", then system reset" if reset else "",
+        )
+        lines = self._zynqmp_psu_preamble(jtag_url) + ["catch {stop}"]
+        if clear_multiboot:
+            lines.append(f"mwr -force {ZYNQMP_CSU_MULTI_BOOT:#x} 0x0")
+        lines += [
+            f"mwr -force {ZYNQMP_BOOT_MODE_USER:#x} {word:#06x}",
+            self._boot_mode_report(),
+        ]
+        if reset:
+            # The debugger must not hold the cores after the reset, or the
+            # BootROM's hand-off to the FSBL is caught instead of run.
+            lines += ["rst -system", "after 500", "catch {con}"]
+        lines.append("disconnect")
+        stdout, stderr, returncode = self._run_xsdb("\n".join(lines) + "\n", timeout=120)
+        info = self._parse_boot_mode_marker(stdout)
+        if returncode != 0 or info is None:
+            raise ExecutionError(f"Setting ZynqMP boot mode failed: {stderr or stdout}")
+        if not info["use_alt"] or info["alt_boot_mode"] != value:
+            raise ExecutionError(
+                f"BOOT_MODE_USER read back 0x{info['raw']:08x} after writing 0x{word:04x}; "
+                "the override did not take"
+            )
+        return info
+
+    @Driver.check_active
+    @step()
+    def clear_zynqmp_boot_mode_override(
+        self, reset: bool = False, jtag_url: str = "TCP:127.0.0.1:3121"
+    ) -> dict:
+        """Clear the ``BOOT_MODE_USER`` override so the boot mode pins apply again.
+
+        A power cycle does the same. With ``reset=True`` the board is system-reset
+        and boots per its switches.
+        """
+        self.logger.info("Clearing ZynqMP boot mode override")
+        lines = self._zynqmp_psu_preamble(jtag_url) + [
+            f"mwr -force {ZYNQMP_BOOT_MODE_USER:#x} 0x0",
+            self._boot_mode_report(),
+        ]
+        if reset:
+            lines += ["rst -system", "after 500", "catch {con}"]
+        lines.append("disconnect")
+        stdout, stderr, returncode = self._run_xsdb("\n".join(lines) + "\n", timeout=120)
+        info = self._parse_boot_mode_marker(stdout)
+        if returncode != 0 or info is None:
+            raise ExecutionError(f"Clearing ZynqMP boot mode override failed: {stderr or stdout}")
+        if info["use_alt"]:
+            raise ExecutionError(f"BOOT_MODE_USER still has use_alt set (0x{info['raw']:08x})")
+        return info
 
     @Driver.check_active
     @step()
