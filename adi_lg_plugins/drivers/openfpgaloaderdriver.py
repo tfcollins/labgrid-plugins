@@ -14,6 +14,8 @@ from labgrid.step import step
 
 from ._remote import RemoteExecMixin
 
+_EXPORTER_PATH_PREFIX = "exporter:"
+
 
 def _optional_string(_instance, attribute, value):
     if value is not None and not isinstance(value, str):
@@ -152,22 +154,49 @@ class OpenFPGALoaderDriver(RemoteExecMixin, Driver, BootstrapProtocol):
     @Driver.check_active
     @step(args=["filename", "write_flash"])
     def program(self, filename, *, write_flash=False):
-        """Program a bitstream, requiring an explicit opt-in for flash writes."""
+        """Program a bitstream, requiring an explicit opt-in for flash writes.
+
+        ``filename`` is a caller-local file (staged to the exporter), or a file
+        already on the exporter: ``exporter:/path``, or an absolute path that
+        does not exist locally when the probe is on a remote exporter (as the
+        ``bitstream-path`` place tags are). Exporter files are checked to exist
+        there before openFPGALoader runs.
+        """
         if not filename:
             raise ExecutionError("bitstream filename is required")
         filename = os.fspath(filename)
-        if not os.path.isfile(filename):
-            raise ExecutionError(f"bitstream does not exist: {filename}")
         if write_flash and not self.allow_flash:
             raise ExecutionError("flash programming is disabled; set allow_flash: true explicitly")
 
         try:
-            staged = self._stage_file(os.path.abspath(filename))
+            staged = self._bitstream_on_exporter(filename)
             mode = "--write-flash" if write_flash else "--write-sram"
             command = self._base_command() + [mode, staged]
             return self._run(command)
         finally:
             self._cleanup_remote_stage()
+
+    def _bitstream_on_exporter(self, filename: str) -> str:
+        """The exporter-side path of ``filename``, staging a caller-local file."""
+        if filename.startswith(_EXPORTER_PATH_PREFIX):
+            path = filename.removeprefix(_EXPORTER_PATH_PREFIX)
+            if not path:
+                raise ExecutionError("exporter: bitstream path must not be empty")
+            return self._require_exporter_file(path)
+        if os.path.isfile(filename):
+            return self._stage_file(os.path.abspath(filename))
+        if os.path.isabs(filename) and self._is_remote:
+            return self._require_exporter_file(filename)
+        raise ExecutionError(f"bitstream does not exist: {filename}")
+
+    def _require_exporter_file(self, path: str) -> str:
+        try:
+            result = self._remote_run(["test", "-f", path])
+        except OSError as exc:
+            raise ExecutionError(f"checking bitstream on the exporter failed: {exc}") from exc
+        if result.returncode:
+            raise ExecutionError(f"bitstream does not exist on the exporter: {path}")
+        return path
 
     @Driver.check_active
     @step()

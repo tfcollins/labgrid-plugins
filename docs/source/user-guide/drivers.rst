@@ -1594,8 +1594,77 @@ through one exactly selected USB JTAG probe - no Vivado install required. Used b
   both ``allow_flash: true`` here and an explicit ``program(path, write_flash=True)`` call.
 - **timeout** (default=300): Seconds allowed for one openFPGALoader run
 
-The bitstream is staged to the exporter and openFPGALoader runs there, next to the probe. See
-:doc:`../yaml-reference/drivers` for complete Exporter and Local examples.
+openFPGALoader runs on the exporter, next to the probe. A caller-local bitstream is staged
+there first. A file that is already on the exporter can be given as ``exporter:/path``. An
+absolute path that doesn't exist locally on a remote place is also taken as an exporter path,
+which is what the ``bitstream-path`` place tags hold. Either way the file is checked to exist on
+the exporter before openFPGALoader runs. See :doc:`../yaml-reference/drivers` for complete
+Exporter and Local examples.
+
+.. _openfpgaloader-lab-boards:
+
+**Lab boards** (checked 2026-11-07). Each place carries ``openfpgaloader-board`` or
+``openfpgaloader-cable`` plus ``openfpgaloader-usb-serial`` tags. On every board below, an
+SRAM load of a stock bitstream went through this driver via the coordinator, and was confirmed
+with ``--detect`` before and after:
+
+.. list-table::
+   :header-rows: 1
+   :widths: 12 26 14 22 26
+
+   * - Place
+     - Board
+     - FPGA
+     - Selection
+     - SRAM load
+   * - ``bq``
+     - ZC706 + ADRV9371
+     - XC7Z045
+     - ``board: zc706``
+     - 7.6 MB ``.bit``, 11 s
+   * - ``nemo``
+     - ZC706 + ADRV9009
+     - XC7Z045
+     - ``board: zc706``
+     - 7.6 MB ``.bit``, 11 s
+   * - ``lablp``
+     - ADRV9361-Z7035 / ADRV1CRR-FMC
+     - XC7Z035
+     - ``cable: digilent_hs2``
+     - 4.2 MB ``.bit``, 6 s
+   * - ``mini2``
+     - ZCU102 + AD9081
+     - XCZU9EG
+     - ``board: zcu102``
+     - 13.4 MB raw ``.bin``, 20 s
+   * - ``tron``
+     - ADRV9009-ZU11EG / ADRV2CRR-FMC
+     - XCZU11EG
+     - ``cable: digilent_hs2``
+     - 14.5 MB ``.bit``, 21 s
+   * - ``nuc``
+     - VCU118 + FMCDAQ3
+     - XCVU9P
+     - ``board: vcu118``
+     - 29.9 MB ``.bit``, 44 s
+
+Notes for these boards:
+
+- **openFPGALoader build.** Every exporter runs ``/usr/local/bin/openFPGALoader``, a symlink to
+  ``/opt/openFPGALoader/v1.2.0-39bb588-xc7z035/``. That is upstream commit ``39bb588`` with
+  one added device-table entry for the XC7Z035 (IDCODE ``0x23732093``), which upstream still
+  lacks. The build needs the ``libhidapi-libusb0`` runtime package.
+- **Probes need board power.** The boards' on-board Digilent probes appear on USB only while
+  the board is powered. ``BootOpenFPGALoader`` therefore waits ``power_settle_time`` after
+  power-on; rendered environments default it to 10 s (``openfpgaloader-power-settle`` tag).
+- **ZynqMP.** Before the load the PL is listed as ``zynqmp_cfgn`` (unconfigured), and after it
+  as ``zynqmp``. A ZynqMP ``BOOT.BIN`` stores the PL bitstream as byte-swapped 32-bit words.
+  Swap them back (sync word ``AA995566``) to get a raw ``.bin`` that openFPGALoader accepts.
+- **hw_server.** openFPGALoader can open the probe while ``hw_server`` is running, as long as
+  no ``xsdb`` session is connected at that moment.
+- **Rendering an env.** To get a programming env for a place whose ``boot-strategy`` is
+  something else, run
+  ``adi-lg-hw-ci render-env --place <name> --strategy BootOpenFPGALoader --out env.yaml``.
 
 Tick Runtime Drivers
 --------------------
