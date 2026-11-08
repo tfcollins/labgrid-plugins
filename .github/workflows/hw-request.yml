@@ -217,7 +217,7 @@ jobs:
           if [ -n "${{ inputs.prism-upload-cmd }}" ]; then
             ${{ inputs.prism-upload-cmd }}
           else
-            # Prism's uploader is vendored into adi-labgrid-plugins (stdlib-only);
+            # Prism's uploader is vendored into labgrid-plugins (stdlib-only);
             # run it from the installed package — no pip-install / private-repo fetch.
             "$VENV_DIR/bin/python" -m adi_lg_plugins.hw_ci.prism_upload.upload_run "$PRISM_JUNIT" \
               --url "$PRISM_URL" \

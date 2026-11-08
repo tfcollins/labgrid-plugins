@@ -4,10 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**adi-labgrid-plugins** is a collection of Analog Devices, Inc. (ADI) specific plugins for the labgrid hardware testing framework. The package provides drivers, resources, and boot strategies for controlling and testing embedded devices with various power management systems, file transfer mechanisms, and FPGA boot workflows.
+**labgrid-plugins** (Python package `adi_lg_plugins`) is a collection of Analog Devices, Inc. (ADI) specific plugins for the labgrid hardware testing framework. The package provides drivers, resources, and boot strategies for controlling and testing embedded devices with various power management systems, file transfer mechanisms, and FPGA boot workflows.
 
 - Language: Python 3.10+
-- Package name: `adi-labgrid-plugins`
+- Package name: `labgrid-plugins` (distribution, per `pyproject.toml`); import name `adi_lg_plugins`
 - Plugin system: Entry-point based discovery for labgrid framework integration
 - License: `pyproject.toml` declares LGPL-2.1-or-later but `LICENSE`/`README.md` are Apache 2.0 — treat as unresolved; ask before adding license headers.
 - Core dependency: upstream `labgrid>=25.0` (PyPI). Plugins register via package self-import (`adi_lg_plugins/__init__.py` imports all driver/resource/strategy submodules so their `@reg_driver`/`@reg_resource` decorators run) **and** labgrid's native `imports: [adi_lg_plugins]` config key. Upstream labgrid has no entry-point plugin auto-discovery, so any labgrid env YAML that names ADI drivers/resources/strategies must include `imports: [adi_lg_plugins]` (or the consuming process must `import adi_lg_plugins`). The fork-only `never_retry` strategy decorator is shimmed in `adi_lg_plugins/strategies/_compat.py`.
