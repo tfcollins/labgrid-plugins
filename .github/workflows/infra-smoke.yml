@@ -165,7 +165,7 @@ jobs:
         run: |
           set -uo pipefail
           [ -f "$PRISM_JUNIT" ] || { echo "::notice::no JUnit produced; skipping Prism upload"; exit 0; }
-          # Prism's uploader is vendored into adi-labgrid-plugins (stdlib-only) and
+          # Prism's uploader is vendored into labgrid-plugins (stdlib-only) and
           # runs from the installed package — no pip-install of a nonexistent
           # package, no clone of the private prism repo.
           "$VENV_DIR/bin/python" -m adi_lg_plugins.hw_ci.prism_upload.upload_run "$PRISM_JUNIT" \

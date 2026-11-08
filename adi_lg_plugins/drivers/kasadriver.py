@@ -37,7 +37,7 @@ def _discover():
     except ImportError as e:
         raise RuntimeError(
             "python-kasa is required to control a local KasaOutlet; "
-            'install it with: pip install "adi-labgrid-plugins[kasa]"'
+            'install it with: pip install "labgrid-plugins[kasa]"'
         ) from e
     return Discover
 
