@@ -1116,6 +1116,24 @@ def _ask_field(
     return "" if answer == "-" else answer
 
 
+def _format_action_line(line: str) -> str:
+    """Format an action result line from NetBox connection helpers nicely with status badges."""
+    escaped = escape(line)
+    if "is already connected" in line:
+        return f"  • {escaped} ... [green]✓ already connected[/green]"
+    if line.startswith("connected "):
+        return f"  • {escaped} ... [green]✓ connected[/green]"
+    if line.startswith("created "):
+        return f"  • {escaped} ... [green]✓ created[/green]"
+    if line.startswith("recorded "):
+        return f"  • {escaped} ... [green]✓ recorded[/green]"
+    if "keeps its" in line:
+        return f"  • {escaped} ... [yellow]ℹ kept existing[/yellow]"
+    if "left as is" in line:
+        return f"  • {escaped} ... [yellow]ℹ left as is[/yellow]"
+    return f"  • {escaped} ... [green]✓ successful[/green]"
+
+
 @netbox_group.command(name="add-hardware")
 @click.option("--netbox-url", envvar="NETBOX_URL", default=None, help="NetBox base URL")
 @click.option("--netbox-token", envvar="NETBOX_TOKEN", default=None, help="NetBox API token")
@@ -1729,52 +1747,97 @@ def _onboard(
     if netbox_done:
         console.print("[dim]NetBox device: done in an earlier run, skipped[/dim]")
     else:
+        console.print(f"\n[bold]Adding components to NetBox ({netbox.url.rstrip('/')})...[/bold]")
 
         def register(nb):
-            client.ensure_schema(nb)
-            device = client.create_or_update_device(
-                nb,
-                name,
-                carrier=carrier,
-                site_slug=site_slug,
-                custom_fields={
-                    "carrier": carrier,
-                    "daughter_board": daughter_board,
-                    "boot_strategy": boot_strategy,
-                    "exporter_host": ssh_target,
-                    "runner_label": runner_label,
-                },
-            )
+            try:
+                client.ensure_schema(nb)
+                console.print("  • NetBox schema & custom fields ... [green]✓ verified[/green]")
+            except Exception as e:
+                console.print(f"  • NetBox schema & custom fields ... [red]✗ failed: {e}[/red]")
+                raise
+
+            try:
+                device = client.create_or_update_device(
+                    nb,
+                    name,
+                    carrier=carrier,
+                    site_slug=site_slug,
+                    custom_fields={
+                        "carrier": carrier,
+                        "daughter_board": daughter_board,
+                        "boot_strategy": boot_strategy,
+                        "exporter_host": ssh_target,
+                        "runner_label": runner_label,
+                    },
+                )
+                console.print(
+                    f"  • NetBox device '{name}' (site: {site_slug}, carrier: {carrier}) ... [green]✓ ready[/green]"
+                )
+            except Exception as e:
+                console.print(f"  • NetBox device '{name}' ... [red]✗ failed: {e}[/red]")
+                raise
+
             done = []
             if power_link is not None:
-                done = client.connect_power(
-                    nb,
-                    device,
-                    site_slug=site_slug,
-                    device=power_link.device,
-                    settings=power_link.settings,
-                    outlets=list(power_link.outlets),
-                )
-            for link in (serial_link, jtag_link):
-                if link is not None:
-                    done += client.connect_console(
+                try:
+                    p_done = client.connect_power(
                         nb,
                         device,
-                        kind=link.kind,
                         site_slug=site_slug,
-                        device=link.device,
-                        port=link.port,
-                        path=link.path,
+                        device=power_link.device,
+                        settings=power_link.settings,
+                        outlets=list(power_link.outlets),
                     )
+                    for line in p_done:
+                        console.print(_format_action_line(line))
+                    done += p_done
+                except Exception as e:
+                    console.print(
+                        f"  • Power connection to '{power_link.device}' ... [red]✗ failed: {e}[/red]"
+                    )
+                    raise
+
+            for link in (serial_link, jtag_link):
+                if link is not None:
+                    try:
+                        c_done = client.connect_console(
+                            nb,
+                            device,
+                            kind=link.kind,
+                            site_slug=site_slug,
+                            device=link.device,
+                            port=link.port,
+                            path=link.path,
+                        )
+                        for line in c_done:
+                            console.print(_format_action_line(line))
+                        done += c_done
+                    except Exception as e:
+                        console.print(
+                            f"  • Console connection ({link.kind}) to '{link.device}' ... [red]✗ failed: {e}[/red]"
+                        )
+                        raise
+
             if sdmux_link is not None:
-                done += client.connect_sdmux(
-                    nb,
-                    device,
-                    site_slug=site_slug,
-                    device=sdmux_link.device,
-                    serial=sdmux_link.serial,
-                    settings=sdmux_link.settings,
-                )
+                try:
+                    s_done = client.connect_sdmux(
+                        nb,
+                        device,
+                        site_slug=site_slug,
+                        device=sdmux_link.device,
+                        serial=sdmux_link.serial,
+                        settings=sdmux_link.settings,
+                    )
+                    for line in s_done:
+                        console.print(_format_action_line(line))
+                    done += s_done
+                except Exception as e:
+                    console.print(
+                        f"  • SD mux connection to '{sdmux_link.device}' ... [red]✗ failed: {e}[/red]"
+                    )
+                    raise
+
             return device, done
 
         device, power_done = netbox(register)
@@ -1782,21 +1845,30 @@ def _onboard(
         console.print(
             f"[green]NetBox device ready:[/green] {netbox.url.rstrip('/')}/dcim/devices/{device.id}/"
         )
-        for line in power_done:
-            console.print(f"  [dim]{escape(line)}[/dim]")
 
     # 2. Exporter host: deploy + verify the systemd service.
     if run.saved.is_done("exporter"):
         console.print(f"[dim]labgrid-exporter-{name}: done in an earlier run, skipped[/dim]")
     else:
+        console.print(f"\n[bold]Deploying exporter service to {ssh_host}...[/bold]")
         try:
             exporter_bin = provision.check_prerequisites(ssh_host)
+            console.print(
+                f"  • Exporter binary ({exporter_bin}) on {ssh_host} ... [green]✓ verified[/green]"
+            )
             provision.deploy_exporter(
                 ssh_host, ssh_user, name, rendered_path, coord_resolved, exporter_bin=exporter_bin
             )
+            console.print(
+                f"  • Systemd service 'labgrid-exporter-{name}' ... [green]✓ deployed[/green]"
+            )
             provision.verify_exporter_active(ssh_host, name)
+            console.print(
+                f"  • Systemd service 'labgrid-exporter-{name}' ... [green]✓ active[/green]"
+            )
             missing_env = provision.missing_power_env(ssh_host, power)
         except RuntimeError as e:
+            console.print(f"  • Exporter deployment on {ssh_host} ... [red]✗ failed: {e}[/red]")
             raise click.ClickException(str(e)) from e
         run.saved.mark_done("exporter")
         console.print(f"[green]labgrid-exporter-{name} is active on {ssh_host}[/green]")
@@ -1810,18 +1882,28 @@ def _onboard(
     # 3. Coordinator: create the place, match the live resources, tag it. The
     # coordinator rejects a place or match that already exists, so a re-run
     # only adds what is missing.
+    console.print(f"\n[bold]Adding components to Labgrid coordinator ({coord_resolved})...[/bold]")
     api = _resolve_api(coord_resolved)
     try:
         cookie = coord_mod.login(api, coord_user, coord_password)
+        console.print(f"  • Coordinator login ({coord_user}) ... [green]✓ authenticated[/green]")
         place = get_place(api, name)
         if place is None:
             create_place(api, cookie, name)
+            console.print(f"  • Coordinator place '{name}' ... [green]✓ created[/green]")
+        else:
+            console.print(f"  • Coordinator place '{name}' ... [green]✓ already exists[/green]")
         existing = {match_pattern(m) for m in (place or {}).get("matches", [])}
         for pattern in match_patterns:
             if pattern not in existing:
                 add_match(api, cookie, name, pattern)
+                console.print(f"  • Resource match '{pattern}' ... [green]✓ added[/green]")
+            else:
+                console.print(f"  • Resource match '{pattern}' ... [green]✓ already exists[/green]")
         set_place_tags(api, cookie, name, tags)
+        console.print(f"  • Place tags ({len(tags)} tags) ... [green]✓ applied[/green]")
     except (RuntimeError, OSError) as e:  # OSError: coordinator API unreachable
+        console.print(f"  • Labgrid coordinator registration ... [red]✗ failed: {e}[/red]")
         raise click.ClickException(str(e)) from e
     console.print(f"[green]Place {name!r} created, matched, and tagged on the coordinator.[/green]")
     # Every step is done, so there is nothing left to resume.
