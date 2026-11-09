@@ -577,7 +577,9 @@ def test_xilinx_jtag_driver_does_not_stage_exporter_payloads(tmp_path, monkeypat
     staged = []
     drv = XilinxJTAGDriver.__new__(XilinxJTAGDriver)
     monkeypatch.setattr(XilinxJTAGDriver, "_is_remote", property(lambda self: True))
-    monkeypatch.setattr(drv, "_stage_file", lambda path: staged.append(path) or "/staged", raising=False)
+    monkeypatch.setattr(
+        drv, "_stage_file", lambda path: staged.append(path) or "/staged", raising=False
+    )
     assert drv._stage_payload(f"exporter:{local}") == str(local)
     assert staged == []
     assert drv._stage_payload(str(local)) == "/staged"
