@@ -209,6 +209,14 @@ def render_env(
         #       bitstream-path=/home/tcollins/zu11eg-recovery/bitstream.bin \
         #       serial-protocol-override=raw
         "recovery_root": place.extra_tags.get("recovery-root", "/tmp/recovery"),
+        # BootZynqMPJTAG's `bitstream-path` names a file on the exporter: mark it
+        # so the JTAG driver passes it through instead of staging a same-named
+        # client file. Empty stays empty (no PL programming).
+        "exporter_bitstream_path": (
+            f"exporter:{place.extra_tags['bitstream-path']}"
+            if place.extra_tags.get("bitstream-path")
+            else ""
+        ),
         "jtag_url": place.extra_tags.get("jtag-url", "TCP:127.0.0.1:3121"),
         # ZynqMP boot mode override (BOOT_MODE_USER over JTAG), e.g. `sd1-ls` to
         # boot a JTAG-strapped board's SD card. Empty = follow the switches. Not

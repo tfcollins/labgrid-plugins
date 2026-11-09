@@ -505,9 +505,9 @@ def test_bootzynqmpjtag_renders_recovery_root_and_serial_overrides():
     drivers = doc["targets"]["main"]["drivers"]
     assert "HomeAssistantPowerDriver" in drivers
     boot = drivers["BootZynqMPJTAG"]
-    assert boot["psu_init_tcl"] == "/home/tcollins/zu11eg-recovery/psu_init.tcl"
-    assert boot["pmufw_bin"] == "/home/tcollins/zu11eg-recovery/pmufw.bin"
-    assert boot["bitstream_path"] == "/home/tcollins/zu11eg-recovery/bitstream.bin"
+    assert boot["psu_init_tcl"] == "exporter:/home/tcollins/zu11eg-recovery/psu_init.tcl"
+    assert boot["pmufw_bin"] == "exporter:/home/tcollins/zu11eg-recovery/pmufw.bin"
+    assert boot["bitstream_path"] == "exporter:/home/tcollins/zu11eg-recovery/bitstream.bin"
     assert boot["serial_protocol_override"] == "raw"
     assert boot["serial_host_override"] == "tron.local"
     assert boot["jtag_url"] == "TCP:127.0.0.1:3121"
@@ -518,7 +518,8 @@ def test_bootzynqmpjtag_renders_recovery_root_and_serial_overrides():
 def test_bootzynqmpjtag_defaults_to_tmp_recovery():
     doc = yaml.safe_load(render_env(_place("BootZynqMPJTAG")))
     boot = doc["targets"]["main"]["drivers"]["BootZynqMPJTAG"]
-    assert boot["spl_elf"] == "/tmp/recovery/spl.elf"
+    assert boot["spl_elf"] == "exporter:/tmp/recovery/spl.elf"
+    assert boot["bitstream_path"] == ""
     assert boot["serial_host_override"] == ""
     assert boot["serial_protocol_override"] == ""
     assert "fdt set /axi/ethernet@a0000000 status disabled" in boot["sd_boot_command"]
@@ -542,3 +543,42 @@ def test_bootzynqmpjtag_overrides_sd_boot_command():
     doc = yaml.safe_load(render_env(p))
     boot = doc["targets"]["main"]["drivers"]["BootZynqMPJTAG"]
     assert boot["sd_boot_command"] == "run custom_boot"
+
+
+def test_bootzynqmpjtag_payloads_are_exporter_paths():
+    """Every recovery-root payload names the exporter's file, never a same-named client file.
+
+    Regression: tron's client runner (nemo) holds an older copy of
+    /home/tcollins/zu11eg-recovery; without the prefix the driver staged nemo's
+    u-boot.bin next to tron's pm-config.bin and the JTAG handoff never reached U-Boot.
+    """
+    p = _place("BootZynqMPJTAG", extra_tags={"recovery-root": "/srv/rec"})
+    boot = yaml.safe_load(render_env(p))["targets"]["main"]["drivers"]["BootZynqMPJTAG"]
+    for key in (
+        "psu_init_tcl",
+        "spl_elf",
+        "pmufw_bin",
+        "uboot_bin",
+        "handoff_bin",
+        "bl31_bin",
+        "atf_handoff_bin",
+        "pm_config_bin",
+        "ddr_scrub_elf",
+    ):
+        assert boot[key].startswith("exporter:/srv/rec/"), (key, boot[key])
+
+
+def test_xilinx_jtag_driver_does_not_stage_exporter_payloads(tmp_path, monkeypatch):
+    """A remote driver passes `exporter:` paths through even when the client has the file."""
+    from adi_lg_plugins.drivers.xilinxjtagdriver import XilinxJTAGDriver
+
+    local = tmp_path / "u-boot.bin"
+    local.write_bytes(b"client copy")
+    staged = []
+    drv = XilinxJTAGDriver.__new__(XilinxJTAGDriver)
+    monkeypatch.setattr(XilinxJTAGDriver, "_is_remote", property(lambda self: True))
+    monkeypatch.setattr(drv, "_stage_file", lambda path: staged.append(path) or "/staged", raising=False)
+    assert drv._stage_payload(f"exporter:{local}") == str(local)
+    assert staged == []
+    assert drv._stage_payload(str(local)) == "/staged"
+    assert staged == [str(local)]
