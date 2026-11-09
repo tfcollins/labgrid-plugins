@@ -2818,3 +2818,51 @@ def test_a_checked_run_still_asking_a_netbox_pick_looks_on_the_host(
     assert host_hardware.hosts == ["h", "h"]
     assert asked.kwargs["SD mux"]["default"] == "mux-b"  # the one on h
     assert calls["sdmux"]["device"] == "mux-b"
+
+
+def test_adding_components_prints_progress_and_success_to_console(monkeypatch, saved_runs):
+    _stub_services(monkeypatch)
+    result, _ = _type_into_real_prompts(monkeypatch, _FULL_RUN)
+
+    assert result.exit_code == 0, result.output
+    # NetBox components progress
+    assert "Adding components to NetBox" in result.output
+    assert "NetBox schema & custom fields ... ✓ verified" in result.output
+    assert "NetBox device 'b1' (site: lab3, carrier: zcu102) ... ✓ ready" in result.output
+    assert "connected b1 power to cyberpower-10.0.0.20 outlet 4 ... ✓ connected" in result.output
+    # Exporter deployment progress
+    assert "Deploying exporter service to" in result.output
+    assert "Systemd service 'labgrid-exporter-b1' ... ✓ deployed" in result.output
+    assert "Systemd service 'labgrid-exporter-b1' ... ✓ active" in result.output
+    # Coordinator components progress
+    assert "Adding components to Labgrid coordinator" in result.output
+    assert "Coordinator place 'b1' ... ✓ created" in result.output
+    assert "Resource match 'b1/ZCU102_AD9081/*' ... ✓ added" in result.output
+    assert "Place tags" in result.output and "✓ applied" in result.output
+
+
+def test_adding_components_handles_existing_place_and_matches(monkeypatch, saved_runs):
+    existing_place = {
+        "name": "b1",
+        "matches": [{"exporter": "b1", "group": "ZCU102_AD9081", "cls": "*"}],
+    }
+    _stub_services(monkeypatch, place=existing_place)
+    result, _ = _type_into_real_prompts(monkeypatch, _FULL_RUN)
+
+    assert result.exit_code == 0, result.output
+    assert "Coordinator place 'b1' ... ✓ already exists" in result.output
+    assert "Resource match 'b1/ZCU102_AD9081/*' ... ✓ already exists" in result.output
+
+
+def test_adding_components_prints_failure_when_coordinator_fails(monkeypatch, saved_runs):
+    _stub_services(monkeypatch)
+
+    def failing_create_place(api, cookie, name):
+        raise RuntimeError("Coordinator error: place creation denied")
+
+    monkeypatch.setattr(cli, "create_place", failing_create_place)
+    result, _ = _type_into_real_prompts(monkeypatch, _FULL_RUN)
+
+    assert result.exit_code != 0
+    assert "Labgrid coordinator registration ... ✗ failed:" in result.output
+    assert "Coordinator error: place creation denied" in result.output
