@@ -172,7 +172,7 @@ class BootSelMap(Strategy):
             self.target.activate(self.shell)
             # Check kernel start
             self.logger.info(f"Waiting for Linux boot and '{self.reached_linux_marker}' prompt...")
-            _, before, _, _ = self.shell.console.expect("Linux", timeout=30)
+            _, before, _, _ = self.shell.console.expect("Linux", timeout=60)
             if before:
                 self.boot_log += before.decode("utf-8", errors="replace")
             # Check device prompt
