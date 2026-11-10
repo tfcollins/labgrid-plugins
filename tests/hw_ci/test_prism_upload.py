@@ -42,3 +42,17 @@ def test_parser_accepts_the_flags_infra_smoke_passes():
     assert ns.project == "lab-infra-daily"
     assert ns.auto_create_project is True
     assert len(ns.tag) == 2
+
+
+def test_parser_accepts_insecure_flags():
+    from adi_lg_plugins.hw_ci.prism_upload.upload_run import build_parser
+    from adi_lg_plugins.hw_ci.prism_upload._prism_client import PrismClient
+
+    ns1 = build_parser().parse_args(["results.xml", "--insecure"])
+    assert ns1.insecure is True
+
+    ns2 = build_parser().parse_args(["results.xml", "-k"])
+    assert ns2.insecure is True
+
+    client = PrismClient("https://example.com", insecure=True)
+    assert client.insecure is True

@@ -73,6 +73,10 @@ on:
         description: "Post each leg's JUnit to Prism."
         type: boolean
         default: false
+      prism-insecure:
+        description: "Allow insecure (unverified TLS/SSL) upload to Prism."
+        type: boolean
+        default: false
       prism-url:
         description: "Prism base URL. Defaults to the caller's vars.PRISM_URL when empty."
         type: string
@@ -208,6 +212,7 @@ jobs:
           PRISM_EMAIL: ${{ secrets.PRISM_EMAIL }}
           PRISM_PASSWORD: ${{ secrets.PRISM_PASSWORD }}
           PRISM_PROJECT: ${{ inputs.prism-project }}
+          PRISM_INSECURE: ${{ inputs.prism-insecure != '' && inputs.prism-insecure || vars.PRISM_INSECURE || 'false' }}
           PRISM_JUNIT: results-${{ matrix.part }}.xml
           PRISM_RUN_NAME: ${{ github.workflow }}-${{ github.run_number }}-${{ matrix.part }}
           PRISM_BOARD: ${{ matrix.part }}

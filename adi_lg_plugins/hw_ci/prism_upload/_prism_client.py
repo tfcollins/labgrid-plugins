@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import http.cookiejar
 import json
+import os
+import ssl
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -23,7 +25,12 @@ __all__ = ["PrismClient"]
 
 
 class PrismClient:
-    def __init__(self, base_url: str, token: str | None = None) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        token: str | None = None,
+        insecure: bool = False,
+    ) -> None:
         # Reject non-http(s) schemes up front so the noqa: S310 below is true.
         # urllib's default opener handles file://, ftp://, data://, etc., which
         # an attacker who can set PRISM_URL could abuse for local-file
@@ -38,8 +45,17 @@ class PrismClient:
         # of the cookie session (no login + no CSRF needed; the server skips
         # CSRF for bearer auth).
         self.token = token
+        if not insecure:
+            insecure = os.getenv("PRISM_INSECURE", "").lower() in ("1", "true", "yes")
+        self.insecure = insecure
         self.jar = http.cookiejar.CookieJar()
-        self.opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(self.jar))
+        handlers: list[urllib.request.BaseHandler] = [urllib.request.HTTPCookieProcessor(self.jar)]
+        if self.insecure:
+            ctx = ssl.create_default_context()
+            ctx.check_hostname = False
+            ctx.verify_mode = ssl.CERT_NONE
+            handlers.append(urllib.request.HTTPSHandler(context=ctx))
+        self.opener = urllib.request.build_opener(*handlers)
 
     # --------------------------------------------------------------------- #
     # Low-level request plumbing
@@ -72,6 +88,8 @@ class PrismClient:
                 return resp.status, resp.read()
         except urllib.error.HTTPError as exc:
             return exc.code, exc.read()
+        except urllib.error.URLError as exc:
+            raise RuntimeError(f"request to {url} failed: {exc.reason}") from exc
 
     # --------------------------------------------------------------------- #
     # Auth

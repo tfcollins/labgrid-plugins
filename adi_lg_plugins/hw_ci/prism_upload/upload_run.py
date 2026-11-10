@@ -213,6 +213,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="After upload, poll every 2s until the run is no longer "
         "pending. Bare flag uses a 60s timeout; pass a value for longer.",
     )
+    p.add_argument(
+        "--insecure",
+        "-k",
+        action="store_true",
+        default=_env("PRISM_INSECURE", "false").lower() in ("1", "true", "yes"),
+        help="Disable SSL/TLS certificate verification for HTTPS (env: PRISM_INSECURE).",
+    )
     verbosity = p.add_mutually_exclusive_group()
     verbosity.add_argument(
         "--quiet",
@@ -262,7 +269,9 @@ def main(argv: list[str] | None = None) -> int:
     say = (lambda _m: None) if args.quiet else print
 
     # --- Auth ------------------------------------------------------------- #
-    client = PrismClient(args.url, token=args.token)
+    client = PrismClient(args.url, token=args.token, insecure=args.insecure)
+    if args.insecure and args.verbose:
+        say("→ TLS certificate verification disabled (--insecure)")
     if args.token:
         if args.verbose:
             say(f"→ using API token against {args.url}")
