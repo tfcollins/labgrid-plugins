@@ -162,6 +162,8 @@ jobs:
       # Reuse the pytest plugin's per-shard narrowing: deselect tests whose
       # iio_hardware args don't include this board.
       HW_DAUGHTER: ${{ matrix.part }}
+      PRISM_CI_MATRIX: ${{ toJSON(matrix) }}
+      PRISM_CAPTURE_ACTIVE: "true"
     steps:
       - uses: actions/checkout@v4
       - uses: tfcollins/labgrid-plugins/.github/actions/setup-uv-venv@main
@@ -197,16 +199,19 @@ jobs:
             echo "PRISM_PLACE=${LG_PLACE:-}"
             echo "PRISM_CARRIER=${LG_CARRIER:-}"
           } >> "$GITHUB_ENV"
-          pytest $TEST_ROOT -m "$MARKER" --junitxml="$JUNIT" $PYTEST_ARGS
+          export PYTEST_ADDOPTS="${PYTEST_ADDOPTS:-} -o junit_logging=all -o junit_log_passing_tests=true"
+          exec "$VENV_DIR/bin/python" -m adi_lg_plugins.prism.run -- \
+            bash -o pipefail -c 'pytest $TEST_ROOT -m "$MARKER" --junitxml="$JUNIT" $PYTEST_ARGS 2>&1 | tee prism-pytest.log'
           EOF
           pd=""; if [ "$POWER_DOWN" = "true" ]; then pd="--power-down"; fi
           adi-lg request --part "${{ matrix.part }}" \
             --mode "${{ inputs.request-mode }}" --wait "${{ inputs.wait }}" $pd \
-            --run "bash run-leg.sh"
+            --run "exec bash run-leg.sh"
       - name: Upload to Prism
         if: always() && inputs.prism-upload
         continue-on-error: true
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           PRISM_URL: ${{ inputs.prism-url != '' && inputs.prism-url || vars.PRISM_URL }}
           PRISM_API_TOKEN: ${{ secrets.PRISM_API_TOKEN }}
           PRISM_EMAIL: ${{ secrets.PRISM_EMAIL }}
@@ -219,12 +224,26 @@ jobs:
         run: |
           set -euo pipefail
           [ -f "$PRISM_JUNIT" ] || { echo "::notice::no JUnit produced; skipping Prism upload"; exit 0; }
+          capture_args=()
+          if [ -f .prism-labgrid/artifacts.zip ]; then
+            export PRISM_ARCHIVE=.prism-labgrid/artifacts.zip
+            capture_args+=(--archive "$PRISM_ARCHIVE")
+          fi
+          if [ -f .prism-labgrid/hardware.json ]; then
+            export PRISM_HARDWARE_JSON=.prism-labgrid/hardware.json
+            capture_args+=(--hardware-json "$PRISM_HARDWARE_JSON")
+          fi
+          if [ -f prism-pytest.log ]; then
+            export PRISM_PYTEST_LOG=prism-pytest.log
+            capture_args+=(--pytest-log "$PRISM_PYTEST_LOG")
+          fi
           if [ -n "${{ inputs.prism-upload-cmd }}" ]; then
             ${{ inputs.prism-upload-cmd }}
           else
             # Prism's uploader is vendored into labgrid-plugins (stdlib-only);
             # run it from the installed package — no pip-install / private-repo fetch.
             "$VENV_DIR/bin/python" -m adi_lg_plugins.hw_ci.prism_upload.upload_run "$PRISM_JUNIT" \
+              "${capture_args[@]}" \
               --url "$PRISM_URL" \
               --project "$PRISM_PROJECT" \
               --token "$PRISM_API_TOKEN" \

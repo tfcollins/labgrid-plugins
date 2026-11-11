@@ -1,4 +1,4 @@
-"""Safe, bounded capture helpers for Prism labgrid reports."""
+"""DUT capture helpers for Prism labgrid reports."""
 
 from __future__ import annotations
 
@@ -97,10 +97,11 @@ def capture_dmesg_ssh(
         return CaptureResult(False, bounded(exc.stdout), "ssh", "timed out")
     except OSError:
         return CaptureResult(False, b"", "ssh", "ssh could not be started")
-    output = bounded(completed.stdout)
     if completed.returncode != 0:
-        return CaptureResult(False, output, "ssh", f"exit {completed.returncode}")
-    return CaptureResult(True, output, "ssh")
+        return CaptureResult(
+            False, bounded(completed.stdout), "ssh", f"exit {completed.returncode}"
+        )
+    return CaptureResult(True, completed.stdout, "ssh")
 
 
 def dmesg_delta(before: bytes, after: bytes) -> bytes:

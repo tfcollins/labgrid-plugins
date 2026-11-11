@@ -172,6 +172,9 @@ jobs:
       # same resolution as the top-level env.COORDINATOR.
       group: hw-place-${{ inputs.coordinator != '' && inputs.coordinator || vars.ADI_LG_COORDINATOR }}-${{ matrix.entry.place }}
       cancel-in-progress: false
+    env:
+      PRISM_CI_MATRIX: ${{ toJSON(matrix) }}
+      PRISM_CAPTURE_ACTIVE: "true"
     steps:
       - uses: actions/checkout@v4
 
@@ -324,7 +327,13 @@ jobs:
         run: |
           VENV_DIR=$(eval echo "${{ inputs.venv_dir }}")
           export VENV_DIR
+          export PYTEST_ADDOPTS="${PYTEST_ADDOPTS:-} -o junit_logging=all -o junit_log_passing_tests=true"
+          cat > run-prism-tests.sh <<'PRISM_TESTS'
+          set -euo pipefail
           ${{ inputs.pytest_cmd_template }}
+          PRISM_TESTS
+          exec "$VENV_DIR/bin/python" -m adi_lg_plugins.prism.run -- \
+            bash -o pipefail -c 'bash run-prism-tests.sh 2>&1 | tee prism-pytest.log'
 
       - name: Release coordinator place
         if: always()
@@ -351,14 +360,38 @@ jobs:
         if: always() && inputs.prism_upload && env.PRISM_URL_RESOLVED != ''
         continue-on-error: true
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           PRISM_URL: ${{ env.PRISM_URL_RESOLVED }}
           PRISM_API_TOKEN: ${{ secrets.PRISM_API_TOKEN }}
           PRISM_PROJECT: ${{ inputs.prism_project }}
         run: |
           set -euo pipefail
           : "${PRISM_PROJECT:?PRISM_PROJECT must be set when prism_upload=true}"
-          # Same upload script as v1 — TBD wire when v1's helper is split out.
-          echo "(Prism upload stub — point at the v1 helper action once factored)"
+          VENV_DIR=$(eval echo "${{ inputs.venv_dir }}")
+          JUNIT="junit-hw-${{ matrix.entry.place }}.xml"
+          [ -f "$JUNIT" ] || { echo "::notice::no JUnit produced; skipping Prism upload"; exit 0; }
+          capture_args=()
+          if [ -f .prism-labgrid/artifacts.zip ]; then
+            export PRISM_ARCHIVE=.prism-labgrid/artifacts.zip
+            capture_args+=(--archive "$PRISM_ARCHIVE")
+          fi
+          if [ -f .prism-labgrid/hardware.json ]; then
+            export PRISM_HARDWARE_JSON=.prism-labgrid/hardware.json
+            capture_args+=(--hardware-json "$PRISM_HARDWARE_JSON")
+          fi
+          if [ -f prism-pytest.log ]; then
+            export PRISM_PYTEST_LOG=prism-pytest.log
+            capture_args+=(--pytest-log "$PRISM_PYTEST_LOG")
+          fi
+          "$VENV_DIR/bin/python" -m adi_lg_plugins.hw_ci.prism_upload.upload_run "$JUNIT" \
+            "${capture_args[@]}" \
+            --url "$PRISM_URL" --project "$PRISM_PROJECT" \
+            --token "$PRISM_API_TOKEN" --auto-create-project \
+            --run-name "${{ github.workflow }}-${{ github.run_number }}-${{ matrix.entry.place }}" \
+            --tag "place=${{ matrix.entry.place }}" \
+            --tag "board=${{ matrix.entry.daughter_board }}" \
+            --tag "carrier=${{ matrix.entry.carrier }}" \
+            --tag "leg=matrix-v2" --tag "git-sha=$GITHUB_SHA"
 
   # 3) Summary: emit a clear annotation when the intersection is empty.
   summary:

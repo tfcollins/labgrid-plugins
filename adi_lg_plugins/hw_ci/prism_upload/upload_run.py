@@ -28,11 +28,14 @@ Stdlib-only — works on any CI runner with Python 3.10+.
 from __future__ import annotations
 
 import argparse
+import io
+import json
 import os
 import sys
 import time
+import zipfile
 from pathlib import Path
-from typing import NamedTuple
+from typing import Any, NamedTuple
 
 # The shared client lives next to this file; use a path-relative import so the
 # script works when invoked from anywhere (e.g. `python3 /repo/scripts/...`).
@@ -140,6 +143,30 @@ def _env(name: str, default: str | None = None) -> str | None:
     return v if v else default
 
 
+def _metadata_object(raw: str | None) -> dict[str, Any] | None:
+    if raw is None:
+        return None
+    if raw.lstrip().startswith("{"):
+        value = json.loads(raw)
+    else:
+        value = json.loads(Path(raw.removeprefix("@")).read_text(encoding="utf-8"))
+    if not isinstance(value, dict):
+        raise ValueError("metadata must be a JSON object")
+    return value
+
+
+def _with_transcript(archive: bytes | None, transcript: bytes) -> bytes:
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as destination:
+        if archive is not None:
+            with zipfile.ZipFile(io.BytesIO(archive)) as source:
+                for item in source.infolist():
+                    if item.filename != "terminal.log":
+                        destination.writestr(item, source.read(item))
+        destination.writestr("terminal.log", transcript)
+    return output.getvalue()
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="upload_run.py",
@@ -158,7 +185,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--email", default=_env("PRISM_EMAIL"), help="Login email (env: PRISM_EMAIL).")
     p.add_argument(
-        "--password", default=_env("PRISM_PASSWORD"), help="Login password (env: PRISM_PASSWORD)."
+        "--password",
+        default=_env("PRISM_PASSWORD"),
+        help="Login password (env: PRISM_PASSWORD).",
     )
     p.add_argument(
         "--token",
@@ -166,7 +195,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="API token for bearer auth (env: PRISM_TOKEN). Use instead of --email/--password.",
     )
     p.add_argument(
-        "--project", default=_env("PRISM_PROJECT"), help="Target project slug (env: PRISM_PROJECT)."
+        "--project",
+        default=_env("PRISM_PROJECT"),
+        help="Target project slug (env: PRISM_PROJECT).",
     )
     p.add_argument(
         "--run-name",
@@ -185,8 +216,21 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--archive",
         type=Path,
-        default=None,
+        default=_env("PRISM_ARCHIVE"),
         help="Optional .zip of measurement artifacts to upload alongside the JUnit.",
+    )
+    p.add_argument("--ci-json", default=_env("PRISM_CI_JSON"), help="CI JSON object or file path.")
+    p.add_argument(
+        "--hardware-json",
+        default=_env("PRISM_HARDWARE_JSON"),
+        help="Reserved-hardware JSON object or file path.",
+    )
+    p.add_argument("--job-url", default=_env("PRISM_CI_JOB_URL"), help="Exact CI job URL.")
+    p.add_argument(
+        "--pytest-log",
+        type=Path,
+        default=_env("PRISM_PYTEST_LOG"),
+        help="Complete pytest terminal transcript to archive (env: PRISM_PYTEST_LOG).",
     )
     p.add_argument(
         "--measurement",
@@ -217,7 +261,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--insecure",
         "-k",
         action="store_true",
-        default=_env("PRISM_INSECURE", "false").lower() in ("1", "true", "yes"),
+        default=(_env("PRISM_INSECURE", "false") or "false").lower() in ("1", "true", "yes"),
         help="Disable SSL/TLS certificate verification for HTTPS (env: PRISM_INSECURE).",
     )
     verbosity = p.add_mutually_exclusive_group()
@@ -236,7 +280,10 @@ def build_parser() -> argparse.ArgumentParser:
 def _require(args: argparse.Namespace, name: str, env: str) -> str | None:
     val: str | None = getattr(args, name, None)
     if not val:
-        print(f"error: --{name.replace('_', '-')} is required (or set {env})", file=sys.stderr)
+        print(
+            f"error: --{name.replace('_', '-')} is required (or set {env})",
+            file=sys.stderr,
+        )
         return None
     return val
 
@@ -256,7 +303,10 @@ def main(argv: list[str] | None = None) -> int:
     if not args.token and not (args.email and args.password):
         missing.append("--token (or PRISM_TOKEN), or --email + --password")
     if missing:
-        print("error: missing required argument(s): " + ", ".join(missing), file=sys.stderr)
+        print(
+            "error: missing required argument(s): " + ", ".join(missing),
+            file=sys.stderr,
+        )
         return EXIT_BAD_INPUT
 
     if not args.junit.exists() or not args.junit.is_file():
@@ -264,6 +314,15 @@ def main(argv: list[str] | None = None) -> int:
         return EXIT_BAD_INPUT
     if args.archive is not None and (not args.archive.exists() or not args.archive.is_file()):
         print(f"error: archive file not found: {args.archive}", file=sys.stderr)
+        return EXIT_BAD_INPUT
+    try:
+        ci = _metadata_object(args.ci_json)
+        hardware = _metadata_object(args.hardware_json)
+        archive_bytes = args.archive.read_bytes() if args.archive is not None else None
+        if args.pytest_log is not None:
+            archive_bytes = _with_transcript(archive_bytes, args.pytest_log.read_bytes())
+    except (OSError, ValueError, zipfile.BadZipFile) as exc:
+        print(f"error: invalid metadata or logs — {exc}", file=sys.stderr)
         return EXIT_BAD_INPUT
 
     say = (lambda _m: None) if args.quiet else print
@@ -314,18 +373,13 @@ def main(argv: list[str] | None = None) -> int:
             return EXIT_BAD_INPUT
         if args.verbose:
             say(f"→ injected {len(args.measurement)} measurement(s) into the JUnit")
-    archive_bytes = args.archive.read_bytes() if args.archive is not None else None
     tags = dict(args.tag)
 
     if args.verbose:
         say(
             f"→ uploading {args.junit.name} ({len(junit_bytes)} bytes) "
             f"as run {args.run_name!r} in project {args.project!r}"
-            + (
-                f" with archive {args.archive.name} ({len(archive_bytes or b'')} bytes)"
-                if archive_bytes
-                else ""
-            )
+            + (f" with artifacts ({len(archive_bytes or b'')} bytes)" if archive_bytes else "")
         )
 
     # --- Upload ----------------------------------------------------------- #
@@ -336,6 +390,9 @@ def main(argv: list[str] | None = None) -> int:
             junit_xml=junit_bytes,
             archive_zip=archive_bytes,
             tags=tags,
+            ci=ci,
+            hardware=hardware,
+            job_url=args.job_url,
         )
     except RuntimeError as exc:
         print(f"error: upload failed — {exc}", file=sys.stderr)

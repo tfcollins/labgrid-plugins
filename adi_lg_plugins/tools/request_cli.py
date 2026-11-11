@@ -78,7 +78,9 @@ def _run_child(run_cmd: str, env: dict) -> int:
     except KeyboardInterrupt:
         proc.terminate()
         try:
-            proc.wait(timeout=10)
+            # The reporting wrapper finalizes post-run SSH capture before release.
+            cleanup_timeout = 60 if env.get("PRISM_CAPTURE_ACTIVE") == "true" else 10
+            proc.wait(timeout=cleanup_timeout)
         except subprocess.TimeoutExpired:
             proc.kill()
         raise

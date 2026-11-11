@@ -26,16 +26,16 @@ Feature matrix
      - Yes
      - Yes
    * - Place/board/carrier tags
-     - Yes, from the workflow leg
+     - Yes, from the reserved place in Python hardware workflows
      - Yes, from the labgrid session hook
    * - Allowlisted coordinator metadata
-     - No
+     - Yes, in Python hardware workflows
      - Yes
    * - Pre/post/diff dmesg
-     - No
+     - Yes, for ``ip:`` IIO URIs reachable over SSH
      - Yes, for ``ip:`` IIO URIs reachable over SSH
    * - Labgrid console logs
-     - No
+     - Yes, when ``PRISM_LABGRID_LOG_DIR`` is configured
      - Yes, by copying files already produced by ``pytest --lg-log``
    * - Consumer renderers and measurements
      - JUnit properties only
@@ -74,12 +74,46 @@ Cross-organization reusable-workflow calls must pass these secrets explicitly:
 ``secrets: inherit`` does not cross organization boundaries.
 
 The upload step is ``continue-on-error``. A Prism outage does not change the
-hardware leg's result. The built-in path uploads JUnit and run tags only; it
-does **not** upload the labgrid session-hook files. Use ``prism-upload-cmd`` to
-replace it with a consumer-owned uploader when needed. The command receives
+hardware leg's result. The Python ``hw-request``, ``hw-matrix``, and
+``hw-matrix-v2`` workflows capture the pytest transcript with ``tee`` while
+preserving the test exit status. Their JUnit includes passing-test captured
+output. They collect allowlisted hardware metadata and pre/post/diff dmesg
+inside the reservation, then upload the files with the JUnit even after test
+failures. ``infra-smoke`` captures its boot transcript and collects the same
+hardware artifacts before power-down and release.
+
+These workflows invoke ``python -m adi_lg_plugins.prism.run -- COMMAND`` around
+the test command. The wrapper reuses the session hook and writes
+``.prism-labgrid/hardware.json`` plus ``.prism-labgrid/artifacts.zip`` without
+requiring ``pytest-prism``. Set ``PRISM_DMESG_VIA``, ``PRISM_DMESG_SSH_USER``, or
+``PRISM_DMESG_SSH_KEY`` to customize its capture settings. Metadata lookup or
+collection failures appear in ``collection_errors`` and preserve the test
+command's exit status. Each invocation clears its previously generated
+metadata, dmesg, and console files before collection. SIGTERM and SIGINT are
+forwarded to the command's process group, and the wrapper waits for the child
+and completes post-session capture before returning the signal exit status.
+On Linux, the wrapper adopts and reaps orphaned pipeline descendants. It
+allows five seconds for graceful process-group cleanup, then forces
+termination and allows two seconds for reaping. Persistent process groups
+produce an explicit collection error. Platforms without the Linux subreaper
+API use process-group status checks.
+
+The request workflows allow reporting commands up to 60 seconds for cleanup
+before release.
+
+The uploader derives GitHub Actions provenance from
+``GITHUB_*`` and the workflow's ``PRISM_CI_MATRIX`` environment value. Upload
+steps also provide the job's GitHub token for job URL lookup when its existing
+permissions permit reading Actions jobs.
+
+The MATLAB workflow uploads JUnit and run tags. Use ``prism-upload-cmd`` to
+replace the built-in uploader with a consumer-owned uploader when needed. The command receives
 ``PRISM_URL``, ``PRISM_API_TOKEN``, ``PRISM_EMAIL``, ``PRISM_PASSWORD``,
 ``PRISM_PROJECT``, ``PRISM_JUNIT``, ``PRISM_RUN_NAME``, ``PRISM_BOARD``,
-``PRISM_CARRIER``, and ``PRISM_PLACE``.
+``PRISM_CARRIER``, and ``PRISM_PLACE``. When capture files exist, workflows also
+export ``PRISM_ARCHIVE``, ``PRISM_HARDWARE_JSON``, and ``PRISM_PYTEST_LOG`` before
+invoking a custom upload command. The standalone uploader reads those defaults,
+so existing commands receive the captured artifacts automatically.
 
 Enriched pytest reporting
 -------------------------
@@ -185,24 +219,31 @@ Captured metadata and artifacts
 * whether a coordinator was configured;
 * the basename of ``LG_ENV``;
 * a sanitized ``ip:HOST`` IIO URI (credentials, query, and fragment removed);
-* acquisition state and exporter names; and
+* board/carrier identity, acquisition state, and concrete exporter names; and
 * allowlisted tags: ``board-location``, ``boot-strategy``, ``carrier``,
   ``daughter-board``, ``disabled``, ``hdl-config``, and ``runner``.
 
 Raw resource dictionaries, coordinator comments, coordinator addresses, and
 unknown tags are not reported. If coordinator discovery fails, pytest
-continues and metadata records ``metadata_status=unavailable``.
+continues and metadata records ``metadata_status=unavailable`` with a
+``metadata_error``. Acquired resource exporters take precedence over configured
+match patterns. Post-session capture updates ``metadata.json`` with collection
+errors and final artifact details.
 
 Dmesg modes
 ~~~~~~~~~~~
 
 ``--prism-dmesg-via auto``
-   Attempt bounded pre-test and post-test dmesg over batch-mode SSH. If SSH is
+   Attempt complete pre-test and post-test dmesg over batch-mode SSH. If SSH is
    unavailable and copied console files exist, run metadata records
    ``fallback=console_logs``.
 
 ``--prism-dmesg-via ssh``
    Attempt SSH dmesg only. The host comes from a validated ``IIO_URI=ip:HOST``.
+   A verified ``IIO_URI_OVERRIDE`` takes precedence over ``IIO_URI``. When
+   neither is set, the wrapper loads ``LG_ENV``, queries its target's live IP
+   through the configured shell driver, and closes that environment before
+   continuing. Missing shell access becomes an explicit collection error.
    The default user is ``root``; override it with
    ``--prism-dmesg-ssh-user`` and optionally provide
    ``--prism-dmesg-ssh-key``.
@@ -219,7 +260,9 @@ Dmesg modes
 Successful SSH capture produces ``dmesg_pre.log``, ``dmesg_post.log``, and
 ``dmesg_diff.log``. The diff preserves line order and repeated messages, and
 handles a wrapped kernel ring buffer by retaining unmatched post-test output.
-Each dmesg artifact is limited to the newest 4 MiB.
+Successful dmesg captures retain the full command output. Failed or timed-out
+SSH attempts retain at most 4 MiB of partial output in memory and record their
+error in metadata.
 
 Console capture
 ~~~~~~~~~~~~~~~
