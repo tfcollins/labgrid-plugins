@@ -45,8 +45,8 @@ def test_parser_accepts_the_flags_infra_smoke_passes():
 
 
 def test_parser_accepts_insecure_flags():
-    from adi_lg_plugins.hw_ci.prism_upload.upload_run import build_parser
     from adi_lg_plugins.hw_ci.prism_upload._prism_client import PrismClient
+    from adi_lg_plugins.hw_ci.prism_upload.upload_run import build_parser
 
     ns1 = build_parser().parse_args(["results.xml", "--insecure"])
     assert ns1.insecure is True
