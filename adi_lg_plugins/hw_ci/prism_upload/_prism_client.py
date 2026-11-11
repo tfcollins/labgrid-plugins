@@ -266,12 +266,9 @@ class PrismClient:
         return code == 200
 
     def delete_project(self, slug: str) -> None:
-        """
-        Delete a project and everything under it (runs, artifacts, blobs).
-
-        Admin-only (`DELETE /api/v1/admin/projects/{slug}`). A 404 is treated as
-        success so `--reset` is a no-op when the project doesn't exist yet.
-        """
+        """Delete a project and everything under it (runs, artifacts, blobs)."""
+        # Admin-only (`DELETE /api/v1/admin/projects/{slug}`). A 404 is treated as
+        # success so `--reset` is a no-op when the project doesn't exist yet.
         code, body = self._request("DELETE", f"/api/v1/admin/projects/{urllib.parse.quote(slug)}")
         if code not in (200, 204, 404):
             raise RuntimeError(f"delete project failed: HTTP {code} {body!r}")
