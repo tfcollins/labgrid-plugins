@@ -451,7 +451,7 @@ time.sleep(60)
         signum = getattr(signal, signal_name)
         proc.send_signal(signum)
         assert proc.wait(timeout=8) == 128 + signum
-        assert forwarded.read_text() == str(signum)
+        assert forwarded.read_text() == str(int(signum))
         with pytest.raises(ProcessLookupError):
             os.kill(int(child_pid_file.read_text()), 0)
         with pytest.raises(ProcessLookupError):
