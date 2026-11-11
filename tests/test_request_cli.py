@@ -338,3 +338,22 @@ def test_request_no_boot_option_conflicting():
     )
     assert result.exit_code != 0
     assert "cannot be used with --mode flash" in result.output
+
+
+def test_run_child_allows_reporting_cleanup_before_release(monkeypatch):
+    timeouts = []
+
+    class FakeProc:
+        def wait(self, timeout=None):
+            timeouts.append(timeout)
+            if len(timeouts) == 1:
+                raise KeyboardInterrupt
+            return 143
+
+        def terminate(self):
+            pass
+
+    monkeypatch.setattr(rc_mod.subprocess, "Popen", lambda *args, **kwargs: FakeProc())
+    with pytest.raises(KeyboardInterrupt):
+        rc_mod._run_child("exec reporter", {"PRISM_CAPTURE_ACTIVE": "true"})
+    assert timeouts == [None, 60]

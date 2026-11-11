@@ -184,3 +184,9 @@ def test_resolve_uri_fallback_after_deadline_warns(caplog):
         result = resolve_uri(tg, wait=0.05, interval=0.01)
     assert result == "ip:10.0.0.23"
     assert any("may be stale" in r.message for r in caplog.records)
+
+
+def test_resolve_uri_can_require_live_address_instead_of_static_fallback():
+    target = FakeTarget(net=FakeNet("192.0.2.99"), raise_on_get_driver=True)
+    with pytest.raises(ProvisionError, match="live"):
+        resolve_uri(target, wait=0, allow_static=False)

@@ -49,7 +49,9 @@ def verify_iio_context(
     )
 
 
-def resolve_uri(target: Any, *, wait: float = 90.0, interval: float = 3.0) -> str:
+def resolve_uri(
+    target: Any, *, wait: float = 90.0, interval: float = 3.0, allow_static: bool = True
+) -> str:
     """Return ``ip:<address>`` for the booted target.
 
     Prefer the DUT's live ``eth0`` IP read over the shell: the board DHCPs a
@@ -60,7 +62,7 @@ def resolve_uri(target: Any, *, wait: float = 90.0, interval: float = 3.0) -> st
     ``wait`` seconds elapse (DHCP race: boards reach a shell prompt before the
     lease lands).  At least one attempt is always made.  Falls back to the
     static ``NetworkService.address`` on deadline, with a warning that it may
-    be stale.
+    be stale. Set ``allow_static=False`` to require a live board address.
     """
     # Read the board's own IPv4 off its default-route / global-scope interface
     # rather than a hardcoded ``eth0``: newer kernels (and some SD-autoboot Kuiper
@@ -88,6 +90,9 @@ def resolve_uri(target: Any, *, wait: float = 90.0, interval: float = 3.0) -> st
         if time.monotonic() >= deadline:
             break
         time.sleep(interval)
+
+    if not allow_static:
+        raise ProvisionError("live DUT IP could not be read from the reserved target")
 
     try:
         net = target.get_resource("NetworkService")

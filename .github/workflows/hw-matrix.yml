@@ -425,6 +425,9 @@ jobs:
     concurrency:
       group: hw-place-${{ inputs.coordinator }}-${{ matrix.node.place }}
       cancel-in-progress: false
+    env:
+      PRISM_CI_MATRIX: ${{ toJSON(matrix) }}
+      PRISM_CAPTURE_ACTIVE: "true"
     steps:
       - uses: actions/checkout@v4
 
@@ -484,28 +487,57 @@ jobs:
             source "${{ inputs.vivado_settings }}"
             set -u
           fi
+          export PYTEST_ADDOPTS="${PYTEST_ADDOPTS:-} -o junit_logging=all -o junit_log_passing_tests=true"
+          cat > run-prism-tests.sh <<'PRISM_TESTS'
+          set -euo pipefail
           ${{ inputs.pytest_cmd_template }}
+          PRISM_TESTS
+          exec "$VENV_DIR/bin/python" -m adi_lg_plugins.prism.run -- \
+            bash -o pipefail -c 'bash run-prism-tests.sh 2>&1 | tee prism-pytest.log'
 
       - name: Upload to Prism
         if: always() && steps.check_direct_env.outputs.skip != 'true' && inputs.prism_upload
         continue-on-error: true
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           PRISM_URL: ${{ env.PRISM_URL_RESOLVED }}
           PRISM_API_TOKEN: ${{ secrets.PRISM_API_TOKEN }}
+          PRISM_EMAIL: ${{ secrets.PRISM_EMAIL }}
+          PRISM_PASSWORD: ${{ secrets.PRISM_PASSWORD }}
+          PRISM_PROJECT: ${{ inputs.prism_project }}
+          PRISM_JUNIT: junit-hw-direct-${{ matrix.node.place }}.xml
+          PRISM_RUN_NAME: ${{ github.workflow }}-${{ github.run_number }}-${{ matrix.node.place }}
+          PRISM_BOARD: ${{ matrix.node.board }}
+          PRISM_CARRIER: ${{ matrix.node.carrier }}
+          PRISM_PLACE: ${{ matrix.node.place }}
         run: |
           set -euo pipefail
-          "$VENV_DIR/bin/pip" install --quiet \
-            "prism-uploader @ git+https://github.com/analogdevicesinc/prism.git#subdirectory=scripts" \
-            || true
-          "$VENV_DIR/bin/python" -m prism_client.upload_run \
-            --url "$PRISM_URL" \
-            --project "${{ inputs.prism_project }}" \
-            --junit "junit-hw-direct-${{ matrix.node.place }}.xml" \
-            --artifacts-glob "${{ inputs.artifact_glob }}" \
-            --labgrid-place "${{ matrix.node.place }}" \
-            --runner-label "${{ matrix.node.runner_label }}" \
-            --leg direct \
-            --git-sha "$GITHUB_SHA"
+          [ -f "$PRISM_JUNIT" ] || { echo "::notice::no JUnit produced; skipping Prism upload"; exit 0; }
+          capture_args=()
+          if [ -f .prism-labgrid/artifacts.zip ]; then
+            export PRISM_ARCHIVE=.prism-labgrid/artifacts.zip
+            capture_args+=(--archive "$PRISM_ARCHIVE")
+          fi
+          if [ -f .prism-labgrid/hardware.json ]; then
+            export PRISM_HARDWARE_JSON=.prism-labgrid/hardware.json
+            capture_args+=(--hardware-json "$PRISM_HARDWARE_JSON")
+          fi
+          if [ -f prism-pytest.log ]; then
+            export PRISM_PYTEST_LOG=prism-pytest.log
+            capture_args+=(--pytest-log "$PRISM_PYTEST_LOG")
+          fi
+          if [ -n "${{ inputs.prism_upload_cmd }}" ]; then
+            ${{ inputs.prism_upload_cmd }}
+          else
+            "$VENV_DIR/bin/python" -m adi_lg_plugins.hw_ci.prism_upload.upload_run "$PRISM_JUNIT" \
+              "${capture_args[@]}" \
+              --url "$PRISM_URL" --project "$PRISM_PROJECT" \
+              --token "$PRISM_API_TOKEN" --auto-create-project \
+              --run-name "$PRISM_RUN_NAME" \
+              --tag "place=$PRISM_PLACE" --tag "board=$PRISM_BOARD" \
+              --tag "carrier=$PRISM_CARRIER" --tag "leg=direct" \
+              --tag "git-sha=$GITHUB_SHA"
+          fi
 
       - name: Publish hw-direct test results to PR
         if: always() && steps.check_direct_env.outputs.skip != 'true'
@@ -547,6 +579,9 @@ jobs:
     concurrency:
       group: hw-place-${{ inputs.coordinator }}-${{ matrix.node.place }}
       cancel-in-progress: false
+    env:
+      PRISM_CI_MATRIX: ${{ toJSON(matrix) }}
+      PRISM_CAPTURE_ACTIVE: "true"
     steps:
       - uses: actions/checkout@v4
 
@@ -594,7 +629,13 @@ jobs:
             source "${{ inputs.vivado_settings }}"
             set -u
           fi
+          export PYTEST_ADDOPTS="${PYTEST_ADDOPTS:-} -o junit_logging=all -o junit_log_passing_tests=true"
+          cat > run-prism-tests.sh <<'PRISM_TESTS'
+          set -euo pipefail
           ${{ inputs.pytest_cmd_template }}
+          PRISM_TESTS
+          exec "$VENV_DIR/bin/python" -m adi_lg_plugins.prism.run -- \
+            bash -o pipefail -c 'bash run-prism-tests.sh 2>&1 | tee prism-pytest.log'
 
       - name: Release coordinator place
         if: always()
@@ -612,22 +653,45 @@ jobs:
         if: always() && inputs.prism_upload
         continue-on-error: true
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           PRISM_URL: ${{ env.PRISM_URL_RESOLVED }}
           PRISM_API_TOKEN: ${{ secrets.PRISM_API_TOKEN }}
+          PRISM_EMAIL: ${{ secrets.PRISM_EMAIL }}
+          PRISM_PASSWORD: ${{ secrets.PRISM_PASSWORD }}
+          PRISM_PROJECT: ${{ inputs.prism_project }}
+          PRISM_JUNIT: junit-hw-coord-${{ matrix.node.place }}.xml
+          PRISM_RUN_NAME: ${{ github.workflow }}-${{ github.run_number }}-${{ matrix.node.place }}
+          PRISM_BOARD: ${{ matrix.node.board }}
+          PRISM_CARRIER: ${{ matrix.node.carrier }}
+          PRISM_PLACE: ${{ matrix.node.place }}
         run: |
           set -euo pipefail
-          "$VENV_DIR/bin/pip" install --quiet \
-            "prism-uploader @ git+https://github.com/analogdevicesinc/prism.git#subdirectory=scripts" \
-            || true
-          "$VENV_DIR/bin/python" -m prism_client.upload_run \
-            --url "$PRISM_URL" \
-            --project "${{ inputs.prism_project }}" \
-            --junit "junit-hw-coord-${{ matrix.node.place }}.xml" \
-            --artifacts-glob "${{ inputs.artifact_glob }}" \
-            --labgrid-place "${{ matrix.node.place }}" \
-            --runner-label "${{ matrix.node.runner_label }}" \
-            --leg coord \
-            --git-sha "$GITHUB_SHA"
+          [ -f "$PRISM_JUNIT" ] || { echo "::notice::no JUnit produced; skipping Prism upload"; exit 0; }
+          capture_args=()
+          if [ -f .prism-labgrid/artifacts.zip ]; then
+            export PRISM_ARCHIVE=.prism-labgrid/artifacts.zip
+            capture_args+=(--archive "$PRISM_ARCHIVE")
+          fi
+          if [ -f .prism-labgrid/hardware.json ]; then
+            export PRISM_HARDWARE_JSON=.prism-labgrid/hardware.json
+            capture_args+=(--hardware-json "$PRISM_HARDWARE_JSON")
+          fi
+          if [ -f prism-pytest.log ]; then
+            export PRISM_PYTEST_LOG=prism-pytest.log
+            capture_args+=(--pytest-log "$PRISM_PYTEST_LOG")
+          fi
+          if [ -n "${{ inputs.prism_upload_cmd }}" ]; then
+            ${{ inputs.prism_upload_cmd }}
+          else
+            "$VENV_DIR/bin/python" -m adi_lg_plugins.hw_ci.prism_upload.upload_run "$PRISM_JUNIT" \
+              "${capture_args[@]}" \
+              --url "$PRISM_URL" --project "$PRISM_PROJECT" \
+              --token "$PRISM_API_TOKEN" --auto-create-project \
+              --run-name "$PRISM_RUN_NAME" \
+              --tag "place=$PRISM_PLACE" --tag "board=$PRISM_BOARD" \
+              --tag "carrier=$PRISM_CARRIER" --tag "leg=coord" \
+              --tag "git-sha=$GITHUB_SHA"
+          fi
 
       - name: Publish hw-coord test results to PR
         if: always()
@@ -669,6 +733,9 @@ jobs:
     concurrency:
       group: hw-place-${{ inputs.coordinator }}-${{ matrix.node.place }}
       cancel-in-progress: false
+    env:
+      PRISM_CI_MATRIX: ${{ toJSON(matrix) }}
+      PRISM_CAPTURE_ACTIVE: "true"
     steps:
       - uses: actions/checkout@v4
 
@@ -737,7 +804,13 @@ jobs:
             source "${{ inputs.vivado_settings }}"
             set -u
           fi
+          export PYTEST_ADDOPTS="${PYTEST_ADDOPTS:-} -o junit_logging=all -o junit_log_passing_tests=true"
+          cat > run-prism-tests.sh <<'PRISM_TESTS'
+          set -euo pipefail
           ${{ inputs.pytest_cmd_template }}
+          PRISM_TESTS
+          exec "$VENV_DIR/bin/python" -m adi_lg_plugins.prism.run -- \
+            bash -o pipefail -c 'bash run-prism-tests.sh 2>&1 | tee prism-pytest.log'
 
       - name: Release coordinator place
         if: always()
@@ -752,19 +825,48 @@ jobs:
           fi
 
       - name: Upload to Prism
-        if: always() && inputs.prism_upload && inputs.prism_upload_cmd != ''
+        if: always() && inputs.prism_upload
         continue-on-error: true
         env:
+          GITHUB_TOKEN: ${{ github.token }}
           PRISM_URL: ${{ env.PRISM_URL_RESOLVED }}
+          PRISM_API_TOKEN: ${{ secrets.PRISM_API_TOKEN }}
           PRISM_EMAIL: ${{ secrets.PRISM_EMAIL }}
           PRISM_PASSWORD: ${{ secrets.PRISM_PASSWORD }}
           PRISM_PROJECT: ${{ inputs.prism_project }}
           PRISM_JUNIT: junit-hw-dynamic-${{ matrix.node.place }}.xml
-          PRISM_RUN_NAME: ${{ inputs.prism_project }} ${{ matrix.node.board }} / ${{ matrix.node.carrier }} #${{ github.run_number }}
+          PRISM_RUN_NAME: ${{ github.workflow }}-${{ github.run_number }}-${{ matrix.node.place }}
           PRISM_BOARD: ${{ matrix.node.board }}
           PRISM_CARRIER: ${{ matrix.node.carrier }}
           PRISM_PLACE: ${{ matrix.node.place }}
-        run: ${{ inputs.prism_upload_cmd }}
+        run: |
+          set -euo pipefail
+          [ -f "$PRISM_JUNIT" ] || { echo "::notice::no JUnit produced; skipping Prism upload"; exit 0; }
+          capture_args=()
+          if [ -f .prism-labgrid/artifacts.zip ]; then
+            export PRISM_ARCHIVE=.prism-labgrid/artifacts.zip
+            capture_args+=(--archive "$PRISM_ARCHIVE")
+          fi
+          if [ -f .prism-labgrid/hardware.json ]; then
+            export PRISM_HARDWARE_JSON=.prism-labgrid/hardware.json
+            capture_args+=(--hardware-json "$PRISM_HARDWARE_JSON")
+          fi
+          if [ -f prism-pytest.log ]; then
+            export PRISM_PYTEST_LOG=prism-pytest.log
+            capture_args+=(--pytest-log "$PRISM_PYTEST_LOG")
+          fi
+          if [ -n "${{ inputs.prism_upload_cmd }}" ]; then
+            ${{ inputs.prism_upload_cmd }}
+          else
+            "$VENV_DIR/bin/python" -m adi_lg_plugins.hw_ci.prism_upload.upload_run "$PRISM_JUNIT" \
+              "${capture_args[@]}" \
+              --url "$PRISM_URL" --project "$PRISM_PROJECT" \
+              --token "$PRISM_API_TOKEN" --auto-create-project \
+              --run-name "$PRISM_RUN_NAME" \
+              --tag "place=$PRISM_PLACE" --tag "board=$PRISM_BOARD" \
+              --tag "carrier=$PRISM_CARRIER" --tag "leg=dynamic" \
+              --tag "git-sha=$GITHUB_SHA"
+          fi
 
       - name: Publish hw-dynamic test results to PR
         if: always()
