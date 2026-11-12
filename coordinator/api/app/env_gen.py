@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from collections.abc import Callable
 from io import StringIO
 from typing import Any
@@ -74,6 +75,12 @@ POWER_RESOURCE_DRIVERS: dict[str, list[tuple[str, DriverConfigFactory]]] = {
 RESOURCE_DRIVER_MAP.update(POWER_RESOURCE_DRIVERS)
 
 SHELL_DEFAULTS: dict[str, dict[str, str]] = {
+    "BootSelMap": {
+        "prompt": "root@.*",
+        "login_prompt": "analog login: ",
+        "username": "root",
+        "password": "analog",
+    },
     "BootFPGASoC": {
         "prompt": "root@.*",
         "login_prompt": "analog login: ",
@@ -115,6 +122,7 @@ SHELL_DEFAULTS: dict[str, dict[str, str]] = {
 }
 
 STRATEGY_CONFIGS: dict[str, dict[str, Any]] = {
+    "BootSelMap": {"reached_linux_marker": "analog", "ethernet_interface": "eth0"},
     "BootFPGASoC": {
         "reached_linux_marker": "analog",
         "wait_for_linux_prompt_timeout": 180,
@@ -171,6 +179,7 @@ _KNOWN_STRATEGIES = frozenset(
         "BootFPGASoCSSH",
         "BootZynq7000JTAGRecovery",
         "BootNoOSJTAG",
+        "BootSelMap",
     }
 )
 
@@ -238,6 +247,12 @@ def generate_env_yaml(
 
     resource_classes = {r.cls for r in resources}
     strategy = resolve_strategy(place.tags, resource_classes) if tier == "boot" else None
+    if strategy == "BootSelMap":
+        required = {"NetworkSerialPort", "NetworkService"}
+        if not required <= resource_classes or resource_classes.isdisjoint(POWER_RESOURCE_DRIVERS):
+            raise ValueError(
+                "BootSelMap requires a serial console, NetworkService and power resource"
+            )
     shell_key = strategy or "_default"
     shell_cfg = dict(SHELL_DEFAULTS.get(shell_key, SHELL_DEFAULTS["_default"]))
 
@@ -256,6 +271,38 @@ def generate_env_yaml(
 
         if strategy:
             drivers[strategy] = dict(STRATEGY_CONFIGS.get(strategy, {}))
+            if strategy == "BootSelMap":
+                if place.tags.get("daughter-board", "").startswith("adsy1100-"):
+                    drivers[strategy]["iio_jesd_driver_name"] = "axi-ad9084-rx-hpc"
+                # Operator-managed strategy settings stay on the coordinator.
+                # Artifact paths are supplied by the consumer through LG_SM_*.
+                raw = place.tags.get("boot-strategy-params", "{}")
+                try:
+                    params = json.loads(raw)
+                except (ValueError, TypeError) as exc:
+                    raise ValueError("boot-strategy-params must be a JSON object") from exc
+                allowed = {
+                    "reached_linux_marker",
+                    "ethernet_interface",
+                    "iio_jesd_driver_name",
+                    "iio_jesd_data_mode",
+                    "iio_jesd_link_mode_attr",
+                    "target_dut_folder",
+                    "selmap_boot_script_name",
+                    "pre_load_commands",
+                }
+                if not isinstance(params, dict) or params.keys() - allowed:
+                    raise ValueError(
+                        "boot-strategy-params contains unsupported BootSelMap settings"
+                    )
+                for key, value in params.items():
+                    if key == "pre_load_commands":
+                        valid = isinstance(value, list) and all(isinstance(v, str) for v in value)
+                    else:
+                        valid = isinstance(value, str) and bool(value)
+                    if not valid:
+                        raise ValueError(f"boot-strategy-params: invalid value for {key}")
+                drivers[strategy].update(params)
 
     # Expose the place's identity as labgrid `features` so consumers that
     # gate tests with `@pytest.mark.lg_feature(...)` (e.g. pyadi-dt's
