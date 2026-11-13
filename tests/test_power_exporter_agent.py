@@ -292,8 +292,18 @@ def test_power_agent_uses_local_interpreter_on_the_exporter(monkeypatch):
     monkeypatch.setattr("socket.gethostname", lambda: "exporter")
     monkeypatch.setattr("socket.getfqdn", lambda: "exporter.example.com")
     with patch.object(_power_agent, "AgentWrapper") as wrapper_type:
-        _power_agent.create_power_agent("EXPORTER.EXAMPLE.COM.")
+        _power_agent.create_power_agent("EXPORTER.EXAMPLE.COM.", prefer_local=True)
     wrapper_type.assert_called_once_with(None)
+
+
+def test_other_power_backends_keep_existing_ssh_execution(monkeypatch):
+    from adi_lg_plugins.drivers import _power_agent
+
+    monkeypatch.setattr("socket.gethostname", lambda: "exporter")
+    monkeypatch.setattr("socket.getfqdn", lambda: "exporter.example.com")
+    with patch.object(_power_agent, "AgentWrapper") as wrapper_type:
+        _power_agent.create_power_agent("exporter.example.com")
+    wrapper_type.assert_called_once_with("exporter.example.com")
 
 
 def test_proxy_required_fails_before_agent_creation():

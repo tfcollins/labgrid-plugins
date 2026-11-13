@@ -14,15 +14,20 @@ _AGENT_NAME = "adi_power"
 _AGENT_PATH = Path(__file__).with_name("agents")
 
 
-def create_power_agent(host):
+def create_power_agent(host, *, prefer_local=False):
     """Start an AgentWrapper and load the package-owned power helper."""
-    if host and host.rstrip(".").casefold() in {
-        socket.gethostname().rstrip(".").casefold(),
-        socket.getfqdn().rstrip(".").casefold(),
-        "localhost",
-        "127.0.0.1",
-        "::1",
-    }:
+    if (
+        prefer_local
+        and host
+        and host.rstrip(".").casefold()
+        in {
+            socket.gethostname().rstrip(".").casefold(),
+            socket.getfqdn().rstrip(".").casefold(),
+            "localhost",
+            "127.0.0.1",
+            "::1",
+        }
+    ):
         # A coordinator resource is still marked remote when the client runs
         # on its exporter. Use this interpreter instead of requiring self-SSH.
         host = None
@@ -52,6 +57,8 @@ def create_power_agent(host):
 
 class ExporterPowerAgentMixin(RemoteExecMixin):
     """Route power API work to the exporter for proxied custom resources."""
+
+    _local_power_agent = False
 
     def _init_exporter_agent(self):
         self._agent_wrapper = None
@@ -84,7 +91,9 @@ class ExporterPowerAgentMixin(RemoteExecMixin):
                     "exporter requires a proxy, but labgrid AgentWrapper needs direct SSH; "
                     "configure an SSH ProxyJump for the exporter host"
                 )
-            self._agent_wrapper, self._agent_module = create_power_agent(host)
+            self._agent_wrapper, self._agent_module = create_power_agent(
+                host, prefer_local=self._local_power_agent
+            )
 
     def on_deactivate(self):
         wrapper = self._agent_wrapper
