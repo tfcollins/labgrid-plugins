@@ -7,9 +7,11 @@ was already running, not what was just staged.
 """
 
 import logging
+import threading
 from unittest import mock
 
 import pytest
+from labgrid.strategy import StrategyError
 
 from adi_lg_plugins.strategies.bootselmap import BootSelMap, Status
 
@@ -71,6 +73,16 @@ def test_update_zynq_boot_files_reboots_when_kernel_and_dt_staged(tmp_path):
     # Reboot left in progress (early return) for the caller's chain to continue from.
     assert s.status == Status.powered_off
     assert s._rebooted_after_boot_file_update is True
+
+
+def test_power_activation_deadline_leaves_stage_incomplete(tmp_path, monkeypatch):
+    s = _strategy(tmp_path)
+    monkeypatch.setenv("LG_SM_STAGE_TIMEOUT", "0.05")
+    s.target.activate.side_effect = lambda driver: threading.Event().wait()
+    with pytest.raises(StrategyError, match="activate power"):
+        s.transition(Status.powered_off)
+    s.power.off.assert_not_called()
+    assert s.status == Status.unknown
 
 
 def test_update_zynq_boot_files_no_reboot_without_staged_files(tmp_path):

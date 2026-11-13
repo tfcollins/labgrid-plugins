@@ -1,5 +1,8 @@
 """Shared AgentWrapper lifecycle for exporter-side power operations."""
 
+import logging
+import socket
+import subprocess
 from pathlib import Path
 
 from labgrid.resource.common import NetworkResource
@@ -13,11 +16,36 @@ _AGENT_PATH = Path(__file__).with_name("agents")
 
 def create_power_agent(host):
     """Start an AgentWrapper and load the package-owned power helper."""
+    if host and host.rstrip(".").casefold() in {
+        socket.gethostname().rstrip(".").casefold(),
+        socket.getfqdn().rstrip(".").casefold(),
+        "localhost",
+        "127.0.0.1",
+        "::1",
+    }:
+        # A coordinator resource is still marked remote when the client runs
+        # on its exporter. Use this interpreter instead of requiring self-SSH.
+        host = None
+    logging.getLogger(__name__).info("Starting %s power agent", "SSH" if host else "local")
     wrapper = AgentWrapper(host)
     try:
         module = wrapper.load(_AGENT_NAME, path=str(_AGENT_PATH))
-    except Exception:
-        wrapper.close()
+    except BaseException:
+        # A stalled agent cannot acknowledge close(). Stop its process before
+        # closing the wrapper so stage timeouts and cancellation stay bounded.
+        process = getattr(wrapper, "agent", None)
+        if process is not None and process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=2)
+            wrapper.agent = None
+        try:
+            wrapper.close()
+        except (OSError, ValueError):
+            pass  # Preserve the load/timeout exception if the pipe is already gone.
         raise
     return wrapper, module
 

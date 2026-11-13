@@ -208,6 +208,16 @@ def test_uploaded_helper_executes_through_real_agentwrapper():
         wrapper.close()
 
 
+def test_power_agent_uses_local_interpreter_on_the_exporter(monkeypatch):
+    from adi_lg_plugins.drivers import _power_agent
+
+    monkeypatch.setattr("socket.gethostname", lambda: "exporter")
+    monkeypatch.setattr("socket.getfqdn", lambda: "exporter.example.com")
+    with patch.object(_power_agent, "AgentWrapper") as wrapper_type:
+        _power_agent.create_power_agent("EXPORTER.EXAMPLE.COM.")
+    wrapper_type.assert_called_once_with(None)
+
+
 def test_proxy_required_fails_before_agent_creation():
     driver = APCDriver.__new__(APCDriver)
     driver.APC_outlet = SimpleNamespace(
