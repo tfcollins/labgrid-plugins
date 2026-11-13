@@ -208,6 +208,84 @@ def test_uploaded_helper_executes_through_real_agentwrapper():
         wrapper.close()
 
 
+@pytest.mark.parametrize("legacy", [False, True], ids=["pysnmp7", "pysnmp6"])
+def test_cyberpower_operation_in_real_agent_without_driver_imports(tmp_path, legacy):
+    """Use the real isolated agent process, with only the SNMP transport faked."""
+    from adi_lg_plugins.drivers._power_agent import create_power_agent
+
+    (tmp_path / "fake_snmp.py").write_text("""
+import sys
+import types
+state = {}
+def install(legacy):
+    sys.modules['adi_lg_plugins'] = None
+    names = ['pysnmp', 'pysnmp.hlapi', 'pysnmp.proto', 'pysnmp.proto.api',
+             'pysnmp.proto.api.v2c', 'pysnmp.smi', 'pysnmp.smi.rfc1902']
+    if not legacy:
+        names += ['pysnmp.hlapi.v1arch', 'pysnmp.hlapi.v1arch.asyncio']
+    for name in names:
+        module = types.ModuleType(name)
+        module.__path__ = []
+        sys.modules[name] = module
+    def response(*args):
+        state['operation'] = args[-1]
+        return (None, 0, 0, [])
+    class Target:
+        def __init__(self, address, **kwargs):
+            state['address'] = address
+            state['options'] = kwargs
+        @classmethod
+        async def create(cls, address, **kwargs):
+            return cls(address, **kwargs)
+    class Dispatcher:
+        def close(self): state['closed'] = True
+    async def set_cmd(*args): return response(*args)
+    values = dict(CommunityData=lambda x: x, ContextData=lambda: None,
+                  SnmpEngine=lambda: None, SnmpDispatcher=Dispatcher,
+                  UdpTransportTarget=Target, ObjectIdentity=lambda x: x,
+                  Integer32=int, ObjectType=lambda *x: x,
+                  set_cmd=set_cmd, setCmd=lambda *x: iter([response(*x)]))
+    for name in names:
+        sys.modules[name].__dict__.update(values)
+methods = {'install': install, 'result': lambda: state}
+""")
+    wrapper, module = create_power_agent(None)
+    try:
+        stub = wrapper.load("fake_snmp", path=str(tmp_path))
+        stub.install(legacy)
+        module.cyberpower_set("192.0.2.10", 4, False)
+        result = stub.result()
+        assert result["address"] == ["192.0.2.10", 161]
+        assert result["operation"] == ["1.3.6.1.4.1.3808.1.1.3.3.3.1.1.4.4", 2]
+        assert result["options"] == {"timeout": 2, "retries": 2}
+        if not legacy:
+            assert result["closed"] is True
+    finally:
+        wrapper.close()
+
+
+def test_cyberpower_real_agent_imports_actual_snmp_without_network(tmp_path):
+    from labgrid.util.agentwrapper import AgentException
+
+    from adi_lg_plugins.drivers._power_agent import create_power_agent
+
+    (tmp_path / "disable_transport.py").write_text("""
+def install():
+    from pysnmp.hlapi.v1arch.asyncio import UdpTransportTarget
+    async def disabled(*args, **kwargs):
+        raise RuntimeError('SNMP transport deliberately disabled')
+    UdpTransportTarget.create = disabled
+methods = {'install': install}
+""")
+    wrapper, module = create_power_agent(None)
+    try:
+        wrapper.load("disable_transport", path=str(tmp_path)).install()
+        with pytest.raises(AgentException, match="SNMP transport deliberately disabled"):
+            module.cyberpower_set("192.0.2.10", 4, False)
+    finally:
+        wrapper.close()
+
+
 def test_power_agent_uses_local_interpreter_on_the_exporter(monkeypatch):
     from adi_lg_plugins.drivers import _power_agent
 
