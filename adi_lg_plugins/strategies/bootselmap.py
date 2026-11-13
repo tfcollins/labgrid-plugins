@@ -11,6 +11,7 @@ from labgrid.step import step
 from labgrid.strategy import Strategy, StrategyError
 
 from ._compat import never_retry
+from ._network import override_networkservice_address
 from ._timeouts import stage_deadline
 
 
@@ -218,7 +219,7 @@ class BootSelMap(Strategy):
             # Check the same as SSHDriver
             if self.ssh.networkservice.address != ip:
                 self.logger.info(f"Syncing SSHDriver IP to {ip}")
-                self.ssh.networkservice.address = ip
+            override_networkservice_address(self.ssh.networkservice, ip)
 
             boot_files_changed = False
 
@@ -326,7 +327,7 @@ class BootSelMap(Strategy):
             # Check the same as SSHDriver
             if self.ssh.networkservice.address != ip:
                 self.logger.info(f"Syncing SSHDriver IP to {ip}")
-                self.ssh.networkservice.address = ip
+            override_networkservice_address(self.ssh.networkservice, ip)
 
             # Copy required files to the target device for Virtex boot
             if self.local_bitstream_filename:

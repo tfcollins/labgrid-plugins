@@ -8,9 +8,13 @@ was already running, not what was just staged.
 
 import logging
 import threading
+from types import SimpleNamespace
 from unittest import mock
 
 import pytest
+from labgrid.remote.common import ResourceEntry
+from labgrid.resource.networkservice import NetworkService
+from labgrid.resource.remote import RemotePlaceManager
 from labgrid.strategy import StrategyError
 
 from adi_lg_plugins.strategies.bootselmap import BootSelMap, Status
@@ -83,6 +87,51 @@ def test_power_activation_deadline_leaves_stage_incomplete(tmp_path, monkeypatch
         s.transition(Status.powered_off)
     s.power.off.assert_not_called()
     assert s.status == Status.unknown
+
+
+@pytest.mark.parametrize("live_address", ["192.0.2.1", "10.0.0.5"])
+def test_discovered_ssh_address_survives_real_resource_refresh(tmp_path, live_address):
+    s = _strategy(tmp_path, devicetree=False, initial_status=Status.booted_zynq)
+    resource = NetworkService(
+        target=None,
+        name=None,
+        address=live_address,
+        port=22,
+        username="root",
+        password="test-password",
+    )
+    entry = ResourceEntry(
+        {
+            "cls": "NetworkService",
+            "params": {
+                "address": "192.0.2.1",
+                "port": 22,
+                "username": "root",
+                "password": "test-password",
+            },
+            "avail": True,
+        }
+    )
+    resource._remote_entry = entry
+    manager = RemotePlaceManager.__new__(RemotePlaceManager)
+    manager.resources = []
+    manager.unmanaged_resources = [resource]
+    manager.loop = SimpleNamespace(is_running=lambda: True)
+    manager.logger = logging.getLogger("test_remote_refresh")
+    s.ssh.networkservice = resource
+    destinations = []
+
+    def activate(driver):
+        if driver is s.ssh:
+            manager.poll()  # Real labgrid poll rewrites fields from ResourceEntry.
+            destinations.append(resource.address)
+
+    s.target.activate.side_effect = activate
+    s.transition(Status.update_zynq_boot_files)
+    assert destinations and set(destinations) == {"10.0.0.5"}
+    assert entry.args["address"] == "10.0.0.5"
+    assert entry.args["password"] == "test-password"
+    assert entry.args["port"] == 22
 
 
 def test_update_zynq_boot_files_no_reboot_without_staged_files(tmp_path):
