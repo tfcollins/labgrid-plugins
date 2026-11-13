@@ -11,6 +11,8 @@ from labgrid.step import step
 from labgrid.strategy import Strategy, StrategyError
 
 from ._compat import never_retry
+from ._network import override_networkservice_address
+from ._timeouts import stage_deadline
 
 
 class Status(enum.Enum):
@@ -79,6 +81,8 @@ class BootSelMap(Strategy):
     local_overlay_filename = attr.ib(default=None)
     local_bitstream_filename = attr.ib(default=None)
     pre_load_commands = attr.ib(default=None)
+    stage_timeout = attr.ib(default=180, converter=float)
+    selmap_timeout = attr.ib(default=120, converter=float)
 
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
@@ -115,6 +119,16 @@ class BootSelMap(Strategy):
                 if not os.path.isfile(local_path):
                     raise StrategyError(f"Local post-boot file {local_path} does not exist")
                 self.logger.info(f"Using local post-boot file: {local_path}")
+
+    def _run_stage(self, name, operation, *args, _stage_timeout=None, **kwargs):
+        timeout = _stage_timeout or float(
+            os.environ.get("LG_SM_STAGE_TIMEOUT", getattr(self, "stage_timeout", 180))
+        )
+        self.logger.info("BootSelMap stage %s started (timeout %gs)", name, timeout)
+        with stage_deadline(name, timeout):
+            result = operation(*args, **kwargs)
+        self.logger.info("BootSelMap stage %s finished", name)
+        return result
 
     @never_retry
     @step()
@@ -154,49 +168,58 @@ class BootSelMap(Strategy):
             step.skip("nothing to do")
             return  # nothing to do
         elif status == Status.powered_off:
-            self.target.deactivate(self.shell)
-            self.target.activate(self.power)
-            self.power.off()
+            self._run_stage("deactivate shell", self.target.deactivate, self.shell)
+            self._run_stage("activate power", self.target.activate, self.power)
+            self._run_stage("power off", self.power.off)
             self.logger.info("System powered off")
         elif status == Status.booting_zynq:
             self.transition(Status.powered_off)
-            self.target.activate(self.power)
+            self._run_stage("activate power", self.target.activate, self.power)
             self.logger.info("Powering on Zynq (primary FPGA)...")
             time.sleep(5)
-            self.power.on()
+            self._run_stage("power on", self.power.on)
             self.logger.info("Zynq powered on, booting Linux...")
         elif status == Status.booted_zynq:
             self.transition(Status.booting_zynq)
             self.boot_log = ""  # Reset boot log for this boot
             self.shell.bypass_login = True
-            self.target.activate(self.shell)
+            self._run_stage("activate shell", self.target.activate, self.shell)
             # Check kernel start
             self.logger.info(f"Waiting for Linux boot and '{self.reached_linux_marker}' prompt...")
-            _, before, _, _ = self.shell.console.expect("Linux", timeout=60)
+            _, before, _, _ = self._run_stage(
+                "wait for boot banner", self.shell.console.expect, "Linux", timeout=60
+            )
             if before:
                 self.boot_log += before.decode("utf-8", errors="replace")
             # Check device prompt
-            _, before, _, _ = self.shell.console.expect(self.reached_linux_marker, timeout=30)
+            _, before, _, _ = self._run_stage(
+                "wait for boot banner",
+                self.shell.console.expect,
+                self.reached_linux_marker,
+                timeout=30,
+            )
             if before:
                 self.boot_log += before.decode("utf-8", errors="replace")
             self.shell.bypass_login = False
-            self.target.deactivate(self.shell)
+            self._run_stage("deactivate shell", self.target.deactivate, self.shell)
             time.sleep(5)
             self.logger.info("Zynq (primary FPGA) booted successfully")
 
         elif status == Status.update_zynq_boot_files:
             self.transition(Status.booted_zynq)
             self.logger.info("Updating Zynq boot files via SSH...")
-            self.target.activate(self.shell)
-            address = self.shell.get_ip_addresses(self.ethernet_interface)
+            self._run_stage("activate shell", self.target.activate, self.shell)
+            address = self._run_stage(
+                "read DUT address", self.shell.get_ip_addresses, self.ethernet_interface
+            )
             assert address, f"No IP address found on {self.ethernet_interface}"
             ip = str(address[0].ip)
-            self.target.deactivate(self.shell)
+            self._run_stage("deactivate shell", self.target.deactivate, self.shell)
 
             # Check the same as SSHDriver
             if self.ssh.networkservice.address != ip:
                 self.logger.info(f"Syncing SSHDriver IP to {ip}")
-                self.ssh.networkservice.address = ip
+            override_networkservice_address(self.ssh.networkservice, ip)
 
             boot_files_changed = False
 
@@ -211,9 +234,11 @@ class BootSelMap(Strategy):
                 self.logger.info(
                     f"Uploading Zynq kernel file {self.local_kernel_filename} to {remote_kernel_path}..."
                 )
-                self.target.activate(self.ssh)
-                self.ssh.put(self.local_kernel_filename, remote_kernel_path)
-                self.target.deactivate(self.ssh)
+                self._run_stage("activate ssh", self.target.activate, self.ssh)
+                self._run_stage(
+                    "upload boot file", self.ssh.put, self.local_kernel_filename, remote_kernel_path
+                )
+                self._run_stage("deactivate ssh", self.target.deactivate, self.ssh)
                 boot_files_changed = True
 
             if self.local_device_tree_filename:
@@ -227,25 +252,32 @@ class BootSelMap(Strategy):
                 self.logger.info(
                     f"Uploading Zynq device tree file {self.local_device_tree_filename} to {remote_dt_path}..."
                 )
-                self.target.activate(self.ssh)
-                self.ssh.put(self.local_device_tree_filename, remote_dt_path)
-                self.target.deactivate(self.ssh)
+                self._run_stage("activate ssh", self.target.activate, self.ssh)
+                self._run_stage(
+                    "upload boot file",
+                    self.ssh.put,
+                    self.local_device_tree_filename,
+                    remote_dt_path,
+                )
+                self._run_stage("deactivate ssh", self.target.deactivate, self.ssh)
                 boot_files_changed = True
 
             if not self._copied_pre_boot_files:
                 if self.pre_boot_boot_files:
-                    self.target.activate(self.ssh)
+                    self._run_stage("activate ssh", self.target.activate, self.ssh)
                     for local_path, remote_path in self.pre_boot_boot_files.items():
                         if os.path.isfile(local_path) is False:
                             raise StrategyError(f"Local boot file {local_path} does not exist")
                         folder_in_boot_path = "/".join(remote_path.split("/")[:-1])
                         if folder_in_boot_path and folder_in_boot_path != "/boot":
-                            self.ssh.run(f"mkdir -p {folder_in_boot_path}")
+                            self._run_stage(
+                                "SSH command", self.ssh.run, f"mkdir -p {folder_in_boot_path}"
+                            )
                         self.logger.info(
                             f"Uploading Zynq boot file {local_path} to {remote_path}..."
                         )
-                        self.ssh.put(local_path, remote_path)
-                    self.target.deactivate(self.ssh)
+                        self._run_stage("upload boot file", self.ssh.put, local_path, remote_path)
+                    self._run_stage("deactivate ssh", self.target.deactivate, self.ssh)
                     self._copied_pre_boot_files = True
                     boot_files_changed = True
 
@@ -256,10 +288,10 @@ class BootSelMap(Strategy):
             # take effect on some *later* run's power-on. Force that reboot
             # now so this run tests what it just staged.
             if boot_files_changed and not self._rebooted_after_boot_file_update:
-                self.target.activate(self.ssh)
-                self.ssh.run("sync")
+                self._run_stage("activate ssh", self.target.activate, self.ssh)
+                self._run_stage("SSH command", self.ssh.run, "sync")
                 time.sleep(5)  # Allow time for the files to be written
-                self.target.deactivate(self.ssh)
+                self._run_stage("deactivate ssh", self.target.deactivate, self.ssh)
                 self._rebooted_after_boot_file_update = True
                 self.logger.info("Restarting Zynq to apply new boot files...")
                 self.transition(Status.powered_off)
@@ -273,8 +305,10 @@ class BootSelMap(Strategy):
         elif status == Status.update_virtex_boot_files:
             self.transition(Status.update_zynq_boot_files)
             self.logger.info("Updating Virtex (secondary FPGA) bitstream files...")
-            self.target.activate(self.shell)
-            address = self.shell.get_ip_addresses(self.ethernet_interface)
+            self._run_stage("activate shell", self.target.activate, self.shell)
+            address = self._run_stage(
+                "read DUT address", self.shell.get_ip_addresses, self.ethernet_interface
+            )
             assert address, f"No IP address found on {self.ethernet_interface}"
             self.logger.info(f"Detected IP address on {self.ethernet_interface}: {address[0].ip}")
             # Check if the IP address is reachable via ping
@@ -288,12 +322,12 @@ class BootSelMap(Strategy):
             self.logger.info(f"Ping response code for {ip}: {response}")
             if response != 0:
                 self.logger.warning(f"IP address {ip} is not reachable via ping")
-            self.target.deactivate(self.shell)
+            self._run_stage("deactivate shell", self.target.deactivate, self.shell)
 
             # Check the same as SSHDriver
             if self.ssh.networkservice.address != ip:
                 self.logger.info(f"Syncing SSHDriver IP to {ip}")
-                self.ssh.networkservice.address = ip
+            override_networkservice_address(self.ssh.networkservice, ip)
 
             # Copy required files to the target device for Virtex boot
             if self.local_bitstream_filename:
@@ -307,10 +341,15 @@ class BootSelMap(Strategy):
                 self.logger.info(
                     f"Uploading Virtex bitstream file {self.local_bitstream_filename} to {remote_bitstream_path}..."
                 )
-                self.target.activate(self.ssh)
-                self.ssh.run(f"mkdir -p {self.target_dut_folder}")
-                self.ssh.put(self.local_bitstream_filename, remote_bitstream_path)
-                self.target.deactivate(self.ssh)
+                self._run_stage("activate ssh", self.target.activate, self.ssh)
+                self._run_stage("SSH command", self.ssh.run, f"mkdir -p {self.target_dut_folder}")
+                self._run_stage(
+                    "upload boot file",
+                    self.ssh.put,
+                    self.local_bitstream_filename,
+                    remote_bitstream_path,
+                )
+                self._run_stage("deactivate ssh", self.target.deactivate, self.ssh)
 
             if self.local_overlay_filename:
                 if not os.path.isfile(self.local_overlay_filename):
@@ -323,26 +362,33 @@ class BootSelMap(Strategy):
                 self.logger.info(
                     f"Uploading Virtex overlay file {self.local_overlay_filename} to {remote_overlay_path}..."
                 )
-                self.target.activate(self.ssh)
-                self.ssh.run(f"mkdir -p {self.target_dut_folder}")
-                self.ssh.put(self.local_overlay_filename, remote_overlay_path)
-                self.target.deactivate(self.ssh)
+                self._run_stage("activate ssh", self.target.activate, self.ssh)
+                self._run_stage("SSH command", self.ssh.run, f"mkdir -p {self.target_dut_folder}")
+                self._run_stage(
+                    "upload boot file",
+                    self.ssh.put,
+                    self.local_overlay_filename,
+                    remote_overlay_path,
+                )
+                self._run_stage("deactivate ssh", self.target.deactivate, self.ssh)
 
             # Copy extras
             if not self._copied_post_boot_files:
                 if self.post_boot_boot_files:
-                    self.target.activate(self.ssh)
+                    self._run_stage("activate ssh", self.target.activate, self.ssh)
                     for local_path, remote_path in self.post_boot_boot_files.items():
                         if os.path.isfile(local_path) is False:
                             raise StrategyError(f"Local boot file {local_path} does not exist")
                         folder_in_boot_path = "/".join(remote_path.split("/")[:-1])
                         if folder_in_boot_path and folder_in_boot_path != "/boot":
-                            self.ssh.run(f"mkdir -p {folder_in_boot_path}")
+                            self._run_stage(
+                                "SSH command", self.ssh.run, f"mkdir -p {folder_in_boot_path}"
+                            )
                         self.logger.info(
                             f"Uploading Virtex boot file {local_path} to {remote_path}..."
                         )
-                        self.ssh.put(local_path, remote_path)
-                    self.target.deactivate(self.ssh)
+                        self._run_stage("upload boot file", self.ssh.put, local_path, remote_path)
+                    self._run_stage("deactivate ssh", self.target.deactivate, self.ssh)
                     self._copied_post_boot_files = True
 
             self.logger.info("Virtex boot files updated successfully")
@@ -350,13 +396,13 @@ class BootSelMap(Strategy):
         elif status == Status.trigger_selmap_boot:
             self.transition(Status.update_virtex_boot_files)
             self.logger.info("Triggering SelMap boot for secondary Virtex FPGA...")
-            self.target.activate(self.ssh)
+            self._run_stage("activate ssh", self.target.activate, self.ssh)
             if self.pre_load_commands:
                 if isinstance(self.pre_load_commands, str):
                     self.pre_load_commands = [self.pre_load_commands]
                 for cmd in self.pre_load_commands:
                     self.logger.info(f"Executing pre-load command: {cmd}")
-                    stdout, stderr, returncode = self.ssh.run(cmd)
+                    stdout, stderr, returncode = self._run_stage("SSH command", self.ssh.run, cmd)
                     if returncode != 0:
                         stdout_str = "\n".join(stdout) if isinstance(stdout, list) else str(stdout)
                         stderr_str = "\n".join(stderr) if isinstance(stderr, list) else str(stderr)
@@ -369,17 +415,21 @@ class BootSelMap(Strategy):
                             f"Pre-load command '{cmd}' failed with return code {returncode}"
                         )
             time.sleep(2)
-            out = self.ssh.run(
-                f"cd {self.target_dut_folder} && ./selmap_dtbo.sh -d {os.path.basename(self.local_overlay_filename)} -b {os.path.basename(self.local_bitstream_filename)}"
+            out = self._run_stage(
+                "SSH command",
+                self.ssh.run,
+                f"cd {self.target_dut_folder} && ./selmap_dtbo.sh -d {os.path.basename(self.local_overlay_filename)} -b {os.path.basename(self.local_bitstream_filename)}",
+                timeout=self.selmap_timeout,
+                _stage_timeout=self.selmap_timeout,
             )
             print(f"SelMap boot trigger output:\n{out}")
-            self.target.deactivate(self.ssh)
+            self._run_stage("deactivate ssh", self.target.deactivate, self.ssh)
             self.logger.info("SelMap boot trigger script executed")
 
         elif status == Status.wait_for_virtex_boot:
             self.transition(Status.trigger_selmap_boot)
             self.shell.bypass_login = True
-            self.target.activate(self.shell)
+            self._run_stage("activate shell", self.target.activate, self.shell)
             # Check for device to register
             found_device = False
             self.logger.info(
@@ -467,28 +517,30 @@ class BootSelMap(Strategy):
             self.shell.run("systemctl restart iiod.service")
 
             self.shell.bypass_login = False
-            self.target.deactivate(self.shell)
+            self._run_stage("deactivate shell", self.target.deactivate, self.shell)
             self.logger.info("Virtex (secondary FPGA) booted successfully")
 
         elif status == Status.shell:
             self.transition(Status.wait_for_virtex_boot)
             self.logger.info("Preparing interactive shell...")
-            self.target.activate(self.shell)
+            self._run_stage("activate shell", self.target.activate, self.shell)
             # Post boot stuff...
             self.logger.info("Shell access ready")
         elif status == Status.soft_off:
             self.transition(Status.shell)
             try:
                 self.shell.run("poweroff")
-                self.shell.console.expect("Power down", timeout=30)
-                self.target.deactivate(self.shell)
+                self._run_stage(
+                    "wait for boot banner", self.shell.console.expect, "Power down", timeout=30
+                )
+                self._run_stage("deactivate shell", self.target.deactivate, self.shell)
                 time.sleep(10)
             except Exception as e:
                 self.logger.debug(f"DEBUG Soft off failed: {e}")
                 time.sleep(5)
-                self.target.deactivate(self.shell)
-            self.target.activate(self.power)
-            self.power.off()
+                self._run_stage("deactivate shell", self.target.deactivate, self.shell)
+            self._run_stage("activate power", self.target.activate, self.power)
+            self._run_stage("power off", self.power.off)
             self.logger.debug("DEBUG Soft powered off")
         else:
             raise StrategyError(f"no transition found from {self.status} to {status}")
