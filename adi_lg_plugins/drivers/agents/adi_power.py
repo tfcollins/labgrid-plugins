@@ -61,9 +61,77 @@ def handle_apc_get(address, outlet):
 
 
 def handle_cyberpower_set(address, outlet, on):
-    from adi_lg_plugins.drivers.cyberpowerdriver import CyberPowerPdu
+    """Send SNMP directly; the isolated agent must not import labgrid drivers.
 
-    CyberPowerPdu(address).set_outlet_on(outlet, on)
+    In a local AgentWrapper the script directory contains labgrid's yaml.py,
+    which shadows PyYAML if importing the driver recursively imports labgrid.
+    Remote exporter interpreters also need not have labgrid installed.
+    """
+    states = {
+        "immediateOn": 1,
+        "immediateOff": 2,
+        "immediateReboot": 3,
+        "delayedOn": 4,
+        "delayedOff": 5,
+        "delayedReboot": 6,
+        "cancelPendingCommand": 7,
+        "outletIdentify": 8,
+    }
+    state = (1 if on else 2) if isinstance(on, bool) else states[on]
+    oid = f"1.3.6.1.4.1.3808.1.1.3.3.3.1.1.4.{int(outlet)}"
+    try:
+        from pysnmp.hlapi.v1arch.asyncio import (
+            CommunityData,
+            SnmpDispatcher,
+            UdpTransportTarget,
+            set_cmd,
+        )
+        from pysnmp.proto.api.v2c import Integer32
+        from pysnmp.smi.rfc1902 import ObjectIdentity, ObjectType
+    except ImportError:
+        from pysnmp.hlapi import (
+            CommunityData,
+            ContextData,
+            Integer32,
+            ObjectIdentity,
+            ObjectType,
+            SnmpEngine,
+            UdpTransportTarget,
+            setCmd,
+        )
+
+        result = next(
+            setCmd(
+                SnmpEngine(),
+                CommunityData("private"),
+                UdpTransportTarget((address, 161), timeout=2, retries=2),
+                ContextData(),
+                ObjectType(ObjectIdentity(oid), Integer32(state)),
+            )
+        )
+    else:
+
+        async def set_outlet():
+            dispatcher = SnmpDispatcher()
+            try:
+                target = await UdpTransportTarget.create((address, 161), timeout=2, retries=2)
+                return await set_cmd(
+                    dispatcher,
+                    CommunityData("private"),
+                    target,
+                    ObjectType(ObjectIdentity(oid), Integer32(state)),
+                )
+            finally:
+                dispatcher.close()
+
+        result = asyncio.run(set_outlet())
+    error, status, index, bindings = result
+    if error:
+        raise RuntimeError(str(error))
+    if status:
+        raise RuntimeError(
+            f"{status.prettyPrint()} at {bindings[int(index) - 1][0] if index else '?'}"
+        )
 
 
 def handle_homeassistant(action, url, entity_id):

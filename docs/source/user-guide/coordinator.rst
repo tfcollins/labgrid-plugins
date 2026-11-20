@@ -217,6 +217,32 @@ The API server exposes the following endpoints:
   boot strategy. Returns ``404`` for an unknown place and ``422`` for an invalid
   tier. Consumed by the ``hw-matrix-v2`` workflow's env-render step.
 
+BootSelMap places
+~~~~~~~~~~~~~~~~
+
+For ADSY1100 remote CI, tag each place with ``boot-strategy=BootSelMap`` and
+``daughter-board=adsy1100-reva``, ``adsy1100-revb`` or ``adsy1100-revb1``.
+The boot-tier endpoint generates the power driver from the actual matched
+power resource, plus ``SerialDriver``, ``ADIShellDriver``, ``SSHDriver`` and
+``BootSelMap``. Missing serial, SSH NetworkService or power resources return
+HTTP 422. ADSY1100 places default to ``axi-ad9084-rx-hpc`` for JESD readiness.
+
+Operators can set optional BootSelMap parameters on the place using the
+``boot-strategy-params`` tag, whose value is a JSON object. This keeps board
+configuration on the coordinator rather than in consumer workflows::
+
+   labgrid-client -x <host>:20408 -p <place> set-tags \
+     boot-strategy=BootSelMap \
+     'boot-strategy-params={"ethernet_interface":"eth0","pre_load_commands":["echo prepare"]}'
+
+Supported fields are ``reached_linux_marker``, ``ethernet_interface``,
+``iio_jesd_driver_name``, ``iio_jesd_data_mode``, ``iio_jesd_link_mode_attr``,
+``target_dut_folder``, ``selmap_boot_script_name`` and ``pre_load_commands``.
+All are non-empty strings except ``pre_load_commands``, which is a list of
+shell command strings. Invalid JSON, unknown keys or invalid values return
+HTTP 422. Build-specific file paths come from the client's ``LG_SM_*``
+environment variables, not these place tags.
+
 **Matching / Catalog**
 
 - ``GET /api/match`` - Decide whether a part can be satisfied by a live board and

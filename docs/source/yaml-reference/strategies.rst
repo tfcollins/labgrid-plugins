@@ -638,6 +638,15 @@ BootSelMap - Strategy to boot SelMap based dual FPGA design.
      - ``None``
      - Command or ordered commands run over SSH immediately before invoking the SelectMAP script.
        For example, ``[systemctl stop iiod]``.
+   * - ``stage_timeout``
+     - ``180``
+     - Maximum seconds for a power/console/SSH activation, transfer, or command.
+       ``LG_SM_STAGE_TIMEOUT`` overrides this value in CI. A timeout names the blocked
+       operation and dumps its Python stack. Enforcement requires the POSIX main thread.
+   * - ``selmap_timeout``
+     - ``120``
+     - Maximum seconds for the SelectMAP programming command, enforced by both the
+       SSH driver and the stage deadline.
 
 **Bindings**
 

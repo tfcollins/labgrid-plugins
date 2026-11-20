@@ -298,3 +298,55 @@ def test_bootnoosjtag_default_banner_is_successfully_initialized():
     from app.env_gen import STRATEGY_CONFIGS
 
     assert STRATEGY_CONFIGS["BootNoOSJTAG"]["boot_marker"] == "Successfully initialized"
+
+
+@pytest.mark.parametrize("revision", ["reva", "revb", "revb1"])
+def test_adsy1100_boot_environment_is_complete(revision):
+    place = _place()
+    place.tags = {"boot-strategy": "BootSelMap", "daughter-board": f"adsy1100-{revision}"}
+    resources = [_res("NetworkSerialPort"), _res("NetworkService"), _res("HomeAssistantOutlet")]
+    target = yaml.safe_load(generate_env_yaml(place, resources, "boot"))["targets"]["main"]
+    assert target["resources"] == {"RemotePlace": {"name": place.name}}
+    assert {
+        "SerialDriver",
+        "ADIShellDriver",
+        "SSHDriver",
+        "HomeAssistantPowerDriver",
+        "BootSelMap",
+    } <= target["drivers"].keys()
+    assert target["drivers"]["BootSelMap"]["iio_jesd_driver_name"] == "axi-ad9084-rx-hpc"
+    assert target["drivers"]["ADIShellDriver"]["login_prompt"] == "analog login: "
+
+
+def test_selmap_parameters_are_managed_by_place_tags():
+    place = _place()
+    place.tags = {
+        "boot-strategy": "BootSelMap",
+        "boot-strategy-params": '{"ethernet_interface":"eth1","pre_load_commands":["echo prepare"]}',
+    }
+    resources = [_res("NetworkSerialPort"), _res("NetworkService"), _res("HomeAssistantOutlet")]
+    target = yaml.safe_load(generate_env_yaml(place, resources, "boot"))["targets"]["main"]
+    assert target["drivers"]["BootSelMap"]["ethernet_interface"] == "eth1"
+    assert target["drivers"]["BootSelMap"]["pre_load_commands"] == ["echo prepare"]
+
+
+@pytest.mark.parametrize("params", ["not json", "[]", '{"typo":true}'])
+def test_invalid_selmap_parameters_fail_closed(params):
+    place = _place()
+    place.tags = {"boot-strategy": "BootSelMap", "boot-strategy-params": params}
+    resources = [_res("NetworkSerialPort"), _res("NetworkService"), _res("HomeAssistantOutlet")]
+    with pytest.raises(ValueError, match="boot-strategy-params"):
+        generate_env_yaml(place, resources, "boot")
+
+
+@pytest.mark.parametrize("missing", ["NetworkSerialPort", "NetworkService", "HomeAssistantOutlet"])
+def test_selmap_missing_resource_fails_closed(missing):
+    place = _place()
+    place.tags = {"boot-strategy": "BootSelMap"}
+    resources = [
+        _res(cls)
+        for cls in ["NetworkSerialPort", "NetworkService", "HomeAssistantOutlet"]
+        if cls != missing
+    ]
+    with pytest.raises(ValueError, match="BootSelMap"):
+        generate_env_yaml(place, resources, "boot")

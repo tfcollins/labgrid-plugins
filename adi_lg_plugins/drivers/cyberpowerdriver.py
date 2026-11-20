@@ -165,6 +165,7 @@ class CyberPowerDriver(ExporterPowerAgentMixin, Driver, PowerResetMixin, PowerPr
 
     bindings = {"cyberpower_outlet": {"CyberPowerOutlet"}}
     _remote_binding = "cyberpower_outlet"
+    _local_power_agent = True
 
     def __attrs_post_init__(self):
         super().__attrs_post_init__()
