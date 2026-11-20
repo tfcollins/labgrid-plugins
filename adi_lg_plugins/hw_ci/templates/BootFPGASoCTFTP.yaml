@@ -29,7 +29,10 @@ targets:
       TFTPServerResource:
         name: local-tftp
         address: 'auto'
-        port: 3069
+        # 0 = OS-assigned, so concurrent runs on one host (health checks,
+        # scheduler) never share a port; U-Boot is told the bound port via
+        # tftpdstport. Pin with the `tftp-port` place tag if a firewall needs it.
+        port: ${tftp_port}
         root: ${tftp_root}
     # Expose the place's identity as labgrid features so consumers gating
     # tests with @pytest.mark.lg_feature (e.g. pyadi-dt) select rather than

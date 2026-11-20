@@ -605,7 +605,8 @@ Resource to configure or discover the TFTP server address.
        For example, ``192.0.2.10``.
    * - ``port``
      - ``3069``
-     - UDP port on which the built-in TFTP server listens.
+     - UDP port on which the built-in TFTP server listens. ``0`` binds an
+       OS-assigned free port; the driver reports the bound port.
        For example, ``3069``.
    * - ``root``
      - ``'/var/lib/tftpboot'``

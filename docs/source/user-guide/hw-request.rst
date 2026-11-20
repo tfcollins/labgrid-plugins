@@ -86,6 +86,14 @@ out with ``ethaddr=stock`` to keep the board's own behaviour. This applies
 only to the interactive TFTP path: ``sd-autoboot`` boards boot with U-Boot's
 own environment, so set ``ethaddr`` in the SD card's ``uEnv.txt`` instead.
 
+The same TFTP path serves boot files from a TFTP server on the host running
+the request, bound to an **OS-assigned UDP port** that the strategy passes to
+U-Boot (``setenv tftpdstport``). Concurrent requests, health checks and
+``infra-smoke`` legs on one host therefore never contend for a port. If a
+firewall between the DUT and that host needs a fixed port, pin it with the
+place tag ``tftp-port=<port>`` — and then run only one TFTP boot at a time on
+that host.
+
 * One bounded retry: a failed attempt (strategy error or iiod never up) gets
   exactly one cold-boot retry (power-off, reboot) before failing the leg.
 * Exit codes: ``10`` no matching board, ``11`` none free in the wait window,

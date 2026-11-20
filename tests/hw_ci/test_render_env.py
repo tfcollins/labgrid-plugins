@@ -126,6 +126,34 @@ def test_bootfpgasoctftp_tftp_root_default_is_per_place():
     assert "root: /tmp/labgrid-tftp-mini2" in out
 
 
+def _local_tftp(doc):
+    return doc["targets"]["main"]["resources"]["TFTPServerResource"]
+
+
+def test_bootfpgasoctftp_tftp_port_defaults_to_os_assigned():
+    """The local TFTP server must not use a fixed port by default.
+
+    Health checks for several TFTP places run from one host (the coordinator
+    API container, or the scheduler's concurrent runs). A fixed port made all
+    but the first fail with EADDRINUSE. Port 0 lets the OS pick a free port;
+    the strategy tells U-Boot the bound port via ``tftpdstport``.
+    """
+    for name in ("bq", "nemo", "lablp"):
+        doc = yaml.safe_load(render_env(_place("BootFPGASoCTFTP", place=name)))
+        assert _local_tftp(doc)["port"] == 0, name
+
+
+def test_bootfpgasoctftp_tftp_port_overridable_via_tag():
+    p = _place("BootFPGASoCTFTP", extra_tags={"tftp-port": "4069"})
+    assert _local_tftp(yaml.safe_load(render_env(p)))["port"] == 4069
+
+
+@pytest.mark.parametrize("bad", ["abc", "-1", "65536", "69 # x"])
+def test_bootfpgasoctftp_tftp_port_tag_rejects_invalid(bad):
+    with pytest.raises(RenderError, match="tftp-port"):
+        render_env(_place("BootFPGASoCTFTP", extra_tags={"tftp-port": bad}))
+
+
 def test_bootfpgasoctftp_zynq7000_carrier_defaults():
     """Zynq-7000 carriers get ARM32 boot defaults (`bootm`/`uImage`/`Zynq>`)."""
     for carrier in ("zc706", "zc702", "zed"):

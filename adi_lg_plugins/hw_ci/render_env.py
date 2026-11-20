@@ -112,6 +112,13 @@ def render_env(
     # root for KuiperDLDriver (BootFPGASoCTFTP). Per-place to avoid two
     # parallel runs colliding; overridable via extra_subs / a tag.
     tftp_root = place.extra_tags.get("tftp-root", f"/tmp/labgrid-tftp-{place.name}")
+    # Local TFTP port. Default 0 (OS-assigned) so parallel runs on one host
+    # can't collide; a fixed port is opt-in via the `tftp-port` tag.
+    tftp_port = place.extra_tags.get("tftp-port", "0")
+    if not (tftp_port.isascii() and tftp_port.isdigit() and int(tftp_port) <= 65535):
+        raise RenderError(
+            f"place {place.name!r}: tftp-port tag must be an integer 0-65535, got {tftp_port!r}"
+        )
     # Stable per-place MAC for the interactive U-Boot TFTP path (stock
     # Kuiper randomizes the MAC every boot → new DHCP lease every boot).
     # Default: derive from the place name. Override with the `ethaddr`
@@ -166,6 +173,7 @@ def render_env(
         "power_driver": power_driver,
         "power_output_driver": f"{power_output_driver}: {{}}" if power_output_driver else "",
         "tftp_root": tftp_root,
+        "tftp_port": str(int(tftp_port)),
         "ps7_init_tcl": place.extra_tags.get("ps7-init-tcl", ""),
         "uboot_elf": place.extra_tags.get("uboot-elf", ""),
         "fsbl_elf": place.extra_tags.get("fsbl-elf", ""),
