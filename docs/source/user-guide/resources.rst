@@ -671,7 +671,7 @@ TFTPServerResource
 **Optional Parameters**
 
 - **address** (str, default ``'auto'``): Host IP to bind. When set to ``'auto'``, the resource discovers the local IP used for outbound traffic.
-- **port** (int, default 3069): UDP port to bind. Non-privileged; use ``iptables`` to redirect from the conventional port 69 if U-Boot requires it.
+- **port** (int, default 3069): UDP port to bind. Non-privileged; use ``iptables`` to redirect from the conventional port 69 if U-Boot requires it. ``0`` binds an OS-assigned free port (the driver reports the bound port, which ``BootFPGASoCTFTP`` passes to U-Boot as ``tftpdstport``).
 - **root** (str, default ``'/var/lib/tftpboot'``): Directory served by the TFTP server.
 
 **Example**

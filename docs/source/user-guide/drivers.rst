@@ -122,7 +122,10 @@ TFTPServerDriver
 
 - **address** (optional, default ``auto``): Host interface address. ``auto`` selects the
   source address used to reach the target.
-- **port** (optional): UDP port to listen on. Defaults to **3069**.
+- **port** (optional): UDP port to listen on. Defaults to **3069**. ``0`` binds an
+  OS-assigned free port; ``get_server_port()`` returns the port actually bound, so
+  strategies that hand it to U-Boot (``BootFPGASoCTFTP`` via ``tftpdstport``) work
+  unchanged and several servers can run on one host without colliding.
 - **root** (optional): Local directory to serve files from. Defaults to ``/var/lib/tftpboot``.
 
 **Port Forwarding (Non-Root Usage)**

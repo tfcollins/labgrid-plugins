@@ -228,3 +228,45 @@ def test_concurrent_server_cannot_claim_same_endpoint(tmp_path):
     finally:
         second.stop()
         first.stop()
+
+
+def test_rendered_tftp_envs_for_parallel_places_bind_distinct_ports(tmp_path):
+    """Regression: parallel BootFPGASoCTFTP health checks on one host.
+
+    Build each place's TFTP server exactly as its rendered env configures it
+    (only the address is pinned to loopback for the test) and run them all at
+    once. Each must bind its own port, and get_server_port() - the value the
+    strategy hands U-Boot as tftpdstport - must be that bound port.
+    """
+    import yaml
+
+    from adi_lg_plugins.hw_ci.render_env import render_env
+    from adi_lg_plugins.hw_ci.schema import Place
+
+    drivers = []
+    try:
+        for name in ("bq", "nemo", "lablp"):
+            place = Place(
+                name=name,
+                carrier="zc706",
+                daughter_board="adrv9009",
+                boot_strategy="BootFPGASoCTFTP",
+            )
+            doc = yaml.safe_load(render_env(place))
+            cfg = doc["targets"]["main"]["resources"]["TFTPServerResource"]
+            driver = _make_driver(tmp_path / name, port=cfg["port"])
+            driver.on_activate()
+            drivers.append(driver)
+
+        ports = [d.get_server_port.__wrapped__(d) for d in drivers]
+        assert len(set(ports)) == len(ports)
+        assert all(p > 0 for p in ports)
+
+        for name, driver in zip(("bq", "nemo", "lablp"), drivers, strict=True):
+            (tmp_path / name / "uImage").write_bytes(name.encode())
+            address = driver.get_server_address.__wrapped__(driver)
+            opcode, received = _download(address, "uImage")
+            assert (opcode, received) == (b"\x00\x03", name.encode())
+    finally:
+        for driver in drivers:
+            driver.on_deactivate()

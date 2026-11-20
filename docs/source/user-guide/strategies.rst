@@ -668,7 +668,7 @@ filename and server address. Destinations must be relative POSIX paths without t
 
 **Troubleshooting**
 
-- **``tftpboot`` times out in U-Boot**: Confirm the host TFTP server is actually listening on ``port`` (``ss -lun | grep 3069``). If U-Boot talks to port 69, add an ``iptables`` redirect to ``port``.
+- **``tftpboot`` times out in U-Boot**: Confirm the host TFTP server is actually listening on the port the strategy sent U-Boot (the ``setenv tftpdstport <port>`` line in the console log; ``ss -lun | grep <port>``). That is ``port`` from the resource (3069 by default), or an OS-assigned port when ``port: 0`` — the hardware-CI and health-check environments use ``0``. If U-Boot talks to port 69, add an ``iptables`` redirect to ``port``.
 - **``dhcp`` fails on the DUT**: Make sure the DUT's Ethernet is connected to the same L2 segment as the host running the TFTP server.
 - **Boot files missing**: Attach a ``KuiperDLDriver`` to stage ``Image`` / ``system.dtb``, or drop them into ``tftp_root_folder`` manually.
 

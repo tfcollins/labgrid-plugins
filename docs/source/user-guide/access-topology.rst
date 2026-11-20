@@ -150,7 +150,7 @@ Driver transport matrix
      - ``openFPGALoader`` and USB permission are exporter-side. Exact bus/device or serial selection is mandatory; flash writes need two explicit opt-ins.
    * - ``TFTPServerDriver``
      - **Yes.** A stateful ``AgentWrapper`` helper owns the UDP service and root on the resource exporter.
-     - Client → exporter SSH; DUT → exporter UDP on the configured port (3069 by default).
+     - Client → exporter SSH; DUT → exporter UDP on the configured port (3069 by default; ``0`` = OS-assigned, as the hardware-CI/health-check environments use).
      - Configure a DUT-visible address or use exporter-side ``auto`` discovery. Artifact publishing stays on-host when co-located.
    * - ``SoftwareInstallerDriver``
      - Inherited from its bound ``CommandProtocol`` and ``FileTransferProtocol``.

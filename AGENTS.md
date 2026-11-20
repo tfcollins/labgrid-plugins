@@ -177,6 +177,9 @@ confirm both the preflight and the per-board legs go green.
   auto-derives a stable per-place MAC and runs `setenv ethaddr` before `dhcp`; override
   with the place tag `ethaddr=<mac>`, opt out with `ethaddr=stock`. `sd-autoboot` boards
   boot U-Boot's own env — set `ethaddr` in the SD's `uEnv.txt` instead.
+- **TFTP port**: the `BootFPGASoCTFTP` env binds its local TFTP server to an OS-assigned
+  port (passed to U-Boot as `tftpdstport`), so parallel boots on one host don't collide.
+  Pin it with the place tag `tftp-port=<port>` only if a firewall requires a fixed port.
 - After editing the coordinator catalog, **redeploy the coordinator host** — it does not
   auto-update.
 
