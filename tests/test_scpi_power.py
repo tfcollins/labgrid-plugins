@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock
 
 import pytest
-from labgrid.driver.common import BindingState
+from labgrid.binding import BindingState
 
 from adi_lg_plugins.drivers.scpidriver import ScpiPowerDriver, scpi_power
 
