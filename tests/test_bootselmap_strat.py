@@ -96,3 +96,17 @@ def test_update_zynq_boot_files_reboots_only_once(tmp_path):
 
     s.power.off.assert_not_called()
     assert s.status == Status.update_zynq_boot_files
+
+
+@pytest.mark.parametrize("script", ["selmap_dtbo.sh", "selmap_vu11p.sh"])
+def test_trigger_selmap_boot_runs_configured_script(tmp_path, script):
+    """trigger_selmap_boot must run ``selmap_boot_script_name``, not a hard-coded name."""
+    s = _strategy(tmp_path, initial_status=Status.update_virtex_boot_files)
+    s.selmap_boot_script_name = script
+    s.local_bitstream_filename = str(tmp_path / "vu11p.bin")
+    s.local_overlay_filename = str(tmp_path / "vu11p.dtbo")
+
+    s.transition(Status.trigger_selmap_boot)
+
+    s.ssh.run.assert_called_with(f"cd /boot/ci && ./{script} -d vu11p.dtbo -b vu11p.bin")
+    assert s.status == Status.trigger_selmap_boot
