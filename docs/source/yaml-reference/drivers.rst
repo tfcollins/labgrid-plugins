@@ -1357,3 +1357,71 @@ This component has no class-specific YAML arguments. Use ``{}``.
                     delay: 5.0
                 drivers:
                   KasaPowerDriver: {}
+
+ScpiPowerDriver
+~~~~~~~~~~~~~~~
+
+Driver controlling a target's power via a SCPI bench supply's outputs.
+
+This component has no class-specific YAML arguments. Use ``{}``.
+
+**Bindings**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 34 66
+
+   * - Binding
+     - Provider
+   * - ``scpi_supply``
+     - ``ScpiPowerSupply`` supplies the supply host, SCPI port, output channels,
+       and switching delay.
+
+**Example**
+
+.. tab-set::
+
+    .. tab-item:: Exporter
+
+        Exporter resource configuration (``resources.yaml``):
+
+        .. code-block:: yaml
+
+            main:
+              ScpiPowerSupply:
+                cls: ScpiPowerSupply
+                host: e36233a.example.test
+                channels: '1,2'
+                port: 5025
+                delay: 5.0
+
+        Client environment configuration (``target.yaml``):
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  RemotePlace:
+                    name: example-place
+                drivers:
+                  ScpiPowerDriver: {}
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  ScpiPowerSupply:
+                    host: e36233a.example.test
+                    channels: '1,2'
+                    port: 5025
+                    delay: 5.0
+                drivers:
+                  ScpiPowerDriver: {}

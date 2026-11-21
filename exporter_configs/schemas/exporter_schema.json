@@ -55,6 +55,7 @@
         "NetworkPowerPort",
         "OneWirePIO",
         "PDUDaemonPort",
+        "ScpiPowerSupply",
         "SiSPMPowerPort",
         "SigrokUSBSerialDevice",
         "SysfsGPIO",

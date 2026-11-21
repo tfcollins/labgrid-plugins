@@ -42,6 +42,7 @@ KNOWN_CLASSES = {
     "HomeAssistantOutlet",
     "HttpDigitalOutput",
     "KasaOutlet",
+    "ScpiPowerSupply",
     "LAAPowerPort",
     "LXAIOBusPIO",
     "MatchedSysfsGPIO",

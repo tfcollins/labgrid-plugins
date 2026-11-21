@@ -199,6 +199,10 @@ this package's outlets and every power option in upstream labgrid, grouped by ki
      -
      -
      -
+   * - ``scpi``
+     - SCPI bench supply (LAN, e.g. Keysight E36233A) (ADI) - ``ScpiPowerSupply``
+     - ``ScpiPowerDriver``
+     - ``power_host``, ``power_outlet`` (output channel(s), comma-separated, e.g. ``1,2``); Raw SCPI socket on TCP 5025; no credentials.
    * - ``sigrok``
      - Bench supply via sigrok - ``SigrokUSBSerialDevice``
      - ``SigrokPowerDriver``

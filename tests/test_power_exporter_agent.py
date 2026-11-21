@@ -195,13 +195,14 @@ def test_uploaded_helper_executes_through_real_agentwrapper():
 
     wrapper, module = create_power_agent(None)
     try:
-        assert module.probe() == ["apc", "cyberpower", "homeassistant", "kasa", "vesync"]
+        assert module.probe() == ["apc", "cyberpower", "homeassistant", "kasa", "scpi", "vesync"]
         assert {
             "adi_power.apc_get",
             "adi_power.apc_set",
             "adi_power.cyberpower_set",
             "adi_power.homeassistant",
             "adi_power.kasa",
+            "adi_power.scpi",
             "adi_power.vesync",
         } <= set(wrapper.list())
     finally:

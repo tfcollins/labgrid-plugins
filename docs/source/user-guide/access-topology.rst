@@ -176,6 +176,10 @@ Driver transport matrix
      - **Yes.** Discovery and control run in the exporter helper.
      - Client → exporter SSH; exporter → Kasa device on its local LAN.
      - ``python-kasa`` is required on the exporter; a local resource retains client-side execution.
+   * - ``ScpiPowerDriver``
+     - **Yes.** SCPI commands run in the exporter helper.
+     - Client → exporter SSH; exporter → supply, TCP/5025 (``port``).
+     - No extra packages; the supply must be reachable from the exporter. A local resource retains client-side execution.
 
 The lower-case entry-point aliases have the same behavior as the class names
 shown above.  ``XilinxJTAGDriver`` also has an explicit diagnostic escape

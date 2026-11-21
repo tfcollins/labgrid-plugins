@@ -853,3 +853,67 @@ The KasaOutlet describes a TP-Link Kasa smart plug or power strip.
                     username: ${KASA_USERNAME}
                     password: ${KASA_PASSWORD}
                     delay: 5.0
+
+ScpiPowerSupply
+~~~~~~~~~~~~~~~
+
+The ScpiPowerSupply describes a LAN bench supply that takes SCPI over a raw socket
+(for example a Keysight E36233A). The driver switches outputs with
+``OUTP ON|OFF,(@<channels>)``.
+
+**Arguments**
+
+.. list-table::
+   :header-rows: 1
+   :widths: 22 23 55
+
+   * - Argument
+     - Requirement/default
+     - Description and example
+   * - ``host``
+     - **required**
+     - Hostname or IP address of the supply.
+       For example, ``e36233a.example.test``.
+   * - ``channels``
+     - ``'1'``
+     - Output channel(s) to switch, comma-separated.
+       For example, ``'1,2'``.
+   * - ``port``
+     - ``5025``
+     - SCPI raw-socket TCP port.
+       For example, ``5025``.
+   * - ``delay``
+     - ``5.0``
+     - Seconds to wait between switching off and on during a reset or cycle.
+       For example, ``5.0``.
+
+**Example**
+
+.. tab-set::
+
+    .. tab-item:: Exporter
+
+        .. code-block:: yaml
+
+            main:
+              ScpiPowerSupply:
+                cls: ScpiPowerSupply
+                host: e36233a.example.test
+                channels: '1,2'
+                port: 5025
+                delay: 5.0
+
+    .. tab-item:: Local (Non-Exporter)
+
+        .. code-block:: yaml
+
+            imports:
+              - adi_lg_plugins
+            targets:
+              main:
+                resources:
+                  ScpiPowerSupply:
+                    host: e36233a.example.test
+                    channels: '1,2'
+                    port: 5025
+                    delay: 5.0

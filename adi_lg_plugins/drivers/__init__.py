@@ -25,6 +25,7 @@ _MODULES = (
     "cyberpowerdriver",
     "homeassistantdriver",
     "kasadriver",
+    "scpidriver",
     "kuiperdldriver",
     "massstoragedriver",
     "openfpgaloaderdriver",
