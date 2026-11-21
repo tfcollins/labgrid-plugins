@@ -624,8 +624,8 @@ BootSelMap - Strategy to boot SelMap based dual FPGA design.
        ``/srv/boot/system.dtb``.
    * - ``selmap_boot_script_name``
      - ``'selmap_dtbo.sh'``
-     - Declared SelectMAP helper-script name; the current trigger command still invokes
-       ``selmap_dtbo.sh`` directly. For example, ``selmap_dtbo.sh``.
+     - Name of the SelectMAP boot script in ``target_dut_folder`` that
+       ``trigger_selmap_boot`` runs. For example, ``selmap_dtbo.sh``.
    * - ``local_overlay_filename``
      - ``None``
      - Host path of the device-tree overlay applied for the secondary FPGA. For example,
