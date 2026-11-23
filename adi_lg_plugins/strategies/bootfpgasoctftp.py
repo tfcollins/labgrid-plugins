@@ -1,4 +1,5 @@
 import enum
+import errno
 import os
 import time
 
@@ -8,6 +9,14 @@ from labgrid.step import step
 from labgrid.strategy import Strategy, StrategyError
 
 from ._compat import never_retry
+
+
+def _is_console_loss(e):
+    """A dropped console connection, as opposed to a timeout or a bad match."""
+    if isinstance(e, OSError) and e.errno in (errno.EPIPE, errno.ECONNRESET, errno.ECONNABORTED):
+        return True
+    # pexpect.EOF / serial.SerialException without importing either here.
+    return type(e).__name__ in ("EOF", "SerialException", "PortNotOpenError")
 
 
 def _as_bool(value):
@@ -88,6 +97,12 @@ class BootFPGASoCTFTP(Strategy):
     # pattern the ``BootFPGASoC`` strategy uses for its
     # kernel-banner expect.
     autoboot_banner_retries = attr.ib(default=1)
+    # Seconds after power-on during which a lost console connection is
+    # reconnected instead of failing the boot. Carriers whose USB UART is
+    # powered by the board (ADRV1CRR-FMC's CP2103) only enumerate a few
+    # seconds after power-on, so the exporter's ser2net drops the console
+    # the strategy opened at power-on.
+    console_reconnect_window = attr.ib(default=20.0, converter=float)
     tftp_root_folder = attr.ib(default="/var/lib/tftpboot")
 
     # Memory addresses for boot components
@@ -151,6 +166,29 @@ class BootFPGASoCTFTP(Strategy):
         are optional refinements that ``load_zynq_uboot`` handles."""
         return bool(self.jtag) and bool(self.ps7_init_tcl) and bool(self.uboot_elf)
 
+    def _first_console_expect(self, patterns, timeout):
+        """The first console expect after power-on, reconnecting a lost console.
+
+        A connection loss (broken pipe, reset, EOF) within
+        ``console_reconnect_window`` seconds of the call reconnects the
+        console and waits again. Anything else, or a loss after the window,
+        propagates.
+        """
+        deadline = time.monotonic() + self.console_reconnect_window
+        while True:
+            try:
+                return self.shell.console.expect(patterns, timeout=timeout)
+            except Exception as e:
+                if not _is_console_loss(e) or time.monotonic() >= deadline:
+                    raise
+                self.logger.warning(
+                    "Console connection lost after power-on (%s); reconnecting...", e
+                )
+                self.target.deactivate(self.shell)
+                self.target.deactivate(self.shell.console)
+                time.sleep(1)
+                self.target.activate(self.shell)
+
     def _boot_via_sd_autoboot(self):
         """Let the JTAG-bootstrapped U-Boot autoboot the SD's own Kuiper.
 
@@ -177,7 +215,7 @@ class BootFPGASoCTFTP(Strategy):
                 ]
             )
         )
-        idx = self.shell.console.expect(
+        idx = self._first_console_expect(
             [*kernel_banners, *prompt_targets],
             timeout=self.wait_for_linux_prompt_timeout,
         )
@@ -396,7 +434,7 @@ class BootFPGASoCTFTP(Strategy):
                         "Waiting for U-Boot autoboot prompt or '%s' prompt...",
                         self.uboot_prompt,
                     )
-                    autoboot_idx = self.shell.console.expect(
+                    autoboot_idx = self._first_console_expect(
                         ["Hit any key to stop autoboot", self.uboot_prompt],
                         timeout=self.wait_for_autoboot_prompt_timeout,
                     )
