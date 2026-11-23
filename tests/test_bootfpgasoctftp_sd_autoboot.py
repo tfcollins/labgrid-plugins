@@ -207,3 +207,40 @@ def test_update_boot_files_publishes_through_tftp_driver(tmp_path):
         str(image),
         str(dtb),
     ]
+
+
+def test_sd_autoboot_reconnects_console_lost_after_power_on():
+    """A board-powered USB UART enumerates after power-on, so ser2net drops
+    the console opened at power-on: reconnect it and keep waiting."""
+    s = _make_strategy(sd_autoboot=True, reached_linux_marker="analog")
+    s.shell.console.expect.side_effect = [
+        BrokenPipeError(32, "Broken pipe"),
+        (0, b"", b"", b""),
+        (0, b"", b"", b""),
+    ]
+
+    s.transition(Status.booted)
+
+    assert s.status == Status.booted
+    s.target.deactivate.assert_any_call(s.shell.console)
+    activations = [c.args[0] for c in s.target.activate.call_args_list]
+    assert activations.count(s.shell) == 2
+
+
+def test_console_expect_non_connection_error_propagates():
+    """A timeout or other error is not a lost connection: no reconnect."""
+    s = _make_strategy(sd_autoboot=True)
+    s.shell.console.expect.side_effect = TimeoutError("no banner")
+
+    with pytest.raises(Exception, match="no banner"):
+        s.transition(Status.booted)
+    assert s.shell.console not in [c.args[0] for c in s.target.deactivate.call_args_list]
+
+
+def test_console_loss_after_window_propagates():
+    """Past console_reconnect_window a lost connection fails the boot."""
+    s = _make_strategy(sd_autoboot=True, console_reconnect_window=0.0)
+    s.shell.console.expect.side_effect = BrokenPipeError(32, "Broken pipe")
+
+    with pytest.raises(Exception, match="Broken pipe"):
+        s.transition(Status.booted)
