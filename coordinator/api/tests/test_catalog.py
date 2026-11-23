@@ -149,6 +149,12 @@ def test_shipped_catalog_declares_every_lab_board():
     assert "adrv9009" in cat.boards and "zc706" in cat.boards["adrv9009"].carriers
     assert "adrv9371" in cat.boards and "zc706" in cat.boards["adrv9371"].carriers
     assert "daq3" in cat.boards and "vcu118" in cat.boards["daq3"].carriers
+    # Added since: mini2 swapped to ad9081 (2026-11-05), tron, lablp.
+    assert "ad9081" in cat.boards and "zcu102" in cat.boards["ad9081"].carriers
+    assert "adrv9009zu11eg" in cat.boards
+    assert "adrv2crr-fmc" in cat.boards["adrv9009zu11eg"].carriers
+    assert "adrv9361z7035" in cat.boards
+    assert "adrv1crr-fmc" in cat.boards["adrv9361z7035"].carriers
 
 
 def test_shipped_catalog_exposes_ad9371_chip_alias():

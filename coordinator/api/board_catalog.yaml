@@ -58,6 +58,15 @@ boards:
       kuiper_xsa_dir: zynq-zc706-adv7511-adrv937x
     carriers:
       zc706: {}
+  adrv9361z7035:
+    # lablp = ADRV9361-Z7035 SOM on the ADRV1CRR-FMC carrier, booted over
+    # TFTP (BootFPGASoCTFTP; the place carries the kernel/dtb load addresses).
+    # The part key is the place's daughter-board tag.
+    aliases:
+      - adrv9361-z7035
+    image: 2023_R2_P1
+    carriers:
+      adrv1crr-fmc: {}
   daq3:
     # nuc = FMCDAQ3 on VCU118 (pyadi `adi.DAQ3` = AD9152 DAC + AD9680 ADC).
     # Boots by loading the FPGA fabric over JTAG (BootFabric, no Kuiper image),
