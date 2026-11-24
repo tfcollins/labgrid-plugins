@@ -620,7 +620,7 @@ def test_bootvpk180_renders_two_named_consoles_and_no_power():
         carrier="vpk180",
         daughter_board="ad9081",
         boot_strategy="BootVPK180",
-        extra_tags={"power-driver": "HomeAssistantPowerDriver"},
+        extra_tags={},
     )
     doc = yaml.safe_load(render_env(place))
     drivers = doc["targets"]["main"]["drivers"]
@@ -632,8 +632,8 @@ def test_bootvpk180_renders_two_named_consoles_and_no_power():
         ("ADIShellDriver", "target_shell"),
         ("BootVPK180", None),
     ]
-    # SC reset only: no power driver even when the place names one.
-    assert "HomeAssistantPowerDriver" not in render_env(place)
+    # No power-driver tag: SC-reset only, no power driver at all.
+    assert not any("Power" in cls for cls, _ in named)
     sc = drivers[1]["ADIShellDriver"]
     assert sc["prompt"] == r"eval-brd-sc-zynqmp:.*\$ "
     assert (sc["username"], sc["password"]) == ("petalinux", "petalinux")
@@ -652,3 +652,17 @@ def test_bootvpk180_sc_login_overridable_by_tags():
     )
     sc = yaml.safe_load(render_env(place))["targets"]["main"]["drivers"][1]["ADIShellDriver"]
     assert (sc["prompt"], sc["username"], sc["password"]) == ("sc:~# ", "root", "pw")
+
+
+def test_bootvpk180_power_driver_tag_binds_outlet_without_cycling():
+    place = Place(
+        name="vpk180",
+        carrier="vpk180",
+        daughter_board="ad9081",
+        boot_strategy="BootVPK180",
+        extra_tags={"power-driver": "HomeAssistantPowerDriver"},
+    )
+    drivers = yaml.safe_load(render_env(place))["targets"]["main"]["drivers"]
+    classes = [cls for d in drivers for cls in d]
+    assert classes.index("HomeAssistantPowerDriver") < classes.index("BootVPK180")
+    assert drivers[-1]["BootVPK180"]["power_cycle"] is False

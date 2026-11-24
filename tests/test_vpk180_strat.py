@@ -523,3 +523,72 @@ def test_no_power_powered_off_and_soft_off_do_not_raise(monkeypatch):
     s.transition(Status.soft_off)
     assert s.status == Status.soft_off
     s.target_shell.console.sendline.assert_called_with("poweroff")
+
+
+# ---------- power-off-only mode (power bound, power_cycle=False) ------------
+
+
+def _power_off_only():
+    s = _make_strategy()
+    s.power_cycle = False
+    s.sc_commands = list(SC_RESET)
+    return s
+
+
+def test_power_cycle_defaults_true():
+    assert _make_strategy().power_cycle is True
+
+
+def test_power_off_only_booting_turns_on_without_cycling():
+    s = _power_off_only()
+    s._sc_appears_alive = lambda: False  # board off / SC not up yet
+    s.transition(Status.booting)
+    s.power.on.assert_called_once()
+    s.power.off.assert_not_called()
+
+
+def test_power_off_only_retry_never_cycles():
+    s = _power_off_only()
+    s.kernel_banner_retries = 1
+    s.target_shell.console.expect.side_effect = [
+        TimeoutError("no banner"),
+        (None, b"Starting kernel ...\n", None, None),
+    ]
+    s._wait_for_versal_kernel()
+    s.power.off.assert_not_called()
+    ran = [c.args[0] for c in s.sc_shell.run_check.call_args_list]
+    assert ran == SC_RESET
+
+
+def test_power_off_only_powered_off_from_shell_halts_then_cuts_power():
+    s = _power_off_only()
+    s.status = Status.shell
+    order = []
+    s.target_shell.console.sendline.side_effect = lambda cmd: order.append(("send", cmd))
+    s.power.off.side_effect = lambda: order.append(("off",))
+    s.transition(Status.powered_off)
+    assert order == [("send", "poweroff"), ("off",)]
+    s.target_shell.console.expect.assert_called_with("reboot: Power down", timeout=s.halt_timeout)
+
+
+def test_power_off_only_powered_off_from_unknown_skips_halt():
+    s = _power_off_only()
+    s.transition(Status.powered_off)
+    s.target_shell.console.sendline.assert_not_called()
+    s.power.off.assert_called_once()
+
+
+def test_power_off_only_halt_failure_still_cuts_power():
+    s = _power_off_only()
+    s.status = Status.shell
+    s.target_shell.console.expect.side_effect = TimeoutError("no power-down line")
+    s.transition(Status.powered_off)
+    s.power.off.assert_called_once()
+
+
+def test_power_cycle_true_powered_off_does_not_halt():
+    s = _make_strategy()
+    s.status = Status.shell
+    s.transition(Status.powered_off)
+    s.target_shell.console.sendline.assert_not_called()
+    s.power.off.assert_called_once()

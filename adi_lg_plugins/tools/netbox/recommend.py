@@ -73,7 +73,9 @@ def strategy_needs(strategy: str) -> frozenset[frozenset[str]]:
     """The exported resources ``strategy``'s render-env config binds."""
     # Any value fills the placeholders; the power driver names a class that
     # isn't registered, so it is passed over - every board has its power.
-    subs = defaultdict(lambda: "x", power_driver="power", power_output_driver="")
+    subs = defaultdict(
+        lambda: "x", power_driver="power", power_output_driver="", power_driver_item=""
+    )
     text = string.Template(render_env._load_template(strategy)).safe_substitute(subs)
     return _needs(yaml.safe_load(text)["targets"]["main"])
 

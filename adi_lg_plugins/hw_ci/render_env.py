@@ -230,6 +230,13 @@ def render_env(
         "sc_prompt": place.extra_tags.get("sc-prompt", r"eval-brd-sc-zynqmp:.*\$ "),
         "sc_username": place.extra_tags.get("sc-username", "petalinux"),
         "sc_password": place.extra_tags.get("sc-password", "petalinux"),
+        # BootVPK180 binds power only when the place opts in with a
+        # `power-driver` tag (list-form driver item, or nothing).
+        "power_driver_item": (
+            f"- {place.extra_tags['power-driver']}: {{}}"
+            if place.extra_tags.get("power-driver")
+            else ""
+        ),
         # ZynqMP boot mode override (BOOT_MODE_USER over JTAG), e.g. `sd1-ls` to
         # boot a JTAG-strapped board's SD card. Empty = follow the switches. Not
         # the informational `boot-mode` tag, which records the switch setting.

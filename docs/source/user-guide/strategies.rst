@@ -2410,12 +2410,17 @@ bounded by ``sc_login_retries``, ``sc_command_retries``, and ``kernel_banner_ret
 ``power`` is optional. Without it (a board that must stay powered, with no switched outlet) the
 strategy never touches board power: every retry re-runs the SC phase, so ``sc_commands`` must
 reset the Versal; ``powered_off`` only releases the consoles and ``soft_off`` only halts the
-Versal Linux. The Versal UART is only read during boot, never written, so
+Versal Linux.
+
+With ``power`` bound and ``power_cycle: false`` the outlet is only switched on before a boot and
+off at ``powered_off`` (after ``poweroff`` halts Versal Linux, so the SD card isn't cut
+mid-write); boots and retries still go through ``sc_commands``. The Versal UART is only read during boot, never written, so
 U-Boot autoboot is never interrupted.
 
 On a coordinator place, export the two consoles as ``sc-port`` and ``target-port`` and tag
 the place ``boot-strategy=BootVPK180``: ``adi-lg request``/``health-check`` then render a
-two-console env (no power driver) from ``hw_ci/templates/BootVPK180.yaml``, and the
+two-console env from ``hw_ci/templates/BootVPK180.yaml`` (with the place's ``power-driver``
+tag, an outlet in power-off-only mode; without it, no power driver), and the
 coordinator's env generator emits the same named driver pairs.
 
 See :doc:`../yaml-reference/strategies` for the full attribute list and YAML.
