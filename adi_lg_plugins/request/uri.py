@@ -33,7 +33,9 @@ def get_dut_shell(target: Any) -> Any:
         ("ShellDriver", None),
     ):
         try:
-            return target.get_driver(cls, name=name)
+            # Unnamed lookups omit the keyword so minimal target stand-ins
+            # (and older callers' fakes) with get_driver(cls) still work.
+            return target.get_driver(cls, name=name) if name else target.get_driver(cls)
         except Exception as e:  # noqa: BLE001 - labgrid raises several error types
             last_err = e
     assert last_err is not None

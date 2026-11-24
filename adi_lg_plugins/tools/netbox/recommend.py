@@ -24,6 +24,23 @@ from labgrid.factory import target_factory
 from adi_lg_plugins.hw_ci import render_env
 
 
+def _driver_classes(drivers: dict | list) -> list[str]:
+    """Driver class names from a ``drivers`` section in dict or labgrid list form.
+
+    List form (``- SerialDriver: {name: ...}`` or ``- {cls: SerialDriver, ...}``)
+    is what templates with several named drivers of one class use (BootVPK180).
+    """
+    if isinstance(drivers, dict):
+        return list(drivers)
+    names: list[str] = []
+    for item in drivers:
+        if "cls" in item:
+            names.append(item["cls"])
+        else:
+            names.extend(item)
+    return names
+
+
 def _needs(target: dict) -> frozenset[frozenset[str]]:
     """The resources a render-env target's drivers bind and it doesn't define itself.
 
@@ -38,7 +55,7 @@ def _needs(target: dict) -> frozenset[frozenset[str]]:
     # Drivers bind base classes too (SerialDriver: a SerialPort), which aren't registered.
     resource_classes = {c.__name__ for r in target_factory.resources.values() for c in r.__mro__}
     needs = set()
-    for driver in target.get("drivers") or {}:
+    for driver in _driver_classes(target.get("drivers") or {}):
         cls = target_factory.drivers.get(driver)
         for value in getattr(cls, "bindings", {}).values():
             alternatives = value if isinstance(value, set) else {value}
