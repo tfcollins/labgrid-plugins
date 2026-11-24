@@ -1488,6 +1488,15 @@ Boot strategy for AMD Versal Premium VPK180 with a Zynq system controller.
    * - ``warm_probe_timeout``
      - ``3``
      - Seconds allowed for the non-destructive system-controller prompt probe. For example, ``3``.
+   * - ``power_cycle``
+     - ``True``
+     - When ``false``, a bound ``power`` driver only switches the board on before a boot and off
+       at ``powered_off``/``soft_off``; boots and retries never power-cycle (``sc_commands`` reset
+       the Versal). For example, ``false``.
+   * - ``halt_timeout``
+     - ``60``
+     - Seconds to wait for Versal Linux's ``reboot: Power down`` after ``poweroff`` before power
+       is cut. For example, ``60``.
    * - ``debug_write_boot_log``
      - ``False``
      - Writes captured UART boot output to a local debug log when enabled. For example, ``true``.
@@ -1503,7 +1512,8 @@ Boot strategy for AMD Versal Premium VPK180 with a Zynq system controller.
    * - ``power``
      - ``PowerProtocol`` (optional) — controls board power for cold cycles and shutdown states.
        Without it the board is never power-switched: each retry re-runs ``sc_commands``, which
-       must then reset the Versal (``sc_app -c reset``).
+       must then reset the Versal (``sc_app -c reset``). With ``power_cycle: false`` it only
+       switches the board on and off, never cycles it.
    * - ``sc_shell``
      - ``ADIShellDriver`` — logs into the VPK180 system controller and runs boot-mode or reset
        commands.

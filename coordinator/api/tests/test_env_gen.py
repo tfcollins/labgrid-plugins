@@ -335,14 +335,16 @@ class TestDualConsole:
         assert drivers[2]["SerialDriver"]["bindings"] == {"port": "target-port"}
         assert drivers[3]["ADIShellDriver"]["bindings"] == {"console": "target-console"}
 
-    def test_boot_tier_binds_bootvpk180_without_power(self):
+    def test_boot_tier_binds_bootvpk180_with_power_but_no_cycling(self):
         doc = yaml.safe_load(generate_env_yaml(_vpk180_place(), VPK180_RESOURCES, "boot"))
         drivers = doc["targets"]["main"]["drivers"]
         classes = [cls for cls, _ in _named(drivers)]
         assert classes[-1] == "BootVPK180"
-        assert "HomeAssistantPowerDriver" not in classes  # SC reset only
+        # The outlet only switches the board on/off; boots reset via the SC.
+        assert "HomeAssistantPowerDriver" in classes
         assert "SSHDriver" in classes
         strat = drivers[-1]["BootVPK180"]
+        assert strat["power_cycle"] is False
         assert strat["bindings"] == {"sc_shell": "sc_shell", "target_shell": "target_shell"}
         assert strat["sc_commands"] == ["sc_app -c setbootmode -t SD", "sc_app -c reset"]
         assert doc["targets"]["main"]["features"] == ["ad9081", "vpk180"]

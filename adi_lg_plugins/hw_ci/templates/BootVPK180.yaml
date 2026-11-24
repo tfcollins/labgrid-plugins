@@ -5,13 +5,16 @@
 # exports two consoles, named by convention in the exporter yaml:
 #   sc-port      -> SC UART (FT4232H interface 3)
 #   target-port  -> Versal UART0 (FT4232H interface 1)
-# There is deliberately no power driver: the SC restarts the Versal
-# (sc_app -c reset), and every BootVPK180 retry re-runs the SC commands
-# instead of power-cycling. A power outlet on the place is for manual use.
+# The board is never power-cycled: the SC restarts the Versal
+# (sc_app -c reset), and every BootVPK180 retry re-runs the SC commands.
+# With a `power-driver` place tag the outlet is only switched on before a
+# boot and off at powered_off (after halting Versal Linux): power_cycle=false.
+# Without the tag there is no power driver at all (SC-reset only).
 # The Versal boots whatever Kuiper is on its SD card (update_boot_files off).
 #
 # Place tags: sc-prompt / sc-username / sc-password override the SC login
-# (defaults match the stock VPK180 SC PetaLinux).
+# (defaults match the stock VPK180 SC PetaLinux); power-driver opts in the
+# outlet (e.g. HomeAssistantPowerDriver).
 
 imports:
   - adi_lg_plugins
@@ -43,6 +46,8 @@ targets:
           login_prompt: 'login: '
           username: '${sc_username}'
           password: '${sc_password}'
+          # The SC needs a few minutes to boot after the outlet switches on.
+          login_timeout: 300
       - SerialDriver:
           name: target-console
           bindings:
@@ -56,6 +61,7 @@ targets:
           username: root
           password: analog
           login_timeout: 120
+      ${power_driver_item}
       - BootVPK180:
           bindings:
             sc_shell: sc_shell
@@ -69,3 +75,4 @@ targets:
           reached_linux_marker: 'login: '
           wait_for_linux_prompt_timeout: 240
           update_boot_files: false
+          power_cycle: false

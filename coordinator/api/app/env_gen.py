@@ -162,8 +162,9 @@ STRATEGY_CONFIGS: dict[str, dict[str, Any]] = {
         "boot_marker": "Successfully initialized",
         "boot_timeout": 60,
     },
-    # VPK180: restart only through the system controller (no power driver is
-    # emitted for this strategy). Mirrors adi_lg_plugins/hw_ci/templates/BootVPK180.yaml.
+    # VPK180: never power-cycled; the system controller resets the Versal and a
+    # bound outlet only switches the board on/off. Mirrors
+    # adi_lg_plugins/hw_ci/templates/BootVPK180.yaml.
     "BootVPK180": {
         "bindings": {"sc_shell": "sc_shell", "target_shell": "target_shell"},
         "sc_commands": ["sc_app -c setbootmode -t SD", "sc_app -c reset"],
@@ -172,6 +173,7 @@ STRATEGY_CONFIGS: dict[str, dict[str, Any]] = {
         "reached_linux_marker": "login: ",
         "wait_for_linux_prompt_timeout": 240,
         "update_boot_files": False,
+        "power_cycle": False,
     },
 }
 
@@ -185,6 +187,8 @@ SC_SHELL_DEFAULTS: dict[str, Any] = {
     "login_prompt": "login: ",
     "username": "petalinux",
     "password": "petalinux",
+    # The SC needs a few minutes to boot after the outlet switches on.
+    "login_timeout": 300,
 }
 DUT_SHELL_DEFAULTS: dict[str, Any] = {
     "prompt": "root@.*# ",
@@ -237,13 +241,11 @@ def _dual_console_drivers(
     ]
     if tier == "shell":
         return drivers
-    # SC-reset-only boot: never hand BootVPK180 a power driver to cycle with.
-    skip_power = tier == "boot" and strategy == "BootVPK180"
+    # BootVPK180 gets the place's power driver too: with power_cycle=False it
+    # only switches the board on before a boot and off at powered_off.
     seen: set[str] = set()
     for r in resources:
         if r.cls == "NetworkSerialPort":
-            continue
-        if skip_power and r.cls in POWER_RESOURCE_DRIVERS:
             continue
         for driver_name, config_fn in RESOURCE_DRIVER_MAP.get(r.cls, []):
             if driver_name not in seen:

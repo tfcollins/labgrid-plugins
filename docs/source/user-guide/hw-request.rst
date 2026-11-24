@@ -100,9 +100,11 @@ controller) and ``target-port`` (the DUT's Linux). The rendered env names the
 DUT shell ``target_shell``, which is the shell ``adi-lg request`` and
 ``adi-lg health-check`` use for the live IP and ``uname``. These boards are
 restarted only through the system controller (``sc_app -c reset``), never by
-power-cycling; the rendered env has no power driver. Override the system
-controller login with the place tags ``sc-prompt``, ``sc-username`` and
-``sc-password``.
+power-cycling. Without a ``power-driver`` tag the rendered env has no power
+driver; with one (e.g. ``power-driver=HomeAssistantPowerDriver``) the outlet is
+switched on before a boot and off when the run powers the board down
+(``power_cycle: false``). Override the system controller login with the place
+tags ``sc-prompt``, ``sc-username`` and ``sc-password``.
 
 * One bounded retry: a failed attempt (strategy error or iiod never up) gets
   exactly one cold-boot retry (power-off, reboot) before failing the leg.

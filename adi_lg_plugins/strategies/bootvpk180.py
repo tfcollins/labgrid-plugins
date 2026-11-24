@@ -103,6 +103,13 @@ class BootVPK180(Strategy):
     outlet). ``powered_off`` then only releases the consoles, and
     ``soft_off`` only halts the Versal Linux.
 
+    Power-off-only mode (``power`` bound, ``power_cycle=False``): the outlet
+    is used only to switch the board on before a boot and off at
+    ``powered_off``/``soft_off``. Boots and retries never power-cycle; the SC
+    (``sc_commands``) resets the Versal, as in SC-reset-only mode. Before
+    cutting power from a booted state, ``powered_off`` halts the Versal Linux
+    so the SD card isn't cut mid-write.
+
     Attributes:
         reached_linux_marker: String/regex on the Versal UART that confirms
             user-space Linux is up. Default ``"analog"`` (matches Kuiper).
@@ -190,6 +197,11 @@ class BootVPK180(Strategy):
     warm_boot_if_sc_alive = attr.ib(default=True)
     warm_probe_timeout = attr.ib(default=3)
 
+    # False: use `power` only to switch the board on (before boots) and off
+    # (powered_off / soft_off); never power-cycle for boots or retries.
+    power_cycle = attr.ib(default=True)
+    halt_timeout = attr.ib(default=60)
+
     boot_log = attr.ib(default="", init=False)
     debug_write_boot_log = attr.ib(default=False)
 
@@ -219,10 +231,33 @@ class BootVPK180(Strategy):
         if self.power is None:
             self.logger.info("No power binding; relying on sc_commands to reset the Versal.")
             return
+        if not self.power_cycle:
+            self.target.activate(self.power)
+            self.power.on()
+            self.logger.info("power_cycle=False; board kept on, sc_commands reset the Versal.")
+            return
         self.target.activate(self.power)
         self.power.off()
         time.sleep(5)
         self.power.on()
+
+    def _halt_versal(self):
+        """Best-effort ``poweroff`` of the Versal Linux before power is cut.
+
+        Waits for the kernel's ``reboot: Power down`` line; never raises.
+        """
+        try:
+            self.target.activate(self.target_shell)
+            self.target_shell.console.sendline("poweroff")
+            self.target_shell.console.expect("reboot: Power down", timeout=self.halt_timeout)
+            self.logger.info("Versal Linux halted")
+        except Exception as e:
+            self.logger.warning("Versal halt before power-off failed: %s", e)
+        finally:
+            try:
+                self.target.deactivate(self.target_shell)
+            except Exception:
+                pass
 
     def _sc_appears_alive(self):
         """Non-destructive check: is the SC at a Linux prompt right now?
@@ -478,6 +513,8 @@ class BootVPK180(Strategy):
             if self.power is None:
                 self.logger.info("No power binding; board stays powered (consoles released)")
             else:
+                if not self.power_cycle and self.status in (Status.booted, Status.shell):
+                    self._halt_versal()
                 self.target.activate(self.power)
                 self.power.off()
                 self.logger.info("Board powered off")
@@ -533,6 +570,10 @@ class BootVPK180(Strategy):
                 self.transition(Status.update_boot_files)
             if self.power is None:
                 self.logger.info("No power binding; sc_commands will reset the Versal.")
+            elif not self.power_cycle:
+                self.target.activate(self.power)
+                self.power.on()
+                self.logger.info("Board power on (no cycle); sc_commands will reset the Versal.")
             else:
                 self.target.activate(self.power)
                 self.logger.info("Cold-cycling power before SC orchestration...")
@@ -570,19 +611,7 @@ class BootVPK180(Strategy):
             self.logger.info("Shell access ready")
 
         elif status == Status.soft_off:
-            try:
-                self.target.activate(self.target_shell)
-                self.target_shell.console.sendline("poweroff")
-                self.target_shell.console.expect(".*Power down.*", timeout=30)
-                self.target.deactivate(self.target_shell)
-                time.sleep(10)
-            except Exception as e:
-                self.logger.debug("Soft-off via Versal failed: %s", e)
-                time.sleep(5)
-                try:
-                    self.target.deactivate(self.target_shell)
-                except Exception:
-                    pass
+            self._halt_versal()
             if self.power is None:
                 self.logger.info("No power binding; Versal halted, board left powered")
             else:
