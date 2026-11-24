@@ -5,8 +5,8 @@
 # every BootVPK180 retry re-runs those SC commands instead of power-cycling.
 #
 # Exporter group (lablp /etc/labgrid/exporter.yaml, group `vpk180`):
-#   RawSerialPort@sc-port      -> FT4232H if03 (system controller, petalinux)
-#   RawSerialPort@target-port  -> FT4232H if01 (Versal UART0)
+#   sc-port      (RawSerialPort) -> FT4232H if03 (system controller, petalinux)
+#   target-port  (RawSerialPort) -> FT4232H if01 (Versal UART0)
 #   NetworkService             -> Versal Linux
 #
 # Usage:
@@ -25,38 +25,46 @@ targets:
     features:
       - ad9081
       - vpk180
+    # Named drivers need labgrid's list form (`- Class: {name: ...}`); two
+    # consoles of the same class must each bind their port explicitly.
     drivers:
-      SerialDriver@sc-console:
-        bindings:
-          port: sc-port
-      ADIShellDriver@sc_shell:
-        bindings:
-          console: sc-console
-        prompt: 'eval-brd-sc-zynqmp:.*\$ '
-        login_prompt: 'login: '
-        username: petalinux
-        password: petalinux
-      SerialDriver@target-console:
-        bindings:
-          port: target-port
-      ADIShellDriver@target_shell:
-        bindings:
-          console: target-console
-        prompt: '(root|analog)@.*[#$] '
-        login_prompt: 'login: '
-        username: root
-        password: analog
-        login_timeout: 120
-      BootVPK180:
-        bindings:
-          sc_shell: sc_shell
-          target_shell: target_shell
-        sc_commands:
-          - sc_app -c setbootmode -t SD
-          - sc_app -c reset
-        kernel_banner_pattern: 'Starting kernel'
-        # boot.scr sleeps 40 s before loading the kernel
-        wait_for_kernel_banner_timeout: 180
-        reached_linux_marker: 'login: |(root|analog)@'
-        wait_for_linux_prompt_timeout: 240
-        update_boot_files: false
+      - SerialDriver:
+          name: sc-console
+          bindings:
+            port: sc-port
+      - ADIShellDriver:
+          name: sc_shell
+          bindings:
+            console: sc-console
+          prompt: 'eval-brd-sc-zynqmp:.*\$ '
+          login_prompt: 'login: '
+          username: petalinux
+          password: petalinux
+      - SerialDriver:
+          name: target-console
+          bindings:
+            port: target-port
+      # Kuiper 2026_R1: the console autologin still asks for root's
+      # password; the shell driver answers the Password: prompt.
+      - ADIShellDriver:
+          name: target_shell
+          bindings:
+            console: target-console
+          prompt: 'root@analog:.*# '
+          login_prompt: 'login: '
+          username: root
+          password: analog
+          login_timeout: 120
+      - BootVPK180:
+          bindings:
+            sc_shell: sc_shell
+            target_shell: target_shell
+          sc_commands:
+            - sc_app -c setbootmode -t SD
+            - sc_app -c reset
+          kernel_banner_pattern: 'Starting kernel'
+          # boot.scr sleeps 40 s before loading the kernel
+          wait_for_kernel_banner_timeout: 180
+          reached_linux_marker: 'login: '
+          wait_for_linux_prompt_timeout: 240
+          update_boot_files: false
