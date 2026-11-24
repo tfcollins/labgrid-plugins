@@ -612,3 +612,43 @@ def test_xilinx_jtag_driver_does_not_stage_exporter_payloads(tmp_path, monkeypat
     assert staged == []
     assert drv._stage_payload(str(local)) == "/staged"
     assert staged == [str(local)]
+
+
+def test_bootvpk180_renders_two_named_consoles_and_no_power():
+    place = Place(
+        name="vpk180",
+        carrier="vpk180",
+        daughter_board="ad9081",
+        boot_strategy="BootVPK180",
+        extra_tags={"power-driver": "HomeAssistantPowerDriver"},
+    )
+    doc = yaml.safe_load(render_env(place))
+    drivers = doc["targets"]["main"]["drivers"]
+    named = [(cls, cfg.get("name")) for d in drivers for cls, cfg in d.items()]
+    assert named == [
+        ("SerialDriver", "sc-console"),
+        ("ADIShellDriver", "sc_shell"),
+        ("SerialDriver", "target-console"),
+        ("ADIShellDriver", "target_shell"),
+        ("BootVPK180", None),
+    ]
+    # SC reset only: no power driver even when the place names one.
+    assert "HomeAssistantPowerDriver" not in render_env(place)
+    sc = drivers[1]["ADIShellDriver"]
+    assert sc["prompt"] == r"eval-brd-sc-zynqmp:.*\$ "
+    assert (sc["username"], sc["password"]) == ("petalinux", "petalinux")
+    strat = drivers[4]["BootVPK180"]
+    assert strat["sc_commands"] == ["sc_app -c setbootmode -t SD", "sc_app -c reset"]
+    assert strat["bindings"] == {"sc_shell": "sc_shell", "target_shell": "target_shell"}
+
+
+def test_bootvpk180_sc_login_overridable_by_tags():
+    place = Place(
+        name="vpk",
+        carrier="vpk180",
+        daughter_board="ad9081",
+        boot_strategy="BootVPK180",
+        extra_tags={"sc-prompt": "sc:~# ", "sc-username": "root", "sc-password": "pw"},
+    )
+    sc = yaml.safe_load(render_env(place))["targets"]["main"]["drivers"][1]["ADIShellDriver"]
+    assert (sc["prompt"], sc["username"], sc["password"]) == ("sc:~# ", "root", "pw")

@@ -13,6 +13,11 @@ boards:
     image: 2023_R2_P1
     carriers:
       zcu102: {}
+      # vpk180 (lablp) = AD9081-FMC on a Versal VPK180, BootVPK180 restarting
+      # the Versal through the system controller. It boots the Kuiper 2026_R1
+      # already on its SD card (no KuiperRelease resource), so the part-level
+      # `image` above is not applied to it.
+      vpk180: {}
   adrv9009zu11eg:
     # tron = ADRV9009-ZU11EG (dual Talise) on ADRV2CRR-FMC, JTAG boot (BootZynqMPJTAG).
     aliases:

@@ -155,6 +155,8 @@ def test_shipped_catalog_declares_every_lab_board():
     assert "adrv2crr-fmc" in cat.boards["adrv9009zu11eg"].carriers
     assert "adrv9361z7035" in cat.boards
     assert "adrv1crr-fmc" in cat.boards["adrv9361z7035"].carriers
+    # lablp's second board: AD9081-FMC on a Versal VPK180 (2026-11-24).
+    assert "vpk180" in cat.boards["ad9081"].carriers
 
 
 def test_shipped_catalog_exposes_ad9371_chip_alias():

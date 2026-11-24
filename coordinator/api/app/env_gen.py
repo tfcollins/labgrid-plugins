@@ -162,6 +162,36 @@ STRATEGY_CONFIGS: dict[str, dict[str, Any]] = {
         "boot_marker": "Successfully initialized",
         "boot_timeout": 60,
     },
+    # VPK180: restart only through the system controller (no power driver is
+    # emitted for this strategy). Mirrors adi_lg_plugins/hw_ci/templates/BootVPK180.yaml.
+    "BootVPK180": {
+        "bindings": {"sc_shell": "sc_shell", "target_shell": "target_shell"},
+        "sc_commands": ["sc_app -c setbootmode -t SD", "sc_app -c reset"],
+        "kernel_banner_pattern": "Starting kernel",
+        "wait_for_kernel_banner_timeout": 180,
+        "reached_linux_marker": "login: ",
+        "wait_for_linux_prompt_timeout": 240,
+        "update_boot_files": False,
+    },
+}
+
+# Two-console places (VPK180: Zynq system controller + Versal) export their
+# serial ports under these names. They get named driver pairs in labgrid's
+# list form; the DUT shell is `target_shell` (adi_lg_plugins get_dut_shell).
+SC_PORT_NAME = "sc-port"
+TARGET_PORT_NAME = "target-port"
+SC_SHELL_DEFAULTS: dict[str, Any] = {
+    "prompt": r"eval-brd-sc-zynqmp:.*\$ ",
+    "login_prompt": "login: ",
+    "username": "petalinux",
+    "password": "petalinux",
+}
+DUT_SHELL_DEFAULTS: dict[str, Any] = {
+    "prompt": "root@.*# ",
+    "login_prompt": "login: ",
+    "username": "root",
+    "password": "analog",
+    "login_timeout": 120,
 }
 
 # Strategy class names recognized as explicit boot-strategy tag overrides.
@@ -172,8 +202,56 @@ _KNOWN_STRATEGIES = frozenset(
         "BootFPGASoCSSH",
         "BootZynq7000JTAGRecovery",
         "BootNoOSJTAG",
+        "BootVPK180",
     }
 )
+
+
+def is_dual_console(resources: list[ResourceModel]) -> bool:
+    """True when the place exports both `sc-port` and `target-port` serial ports."""
+    names = {r.name for r in resources if r.cls == "NetworkSerialPort"}
+    return {SC_PORT_NAME, TARGET_PORT_NAME} <= names
+
+
+def _dual_console_drivers(
+    resources: list[ResourceModel], tier: str, strategy: str | None
+) -> list[dict[str, Any]]:
+    """Named driver list for a two-console place (labgrid list form)."""
+    drivers: list[dict[str, Any]] = [
+        {"SerialDriver": {"name": "sc-console", "bindings": {"port": SC_PORT_NAME}}},
+        {
+            "ADIShellDriver": {
+                "name": "sc_shell",
+                "bindings": {"console": "sc-console"},
+                **SC_SHELL_DEFAULTS,
+            }
+        },
+        {"SerialDriver": {"name": "target-console", "bindings": {"port": TARGET_PORT_NAME}}},
+        {
+            "ADIShellDriver": {
+                "name": "target_shell",
+                "bindings": {"console": "target-console"},
+                **DUT_SHELL_DEFAULTS,
+            }
+        },
+    ]
+    if tier == "shell":
+        return drivers
+    # SC-reset-only boot: never hand BootVPK180 a power driver to cycle with.
+    skip_power = tier == "boot" and strategy == "BootVPK180"
+    seen: set[str] = set()
+    for r in resources:
+        if r.cls == "NetworkSerialPort":
+            continue
+        if skip_power and r.cls in POWER_RESOURCE_DRIVERS:
+            continue
+        for driver_name, config_fn in RESOURCE_DRIVER_MAP.get(r.cls, []):
+            if driver_name not in seen:
+                seen.add(driver_name)
+                drivers.append({driver_name: config_fn(r) or {}})
+    if strategy:
+        drivers.append({strategy: dict(STRATEGY_CONFIGS.get(strategy, {}))})
+    return drivers
 
 
 def infer_strategy(resource_classes: set[str]) -> str | None:
@@ -242,9 +320,11 @@ def generate_env_yaml(
     shell_key = strategy or "_default"
     shell_cfg = dict(SHELL_DEFAULTS.get(shell_key, SHELL_DEFAULTS["_default"]))
 
-    drivers: dict[str, Any] = {}
+    drivers: dict[str, Any] | list[dict[str, Any]] = {}
 
-    if tier == "shell":
+    if is_dual_console(resources):
+        drivers = _dual_console_drivers(resources, tier, strategy)
+    elif tier == "shell":
         drivers["SerialDriver"] = {}
         drivers["ADIShellDriver"] = shell_cfg
     else:

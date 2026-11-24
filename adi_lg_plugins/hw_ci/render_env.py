@@ -226,6 +226,10 @@ def render_env(
             else ""
         ),
         "jtag_url": place.extra_tags.get("jtag-url", "TCP:127.0.0.1:3121"),
+        # BootVPK180 system-controller login (stock VPK180 SC PetaLinux).
+        "sc_prompt": place.extra_tags.get("sc-prompt", r"eval-brd-sc-zynqmp:.*\$ "),
+        "sc_username": place.extra_tags.get("sc-username", "petalinux"),
+        "sc_password": place.extra_tags.get("sc-password", "petalinux"),
         # ZynqMP boot mode override (BOOT_MODE_USER over JTAG), e.g. `sd1-ls` to
         # boot a JTAG-strapped board's SD card. Empty = follow the switches. Not
         # the informational `boot-mode` tag, which records the switch setting.

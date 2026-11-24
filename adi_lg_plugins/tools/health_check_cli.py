@@ -26,7 +26,7 @@ from adi_lg_plugins.hw_ci.render_env import render_env_to
 from adi_lg_plugins.hw_ci.schema import Place
 from adi_lg_plugins.request.errors import ProvisionError
 from adi_lg_plugins.request.match_client import _get_json
-from adi_lg_plugins.request.uri import resolve_uri, verify_iio_context
+from adi_lg_plugins.request.uri import get_dut_shell, resolve_uri, verify_iio_context
 
 logger = logging.getLogger(__name__)
 console = Console()
@@ -231,7 +231,13 @@ def run_health_check(
                 kuiper_res.release_version = resolved_image
                 _log_info(f"Pinned Kuiper image {resolved_image} on KuiperRelease resource")
             except Exception as e:
+                # No KuiperRelease (e.g. BootVPK180 boots what's on its SD):
+                # the catalog image is not applied, so don't report it.
                 logger.info("KuiperRelease resource not present or could not pin: %s", e)
+                _log_info(
+                    f"No KuiperRelease on this place; catalog image {resolved_image} not applied"
+                )
+                resolved_image = None
 
         strategy_name = place.boot_strategy
         strategy = target.get_driver(strategy_name)
@@ -240,7 +246,8 @@ def run_health_check(
         # 6. Execute boot transition
         _log_step(5, 7, f"Executing boot transition to 'shell' via {strategy_name}...")
         _log_info(
-            "Cold power-cycling DUT, provisioning boot files / U-Boot, and awaiting Linux shell prompt..."
+            "Restarting the DUT the strategy's way (power cycle, JTAG or system-controller "
+            "reset), provisioning boot files if needed, and awaiting the Linux shell prompt..."
         )
         strategy.transition("shell")
         _log_info("Target successfully booted and reached Linux shell prompt!")
@@ -259,34 +266,28 @@ def run_health_check(
 
         # 9. Sanity check: uname
         uname_str = None
-        for drv_name in ("ADIShellDriver", "ShellDriver"):
-            try:
-                sh = target.get_driver(drv_name)
-                out, _, rc = sh.run("uname -a")
-                if rc == 0 and out:
-                    uname_str = out[0].strip()
-                    _log_info(f"System kernel: {uname_str}")
-                    break
-            except Exception:
-                pass
+        try:
+            out, _, rc = get_dut_shell(target).run("uname -a")
+            if rc == 0 and out:
+                uname_str = out[0].strip()
+                _log_info(f"System kernel: {uname_str}")
+        except Exception:
+            pass
 
         # 10. Query discovered IIO device drivers if requested
         drivers_list: list[str] | None = None
         if fetch_drivers:
             _log_info("Querying discovered IIO device drivers from DUT (/sys/bus/iio)...")
             cmd = 'for d in /sys/bus/iio/devices/iio:device*; do [ -f "$d/name" ] && cat "$d/name"; done'
-            for drv_name in ("ADIShellDriver", "ShellDriver"):
-                try:
-                    sh = target.get_driver(drv_name)
-                    out, _, rc = sh.run(cmd)
-                    if rc == 0 and out:
-                        drivers_list = [line.strip() for line in out if line.strip()]
-                        _log_info(
-                            f"Discovered {len(drivers_list)} IIO driver(s): {', '.join(drivers_list)}"
-                        )
-                        break
-                except Exception as e:
-                    logger.debug("Failed querying IIO drivers: %s", e)
+            try:
+                out, _, rc = get_dut_shell(target).run(cmd)
+                if rc == 0 and out:
+                    drivers_list = [line.strip() for line in out if line.strip()]
+                    _log_info(
+                        f"Discovered {len(drivers_list)} IIO driver(s): {', '.join(drivers_list)}"
+                    )
+            except Exception as e:
+                logger.debug("Failed querying IIO drivers: %s", e)
 
         duration = time.monotonic() - start_time
         _log_info(f"✓ Health check completed successfully in {duration:.1f}s")
@@ -328,9 +329,9 @@ def run_health_check(
         # 10. Clean up
         if power_down and strategy is not None:
             try:
-                _log_info("Tearing down: powering off DUT...")
+                _log_info("Tearing down: transitioning DUT to powered_off...")
                 strategy.transition("powered_off")
-                _log_info("DUT powered off")
+                _log_info("DUT in powered_off state (strategies without power only release it)")
             except Exception as e:
                 logger.warning("Power off after health check failed: %s", e)
 

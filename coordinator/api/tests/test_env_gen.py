@@ -298,3 +298,61 @@ def test_bootnoosjtag_default_banner_is_successfully_initialized():
     from app.env_gen import STRATEGY_CONFIGS
 
     assert STRATEGY_CONFIGS["BootNoOSJTAG"]["boot_marker"] == "Successfully initialized"
+
+
+# ---------- two-console places (VPK180: system controller + Versal) ---------
+
+VPK180_RESOURCES = [
+    _res("NetworkSerialPort", name="sc-port"),
+    _res("NetworkSerialPort", name="target-port"),
+    _res("NetworkService", params={"address": "10.0.0.83", "username": "root"}),
+    _res("HomeAssistantOutlet"),
+]
+
+
+def _vpk180_place():
+    p = _place(name="vpk180")
+    p.tags = {"boot-strategy": "BootVPK180", "carrier": "vpk180", "daughter-board": "ad9081"}
+    return p
+
+
+def _named(drivers):
+    """[(cls, name)] for a list-form driver section."""
+    return [(cls, cfg.get("name")) for d in drivers for cls, cfg in d.items()]
+
+
+class TestDualConsole:
+    def test_shell_tier_emits_two_named_consoles(self):
+        doc = yaml.safe_load(generate_env_yaml(_vpk180_place(), VPK180_RESOURCES, "shell"))
+        drivers = doc["targets"]["main"]["drivers"]
+        assert _named(drivers) == [
+            ("SerialDriver", "sc-console"),
+            ("ADIShellDriver", "sc_shell"),
+            ("SerialDriver", "target-console"),
+            ("ADIShellDriver", "target_shell"),
+        ]
+        assert drivers[0]["SerialDriver"]["bindings"] == {"port": "sc-port"}
+        assert drivers[2]["SerialDriver"]["bindings"] == {"port": "target-port"}
+        assert drivers[3]["ADIShellDriver"]["bindings"] == {"console": "target-console"}
+
+    def test_boot_tier_binds_bootvpk180_without_power(self):
+        doc = yaml.safe_load(generate_env_yaml(_vpk180_place(), VPK180_RESOURCES, "boot"))
+        drivers = doc["targets"]["main"]["drivers"]
+        classes = [cls for cls, _ in _named(drivers)]
+        assert classes[-1] == "BootVPK180"
+        assert "HomeAssistantPowerDriver" not in classes  # SC reset only
+        assert "SSHDriver" in classes
+        strat = drivers[-1]["BootVPK180"]
+        assert strat["bindings"] == {"sc_shell": "sc_shell", "target_shell": "target_shell"}
+        assert strat["sc_commands"] == ["sc_app -c setbootmode -t SD", "sc_app -c reset"]
+        assert doc["targets"]["main"]["features"] == ["ad9081", "vpk180"]
+
+    def test_drivers_tier_keeps_power_for_manual_use(self):
+        doc = yaml.safe_load(generate_env_yaml(_vpk180_place(), VPK180_RESOURCES, "drivers"))
+        classes = [cls for cls, _ in _named(doc["targets"]["main"]["drivers"])]
+        assert "HomeAssistantPowerDriver" in classes
+        assert "BootVPK180" not in classes
+
+    def test_single_console_place_keeps_dict_form(self):
+        doc = yaml.safe_load(generate_env_yaml(_place(), SERIAL_ONLY, "shell"))
+        assert isinstance(doc["targets"]["main"]["drivers"], dict)

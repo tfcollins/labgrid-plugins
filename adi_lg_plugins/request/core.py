@@ -20,7 +20,7 @@ from ..hw_ci.render_env import render_env_to
 from ..hw_ci.schema import Place
 from . import match_client, reservation
 from .errors import BoardUnavailable, NoMatchingBoard, ProvisionError
-from .uri import resolve_uri, verify_iio_context
+from .uri import get_dut_shell, resolve_uri, verify_iio_context
 
 logger = logging.getLogger(__name__)
 
@@ -148,7 +148,7 @@ def _get_console(target: Any) -> Any:
     consumer reads (e.g. to drive a libiio-over-serial probe). Best-effort.
     """
     try:
-        return target.get_driver("ADIShellDriver")
+        return get_dut_shell(target)
     except Exception as e:  # noqa: BLE001 - console handle is best-effort
         logger.warning("could not resolve console driver: %s", e)
         return None
