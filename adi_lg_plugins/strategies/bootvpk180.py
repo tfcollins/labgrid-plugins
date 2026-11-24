@@ -95,6 +95,14 @@ class BootVPK180(Strategy):
     (``bypass_login=True``), so it cannot accidentally interrupt U-Boot
     autoboot.
 
+    SC-reset-only mode: the ``power`` binding is optional. Without it the
+    strategy never switches board power; every "cold-cycle" above becomes a
+    re-run of the SC phase, so ``sc_commands`` must restart the Versal
+    (e.g. ``sc_app -c setbootmode -t SD`` then ``sc_app -c reset``). Use this
+    when the board must stay powered (shared bench supply, no switched
+    outlet). ``powered_off`` then only releases the consoles, and
+    ``soft_off`` only halts the Versal Linux.
+
     Attributes:
         reached_linux_marker: String/regex on the Versal UART that confirms
             user-space Linux is up. Default ``"analog"`` (matches Kuiper).
@@ -130,9 +138,10 @@ class BootVPK180(Strategy):
 
     bindings = {
         # required
-        "power": "PowerProtocol",
         "sc_shell": "ADIShellDriver",
         "target_shell": "ADIShellDriver",
+        # optional — without power, the SC (sc_commands) restarts the Versal
+        "power": {"PowerProtocol", None},
         # optional — file-update paths
         "sdmux": {"USBSDMuxDriver", None},
         "mass_storage": {"MassStorageDriver", None},
@@ -197,12 +206,19 @@ class BootVPK180(Strategy):
                 self.target.deactivate(kuiper)
 
     def _cold_cycle(self):
-        """Hard power off → settle → on, deactivating any active shells first."""
+        """Hard power off → settle → on, deactivating any active shells first.
+
+        Without a power binding only the shells are released; callers then
+        redo the SC phase, whose ``sc_commands`` reset the Versal.
+        """
         for shell in (self.sc_shell, self.target_shell):
             try:
                 self.target.deactivate(shell)
             except Exception:
                 pass
+        if self.power is None:
+            self.logger.info("No power binding; relying on sc_commands to reset the Versal.")
+            return
         self.target.activate(self.power)
         self.power.off()
         time.sleep(5)
@@ -459,9 +475,12 @@ class BootVPK180(Strategy):
                     self.target.deactivate(shell)
                 except Exception:
                     pass
-            self.target.activate(self.power)
-            self.power.off()
-            self.logger.info("Board powered off")
+            if self.power is None:
+                self.logger.info("No power binding; board stays powered (consoles released)")
+            else:
+                self.target.activate(self.power)
+                self.power.off()
+                self.logger.info("Board powered off")
 
         elif status == Status.sd_mux_to_host:
             if not self.sdmux:
@@ -502,8 +521,9 @@ class BootVPK180(Strategy):
             needs_file_update = self.update_boot_files or self.update_image
             if self.warm_boot_if_sc_alive and not needs_file_update and self._sc_appears_alive():
                 self.logger.info("SC is already responsive — skipping cold-cycle (warm boot path).")
-                self.target.activate(self.power)
-                self.power.on()
+                if self.power is not None:
+                    self.target.activate(self.power)
+                    self.power.on()
                 self.status = status
                 return
 
@@ -511,12 +531,15 @@ class BootVPK180(Strategy):
                 self.transition(Status.sd_mux_to_dut)
             else:
                 self.transition(Status.update_boot_files)
-            self.target.activate(self.power)
-            self.logger.info("Cold-cycling power before SC orchestration...")
-            self.power.off()
-            time.sleep(5)
-            self.power.on()
-            self.logger.info("Board powered on, awaiting SC.")
+            if self.power is None:
+                self.logger.info("No power binding; sc_commands will reset the Versal.")
+            else:
+                self.target.activate(self.power)
+                self.logger.info("Cold-cycling power before SC orchestration...")
+                self.power.off()
+                time.sleep(5)
+                self.power.on()
+                self.logger.info("Board powered on, awaiting SC.")
 
         elif status == Status.booted:
             self.transition(Status.booting)
@@ -560,9 +583,12 @@ class BootVPK180(Strategy):
                     self.target.deactivate(self.target_shell)
                 except Exception:
                     pass
-            self.target.activate(self.power)
-            self.power.off()
-            self.logger.info("Board hard powered off after soft-off attempt")
+            if self.power is None:
+                self.logger.info("No power binding; Versal halted, board left powered")
+            else:
+                self.target.activate(self.power)
+                self.power.off()
+                self.logger.info("Board hard powered off after soft-off attempt")
 
         else:
             raise StrategyError(f"no transition found from {self.status} to {status}")

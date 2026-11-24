@@ -448,3 +448,78 @@ def test_transition_shell_activates_target_shell():
     # target_shell activated again at shell state (after deactivate at end of booted).
     activate_targets = [c.args[0] for c in s.target.activate.call_args_list if c.args]
     assert activate_targets.count(s.target_shell) >= 2
+
+
+# ---------- SC-reset-only mode (no power binding) ---------------------------
+
+SC_RESET = ["sc_app -c setbootmode -t SD", "sc_app -c reset"]
+
+
+def test_power_binding_is_optional():
+    assert BootVPK180.bindings["power"] == {"PowerProtocol", None}
+
+
+def test_no_power_booted_resets_via_sc_only():
+    s = _make_strategy(power=None)
+    s.warm_boot_if_sc_alive = False  # force the "cold" branch
+    s.sc_commands = list(SC_RESET)
+    s.target_shell.console.expect.side_effect = [
+        (None, b"Starting kernel ...\n", None, None),
+        (None, b"root@analog:~#\n", None, None),
+    ]
+
+    s.transition(Status.booted)
+
+    assert s.status == Status.booted
+    ran = [c.args[0] for c in s.sc_shell.run_check.call_args_list]
+    assert ran == SC_RESET
+
+
+def test_no_power_banner_retry_reruns_sc_reset():
+    s = _make_strategy(power=None)
+    s.sc_commands = list(SC_RESET)
+    s.kernel_banner_retries = 1
+    s.target_shell.console.expect.side_effect = [
+        TimeoutError("no banner"),
+        (None, b"Starting kernel ...\n", None, None),
+    ]
+
+    s._wait_for_versal_kernel()
+
+    ran = [c.args[0] for c in s.sc_shell.run_check.call_args_list]
+    assert ran == SC_RESET  # the retry restarted the Versal through the SC
+
+
+def test_no_power_sc_login_retry_does_not_need_power():
+    s = _make_strategy(power=None)
+    s.sc_login_retries = 1
+    calls = {"n": 0}
+
+    def activate(driver):
+        if driver is s.sc_shell:
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise TimeoutError("SC silent")
+
+    s.target.activate.side_effect = activate
+    s._wait_for_sc_alive()
+    assert calls["n"] == 2
+
+
+def test_no_power_warm_path():
+    s = _make_strategy(power=None)
+    s._sc_appears_alive = lambda: True
+    s.transition(Status.booting)
+    assert s.status == Status.booting
+
+
+def test_no_power_powered_off_and_soft_off_do_not_raise(monkeypatch):
+    monkeypatch.setattr("adi_lg_plugins.strategies.bootvpk180.time.sleep", lambda _s: None)
+    s = _make_strategy(power=None)
+    s.transition(Status.powered_off)
+    assert s.status == Status.powered_off
+
+    s.target_shell.console.expect.return_value = (None, b"", None, None)
+    s.transition(Status.soft_off)
+    assert s.status == Status.soft_off
+    s.target_shell.console.sendline.assert_called_with("poweroff")

@@ -2391,9 +2391,10 @@ run on.
 ``update_boot_files`` [→ ``sd_mux_to_dut``] → ``booting`` → ``booted`` → ``shell``;
 ``soft_off`` shuts down.
 
-**Bindings**: ``power``, plus two ``ADIShellDriver`` instances distinguished by name:
-``sc_shell`` (SC UART, typically ``ttyUSB3``) and ``target_shell`` (Versal UART, typically
-``ttyUSB1``). Optional bindings select how boot files are updated:
+**Bindings**: ``power`` (optional), plus two ``ADIShellDriver`` instances distinguished by
+name: ``sc_shell`` (SC UART, FT4232H interface 3) and ``target_shell`` (Versal UART0, FT4232H
+interface 1). Pin both by ``/dev/serial/by-id/...-if03-port0`` / ``-if01-port0`` rather than
+``ttyUSBn``. Optional bindings select how boot files are updated:
 
 - **SD-mux** (``sdmux`` + ``mass_storage``, optionally ``image_writer`` for full images) -
   the same flow as ``BootFPGASoC``; works from a cold board.
@@ -2402,9 +2403,14 @@ run on.
 - **Neither** - set ``update_boot_files: false`` and boot whatever is on QSPI/SD.
 
 The SC runs ``sc_commands`` after login (empty by default; configure the reset/boot-mode
-commands for your SC firmware). Each failure point (SC login, SC command, Versal kernel banner)
-cold-cycles the board and retries, bounded by ``sc_login_retries``, ``sc_command_retries``,
-and ``kernel_banner_retries``. The Versal UART is only read during boot, never written, so
+commands for your SC firmware, e.g. ``sc_app -c setbootmode -t SD`` then ``sc_app -c reset``).
+Each failure point (SC login, SC command, Versal kernel banner) cold-cycles the board and retries,
+bounded by ``sc_login_retries``, ``sc_command_retries``, and ``kernel_banner_retries``.
+
+``power`` is optional. Without it (a board that must stay powered, with no switched outlet) the
+strategy never touches board power: every retry re-runs the SC phase, so ``sc_commands`` must
+reset the Versal; ``powered_off`` only releases the consoles and ``soft_off`` only halts the
+Versal Linux. The Versal UART is only read during boot, never written, so
 U-Boot autoboot is never interrupted.
 
 See :doc:`../yaml-reference/strategies` for the full attribute list and YAML.
