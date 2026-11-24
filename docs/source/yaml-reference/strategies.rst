@@ -955,6 +955,10 @@ Strategy to boot an FPGA SoC device using ShellDriver and TFTP.
    * - ``autoboot_banner_retries``
      - ``1``
      - Number of power-cycle retries after a silent autoboot-banner timeout. For example, ``2``.
+   * - ``console_reconnect_window``
+     - ``20.0``
+     - Seconds after power-on during which a dropped console connection (the exporter's ser2net
+       losing a board-powered USB UART) is reopened and the wait resumed. For example, ``30``.
    * - ``tftp_root_folder``
      - ``'/var/lib/tftpboot'``
      - Host directory in which boot files are staged for the TFTP daemon. For example,
@@ -1441,7 +1445,7 @@ Boot strategy for AMD Versal Premium VPK180 with a Zynq system controller.
    * - ``sc_commands``
      - ``[]``
      - Ordered board-management commands run on the VPK180 system controller after login. For
-       example, ``[bootmode sd1, reset]``.
+       example, ``[sc_app -c setbootmode -t SD, sc_app -c reset]``.
    * - ``wait_for_sc_command_timeout``
      - ``30``
      - Per-command timeout in seconds for system-controller commands. For example, ``30``.
@@ -1497,7 +1501,9 @@ Boot strategy for AMD Versal Premium VPK180 with a Zynq system controller.
    * - Binding
      - Provider
    * - ``power``
-     - ``PowerProtocol`` — controls board power for cold cycles and shutdown states.
+     - ``PowerProtocol`` (optional) — controls board power for cold cycles and shutdown states.
+       Without it the board is never power-switched: each retry re-runs ``sc_commands``, which
+       must then reset the Versal (``sc_app -c reset``).
    * - ``sc_shell``
      - ``ADIShellDriver`` — logs into the VPK180 system controller and runs boot-mode or reset
        commands.
@@ -1558,7 +1564,9 @@ Boot strategy for AMD Versal Premium VPK180 with a Zynq system controller.
                     name: example-place
                 drivers:
                   VesyncPowerDriver: {}
-                  SerialDriver@sc-console: {}
+                  SerialDriver@sc-console:
+                    bindings:
+                      port: sc-port
                   ADIShellDriver@sc-shell:
                     bindings:
                       console: sc-console
@@ -1566,7 +1574,9 @@ Boot strategy for AMD Versal Premium VPK180 with a Zynq system controller.
                     login_prompt: 'login: '
                     username: root
                     password: analog
-                  SerialDriver@target-console: {}
+                  SerialDriver@target-console:
+                    bindings:
+                      port: target-port
                   ADIShellDriver@target-shell:
                     bindings:
                       console: target-console
@@ -1582,8 +1592,8 @@ Boot strategy for AMD Versal Premium VPK180 with a Zynq system controller.
                     reached_linux_marker: root@
                     kernel_banner_pattern: Starting kernel
                     sc_commands:
-                      - bootmode sd1
-                      - reset
+                      - sc_app -c setbootmode -t SD
+                      - sc_app -c reset
                     wait_for_sc_command_timeout: 30
                     wait_for_kernel_banner_timeout: 120
                     wait_for_linux_prompt_timeout: 240
@@ -1651,8 +1661,8 @@ Boot strategy for AMD Versal Premium VPK180 with a Zynq system controller.
                     reached_linux_marker: root@
                     kernel_banner_pattern: Starting kernel
                     sc_commands:
-                      - bootmode sd1
-                      - reset
+                      - sc_app -c setbootmode -t SD
+                      - sc_app -c reset
                     wait_for_sc_command_timeout: 30
                     wait_for_kernel_banner_timeout: 120
                     wait_for_linux_prompt_timeout: 240
