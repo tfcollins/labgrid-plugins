@@ -11,7 +11,33 @@ from .errors import ProvisionError
 
 IIOD_PORT = 30431  # libiio network daemon's fixed TCP port
 
+# Places with more than one console (e.g. a VPK180: system controller + Versal)
+# carry two ADIShellDrivers, which labgrid cannot pick between by class alone.
+# By convention the shell on the DUT's own Linux is named ``target_shell``.
+DUT_SHELL_NAME = "target_shell"
+
 logger = logging.getLogger(__name__)
+
+
+def get_dut_shell(target: Any) -> Any:
+    """Return the shell driver for the DUT's Linux console.
+
+    Prefers an ``ADIShellDriver`` named :data:`DUT_SHELL_NAME` (multi-console
+    places), then the single unnamed ``ADIShellDriver``, then ``ShellDriver``.
+    Raises the last lookup error if none is found.
+    """
+    last_err: Exception | None = None
+    for cls, name in (
+        ("ADIShellDriver", DUT_SHELL_NAME),
+        ("ADIShellDriver", None),
+        ("ShellDriver", None),
+    ):
+        try:
+            return target.get_driver(cls, name=name)
+        except Exception as e:  # noqa: BLE001 - labgrid raises several error types
+            last_err = e
+    assert last_err is not None
+    raise last_err
 
 
 def verify_iio_context(
@@ -79,14 +105,13 @@ def resolve_uri(
     deadline = time.monotonic() + wait
     last_err: Exception | None = None
     while True:
-        for drv in ("ADIShellDriver", "ShellDriver"):
-            try:
-                shell = target.get_driver(drv)
-                out, _err, rc = shell.run(live_ip_cmd)
-                if rc == 0 and out and out[0].strip():
-                    return f"ip:{out[0].strip()}"
-            except Exception as e:  # noqa: BLE001 - fall back to the static address
-                last_err = e
+        try:
+            shell = get_dut_shell(target)
+            out, _err, rc = shell.run(live_ip_cmd)
+            if rc == 0 and out and out[0].strip():
+                return f"ip:{out[0].strip()}"
+        except Exception as e:  # noqa: BLE001 - fall back to the static address
+            last_err = e
         if time.monotonic() >= deadline:
             break
         time.sleep(interval)

@@ -94,6 +94,16 @@ firewall between the DUT and that host needs a fixed port, pin it with the
 place tag ``tftp-port=<port>`` — and then run only one TFTP boot at a time on
 that host.
 
+Two-console boards (``boot-strategy=BootVPK180``, e.g. a VPK180 with its Zynq
+system controller) export their serial ports as ``sc-port`` (system
+controller) and ``target-port`` (the DUT's Linux). The rendered env names the
+DUT shell ``target_shell``, which is the shell ``adi-lg request`` and
+``adi-lg health-check`` use for the live IP and ``uname``. These boards are
+restarted only through the system controller (``sc_app -c reset``), never by
+power-cycling; the rendered env has no power driver. Override the system
+controller login with the place tags ``sc-prompt``, ``sc-username`` and
+``sc-password``.
+
 * One bounded retry: a failed attempt (strategy error or iiod never up) gets
   exactly one cold-boot retry (power-off, reboot) before failing the leg.
 * Exit codes: ``10`` no matching board, ``11`` none free in the wait window,

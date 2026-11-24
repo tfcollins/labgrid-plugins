@@ -16,6 +16,8 @@ import yaml as _yaml
 from fastmcp import FastMCP
 from labgrid import Environment
 
+from adi_lg_plugins.request.uri import get_dut_shell
+
 # Initialize FastMCP server
 mcp = FastMCP("ADI Labgrid Plugins")
 logger = logging.getLogger(__name__)
@@ -705,10 +707,10 @@ def _run_shell_command(session_id: str, command: str) -> str:
     try:
         env, tg, strategy = session_manager.get_session(session_id)
 
-        shell = getattr(strategy, "shell", None)
+        shell = getattr(strategy, "shell", None) or getattr(strategy, "target_shell", None)
         if not shell:
             try:
-                shell = tg.get_driver("ADIShellDriver")
+                shell = get_dut_shell(tg)
             except Exception:
                 return "Error: No shell driver available in this session."
 

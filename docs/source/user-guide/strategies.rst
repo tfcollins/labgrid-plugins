@@ -2413,6 +2413,11 @@ reset the Versal; ``powered_off`` only releases the consoles and ``soft_off`` on
 Versal Linux. The Versal UART is only read during boot, never written, so
 U-Boot autoboot is never interrupted.
 
+On a coordinator place, export the two consoles as ``sc-port`` and ``target-port`` and tag
+the place ``boot-strategy=BootVPK180``: ``adi-lg request``/``health-check`` then render a
+two-console env (no power driver) from ``hw_ci/templates/BootVPK180.yaml``, and the
+coordinator's env generator emits the same named driver pairs.
+
 See :doc:`../yaml-reference/strategies` for the full attribute list and YAML.
 
 ReflashVPK180SD Strategy
