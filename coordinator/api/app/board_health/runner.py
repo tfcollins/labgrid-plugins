@@ -7,6 +7,7 @@ import getpass
 import json
 import logging
 import os
+import signal
 import time
 from typing import Any
 
@@ -15,6 +16,12 @@ from .store import BoardHealthStore
 
 logger = logging.getLogger(__name__)
 
+# After a timeout, how long `adi-lg health-check` gets after SIGINT to run its
+# teardown (halt the DUT, power it off, release the place) before SIGKILL.
+TEARDOWN_GRACE = 120.0
+# A user cancel only waits briefly, so the API request stays quick.
+CANCEL_GRACE = 5.0
+
 
 class HealthCheckRunner:
     def __init__(self, store: BoardHealthStore, coordinator_client: Any):
@@ -22,6 +29,54 @@ class HealthCheckRunner:
         self.coordinator_client = coordinator_client
         self._active_tasks: dict[int, asyncio.Task] = {}
         self._active_processes: dict[int, asyncio.subprocess.Process] = {}
+        self.teardown_grace = TEARDOWN_GRACE
+        self.cancel_grace = CANCEL_GRACE
+
+    @staticmethod
+    async def _stop_process(proc: asyncio.subprocess.Process, grace: float) -> None:
+        """SIGINT so the CLI's `finally` tears down and releases; SIGKILL after *grace*.
+
+        SIGTERM would skip Python's `finally` blocks; SIGINT raises
+        KeyboardInterrupt, which runs them.
+        """
+        if proc.returncode is not None:
+            return
+        try:
+            proc.send_signal(signal.SIGINT)
+            await asyncio.wait_for(proc.wait(), timeout=grace)
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.wait()
+        except ProcessLookupError:
+            pass
+
+    async def _release_place(self, place_name: str, env: dict[str, str]) -> None:
+        """Release the place if the health-check identity still holds it.
+
+        Runs as the same identity as the subprocess (same env) and never with
+        --kick, so it can only drop a lock the health check itself left.
+        """
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "labgrid-client",
+                "-x",
+                settings.coordinator_address,
+                "-p",
+                place_name,
+                "release",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.STDOUT,
+                env=env,
+            )
+            out, _ = await asyncio.wait_for(proc.communicate(), timeout=30)
+            logger.info(
+                "Fallback release of %s: rc=%s %s",
+                place_name,
+                proc.returncode,
+                out.decode("utf-8", errors="replace").strip(),
+            )
+        except Exception as e:
+            logger.warning("Fallback release of %s failed: %s", place_name, e)
 
     def is_running(self, run_id: int) -> bool:
         return run_id in self._active_tasks and not self._active_tasks[run_id].done()
@@ -30,10 +85,7 @@ class HealthCheckRunner:
         proc = self._active_processes.get(run_id)
         if proc is not None:
             try:
-                proc.terminate()
-                await asyncio.sleep(0.5)
-                if proc.returncode is None:
-                    proc.kill()
+                await self._stop_process(proc, self.cancel_grace)
             except Exception as e:
                 logger.warning("Error killing health check process for run %s: %s", run_id, e)
 
@@ -192,12 +244,14 @@ class HealthCheckRunner:
             try:
                 await asyncio.wait_for(proc.wait(), timeout=timeout)
             except asyncio.TimeoutError:
-                proc.kill()
-                await proc.wait()
-                duration = time.monotonic() - start_time
                 await self.store.append_run_log(
-                    run_id, f"\n[ERROR] Health check timed out after {timeout}s\n"
+                    run_id,
+                    f"\n[ERROR] Health check timed out after {timeout}s; "
+                    f"stopping it (up to {self.teardown_grace:.0f}s for teardown)\n",
                 )
+                await self._stop_process(proc, self.teardown_grace)
+                await self._release_place(place_name, env)
+                duration = time.monotonic() - start_time
                 await self.store.finish_run(
                     run_id,
                     status="failed",
@@ -264,6 +318,7 @@ class HealthCheckRunner:
                 )
 
         except asyncio.CancelledError:
+            await self._release_place(place_name, env)
             duration = time.monotonic() - start_time
             await self.store.append_run_log(
                 run_id, "\n[CANCELLED] Health check cancelled by user\n"
