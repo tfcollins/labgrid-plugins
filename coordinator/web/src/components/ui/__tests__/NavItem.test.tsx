@@ -19,4 +19,10 @@ describe("NavItem", () => {
     render(wrap(<NavItem to="/places" icon={MdDashboard} label="Places" isActive={false} />));
     expect(screen.getByRole("link", { name: "Places" })).not.toHaveAttribute("aria-current");
   });
+  it("keeps its accessible name but drops the visible label when collapsed", () => {
+    render(wrap(<NavItem to="/places" icon={MdDashboard} label="Places" isActive collapsed />));
+    const link = screen.getByRole("link", { name: "Places" });
+    expect(link).toHaveAttribute("aria-current", "page");
+    expect(screen.queryByText("Places")).not.toBeInTheDocument();
+  });
 });
