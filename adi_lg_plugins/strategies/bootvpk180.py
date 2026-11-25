@@ -8,6 +8,7 @@ import attr
 from labgrid.factory import target_factory
 from labgrid.step import step
 from labgrid.strategy import Strategy, StrategyError
+from pexpect import TIMEOUT
 
 from adi_lg_plugins.artifacts import local_artifact
 
@@ -110,6 +111,15 @@ class BootVPK180(Strategy):
     cutting power from a booted state, ``powered_off`` halts the Versal Linux
     so the SD card isn't cut mid-write.
 
+    SC cold boot: the SC's own U-Boot autoboots after a 2 s ``bootdelay``,
+    and the shell driver's login loop sends a newline after 2 s of silence,
+    which would stop it at the ``ZynqMP>`` prompt. So unless the warm probe
+    found the SC already at its Linux prompt, the strategy first watches the
+    SC console passively (``sc_boot_timeout``), pokes it only after
+    ``sc_boot_quiet`` seconds of silence, and answers the SC's U-Boot prompt
+    (``sc_uboot_prompt``) with ``boot`` (at most ``sc_uboot_boot_retries``
+    times) before logging in.
+
     Attributes:
         reached_linux_marker: String/regex on the Versal UART that confirms
             user-space Linux is up. Default ``"analog"`` (matches Kuiper).
@@ -141,6 +151,14 @@ class BootVPK180(Strategy):
             ``sudo reboot``. Fire-and-forget — we always cold-cycle next.
         debug_write_boot_log: When True, every retry writes a per-phase UART
             log file for post-mortem.
+        sc_uboot_prompt: The SC's U-Boot prompt. Default ``"ZynqMP> "``.
+        sc_boot_timeout: How long to watch the SC console for its login
+            prompt before logging in anyway. Default 180 s (a cold SC
+            reaches login in about a minute).
+        sc_boot_quiet: Seconds of SC console silence before poking it with
+            a newline. Default 15 (longer than the SC's ``bootdelay``).
+        sc_uboot_boot_retries: How many times to answer the SC's U-Boot
+            prompt with ``boot`` before giving up. Default 2.
     """
 
     bindings = {
@@ -202,6 +220,15 @@ class BootVPK180(Strategy):
     power_cycle = attr.ib(default=True)
     halt_timeout = attr.ib(default=60)
 
+    # Passive SC boot watch (see class docstring).
+    sc_uboot_prompt = attr.ib(default="ZynqMP> ")
+    sc_boot_timeout = attr.ib(default=180)
+    sc_boot_quiet = attr.ib(default=15)
+    sc_uboot_boot_retries = attr.ib(default=2)
+    # True once the warm probe found the SC at its Linux prompt; cleared by
+    # every cold cycle. Skips the passive SC boot watch.
+    _sc_known_alive = attr.ib(default=False, init=False)
+
     boot_log = attr.ib(default="", init=False)
     debug_write_boot_log = attr.ib(default=False)
 
@@ -223,6 +250,7 @@ class BootVPK180(Strategy):
         Without a power binding only the shells are released; callers then
         redo the SC phase, whose ``sc_commands`` reset the Versal.
         """
+        self._sc_known_alive = False
         for shell in (self.sc_shell, self.target_shell):
             try:
                 self.target.deactivate(shell)
@@ -383,12 +411,68 @@ class BootVPK180(Strategy):
                 pass
         self.logger.info("Boot files updated via SSH")
 
+    def _await_sc_boot(self):
+        """Wait passively for a booting SC to reach its login prompt.
+
+        Sends nothing until the console has been silent for ``sc_boot_quiet``
+        seconds, so the SC U-Boot's short autoboot countdown isn't
+        interrupted. If the SC is (or ends up) at its U-Boot prompt, sends
+        ``boot``. Never raises: on timeout the normal login takes over.
+        """
+        console = self.sc_shell.console
+        patterns = [self.sc_shell.login_prompt, self.sc_shell.prompt, self.sc_uboot_prompt]
+        deadline = time.monotonic() + float(self.sc_boot_timeout)
+        boots = 0
+        try:
+            self.target.activate(console)
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    self.logger.warning(
+                        "SC gave no login prompt within %ss; trying login anyway",
+                        self.sc_boot_timeout,
+                    )
+                    return
+                try:
+                    index, _, _, _ = console.expect(
+                        patterns, timeout=min(float(self.sc_boot_quiet), remaining)
+                    )
+                except TIMEOUT:
+                    console.sendline("")
+                    continue
+                if index == 2:
+                    if boots >= int(self.sc_uboot_boot_retries):
+                        self.logger.error(
+                            "SC still at its U-Boot prompt after %d 'boot' attempt(s)", boots
+                        )
+                        return
+                    boots += 1
+                    self.logger.warning(
+                        "SC stopped at its U-Boot prompt; sending 'boot' (%d/%d)",
+                        boots,
+                        self.sc_uboot_boot_retries,
+                    )
+                    console.sendline("boot")
+                    continue
+                self.logger.info(
+                    "SC reached its %s", "login prompt" if index == 0 else "shell prompt"
+                )
+                return
+        except Exception as e:
+            self.logger.warning("SC boot watch failed: %s", e)
+
     def _wait_for_sc_alive(self):
-        """Activate the SC shell, retrying with cold-cycles on login timeout."""
+        """Activate the SC shell, retrying with cold-cycles on login timeout.
+
+        Unless the warm probe found the SC up, first waits for the SC to boot
+        (``_await_sc_boot``) so the login loop can't stop its U-Boot.
+        """
         attempt = 0
         max_attempts = int(self.sc_login_retries) + 1
         while True:
             attempt += 1
+            if not self._sc_known_alive:
+                self._await_sc_boot()
             try:
                 self.sc_shell.bypass_login = False
                 self.target.activate(self.sc_shell)
@@ -558,12 +642,14 @@ class BootVPK180(Strategy):
             needs_file_update = self.update_boot_files or self.update_image
             if self.warm_boot_if_sc_alive and not needs_file_update and self._sc_appears_alive():
                 self.logger.info("SC is already responsive — skipping cold-cycle (warm boot path).")
+                self._sc_known_alive = True
                 if self.power is not None:
                     self.target.activate(self.power)
                     self.power.on()
                 self.status = status
                 return
 
+            self._sc_known_alive = False
             if self.sdmux:
                 self.transition(Status.sd_mux_to_dut)
             else:

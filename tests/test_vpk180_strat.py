@@ -37,6 +37,10 @@ def _make_strategy(**bindings):
     defaults.update(bindings)
     for name, value in defaults.items():
         setattr(strategy, name, value)
+    # A booting SC's console shows its login prompt straight away (index 0 of
+    # the passive SC boot watch); tests override this to script the console.
+    if isinstance(strategy.sc_shell, MagicMock):
+        strategy.sc_shell.console.expect.return_value = (0, b"", None, b"")
     return strategy
 
 
@@ -97,7 +101,8 @@ def test_select_update_path_prefers_sdmux_when_both_present():
 def test_sc_alive_succeeds_first_try():
     s = _make_strategy()
     s._wait_for_sc_alive()
-    s.target.activate.assert_called_once_with(s.sc_shell)
+    s.target.activate.assert_called_with(s.sc_shell)
+    assert [c.args[0] for c in s.target.activate.call_args_list].count(s.sc_shell) == 1
 
 
 def test_sc_alive_retries_on_timeout_then_succeeds():
@@ -592,3 +597,102 @@ def test_power_cycle_true_powered_off_does_not_halt():
     s.transition(Status.powered_off)
     s.target_shell.console.sendline.assert_not_called()
     s.power.off.assert_called_once()
+
+
+# ---------- passive SC boot watch (SC U-Boot autoboot) -----------------------
+
+
+def _script_sc_console(s, results):
+    """Make sc_shell.console.expect return/raise each item of *results* in turn."""
+    from pexpect import TIMEOUT
+
+    def expect(patterns, timeout):
+        item = results.pop(0)
+        if item == "timeout":
+            raise TIMEOUT("quiet")
+        return (item, b"", None, b"")
+
+    s.sc_shell.console.expect.side_effect = expect
+
+
+def test_sc_boot_watch_sends_nothing_before_quiet_timeout():
+    s = _make_strategy()
+    _script_sc_console(s, [0])
+    s._await_sc_boot()
+    s.sc_shell.console.sendline.assert_not_called()
+    s.target.activate.assert_called_once_with(s.sc_shell.console)
+    timeout = s.sc_shell.console.expect.call_args.kwargs["timeout"]
+    assert timeout == s.sc_boot_quiet
+
+
+def test_sc_boot_watch_pokes_only_after_silence():
+    s = _make_strategy()
+    _script_sc_console(s, ["timeout", 0])
+    s._await_sc_boot()
+    s.sc_shell.console.sendline.assert_called_once_with("")
+
+
+def test_sc_boot_watch_answers_uboot_prompt_with_boot():
+    s = _make_strategy()
+    _script_sc_console(s, [2, 0])
+    s._await_sc_boot()
+    s.sc_shell.console.sendline.assert_called_once_with("boot")
+    patterns = s.sc_shell.console.expect.call_args.args[0]
+    assert patterns[2] == "ZynqMP> "
+
+
+def test_sc_boot_watch_caps_boot_attempts():
+    s = _make_strategy()
+    s.sc_uboot_boot_retries = 2
+    _script_sc_console(s, [2, 2, 2, 0])
+    s._await_sc_boot()  # gives up without raising
+    assert [c.args[0] for c in s.sc_shell.console.sendline.call_args_list] == ["boot", "boot"]
+
+
+def test_sc_boot_watch_gives_up_at_deadline_without_raising():
+    s = _make_strategy()
+    s.sc_boot_timeout = 0
+    s._await_sc_boot()
+    s.sc_shell.console.expect.assert_not_called()
+
+
+def test_sc_alive_runs_boot_watch_when_sc_not_known_alive():
+    s = _make_strategy()
+    _script_sc_console(s, [2, 0])
+    s._wait_for_sc_alive()
+    s.sc_shell.console.sendline.assert_called_once_with("boot")
+    s.target.activate.assert_called_with(s.sc_shell)
+
+
+def test_warm_path_skips_sc_boot_watch():
+    s = _make_strategy()
+    s.update_boot_files = False
+    s._sc_appears_alive = MagicMock(return_value=True)
+    s.transition(Status.booting)
+    s.sc_shell.console.expect.reset_mock()
+    s.target.activate.reset_mock()
+    s._wait_for_sc_alive()
+    s.sc_shell.console.expect.assert_not_called()
+    s.target.activate.assert_called_once_with(s.sc_shell)
+
+
+def test_cold_cycle_rearms_sc_boot_watch():
+    s = _make_strategy()
+    s._sc_known_alive = True
+    s.power_cycle = False
+    s._cold_cycle()
+    assert s._sc_known_alive is False
+
+
+def test_cold_power_on_sc_boot_recovers_from_uboot():
+    """Run-B regression: board off, outlet on, SC autoboot stopped at U-Boot."""
+    s = _make_strategy()
+    s.power_cycle = False
+    s.update_boot_files = False
+    s._sc_appears_alive = MagicMock(return_value=False)
+    _script_sc_console(s, ["timeout", 2, 0])
+    s.transition(Status.booting)
+    s._wait_for_sc_alive()
+    s.power.on.assert_called()
+    s.power.off.assert_not_called()
+    assert [c.args[0] for c in s.sc_shell.console.sendline.call_args_list] == ["", "boot"]

@@ -2417,6 +2417,13 @@ off at ``powered_off`` (after ``poweroff`` halts Versal Linux, so the SD card is
 mid-write); boots and retries still go through ``sc_commands``. The Versal UART is only read during boot, never written, so
 U-Boot autoboot is never interrupted.
 
+The SC's own U-Boot autoboots after a 2 s ``bootdelay``, and a shell driver's login loop sends
+a newline after 2 s of silence, which would stop it at ``ZynqMP>``. So when the SC may be booting
+(after a power-on, or when the warm probe gets no prompt), the strategy first watches the SC
+console without sending anything, pokes it only after ``sc_boot_quiet`` (15 s) of silence, and
+answers a ``ZynqMP>`` prompt with ``boot`` (up to ``sc_uboot_boot_retries`` times). A cold SC
+reaches its login prompt in about a minute; ``sc_boot_timeout`` (180 s) bounds the wait.
+
 On a coordinator place, export the two consoles as ``sc-port`` and ``target-port`` and tag
 the place ``boot-strategy=BootVPK180``: ``adi-lg request``/``health-check`` then render a
 two-console env from ``hw_ci/templates/BootVPK180.yaml`` (with the place's ``power-driver``
