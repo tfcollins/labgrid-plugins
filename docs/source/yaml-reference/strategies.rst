@@ -1497,6 +1497,22 @@ Boot strategy for AMD Versal Premium VPK180 with a Zynq system controller.
      - ``60``
      - Seconds to wait for Versal Linux's ``reboot: Power down`` after ``poweroff`` before power
        is cut. For example, ``60``.
+   * - ``sc_uboot_prompt``
+     - ``'ZynqMP> '``
+     - The system controller's U-Boot prompt; answered with ``boot`` while waiting for the SC to
+       boot. For example, ``'ZynqMP> '``.
+   * - ``sc_boot_timeout``
+     - ``180``
+     - Seconds to watch a booting system controller for its login prompt before logging in
+       anyway. For example, ``180``.
+   * - ``sc_boot_quiet``
+     - ``15``
+     - Seconds of system-controller console silence before it is poked with a newline. Keep it
+       longer than the SC's U-Boot ``bootdelay``. For example, ``15``.
+   * - ``sc_uboot_boot_retries``
+     - ``2``
+     - How many times the SC's U-Boot prompt is answered with ``boot`` before giving up. For
+       example, ``2``.
    * - ``debug_write_boot_log``
      - ``False``
      - Writes captured UART boot output to a local debug log when enabled. For example, ``true``.

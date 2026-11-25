@@ -187,8 +187,8 @@ SC_SHELL_DEFAULTS: dict[str, Any] = {
     "login_prompt": "login: ",
     "username": "petalinux",
     "password": "petalinux",
-    # The SC needs a few minutes to boot after the outlet switches on.
-    "login_timeout": 300,
+    # BootVPK180 waits for a booting SC (sc_boot_timeout) before login.
+    "login_timeout": 60,
 }
 DUT_SHELL_DEFAULTS: dict[str, Any] = {
     "prompt": "root@.*# ",

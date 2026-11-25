@@ -46,8 +46,8 @@ targets:
           login_prompt: 'login: '
           username: '${sc_username}'
           password: '${sc_password}'
-          # The SC needs a few minutes to boot after the outlet switches on.
-          login_timeout: 300
+          # BootVPK180 waits for a booting SC (sc_boot_timeout) before login.
+          login_timeout: 60
       - SerialDriver:
           name: target-console
           bindings:
