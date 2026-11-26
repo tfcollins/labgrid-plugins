@@ -62,6 +62,14 @@ def match_places(
             reason=f"part {part!r} has no flash (no-os) support",
         )
 
+    # A part on several carriers (ad9081: zcu102 and vpk180) is a different boot set and
+    # test target per carrier, so a request without a carrier means the part's default
+    # carrier -- the first listed in the catalog -- never "whichever place is free".
+    # Otherwise the reservation filter {daughter-board: part} lets labgrid hand a zcu102
+    # caller the vpk180 place. Ask for another carrier explicitly with --carrier.
+    if carrier is None and len(entry.carriers) > 1:
+        carrier = next(iter(entry.carriers))
+
     if carrier is not None and carrier not in entry.carriers:
         return MatchResult(
             satisfiable=False,

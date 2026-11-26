@@ -293,3 +293,51 @@ def test_flash_mode_returns_board_image_release():
     assert res.image == "2023_R2_P1"  # previously None
     assert res.reservation_filter["daughter-board"] == "adrv9371"  # alias -> canonical
     assert res.flash is not None and res.flash.noos_project == "ad9371"
+
+
+MULTI = BoardCatalog.model_validate(
+    {
+        "boards": {
+            "ad9081": {
+                "image": "2023_R2_P1",
+                "carriers": {"zcu102": {}, "vpk180": {}},
+            }
+        }
+    }
+)
+
+
+def test_multi_carrier_part_without_carrier_uses_the_default_carrier():
+    # vpk180 listed first among places and free; the zcu102 place busy: a carrier-less
+    # request must still reserve on zcu102 (the catalog default), not fall to vpk180.
+    places = [
+        _place("vpk180", part="ad9081", carrier="vpk180", strategy="BootVPK180"),
+        _place(
+            "mini2",
+            part="ad9081",
+            carrier="zcu102",
+            strategy="BootFPGASoC",
+            runner="hw-bq",
+            acquired="someone",
+        ),
+    ]
+    res = match_places(MULTI, places, part="ad9081")
+    assert res.satisfiable is True
+    assert res.reservation_filter == {"daughter-board": "ad9081", "carrier": "zcu102"}
+    assert res.place == "mini2"
+    assert res.runner == "hw-bq"
+
+
+def test_multi_carrier_part_with_explicit_other_carrier():
+    places = [
+        _place("vpk180", part="ad9081", carrier="vpk180", strategy="BootVPK180"),
+        _place("mini2", part="ad9081", carrier="zcu102", strategy="BootFPGASoC"),
+    ]
+    res = match_places(MULTI, places, part="ad9081", carrier="vpk180")
+    assert res.reservation_filter == {"daughter-board": "ad9081", "carrier": "vpk180"}
+    assert res.place == "vpk180"
+
+
+def test_single_carrier_part_keeps_the_carrier_free_filter():
+    res = match_places(CATALOG, [_place("p", part="adrv9002", carrier="zcu102")], part="adrv9002")
+    assert res.reservation_filter == {"daughter-board": "adrv9002"}

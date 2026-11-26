@@ -245,6 +245,12 @@ The API server exposes the following endpoints:
   place. ``place`` / ``runner`` are an informational free candidate; ``flash``
   carries the no-os flash metadata only when ``mode=flash``.
 
+  A part the catalog lists on more than one carrier (``ad9081``: ``zcu102`` and
+  ``vpk180``) is matched on its **first** listed carrier when no ``carrier`` is
+  given, and ``reservation_filter`` then carries that carrier. Each carrier is a
+  different boot set and test target, so a carrier-less request never falls
+  through to another carrier's place. Pass ``carrier`` to request a different one.
+
 - ``GET /api/catalog`` - Return the board catalog (``part`` -> default image,
   aliases, optional ``flash`` block, and valid carriers). Consumed by the
   ``request-matrix`` discovery step.
